@@ -904,7 +904,7 @@ func RenderDir(dir string) ([]*unstructured.Unstructured, error)
 
 **Render precedence rule (document in the package comment):** if `kustomization.yaml` exists at the pack root, it is the *sole* source of raw manifests — `manifests/` is consumed through it (as `resources:`), never walked independently. Otherwise the Phase 1 behavior (walk `manifests/*.yaml`) is unchanged. `chart.yaml` helm rendering is orthogonal and appended in both cases.
 
-- [ ] **Step 1: Create fixtures**
+- [x] **Step 1: Create fixtures**
 
 `internal/pack/testdata/demo-kustomize/pack.cue`:
 
@@ -940,7 +940,7 @@ patches:
         value: patched
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Append to `internal/pack/pack_test.go`:
 
@@ -982,12 +982,12 @@ func TestRenderKustomizeFailureIsTyped(t *testing.T) {
 
 (Add imports `os`, `path/filepath`, `k8s.io/apimachinery/pkg/apis/meta/v1/unstructured` to the test file.)
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `go test ./internal/pack/ -short -run TestRenderKustomize -v`
 Expected: FAIL (RenderDir undefined / message=="original")
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 ```bash
 go get sigs.k8s.io/kustomize/api@latest sigs.k8s.io/kustomize/kyaml@latest
@@ -1044,12 +1044,12 @@ if _, statErr := os.Stat(filepath.Join(p.Dir, "kustomization.yaml")); statErr ==
 }
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `go test ./internal/pack/ -short -v`
 Expected: PASS, including all Phase 1 pack tests (precedence must not break the raw-manifest and helm paths)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "feat: kustomize overlay rendering in the pack engine"
