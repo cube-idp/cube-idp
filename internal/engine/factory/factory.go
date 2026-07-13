@@ -10,19 +10,18 @@ import (
 
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/engine"
+	"github.com/rafpe/cube-idp/internal/engine/argocd"
 	"github.com/rafpe/cube-idp/internal/engine/flux"
 )
 
-// New builds the Engine named by typ. "flux" is the only Phase 1 engine;
-// "argocd" is a known, not-yet-shipped Phase 2 engine (CUBE-3002); anything
-// else is unknown (CUBE-3001).
+// New builds the Engine named by typ. "flux" and "argocd" (D2) both ship;
+// anything else is unknown (CUBE-3001).
 func New(typ string) (engine.Engine, error) {
 	switch typ {
 	case "flux":
 		return flux.New(), nil
 	case "argocd":
-		return nil, diag.New(diag.CodeEngineArgocdNotReady, "the argocd engine ships in Phase 2 (D2)",
-			"use engine.type: flux for now; argocd is available as a UI pack today")
+		return argocd.New(), nil
 	default:
 		return nil, diag.New(diag.CodeEngineTypeUnknown, fmt.Sprintf("unknown engine type %q", typ),
 			"use engine.type: flux or argocd")

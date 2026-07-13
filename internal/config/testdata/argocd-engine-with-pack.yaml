@@ -1,0 +1,9 @@
+apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata:
+  name: dev
+spec:
+  engine:
+    type: argocd
+  packs:
+    - ref: oci://ghcr.io/cube-idp/packs/argocd:0.1.0

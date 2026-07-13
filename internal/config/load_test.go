@@ -102,6 +102,13 @@ spec:
 	}
 }
 
+func TestLoadRejectsArgoPackWithArgoEngine(t *testing.T) { // CUBE-0005
+	_, err := Load("testdata/argocd-engine-with-pack.yaml")
+	if codeOf(t, err) != "CUBE-0005" {
+		t.Fatalf("want CUBE-0005, got %v", err)
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	_, err := Load("testdata/nope.yaml")
 	if codeOf(t, err) != "CUBE-0001" {

@@ -1,0 +1,156 @@
+// Package argocd implements the GitOpsEngine over Argo CD (D2). Delivery
+// shape: one Application per pack with an OCI repository source pointing at
+// the in-cluster zot registry. ENGINE-SPECIFIC REQUIREMENT (spec §7): this
+// engine needs an Argo CD version with OCI repository support; if that path
+// proves insufficient the documented fallback is delivery via the gitea
+// pack — see the Phase 2 plan, Task 2.
+//
+// Version pin: argo-cd v3.4.5 (see hack/gen-argocd-manifests.sh) — the
+// latest stable 3.x release at pin time (3.5 was still release-candidate
+// only), verified via `gh release list --repo argoproj/argo-cd` to carry
+// native OCI application-source support
+// (https://argo-cd.readthedocs.io/en/stable/user-guide/oci/).
+//
+// Known concern (documented, not blocking — see the Phase 2 plan, Task 2
+// report): oci.PushRendered (shared by every engine) pushes packs using
+// fluxcd/pkg/oci's default layer media type
+// (application/vnd.cncf.flux.content.v1.tar+gzip), which is NOT one of
+// argo-cd's default accepted OCI layer media types
+// (application/vnd.oci.image.layer.v1.tar[+gzip],
+// application/vnd.cncf.helm.chart.content.v1.tar+gzip — see
+// cmd/argocd-repo-server/commands/argocd_repo_server.go's --oci-layer-media-types
+// default). Argo CD's repo-server accepts a wider list via the
+// ARGOCD_REPO_SERVER_OCI_LAYER_MEDIA_TYPES env var (wired from the
+// argocd-cmd-params-cm ConfigMap key reposerver.oci.layer.media.types), but
+// this engine does not patch that ConfigMap: since it ships in the same
+// install-manifest batch as the vendored install.yaml's own
+// argocd-cmd-params-cm and both would be applied by the same
+// apply.FieldManager ("cube-idp"), a second partial-object apply of the same
+// name/namespace/kind would make that field manager's own last-applied
+// fields authoritative and risk pruning unrelated keys the base install set
+// — an SSA footgun best resolved with real cluster verification (Task 14's
+// e2e engine matrix), not guessed at here. Until resolved, packs delivered
+// through this engine may fail to sync with a media-type rejection from
+// argocd-repo-server; this is exactly the class of failure spec §7's
+// gitea-pack fallback exists for, and should be revisited then.
+package argocd
+
+import (
+	"context"
+	_ "embed"
+	"time"
+
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/rafpe/cube-idp/internal/apply"
+	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/rafpe/cube-idp/internal/engine"
+)
+
+const Namespace = "argocd"
+
+//go:embed manifests/install.yaml
+var installYAML []byte
+
+//go:embed manifests/repo-secret.yaml
+var repoSecretYAML []byte
+
+type ArgoCD struct{}
+
+func New() *ArgoCD { return &ArgoCD{} }
+
+// clusterScopedKinds are the non-namespaced kinds argo-cd's own
+// manifests/install.yaml ships (plus the Namespace object this package
+// prepends); everything else in that file is namespace-scoped.
+var clusterScopedKinds = map[string]bool{
+	"Namespace":                true,
+	"ClusterRole":              true,
+	"ClusterRoleBinding":       true,
+	"CustomResourceDefinition": true,
+}
+
+// defaultNamespace fills in metadata.namespace for namespace-scoped objects
+// that omit it. Argo CD's community install.yaml (unlike flux's `flux
+// install --export` output) never sets metadata.namespace on its own
+// resources: it's designed for `kubectl apply -n argocd -f install.yaml`,
+// relying on kubectl's -n flag / current-context namespace to supply it.
+// cube-idp's Applier SSA-applies raw unstructured objects with no such
+// implicit default-namespace behavior, so without this step every
+// namespace-scoped object (ServiceAccount, Deployment, Role, ...) would
+// fail to apply ("namespace not specified") — found the hard way running
+// the contract suite's install_health_uninstall_on_cluster subtest against
+// a real (envtest) API server.
+func defaultNamespace(objs []*unstructured.Unstructured) {
+	for _, o := range objs {
+		if o.GetNamespace() == "" && !clusterScopedKinds[o.GetKind()] {
+			o.SetNamespace(Namespace)
+		}
+	}
+}
+
+func (g *ArgoCD) InstallManifests() ([]*unstructured.Unstructured, error) {
+	objs, err := apply.ParseMultiDoc(installYAML)
+	if err != nil {
+		return nil, err
+	}
+	defaultNamespace(objs)
+	secretObjs, err := apply.ParseMultiDoc(repoSecretYAML)
+	if err != nil {
+		return nil, err
+	}
+	return append(objs, secretObjs...), nil
+}
+
+func (g *ArgoCD) Install(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
+	objs, err := g.InstallManifests()
+	if err != nil {
+		return diag.Wrap(err, diag.CodeEngineManifestsInv, "embedded argocd manifests are invalid",
+			"this is a cube-idp bug — regenerate with hack/gen-argocd-manifests.sh and report it")
+	}
+	return a.Apply(ctx, objs, true, timeout)
+}
+
+func (g *ArgoCD) Uninstall(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
+	// Same posture as flux: removal is inventory-driven by `down`; the engine
+	// needs nothing beyond being present in the inventory.
+	return nil
+}
+
+var applicationListGVK = schema.GroupVersionKind{
+	Group: "argoproj.io", Version: "v1alpha1", Kind: "ApplicationList",
+}
+
+// Health lists this cube's delivered Applications and reports each one's
+// sync/health status. Unlike phase-1 flux Health (a documented gap — see the
+// Phase 2 plan, Task 2, Task 0 finding 0.9), this treats a missing
+// Application CRD (fresh cluster, engine not yet installed or install still
+// converging) as "nothing delivered yet", not an error: meta.IsNoMatchError
+// on the List call, mirroring flux's listDelivered on the Uninstall path.
+func (g *ArgoCD) Health(ctx context.Context, a *apply.Applier) ([]engine.ComponentHealth, error) {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(applicationListGVK)
+	err := a.Client().List(ctx, list,
+		client.InNamespace(Namespace), client.MatchingLabels{apply.CubeLabel: a.Cube()})
+	if meta.IsNoMatchError(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, diag.Wrap(err, diag.CodeEngineHealthTimeout, "cannot list argocd Applications",
+			"check kubeconfig and cluster connectivity")
+	}
+	var out []engine.ComponentHealth
+	for _, item := range list.Items {
+		health, _, _ := unstructured.NestedString(item.Object, "status", "health", "status")
+		sync, _, _ := unstructured.NestedString(item.Object, "status", "sync", "status")
+		msg, _, _ := unstructured.NestedString(item.Object, "status", "operationState", "message")
+		out = append(out, engine.ComponentHealth{
+			Name:    item.GetName(),
+			Ready:   health == "Healthy" && sync == "Synced",
+			Message: sync + "/" + health + " " + msg,
+		})
+	}
+	return out, nil
+}

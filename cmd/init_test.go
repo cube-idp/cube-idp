@@ -60,6 +60,48 @@ func TestInitLocalWritesRepoLocalRefs(t *testing.T) {
 	}
 }
 
+func TestInitEngineArgoCDDropsArgoPack(t *testing.T) { // CUBE-0005 avoidance
+	t.Chdir(t.TempDir())
+
+	root := NewRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"init", "--name", "dev", "--engine", "argocd"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	cube := readCube(t, "cube.yaml")
+	if cube.Spec.Engine.Type != "argocd" {
+		t.Fatalf("engine.type = %q, want argocd", cube.Spec.Engine.Type)
+	}
+	if len(cube.Spec.Packs) != 1 || cube.Spec.Packs[0].Ref != "oci://ghcr.io/cube-idp/packs/gitea:0.1.0" {
+		t.Fatalf("expected only the gitea pack (argocd pack would trip CUBE-0005), got %+v", cube.Spec.Packs)
+	}
+}
+
+func TestInitLocalEngineArgoCDDropsArgoPack(t *testing.T) {
+	t.Chdir(t.TempDir())
+	repoRoot := t.TempDir()
+
+	root := NewRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"init", "--name", "dev", "--engine", "argocd", "--local", repoRoot})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	cube := readCube(t, "cube.yaml")
+	wantPacks := []string{filepath.Join(repoRoot, "packs", "gitea")}
+	if len(cube.Spec.Packs) != len(wantPacks) {
+		t.Fatalf("packs = %+v, want refs %v", cube.Spec.Packs, wantPacks)
+	}
+	for i, want := range wantPacks {
+		if cube.Spec.Packs[i].Ref != want {
+			t.Fatalf("packs[%d].ref = %q, want %q", i, cube.Spec.Packs[i].Ref, want)
+		}
+	}
+}
+
 func TestInitRefusesToOverwrite(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("cube.yaml", []byte("existing"), 0o644); err != nil {

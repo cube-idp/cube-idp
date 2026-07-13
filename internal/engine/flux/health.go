@@ -3,6 +3,7 @@ package flux
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,10 +25,18 @@ var kustomizationGVK = schema.GroupVersionKind{
 func (f *Flux) Health(ctx context.Context, a *apply.Applier) ([]engine.ComponentHealth, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(kustomizationGVK)
-	if err := a.Client().List(ctx, list,
+	err := a.Client().List(ctx, list,
 		client.InNamespace(fluxNS),
 		client.MatchingLabels{apply.CubeLabel: a.Cube()},
-	); err != nil {
+	)
+	if meta.IsNoMatchError(err) {
+		// No Kustomization CRD yet (fresh cluster, engine install still
+		// converging) is not an error condition — same hardening as the
+		// argocd engine's Health (Phase 2, Task 2); see listDelivered in
+		// flux.go for the sibling case on the Uninstall path.
+		return nil, nil
+	}
+	if err != nil {
 		return nil, diag.Wrap(err, diag.CodeEngineHealthTimeout, "cannot list flux Kustomizations",
 			"check kubeconfig and cluster connectivity")
 	}

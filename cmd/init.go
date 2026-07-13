@@ -15,6 +15,7 @@ import (
 func newInitCmd() *cobra.Command {
 	var name string
 	var local string
+	var engineType string
 	c := &cobra.Command{
 		Use:   "init",
 		Short: "Write the default cube.yaml (kind + flux + traefik + gitea + argocd, D9)",
@@ -24,6 +25,14 @@ func newInitCmd() *cobra.Command {
 					"remove or rename the existing cube.yaml, or edit it directly and re-run `cube-idp up`")
 			}
 			cube := config.Default(name)
+			cube.Spec.Engine.Type = engineType
+			// engine.type: argocd installs Argo CD itself (UI included), so
+			// the argocd pack would trip CUBE-0005 (redundant pack).
+			if engineType == "argocd" {
+				cube.Spec.Packs = []config.PackRef{
+					{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"},
+				}
+			}
 			if local != "" {
 				abs, err := filepath.Abs(local)
 				if err != nil {
@@ -35,7 +44,9 @@ func newInitCmd() *cobra.Command {
 				cube.Spec.Gateway.Ref = filepath.Join(abs, "packs", "traefik")
 				cube.Spec.Packs = []config.PackRef{
 					{Ref: filepath.Join(abs, "packs", "gitea")},
-					{Ref: filepath.Join(abs, "packs", "argocd")},
+				}
+				if engineType != "argocd" {
+					cube.Spec.Packs = append(cube.Spec.Packs, config.PackRef{Ref: filepath.Join(abs, "packs", "argocd")})
 				}
 			}
 			out, err := yaml.Marshal(cube)
@@ -51,5 +62,6 @@ func newInitCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&name, "name", "dev", "cube name")
 	c.Flags().StringVar(&local, "local", "", "path to a cube-idp repo checkout; writes local packs/ paths instead of released OCI refs")
+	c.Flags().StringVar(&engineType, "engine", "flux", "gitops engine: flux | argocd")
 	return c
 }

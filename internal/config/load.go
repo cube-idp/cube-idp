@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"strings"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
@@ -97,6 +98,15 @@ func crossValidate(c *Cube) error {
 			return diag.New(diag.CodeClusterSetupFailed,
 				"cluster.extraPorts/mounts/providerConfig/kubernetesVersion imply node creation and are not valid with provider: existing",
 				"remove those fields, or switch to provider: kind")
+		}
+	}
+	if c.Spec.Engine.Type == "argocd" {
+		for _, p := range c.Spec.Packs {
+			if strings.Contains(p.Ref, "packs/argocd") {
+				return diag.New(diag.CodeArgoPackRedun,
+					"the argocd pack is redundant when engine.type is argocd (the engine installs Argo CD, UI included)",
+					"remove the argocd pack from spec.packs")
+			}
 		}
 	}
 	return nil

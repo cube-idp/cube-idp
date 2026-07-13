@@ -13,11 +13,9 @@ func TestFactoryFlux(t *testing.T) {
 	}
 }
 
-func TestFactoryArgoCDPhase2(t *testing.T) {
-	_, err := New("argocd")
-	var de *diag.Error
-	if !errors.As(err, &de) || de.Code != "CUBE-3002" {
-		t.Fatalf("want CUBE-3002 (argocd ships in Phase 2, D2), got %v", err)
+func TestFactoryArgoCD(t *testing.T) {
+	if _, err := New("argocd"); err != nil {
+		t.Fatalf("argocd engine must construct in Phase 2 (D2): %v", err)
 	}
 }
 
