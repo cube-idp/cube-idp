@@ -1073,7 +1073,7 @@ git add -A && git commit -m "feat: kustomize overlay rendering in the pack engin
 
 **The compatibility landmine (this task's whole risk):** Phase 1's flux delivery works because `fluxcd/pkg/oci` pushes artifacts with Flux's media types (config `application/vnd.cncf.flux.config.v1+json`, layer `application/vnd.cncf.flux.content.v1.tar+gzip`), which source-controller consumes without a `layerSelector`. The rewrite must keep the pushed bytes engine-compatible. `RECONCILE:` capture the exact manifest (media types, annotations, layer archive format) Phase 1 pushes — `oras manifest fetch` against a local `up`'s zot — and reproduce it with plain oras-go v2 (`oras.PackManifest` + explicit media types + a tar.gz layer built with `archive/tar` + `compress/gzip`). The Task 14 engine-matrix e2e is the final arbiter for BOTH engines.
 
-- [ ] **Step 1: Write the failing media-type test**
+- [x] **Step 1: Write the failing media-type test**
 
 Refactor `PushRendered` over an `oras.Target` seam so tests need no network: production passes the `remote.Repository` (plain-HTTP as today), tests pass `oras-go/v2/content/memory.New()`. Test sketch (adapt names to the phase-1 file layout):
 
@@ -1104,26 +1104,26 @@ func TestPushRenderedKeepsFluxMediaTypes(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/oci/ -v`
 Expected: FAIL (`pushRenderedTo` undefined)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Rewrite `internal/oci` push: build one tar.gz layer containing the rendered multi-doc YAML (same entry name phase-1 produced — `RECONCILE:` check what source-controller unpacked, typically the manifest file at the archive root), push config + layer + manifest via `oras.PackManifest`/`store.Push` with the pinned media types, tag it, and keep `PushRendered(ctx, r, registryAddr)` delegating to the seam with a `remote.Repository{PlainHTTP: true}` target (reuse the phase-1 insecure setup per checkpoint 0.10).
 
-- [ ] **Step 4: Drop the dependency**
+- [x] **Step 4: Drop the dependency**
 
 Run: `go mod tidy && grep -c fluxcd/pkg/oci go.mod`
 Expected: `0` — the module is gone (`fluxcd/pkg/ssa` stays; only `pkg/oci` is retired).
 
-- [ ] **Step 5: Run everything, including one real flux round-trip**
+- [x] **Step 5: Run everything, including one real flux round-trip**
 
 Run: `go build ./... && go test ./... -short && make test-apply`
 Expected: PASS. Then run the flux e2e locally (`CUBE_IDP_E2E=1 go test ./tests/e2e/ -v -timeout 25m`) — a pack delivered through the rewritten push must reach Ready. If source-controller rejects the artifact, the media-type reconcile in Step 1 was wrong — fix constants, not flux.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "refactor: all OCI on oras-go v2, drop fluxcd/pkg/oci (debt paydown)"
