@@ -39,17 +39,25 @@ func isGetterRef(ref string) bool {
 func sanitizeRef(ref string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {
-		case '/', ':', '?', '&', '=':
+		case '/', '\\', ':', '?', '&', '=':
 			return '_'
 		}
 		return r
 	}, ref)
 }
 
-// fetchGetter fetches a pack via go-getter into cacheDir and applies the
-// extraction guards. src is a ready go-getter URL (explicit form, or the
-// translation fetchGit produced). subdir selection uses go-getter's native
-// // syntax inside src.
+// fetchGetter fetches a pack via go-getter and applies the extraction
+// guards. src is a ready go-getter URL (explicit form, or the translation
+// fetchGit produced). subdir selection uses go-getter's native // syntax
+// inside src.
+//
+// The fetch is atomic with respect to dst: go-getter writes into a
+// temporary sibling directory, GuardTree runs on that temp tree, and only
+// then is the tree renamed onto dst (os.Rename is atomic on the same
+// filesystem). A crash at any point leaves at worst a .tmp-* orphan —
+// never an unguarded tree at dst that a later run's cache-hit stat would
+// trust. Stray .tmp-* orphans from prior crashes are swept best-effort
+// before fetching.
 //
 // RECONCILE (verified against github.com/rafpe/go-getter v1.9.0 client.go):
 // the fork's v1 Client field set matches the brief exactly — Ctx, Src, Dst,
@@ -57,10 +65,21 @@ func sanitizeRef(ref string) string {
 // is set here as defense in depth; GuardTree still runs unconditionally
 // since DisableSymlinks is a fork-specific belt, not a cube-idp guarantee.
 func fetchGetter(ctx context.Context, src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return diag.Wrap(err, diag.CodePackFetchFail, "cannot create pack cache dir", "check permissions under the cache dir")
+	}
+	if stale, _ := filepath.Glob(dst + ".tmp-*"); len(stale) > 0 {
+		for _, s := range stale {
+			_ = os.RemoveAll(s) // best-effort sweep of prior-crash leftovers
+		}
+	}
+	tmp := fmt.Sprintf("%s.tmp-%d", dst, os.Getpid())
+	defer os.RemoveAll(tmp)
+
 	client := &getter.Client{
 		Ctx:             ctx,
 		Src:             src,
-		Dst:             dst,
+		Dst:             tmp,
 		Mode:            getter.ClientModeDir,
 		DisableSymlinks: true,
 		Detectors:       []getter.Detector{}, // deterministic: schemes are explicit
@@ -76,9 +95,14 @@ func fetchGetter(ctx context.Context, src, dst string) error {
 		return diag.Wrap(err, diag.CodePackFetchFail, fmt.Sprintf("cannot fetch pack source %q", src),
 			"check the ref, your network, and that the git CLI is installed for git sources")
 	}
-	if _, err := GuardTree(dst); err != nil {
-		_ = os.RemoveAll(dst)
+	if _, err := GuardTree(tmp); err != nil {
 		return err
+	}
+	if err := os.RemoveAll(dst); err != nil { // the getter path re-fetches into a fixed dir
+		return diag.Wrap(err, diag.CodePackFetchFail, "cannot replace previous pack cache entry", "check permissions under the cache dir")
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		return diag.Wrap(err, diag.CodePackFetchFail, "cannot move fetched pack into the cache", "check permissions under the cache dir")
 	}
 	return nil
 }
@@ -108,8 +132,9 @@ func fetchGit(ctx context.Context, ref, cacheDir string) (*Pack, error) {
 		if subdir != "" {
 			src = fmt.Sprintf("git::%s//%s?ref=%s", repoURL, subdir, sha)
 		}
+		// fetchGetter is atomic: on any failure nothing exists at dst,
+		// so the cache-hit stat above can never trust a partial tree.
 		if err := fetchGetter(ctx, src, dst); err != nil {
-			_ = os.RemoveAll(dst)
 			return nil, err
 		}
 	}
