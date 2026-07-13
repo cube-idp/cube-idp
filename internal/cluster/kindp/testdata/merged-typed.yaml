@@ -8,7 +8,7 @@ nodes:
         - containerPath: /var/lib/images
           hostPath: /tmp/images
       extraPortMappings:
-        - containerPort: 443
+        - containerPort: 30080
           hostPort: 8443
           protocol: TCP
         - containerPort: 32222

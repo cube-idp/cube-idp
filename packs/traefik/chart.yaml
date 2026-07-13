@@ -1,0 +1,34 @@
+# Traefik ingress controller, configured as cube-idp's default gateway
+# implementation (spec §4 gateway pack). Pinned to the latest stable chart
+# as of 2026-07-13 (the brief's 34.1.0 is stale — traefik/traefik has moved
+# to the 40.x/41.x series alongside Traefik v3.7).
+chart: traefik
+repo: https://traefik.github.io/charts
+version: "41.0.2"          # app v3.7.6; pin; bump deliberately
+releaseName: traefik
+namespace: traefik
+values:
+  deployment:
+    replicas: 1
+  # Enable the Gateway API provider so Traefik watches Gateway/HTTPRoute
+  # objects (manifests/10-gateway.yaml supplies the Gateway; this chart
+  # version also creates the "traefik" GatewayClass those objects reference
+  # when gatewayClass.enabled, its default, is left on).
+  providers:
+    kubernetesGateway:
+      enabled: true
+  # The chart can deploy its own default Gateway when the kubernetesGateway
+  # provider is enabled; disable it so it doesn't duplicate/conflict with
+  # our explicit Gateway (manifests/10-gateway.yaml, name "cube-idp").
+  gateway:
+    enabled: false
+  # Phase 1 serves HTTP behind the host port (D6 defers TLS/`cube-idp
+  # trust` to Phase 2): expose the web entrypoint as a fixed NodePort so the
+  # kind port mapping (host 8443 -> containerPort 30080, see
+  # internal/cluster/kindp/merge.go) has a stable target. See README.md.
+  ports:
+    web:
+      nodePort: 30080
+  service:
+    spec:
+      type: NodePort

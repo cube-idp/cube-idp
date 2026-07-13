@@ -1,0 +1,44 @@
+# Gitea: cube-idp's default in-cluster git server. Pinned to the latest
+# stable chart as of 2026-07-13 (the brief's 10.6.0 is stale).
+chart: gitea
+repo: https://dl.gitea.com/charts/
+version: "12.6.0"          # app 1.26.1; pin; bump deliberately
+releaseName: gitea
+namespace: gitea
+values:
+  # D9: fixed local-dev admin credentials, surfaced to the user via
+  # `cube-idp get secrets` from manifests/10-secret.yaml (same posture as
+  # idpbuilder's --dev-password — acceptable for a local dev platform, not
+  # for anything internet-facing). See README.md.
+  gitea:
+    admin:
+      username: gitea_admin
+      password: cube-idp-dev
+      email: admin@cube-idp.localtest.me
+      passwordMode: keepUpdated
+    config:
+      database:
+        DB_TYPE: sqlite3
+      session:
+        PROVIDER: memory
+      cache:
+        ADAPTER: memory
+      queue:
+        TYPE: level
+  # The chart's default values.yaml deploys HA postgresql + a valkey
+  # cluster (`postgresql-ha.enabled`/`valkey-cluster.enabled` both default
+  # true) — multi-pod StatefulSets that need multiple nodes to satisfy
+  # their pod anti-affinity and don't fit a single-node kind cluster. The
+  # chart's own README documents this exact "minimal DEV installation"
+  # combination (sqlite3 + memory session/cache + level queue) as the
+  # supported way to run a single-pod Gitea without external dependencies.
+  valkey-cluster:
+    enabled: false
+  valkey:
+    enabled: false
+  postgresql:
+    enabled: false
+  postgresql-ha:
+    enabled: false
+  persistence:
+    enabled: false

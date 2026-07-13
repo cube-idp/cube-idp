@@ -1,0 +1,10 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  parentRefs: [{name: cube-idp, namespace: traefik}]
+  hostnames: ["argocd.cube-idp.localtest.me"]
+  rules:
+    - backendRefs: [{name: argocd-server, port: 80}]

@@ -192,7 +192,7 @@ nodes:
 	}
 	var gwMapped, extraMapped bool
 	for _, pm := range cp.ExtraPortMappings {
-		if pm.HostPort == 8443 && pm.ContainerPort == 443 {
+		if pm.HostPort == 8443 && pm.ContainerPort == 30080 {
 			gwMapped = true
 		}
 		if pm.HostPort == 32222 && pm.ContainerPort == 32222 {
