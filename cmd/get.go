@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,9 +27,13 @@ const (
 )
 
 // secretRow is one CLI-surfaced secret, ready for tabular display.
+// Placeholder, when set, is rendered in the DATA column instead of Fields —
+// used when a Pack's authSecretRef points at a Secret that doesn't exist
+// (yet), so the pack still shows up instead of silently vanishing.
 type secretRow struct {
 	Pack, Namespace, Name string
 	Fields                map[string]string
+	Placeholder           string
 }
 
 // filterCLISecrets keeps only secrets labeled cube-idp.dev/cli-secret=true,
@@ -87,6 +92,16 @@ func packSecretRows(ctx context.Context, c client.Client, packFilter string) (ro
 		covered[name] = true
 		var sec corev1.Secret
 		if err := c.Get(ctx, client.ObjectKey{Namespace: ns, Name: secName}, &sec); err != nil {
+			if apierrors.IsNotFound(err) {
+				// A dangling authSecretRef (e.g. argocd-initial-admin-secret
+				// before Argo CD's first boot finishes) must not abort the
+				// whole listing — surface the pack with an explicit marker
+				// instead. impliedFields are deliberately NOT shown here:
+				// alone they'd read as a usable credential.
+				rows = append(rows, secretRow{Pack: name, Namespace: ns, Name: secName,
+					Placeholder: fmt.Sprintf("<secret %s/%s not found>", ns, secName)})
+				continue
+			}
 			return nil, nil, err
 		}
 		fields := map[string]string{}
@@ -106,7 +121,8 @@ func packSecretRows(ctx context.Context, c client.Client, packFilter string) (ro
 // convention (cube-idp.dev/cli-secret + cube-idp.dev/pack-name) is honored
 // one more release for packs that haven't declared expose.authSecretRef yet.
 func legacyDeprecationNote(pack string) string {
-	return fmt.Sprintf("note: %s was found via the legacy cli-secret label; pack authors should declare expose.authSecretRef in pack.cue (label support ends next release)", pack)
+	return fmt.Sprintf("note: %s was found via the legacy %s + %s labels; pack authors should declare expose.authSecretRef in pack.cue (label support ends next release)",
+		pack, cliSecretLabel, packNameLabel)
 }
 
 // secretsForDisplay is the D11 `get secrets` pivot: Pack -> authSecretRef ->
@@ -205,7 +221,11 @@ func printSecretRows(w io.Writer, rows []secretRow) {
 		for _, k := range keys {
 			pairs = append(pairs, fmt.Sprintf("%s=%s", k, cellEscaper.Replace(r.Fields[k])))
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Pack, r.Namespace, r.Name, strings.Join(pairs, ","))
+		data := strings.Join(pairs, ",")
+		if data == "" && r.Placeholder != "" {
+			data = r.Placeholder
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Pack, r.Namespace, r.Name, data)
 	}
 	tw.Flush()
 }

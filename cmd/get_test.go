@@ -119,8 +119,51 @@ func TestSecretsForDisplayLegacyFallback(t *testing.T) {
 	if len(rows) != 1 || rows[0].Pack != "argocd" {
 		t.Fatalf("want the legacy row surfaced: %+v", rows)
 	}
-	if len(notes) != 1 || !strings.Contains(notes[0], "legacy cli-secret label") || !strings.Contains(notes[0], "argocd") {
-		t.Fatalf("want a deprecation note naming the pack, got %v", notes)
+	if len(notes) != 1 || !strings.Contains(notes[0], "argocd") ||
+		!strings.Contains(notes[0], cliSecretLabel) || !strings.Contains(notes[0], packNameLabel) {
+		t.Fatalf("want a deprecation note naming the pack and BOTH legacy labels, got %v", notes)
+	}
+}
+
+func TestSecretsForDisplayDanglingAuthSecretRef(t *testing.T) {
+	// A Pack whose authSecretRef points at a Secret that doesn't exist yet
+	// (e.g. argocd-initial-admin-secret before Argo CD's first boot) must
+	// not abort the whole listing: the healthy pack's row still appears,
+	// and the dangling pack shows an explicit not-found marker in DATA.
+	dangling := newPack("argocd", "argocd", "argocd-initial-admin-secret", map[string]string{"username": "admin"})
+	healthy := newPack("gitea", "gitea", "gitea-admin-cube-idp", map[string]string{"username": "gitea_admin"})
+	sec := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "gitea-admin-cube-idp", Namespace: "gitea"},
+		Data:       map[string][]byte{"password": []byte("s3cr3t")},
+	}
+	c := newGetFakeClient(t, dangling, healthy, sec)
+
+	rows, notes, err := secretsForDisplay(context.Background(), c, "")
+	if err != nil {
+		t.Fatalf("a dangling authSecretRef must not abort get secrets: %v", err)
+	}
+	if len(notes) != 0 {
+		t.Fatalf("no deprecation notes expected, got %v", notes)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want the healthy row AND the dangling marker row, got %+v", rows)
+	}
+	byPack := map[string]secretRow{}
+	for _, r := range rows {
+		byPack[r.Pack] = r
+	}
+	if byPack["gitea"].Fields["password"] != "s3cr3t" {
+		t.Fatalf("healthy row must be unaffected: %+v", byPack["gitea"])
+	}
+	d := byPack["argocd"]
+	if d.Placeholder != "<secret argocd/argocd-initial-admin-secret not found>" || len(d.Fields) != 0 {
+		t.Fatalf("dangling row must carry the not-found marker and NO fields (implied fields alone would read as a credential): %+v", d)
+	}
+
+	var buf strings.Builder
+	printSecretRows(&buf, rows)
+	if !strings.Contains(buf.String(), "<secret argocd/argocd-initial-admin-secret not found>") {
+		t.Fatalf("rendered table must show the marker in DATA: %s", buf.String())
 	}
 }
 
