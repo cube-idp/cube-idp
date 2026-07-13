@@ -77,18 +77,28 @@ func TestRenderSeparatesErrorsFromWarnings(t *testing.T) {
 }
 
 // TestGitSourceWithoutGitCLIWarns covers Task 4 Step 6's binding note: a
-// git-sourced pack ref without the git CLI on PATH must surface a CUBE-0101
+// git-sourced pack ref without the git CLI on PATH must surface a CUBE-0105
 // warning naming the real cause (pack fetch would otherwise fail deep
-// inside go-getter with a much less legible error).
+// inside go-getter with a much less legible error). A git-sourced gateway
+// pack override (spec.gateway.ref) must trigger the same warning — doctor
+// scans it alongside spec.packs.
 func TestGitSourceWithoutGitCLIWarns(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PATH", dir) // no git anywhere
 	f := CheckGitCLI([]string{"github.com/org/repo@v1.0.0"})
-	if f == nil || f.Code != "CUBE-0101" || f.Severity != diag.SeverityWarning {
-		t.Fatalf("want CUBE-0101 warning, got %+v", f)
+	if f == nil || f.Code != "CUBE-0105" || f.Severity != diag.SeverityWarning {
+		t.Fatalf("want CUBE-0105 warning, got %+v", f)
 	}
 	if !strings.Contains(f.Message, "git") {
 		t.Fatalf("message must mention git: %+v", f)
+	}
+	// gateway override as the only git-sourced ref (spec.packs all OCI)
+	f = CheckGitCLI([]string{
+		"oci://ghcr.io/cube-idp/packs/gitea:0.1.0",
+		"github.com/org/gateway-pack//packs/traefik@v2.0.0", // gateway PackRef()
+	})
+	if f == nil || f.Code != "CUBE-0105" || f.Severity != diag.SeverityWarning {
+		t.Fatalf("git-sourced gateway ref must warn too, got %+v", f)
 	}
 }
 

@@ -75,7 +75,7 @@ func CheckGitCLI(refs []string) *diag.Finding {
 	if _, err := exec.LookPath("git"); err == nil {
 		return nil
 	}
-	return &diag.Finding{Code: diag.CodeDoctorRuntime, Severity: diag.SeverityWarning,
+	return &diag.Finding{Code: diag.CodeDoctorGitCLI, Severity: diag.SeverityWarning,
 		Message:     "git sources configured but git CLI not found — pack fetch will fail",
 		Remediation: "install git and ensure it is on PATH"}
 }

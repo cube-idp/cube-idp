@@ -62,10 +62,13 @@ func newDoctorCmd() *cobra.Command {
 			}
 			findings = append(findings, doctor.CheckInotify()...)
 
-			refs := make([]string, 0, len(cube.Spec.Packs))
+			// scan every ref `up` would fetch: spec.packs plus the gateway
+			// pack (its ref override may also be a git source)
+			refs := make([]string, 0, len(cube.Spec.Packs)+1)
 			for _, p := range cube.Spec.Packs {
 				refs = append(refs, p.Ref)
 			}
+			refs = append(refs, cube.Spec.Gateway.PackRef())
 			if f := doctor.CheckGitCLI(refs); f != nil {
 				findings = append(findings, *f)
 			}

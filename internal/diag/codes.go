@@ -17,6 +17,7 @@ const (
 	CodeDoctorPort    Code = "CUBE-0102" // required host port already in use
 	CodeDoctorDisk    Code = "CUBE-0103" // low disk space in cache directory (warning)
 	CodeDoctorInotify Code = "CUBE-0104" // inotify limits too low (warning, Linux-only)
+	CodeDoctorGitCLI  Code = "CUBE-0105" // git CLI missing while git-sourced packs are configured (doctor, warning)
 )
 
 // 1xxx: cluster
