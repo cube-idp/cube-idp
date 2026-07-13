@@ -50,6 +50,10 @@ func New(cfg *rest.Config, cubeName string) (*Applier, error) {
 // status/get-secrets commands.
 func (a *Applier) Client() client.Client { return a.c }
 
+// Cube returns the cube name this Applier is scoped to, used by
+// engine.Health implementations to filter their component list.
+func (a *Applier) Cube() string { return a.cube }
+
 // Apply labels every object cube-idp.dev/cube=<cubeName>, server-side
 // applies them all with field manager "cube-idp", and, if wait is true,
 // blocks until kstatus reports every object ready or timeout elapses.
