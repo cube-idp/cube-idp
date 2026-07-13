@@ -33,7 +33,7 @@ const gatewayContainerPort = 30443 // Traefik websecure NodePort (HTTPS, Phase 2
 //
 //	empty v1alpha4.Cluster
 //
-// inject = gateway extraPortMapping (hostPort=gw.Port -> containerPort 30080),
+// inject = gateway extraPortMapping (hostPort=gw.Port -> containerPort 30443),
 //
 //	registry mirrors/insecure as containerdConfigPatches, typed
 //	extraPorts + mounts on the control-plane node, node image from

@@ -36,7 +36,7 @@ func gatewayTLSObjects(ca *trust.CA, gw config.GatewaySpec, validity time.Durati
 	sec := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1", "kind": "Secret",
 		"metadata": map[string]any{"name": "cube-idp-gateway-tls", "namespace": gw.Pack},
-		"type":      "kubernetes.io/tls",
+		"type":     "kubernetes.io/tls",
 		"stringData": map[string]any{
 			"tls.crt": string(certPEM),
 			"tls.key": string(keyPEM),

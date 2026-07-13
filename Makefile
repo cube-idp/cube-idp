@@ -11,7 +11,7 @@ envtest-assets:
 
 test-apply:
 	KUBEBUILDER_ASSETS=$$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use 1.33 -p path) \
-	go test ./internal/apply/ ./internal/engine/flux/ -v
+	go test ./internal/apply/ ./internal/engine/flux/ ./internal/up/ -v
 
 test-engines:
 	KUBEBUILDER_ASSETS=$$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use 1.33 -p path) \
