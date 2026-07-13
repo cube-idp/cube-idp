@@ -325,7 +325,7 @@ func Run(t *testing.T, impl Impl) // the one suite every engine must pass identi
 
 The suite is the D2 honesty mechanism: *an abstraction with one implementation is a lie.* It asserts only interface-level behavior — nothing flux- or argo-shaped — so both engines run the byte-identical assertions.
 
-- [ ] **Step 1: Write the suite (it IS the failing test for Task 2, and a regression net for flux today)**
+- [x] **Step 1: Write the suite (it IS the failing test for Task 2, and a regression net for flux today)**
 
 `internal/engine/contract/contract.go`:
 
@@ -497,7 +497,7 @@ func startEnvtest(t *testing.T) *rest.Config {
 
 (Import `"k8s.io/client-go/rest"` for the helper's return type. RESOLVED by Task 0 finding 0.6: `apply.New(cfg *rest.Config, cubeName string)` — takes an envtest `*rest.Config` directly, exactly as the phase-1 apply tests do.)
 
-- [ ] **Step 2: Register flux against the suite**
+- [x] **Step 2: Register flux against the suite**
 
 `internal/engine/flux/contract_test.go`:
 
@@ -519,7 +519,7 @@ func TestFluxContract(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Add the Makefile target**
+- [x] **Step 3: Add the Makefile target**
 
 ```make
 test-engines:
@@ -527,12 +527,12 @@ test-engines:
 	go test ./internal/engine/... -v
 ```
 
-- [ ] **Step 4: Run the suite against flux**
+- [x] **Step 4: Run the suite against flux**
 
 Run: `make test-engines`
 Expected: all `TestFluxContract` subtests PASS (the envtest subtest may Skip locally without assets — it must PASS in CI). If flux fails a subtest, the fix belongs in the flux engine, not in the suite — the suite is the contract.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "test: shared GitOpsEngine contract suite, flux passing"
