@@ -88,6 +88,9 @@ func EnsureCA(dir string) (*CA, error) {
 	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0o600); err != nil {
 		return nil, diag.Wrap(err, diag.CodeTrustCAFail, "cannot write "+keyPath, "check permissions")
 	}
+	if err := os.Chmod(keyPath, 0o600); err != nil { // WriteFile does not chmod pre-existing files
+		return nil, diag.Wrap(err, diag.CodeTrustCAFail, "cannot restrict permissions on "+keyPath, "check permissions")
+	}
 	return loadCA(certPath, keyPath)
 }
 
@@ -116,19 +119,41 @@ func mkcertCAROOT() string {
 // issues leaves the user's browsers already trust (D12). Presence-based: we do
 // NOT verify OS-store trust (no portable query API) — if the mkcert root turns
 // out untrusted, `cube-idp trust` installs it exactly like a generated CA.
+//
+// The source is fully validated BEFORE anything is copied: a broken mkcert
+// install (unparseable cert or key, cert not a CA) is silently skipped so
+// EnsureCA falls through to generating its own CA instead of copying garbage
+// that would wedge every subsequent loadCA.
 func adoptMkcertCA(dir string) (adopted bool) {
 	caroot := mkcertCAROOT()
-	certSrc := filepath.Join(caroot, "rootCA.pem")
-	keySrc := filepath.Join(caroot, "rootCA-key.pem")
-	cert, err1 := os.ReadFile(certSrc)
-	key, err2 := os.ReadFile(keySrc)
+	cert, err1 := os.ReadFile(filepath.Join(caroot, "rootCA.pem"))
+	key, err2 := os.ReadFile(filepath.Join(caroot, "rootCA-key.pem"))
 	if err1 != nil || err2 != nil {
 		return false
 	}
-	if os.WriteFile(filepath.Join(dir, "ca.crt"), cert, 0o644) != nil {
+	certBlock, _ := pem.Decode(cert)
+	keyBlock, _ := pem.Decode(key)
+	if certBlock == nil || keyBlock == nil {
 		return false
 	}
-	if os.WriteFile(filepath.Join(dir, "ca.key"), key, 0o600) != nil {
+	parsed, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil || !parsed.IsCA {
+		return false
+	}
+	if _, err := parseCAKey(keyBlock.Bytes); err != nil {
+		return false
+	}
+	// Key first: an orphaned ca.key without ca.crt is harmless (the next
+	// run's Stat(ca.crt) misses and re-adopts/regenerates cleanly), while an
+	// orphaned ca.crt would wedge loadCA.
+	keyPath := filepath.Join(dir, "ca.key")
+	if os.WriteFile(keyPath, key, 0o600) != nil {
+		return false
+	}
+	if os.Chmod(keyPath, 0o600) != nil { // WriteFile does not chmod pre-existing files
+		return false
+	}
+	if os.WriteFile(filepath.Join(dir, "ca.crt"), cert, 0o644) != nil {
 		return false
 	}
 	return true

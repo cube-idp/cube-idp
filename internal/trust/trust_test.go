@@ -136,10 +136,45 @@ func TestEnsureCAAdoptsMkcertRoot(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "ca.crt")); err != nil {
 		t.Fatal("adopted CA must be copied into the cube-idp dir")
 	}
+	// the adopted key must always end up 0600 (WriteFile alone does not
+	// chmod pre-existing files)
+	info, err := os.Stat(ca.KeyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("adopted CA key must be 0600, got %v", info.Mode().Perm())
+	}
 	// and a cube-idp CA, once present, wins over CAROOT (no flip-flop)
 	again, err := EnsureCA(dir)
 	if err != nil || again.Cert.SerialNumber.Cmp(ca.Cert.SerialNumber) != 0 {
 		t.Fatalf("EnsureCA must stay stable once adopted: %v", err)
+	}
+}
+
+// TestEnsureCASkipsGarbageMkcertRoot: a broken mkcert install (unparseable
+// cert or key) must not brick cube-idp — adoption is skipped entirely (no
+// files copied) and EnsureCA falls through to generating a fresh CA.
+func TestEnsureCASkipsGarbageMkcertRoot(t *testing.T) {
+	caroot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(caroot, "rootCA.pem"), []byte("not a cert"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(caroot, "rootCA-key.pem"), []byte("not a key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CAROOT", caroot)
+
+	dir := t.TempDir()
+	ca, err := EnsureCA(dir)
+	if err != nil {
+		t.Fatalf("EnsureCA must generate a fresh CA when the mkcert root is garbage, got: %v", err)
+	}
+	if !ca.Cert.IsCA {
+		t.Fatal("generated cert missing IsCA")
+	}
+	if ca.Cert.Subject.CommonName != "cube-idp local CA" {
+		t.Fatalf("expected a generated cube-idp CA, got CN=%q (garbage adopted?)", ca.Cert.Subject.CommonName)
 	}
 }
 
