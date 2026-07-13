@@ -22,6 +22,16 @@ func TestFetchLocalDirAndMetadata(t *testing.T) {
 	}
 }
 
+func TestFetchLocalDirSetsPinned(t *testing.T) {
+	p, err := Fetch(context.Background(), "testdata/demo", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Pinned) < 5 || p.Pinned[:4] != "dir:" {
+		t.Fatalf("local packs must be pinned by dirhash, got %q", p.Pinned)
+	}
+}
+
 func TestFetchUnknownScheme(t *testing.T) {
 	_, err := Fetch(context.Background(), "svn://old/school", t.TempDir())
 	var de *diag.Error

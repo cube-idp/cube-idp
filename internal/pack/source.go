@@ -17,6 +17,8 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 
+	"golang.org/x/mod/sumdb/dirhash"
+
 	"github.com/rafpe/cube-idp/internal/diag"
 )
 
@@ -32,11 +34,16 @@ import (
 func Fetch(ctx context.Context, ref, cacheDir string) (*Pack, error) {
 	switch {
 	case strings.HasPrefix(ref, "oci://"):
-		dir, err := pullOCI(ctx, strings.TrimPrefix(ref, "oci://"), cacheDir)
+		dir, digest, err := pullOCI(ctx, strings.TrimPrefix(ref, "oci://"), cacheDir)
 		if err != nil {
 			return nil, err
 		}
-		return loadMeta(dir)
+		p, err := loadMeta(dir)
+		if err != nil {
+			return nil, err
+		}
+		p.Pinned = "oci:" + digest
+		return p, nil
 	case isGitRef(ref):
 		return fetchGit(ctx, ref, cacheDir)
 	case isGetterRef(ref):
@@ -48,7 +55,13 @@ func Fetch(ctx context.Context, ref, cacheDir string) (*Pack, error) {
 		if err != nil {
 			return nil, err
 		}
-		// http/s3 refs have no upstream pin protocol; Task 5's dirhash covers them.
+		// http/s3 refs have no upstream pin protocol: pin the fetched tree
+		// with the same dirhash used for local directories.
+		h, err := dirPin(dst)
+		if err != nil {
+			return nil, err
+		}
+		p.Pinned = h
 		return p, nil
 	case strings.Contains(ref, "://"):
 		return nil, diag.New(diag.CodePackRefInvalid, fmt.Sprintf("unsupported pack ref scheme in %q", ref),
@@ -62,22 +75,45 @@ func Fetch(ctx context.Context, ref, cacheDir string) (*Pack, error) {
 			return nil, diag.New(diag.CodePackRefInvalid, fmt.Sprintf("pack path %q is not a directory", ref),
 				"use a valid directory path, or oci://host/repo:tag")
 		}
-		return loadMeta(abs)
+		p, err := loadMeta(abs)
+		if err != nil {
+			return nil, err
+		}
+		h, err := dirPin(abs)
+		if err != nil {
+			return nil, err
+		}
+		p.Pinned = h
+		return p, nil
 	}
 }
 
+// dirPin computes the cube.lock pin for a plain, on-disk pack directory:
+// local directory refs and http/s3 getter refs (Task 4), which have no
+// upstream pin protocol of their own. Task 7's ResolveRemote reuses it.
+func dirPin(abs string) (string, error) {
+	h, err := dirhash.HashDir(abs, "", dirhash.Hash1)
+	if err != nil {
+		return "", diag.Wrap(err, diag.CodePackRefInvalid, "cannot hash pack directory",
+			"check file permissions under the pack directory")
+	}
+	return "dir:" + h, nil
+}
+
 // pullOCI pulls the OCI artifact identified by ref (host/repo:tag, "oci://"
-// already trimmed) into cacheDir and returns the extracted pack directory.
+// already trimmed) into cacheDir and returns the extracted pack directory
+// plus the pulled manifest digest (fed into Pack.Pinned as "oci:<digest>").
 // Anonymous auth only (Phase 1); plain HTTP is used for 127.0.0.1/localhost
 // registries (the zot port-forward tunnel). Every failure in this family
 // (bad ref, network, corrupt artifact, extraction) reports CUBE-4012.
 // Note: the digest-keyed cache only skips re-extraction — the registry
 // round-trip (manifest resolve + blob fetch into the staging store) still
-// happens on every call.
-func pullOCI(ctx context.Context, ref, cacheDir string) (string, error) {
+// happens on every call, so desc.Digest is always freshly resolved and
+// never needs to be recovered from the cache-hit path.
+func pullOCI(ctx context.Context, ref, cacheDir string) (dir string, digest string, err error) {
 	repo, err := remote.NewRepository(ref)
 	if err != nil {
-		return "", diag.Wrap(err, diag.CodePackOCIErr, fmt.Sprintf("invalid OCI pack ref %q", ref),
+		return "", "", diag.Wrap(err, diag.CodePackOCIErr, fmt.Sprintf("invalid OCI pack ref %q", ref),
 			"use the form oci://host/repo:tag")
 	}
 	repo.Client = auth.DefaultClient
@@ -86,38 +122,38 @@ func pullOCI(ctx context.Context, ref, cacheDir string) (string, error) {
 	}
 	tagOrDigest := repo.Reference.Reference
 	if tagOrDigest == "" {
-		return "", diag.New(diag.CodePackOCIErr, fmt.Sprintf("OCI pack ref %q has no tag or digest", ref),
+		return "", "", diag.New(diag.CodePackOCIErr, fmt.Sprintf("OCI pack ref %q has no tag or digest", ref),
 			"use the form oci://host/repo:tag")
 	}
 
 	staging, err := os.MkdirTemp(cacheDir, "pull-*")
 	if err != nil {
-		return "", diag.Wrap(err, diag.CodePackOCIErr, "cannot create pack cache staging dir", "check cacheDir permissions")
+		return "", "", diag.Wrap(err, diag.CodePackOCIErr, "cannot create pack cache staging dir", "check cacheDir permissions")
 	}
 	defer os.RemoveAll(staging)
 
 	store, err := oci.New(staging)
 	if err != nil {
-		return "", diag.Wrap(err, diag.CodePackOCIErr, "cannot create local OCI content store", "check cacheDir permissions")
+		return "", "", diag.Wrap(err, diag.CodePackOCIErr, "cannot create local OCI content store", "check cacheDir permissions")
 	}
 
 	desc, err := oras.Copy(ctx, repo, tagOrDigest, store, tagOrDigest, oras.DefaultCopyOptions)
 	if err != nil {
-		return "", diag.Wrap(err, diag.CodePackOCIErr, fmt.Sprintf("cannot pull pack %q", ref),
+		return "", "", diag.Wrap(err, diag.CodePackOCIErr, fmt.Sprintf("cannot pull pack %q", ref),
 			"check the pack reference, registry availability, and network; re-run with the same command")
 	}
 
 	destDir := filepath.Join(cacheDir, sanitizeRepoDigest(repo.Reference.Repository, string(desc.Digest)))
 	if info, err := os.Stat(filepath.Join(destDir, "pack.cue")); err == nil && !info.IsDir() {
-		return destDir, nil // already extracted by a previous pull
+		return destDir, string(desc.Digest), nil // already extracted by a previous pull
 	}
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return "", diag.Wrap(err, diag.CodePackOCIErr, "cannot create pack cache dir", "check cacheDir permissions")
+		return "", "", diag.Wrap(err, diag.CodePackOCIErr, "cannot create pack cache dir", "check cacheDir permissions")
 	}
 	if err := extractManifest(ctx, store, desc, destDir); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return destDir, nil
+	return destDir, string(desc.Digest), nil
 }
 
 func isLocalRegistryHost(host string) bool {

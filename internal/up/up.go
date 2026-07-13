@@ -18,6 +18,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/engine"
 	enginefactory "github.com/rafpe/cube-idp/internal/engine/factory"
+	"github.com/rafpe/cube-idp/internal/lock"
 	"github.com/rafpe/cube-idp/internal/oci"
 	"github.com/rafpe/cube-idp/internal/pack"
 	"github.com/rafpe/cube-idp/internal/registry"
@@ -100,6 +101,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 
 	// Gateway pack goes first — everything else depends on ingress existing.
 	refs := append([]config.PackRef{{Ref: gatewayPackRef(cube.Spec.Gateway)}}, cube.Spec.Packs...)
+	var entries []lock.Entry
 	for _, pr := range refs {
 		p, err := pack.Fetch(ctx, pr.Ref, dir)
 		if err != nil {
@@ -113,6 +115,18 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
+		rh, err := lock.RenderedHash(rendered.Objects)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, lock.Entry{
+			Ref:          pr.Ref,
+			Name:         rendered.Name,
+			Version:      rendered.Version,
+			Resolved:     p.Pinned,
+			RenderedHash: rh,
+			Images:       lock.ImagesFrom(rendered.Objects),
+		})
 		deliverObjs, err := eng.Deliver(ctx, rendered, artifact)
 		if err != nil {
 			return err
@@ -125,6 +139,13 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 		}
 		step(out, "pack", "%s@%s delivered", rendered.Name, rendered.Version)
 	}
+
+	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
+		Engine: lock.EngineLock{Type: cube.Spec.Engine.Type}, Packs: entries}
+	if err := lock.Write(lock.PathFor(cfgPath), lf); err != nil {
+		return err
+	}
+	step(out, "lock", "cube.lock written (%d packs)", len(entries))
 
 	if err := waitHealthy(ctx, eng, a, out, healthTimeout); err != nil {
 		return err
