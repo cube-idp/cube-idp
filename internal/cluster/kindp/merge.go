@@ -46,7 +46,11 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec) (
 	if len(cfg.Nodes) == 0 {
 		cfg.Nodes = []v1alpha4.Node{{Role: v1alpha4.ControlPlaneRole}}
 	}
-	cp := &cfg.Nodes[0] // first node is the control-plane by convention
+	cp := controlPlane(cfg.Nodes)
+	if cp == nil {
+		return nil, diag.New("CUBE-1202", "providerConfig declares no control-plane node",
+			"add a node with role: control-plane to providerConfig; see https://kind.sigs.k8s.io/docs/user/configuration/#nodes")
+	}
 
 	image := "kindest/node:" + spec.KubernetesVersion
 	if cp.Image != "" && cp.Image != image {
@@ -74,6 +78,11 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec) (
 	// D10 layer-1 typed fields.
 	for _, p := range spec.ExtraPorts {
 		if hasHostPort(cp.ExtraPortMappings, p.HostPort) {
+			if p.HostPort == int32(gw.Port) {
+				return nil, diag.New("CUBE-1201",
+					fmt.Sprintf("spec.cluster.extraPorts maps hostPort %d which cube-idp reserves for the gateway", p.HostPort),
+					"remove that entry from spec.cluster.extraPorts or change spec.gateway.port")
+			}
 			return nil, diag.New("CUBE-1201",
 				fmt.Sprintf("hostPort %d is mapped both in providerConfig and spec.cluster.extraPorts", p.HostPort),
 				"keep exactly one of the two mappings")
@@ -109,6 +118,19 @@ func loadUserConfig(pc string) (*v1alpha4.Cluster, error) {
 			"see https://kind.sigs.k8s.io/docs/user/configuration/")
 	}
 	return &cfg, nil
+}
+
+// controlPlane returns the first node with the control-plane role, or nil if
+// the node list declares none. All cube-idp injections (gateway port, node
+// image, typed extraPorts, mounts) target this node — never Nodes[0] blindly,
+// since a user providerConfig may list workers first.
+func controlPlane(nodes []v1alpha4.Node) *v1alpha4.Node {
+	for i := range nodes {
+		if nodes[i].Role == v1alpha4.ControlPlaneRole {
+			return &nodes[i]
+		}
+	}
+	return nil
 }
 
 func hasHostPort(pms []v1alpha4.PortMapping, host int32) bool {
