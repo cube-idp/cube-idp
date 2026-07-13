@@ -11,6 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/rafpe/cube-idp/internal/apply"
@@ -51,6 +53,89 @@ func filterCLISecrets(secrets []corev1.Secret, packFilter string) []secretRow {
 	return rows
 }
 
+// packListGVK identifies the D11 Pack CRD's list kind (internal/pack's
+// discoverability record). get secrets lists it unstructured so this
+// read-only command never has to import internal/pack, which would drag in
+// the fetch/render machinery it has no need of.
+var packListGVK = schema.GroupVersionKind{Group: "cube-idp.dev", Version: "v1alpha1", Kind: "PackList"}
+
+// packSecretRows is the D11 primary path: list Pack records and, for every
+// pack whose spec.authSecretRef is set, follow it to the referenced Secret,
+// merging spec.impliedFields underneath the secret's own keys (the secret's
+// own keys win on conflict — impliedFields only fills in what the secret
+// itself doesn't carry, e.g. ArgoCD's implicit "admin" username, which is
+// never actually stored in argocd-initial-admin-secret). packFilter narrows
+// to one pack by name; "" means all. covered reports every pack name
+// resolved this way, so the legacy label fallback can skip it.
+func packSecretRows(ctx context.Context, c client.Client, packFilter string) (rows []secretRow, covered map[string]bool, err error) {
+	var list unstructured.UnstructuredList
+	list.SetGroupVersionKind(packListGVK)
+	if err := c.List(ctx, &list); err != nil {
+		return nil, nil, err
+	}
+	covered = map[string]bool{}
+	for _, item := range list.Items {
+		name := item.GetName()
+		if packFilter != "" && name != packFilter {
+			continue
+		}
+		ns, nsOK, _ := unstructured.NestedString(item.Object, "spec", "authSecretRef", "namespace")
+		secName, nameOK, _ := unstructured.NestedString(item.Object, "spec", "authSecretRef", "name")
+		if !nsOK || !nameOK || ns == "" || secName == "" {
+			continue // D11: nil authSecretRef means the pack exposes no credential
+		}
+		covered[name] = true
+		var sec corev1.Secret
+		if err := c.Get(ctx, client.ObjectKey{Namespace: ns, Name: secName}, &sec); err != nil {
+			return nil, nil, err
+		}
+		fields := map[string]string{}
+		implied, _, _ := unstructured.NestedStringMap(item.Object, "spec", "impliedFields")
+		for k, v := range implied {
+			fields[k] = v
+		}
+		for k, v := range sec.Data {
+			fields[k] = string(v)
+		}
+		rows = append(rows, secretRow{Pack: name, Namespace: sec.Namespace, Name: sec.Name, Fields: fields})
+	}
+	return rows, covered, nil
+}
+
+// legacyDeprecationNote is the D11 grace-period message: the phase-1 label
+// convention (cube-idp.dev/cli-secret + cube-idp.dev/pack-name) is honored
+// one more release for packs that haven't declared expose.authSecretRef yet.
+func legacyDeprecationNote(pack string) string {
+	return fmt.Sprintf("note: %s was found via the legacy cli-secret label; pack authors should declare expose.authSecretRef in pack.cue (label support ends next release)", pack)
+}
+
+// secretsForDisplay is the D11 `get secrets` pivot: Pack -> authSecretRef ->
+// Secret is primary; any pack not resolved that way falls back to the
+// legacy cli-secret label convention, prefixed with a deprecation note per
+// pack found only there.
+func secretsForDisplay(ctx context.Context, c client.Client, packFilter string) (rows []secretRow, notes []string, err error) {
+	rows, covered, err := packSecretRows(ctx, c, packFilter)
+	if err != nil {
+		return nil, nil, err
+	}
+	var list corev1.SecretList
+	if err := c.List(ctx, &list, client.MatchingLabels{cliSecretLabel: "true"}); err != nil {
+		return nil, nil, err
+	}
+	seenNote := map[string]bool{}
+	for _, r := range filterCLISecrets(list.Items, packFilter) {
+		if covered[r.Pack] {
+			continue // already resolved via the pack's own expose.authSecretRef
+		}
+		if !seenNote[r.Pack] {
+			seenNote[r.Pack] = true
+			notes = append(notes, legacyDeprecationNote(r.Pack))
+		}
+		rows = append(rows, r)
+	}
+	return rows, notes, nil
+}
+
 func newGetCmd() *cobra.Command {
 	var file string
 	get := &cobra.Command{Use: "get", Short: "Read cube-idp-managed resources"}
@@ -86,11 +171,13 @@ func newGetCmd() *cobra.Command {
 				return err
 			}
 
-			var list corev1.SecretList
-			if err := a.Client().List(c.Context(), &list, client.MatchingLabels{cliSecretLabel: "true"}); err != nil {
+			rows, notes, err := secretsForDisplay(c.Context(), a.Client(), pack)
+			if err != nil {
 				return err
 			}
-			rows := filterCLISecrets(list.Items, pack)
+			for _, n := range notes {
+				fmt.Fprintln(c.OutOrStdout(), n)
+			}
 			printSecretRows(c.OutOrStdout(), rows)
 			return nil
 		},

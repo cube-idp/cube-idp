@@ -57,6 +57,12 @@ type Pack struct {
 	//                   no upstream pin protocol of their own (Task 5).
 	// Empty until the relevant task fills it in for that source kind.
 	Pinned string
+
+	// Expose is the D11 discoverability contract (Phase 2): parsed from
+	// pack.cue's optional expose: block. nil when the pack declares none —
+	// packs predating this field, and packs like traefik that expose
+	// nothing through themselves, load exactly as before.
+	Expose *Expose
 }
 
 // Rendered is the final set of objects a pack produces for a given set of
@@ -70,14 +76,15 @@ type Rendered struct {
 }
 
 // loadMeta reads and validates pack.cue in dir, returning the pack's
-// required name/version metadata.
+// required name/version metadata (plus the optional expose: block, D11).
 func loadMeta(dir string) (*Pack, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "pack.cue"))
 	if err != nil {
 		return nil, diag.Wrap(err, diag.CodePackCueInvalid, fmt.Sprintf("pack at %s has no pack.cue", dir),
 			"every pack needs a pack.cue with at least name and version")
 	}
-	v := cuecontext.New().CompileBytes(raw)
+	ctx := cuecontext.New()
+	v := ctx.CompileBytes(raw)
 	if v.Err() != nil {
 		return nil, diag.Wrap(v.Err(), diag.CodePackCueInvalid, "pack.cue does not compile", "fix the CUE syntax")
 	}
@@ -88,7 +95,75 @@ func loadMeta(dir string) (*Pack, error) {
 	if err := v.LookupPath(cue.ParsePath("version")).Decode(&p.Version); err != nil || p.Version == "" {
 		return nil, diag.New(diag.CodePackCueInvalid, "pack.cue is missing 'version'", "add: version: \"0.1.0\"")
 	}
+	expose, err := parseExpose(ctx, v, dir)
+	if err != nil {
+		return nil, err
+	}
+	p.Expose = expose
 	return p, nil
+}
+
+// exposeSchemaCUE is the D11 expose: block schema (checkpoint 0.8): an
+// optional set of URLs (may contain the ${GATEWAY_HOST} substitution
+// token), an optional credential Secret reference, and optional implied
+// login fields (e.g. ArgoCD's implicit "admin" username). Every field is
+// itself optional — only authSecretRef's own namespace/name are required,
+// so a pack that declares a credential can't declare it half-broken.
+const exposeSchemaCUE = `
+{
+	urls?: [...string]
+	authSecretRef?: {
+		namespace: string
+		name:      string
+	}
+	impliedFields?: [string]: string
+}
+`
+
+// parseExpose reads the optional expose: block out of an already-compiled
+// pack.cue value v (sharing ctx, the same *cue.Context v was compiled
+// with — Unify requires operands from one context). A pack.cue with no
+// expose: field returns (nil, nil): TestExposeIsOptional guards that
+// packs predating this field keep loading exactly as before. A malformed
+// block (e.g. an authSecretRef missing its name) is rejected as
+// CUBE-4011, never silently dropped.
+func parseExpose(ctx *cue.Context, v cue.Value, dir string) (*Expose, error) {
+	ev := v.LookupPath(cue.ParsePath("expose"))
+	if !ev.Exists() {
+		return nil, nil
+	}
+	schema := ctx.CompileString(exposeSchemaCUE)
+	unified := schema.Unify(ev)
+	if err := unified.Validate(cue.Concrete(true)); err != nil {
+		return nil, diag.Wrap(err, diag.CodePackExposeInv,
+			fmt.Sprintf("expose: block in %s/pack.cue is invalid", dir),
+			"fix the expose block — see the pack authoring docs for the shape")
+	}
+
+	e := &Expose{}
+	if uv := unified.LookupPath(cue.ParsePath("urls")); uv.Exists() {
+		if err := uv.Decode(&e.URLs); err != nil {
+			return nil, diag.Wrap(err, diag.CodePackExposeInv,
+				fmt.Sprintf("expose.urls in %s/pack.cue is invalid", dir), "expose.urls must be a list of strings")
+		}
+	}
+	if rv := unified.LookupPath(cue.ParsePath("authSecretRef")); rv.Exists() {
+		var ref SecretRef
+		if err := rv.Decode(&ref); err != nil {
+			return nil, diag.Wrap(err, diag.CodePackExposeInv,
+				fmt.Sprintf("expose.authSecretRef in %s/pack.cue is invalid", dir),
+				"expose.authSecretRef needs both namespace and name")
+		}
+		e.AuthSecretRef = &ref
+	}
+	if fv := unified.LookupPath(cue.ParsePath("impliedFields")); fv.Exists() {
+		if err := fv.Decode(&e.ImpliedFields); err != nil {
+			return nil, diag.Wrap(err, diag.CodePackExposeInv,
+				fmt.Sprintf("expose.impliedFields in %s/pack.cue is invalid", dir),
+				"expose.impliedFields must be a map of string to string")
+		}
+	}
+	return e, nil
 }
 
 // validateValues unifies user values with #Values (if declared in

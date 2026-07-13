@@ -95,6 +95,23 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	}
 	step(out, "registry", "zot ready at %s", registry.InClusterURL)
 
+	// D11: the inert Pack CRD must exist before any Pack record is written,
+	// so it goes in right after the registry — before the engine and the
+	// pack delivery loop below. wait=true (kstatus) blocks until the API
+	// server has Established it; no controller ever reconciles it further.
+	crd, err := pack.CRD()
+	if err != nil {
+		return err
+	}
+	crdObjs := []*unstructured.Unstructured{crd}
+	if err := a.Apply(ctx, crdObjs, true, applyTimeout); err != nil {
+		return err
+	}
+	if err := a.RecordInventory(ctx, crdObjs); err != nil {
+		return err
+	}
+	step(out, "packs-crd", "Pack CRD established")
+
 	if err := eng.Install(ctx, a, applyTimeout); err != nil {
 		return err
 	}
@@ -129,11 +146,13 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	// Gateway pack goes first — everything else depends on ingress existing.
 	refs := append([]config.PackRef{{Ref: cube.Spec.Gateway.PackRef()}}, cube.Spec.Packs...)
 	var entries []lock.Entry
+	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
 	for _, pr := range refs {
 		p, err := pack.Fetch(ctx, pr.Ref, dir)
 		if err != nil {
 			return err
 		}
+		packs = append(packs, p)
 		rendered, err := p.Render(pr.Values)
 		if err != nil {
 			return err
@@ -193,6 +212,32 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	if err := waitHealthy(ctx, eng, a, out, healthTimeout); err != nil {
 		return err
 	}
+
+	// D11: write each pack's discoverability record now that health is
+	// known. waitHealthy polls eng.Health internally but doesn't return the
+	// final slice, so ask once more here — cheap, and every reported
+	// component was already Ready one poll ago.
+	health, err := eng.Health(ctx, a)
+	if err != nil {
+		return err
+	}
+	healthByName := make(map[string]bool, len(health))
+	for _, h := range health {
+		healthByName[h.Name] = h.Ready
+	}
+	// "cube-idp-"+name is the Deliver object name convention both engines
+	// use (internal/engine/flux/deliver.go, internal/engine/argocd/deliver.go).
+	packObjs := make([]*unstructured.Unstructured, 0, len(packs))
+	for _, p := range packs {
+		packObjs = append(packObjs, pack.PackObject(p, cube.Spec.Gateway.Host, healthByName["cube-idp-"+p.Name]))
+	}
+	if err := a.Apply(ctx, packObjs, false, applyTimeout); err != nil {
+		return err
+	}
+	if err := a.RecordInventory(ctx, packObjs); err != nil {
+		return err
+	}
+	step(out, "packs", "%d pack records written — try `kubectl get packs`", len(packObjs))
 
 	// Phase 2: the gateway's websecure listener terminates TLS with a
 	// CA-issued cert (D6/D12), so this URL is genuinely HTTPS. Browsers only
