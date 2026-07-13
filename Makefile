@@ -9,4 +9,8 @@ test:
 envtest-assets:
 	go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use 1.33 -p path
 
-.PHONY: build test envtest-assets
+test-apply:
+	KUBEBUILDER_ASSETS=$$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use 1.33 -p path) \
+	go test ./internal/apply/ -v
+
+.PHONY: build test envtest-assets test-apply
