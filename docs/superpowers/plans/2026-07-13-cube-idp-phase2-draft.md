@@ -562,7 +562,7 @@ const Namespace = "argocd"
 
 **Engine-specific requirement (spec §7 risk, documented here and in the package comment):** the Argo CD engine's primary Deliver path uses Argo CD's native OCI repository source pointing at the in-cluster zot registry. `RECONCILE:` verify during implementation, against the pinned Argo CD release, that an `Application` whose `spec.source.repoURL` is `oci://…` syncs a plain-manifest OCI artifact pushed by `oci.PushRendered` (Argo CD gained first-class OCI repository support in the 3.x line; confirm the exact minimum version and pin it in `hack/gen-argocd-manifests.sh`). **If it cannot** (artifact media-type mismatch, insecure-HTTP registry rejected, or feature gated off), the fallback per spec §7 is: the argocd engine declares a dependency on the **gitea pack** and `Deliver` pushes the rendered manifests to an in-cluster gitea repo (`cube-idp-delivery/<pack>`) instead of zot, emitting an `Application` with a git `repoURL` — documented as an engine-specific requirement, not a core component, and enforced at `up` time with `CUBE-3006` ("engine.type: argocd requires the gitea pack for delivery on this Argo CD version — add `oci://ghcr.io/cube-idp/packs/gitea` to spec.packs"). Do not build the fallback speculatively; build it only if the primary path fails verification, as its own inserted task.
 
-- [ ] **Step 1: Generate + pin the Argo CD install manifests**
+- [x] **Step 1: Generate + pin the Argo CD install manifests**
 
 `hack/gen-argocd-manifests.sh`:
 
@@ -604,7 +604,7 @@ stringData:
 
 (RECONCILE: verify the exact repository-secret field names (`type: oci` vs `enableOCI`, `insecure` vs `insecureOCIForceHttp`) against the pinned Argo CD version's declarative-setup docs, then fix this file and the Step 3 test together.)
 
-- [ ] **Step 2: Write the failing argocd-specific tests**
+- [x] **Step 2: Write the failing argocd-specific tests**
 
 `internal/engine/argocd/argocd_test.go`:
 
@@ -692,12 +692,12 @@ func TestArgoCDContract(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `go test ./internal/engine/argocd/ -v`
 Expected: FAIL (package does not exist)
 
-- [ ] **Step 4: Implement the engine**
+- [x] **Step 4: Implement the engine**
 
 `internal/engine/argocd/argocd.go`:
 
@@ -833,7 +833,7 @@ func (g *ArgoCD) Deliver(ctx context.Context, r *pack.Rendered, src engine.Artif
 }
 ```
 
-- [ ] **Step 5: Wire the factory (delete CUBE-3002) and the config cross-check**
+- [x] **Step 5: Wire the factory (delete CUBE-3002) and the config cross-check**
 
 In `internal/engine/factory/factory.go`, replace the `"argocd"` case:
 
@@ -866,16 +866,16 @@ if c.Spec.Engine.Type == "argocd" {
 }
 ```
 
-- [ ] **Step 6: Add `--engine` to init**
+- [x] **Step 6: Add `--engine` to init**
 
 In `cmd/init.go`, add `c.Flags().StringVar(&engineType, "engine", "flux", "gitops engine: flux | argocd")` and set `cfg := config.Default(name); cfg.Spec.Engine.Type = engineType` before marshaling. When `engineType == "argocd"`, drop the argocd pack from `cfg.Spec.Packs` (it would trip CUBE-0005). RECONCILE: adapt to the exact phase-1 `newInitCmd` body, including the `--local` resolution from checkpoint 0.12.
 
-- [ ] **Step 7: Run everything**
+- [x] **Step 7: Run everything**
 
 Run: `make test-engines && go test ./internal/config/ ./cmd/ -v && go build ./...`
 Expected: `TestArgoCDContract` and `TestFluxContract` both PASS with identical subtests; config and factory tests PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A && git commit -m "feat: argocd GitOpsEngine with OCI delivery, passing the shared contract suite (D2)"
