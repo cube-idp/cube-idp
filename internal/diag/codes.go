@@ -54,12 +54,11 @@ const (
 
 // 3xxx: engine
 const (
-	CodeEngineTypeUnknown    Code = "CUBE-3001" // unknown engine type in config
-	CodeEngineArgocdNotReady Code = "CUBE-3002" // argocd engine (Phase 1 only, deprecated message)
-	CodeEngineManifestsInv   Code = "CUBE-3003" // embedded engine install manifests invalid
-	CodeEngineHealthTimeout  Code = "CUBE-3004" // engine health check timed out or components not ready
-	CodeEngineUninstallFail  Code = "CUBE-3005" // flux prune/uninstall timeout
-	CodeEngineArgocdRegFail  Code = "CUBE-3006" // argocd OCI repo registration/capability failed (Phase 2)
+	CodeEngineTypeUnknown   Code = "CUBE-3001" // unknown engine type in config
+	CodeEngineManifestsInv  Code = "CUBE-3003" // embedded engine install manifests invalid
+	CodeEngineHealthTimeout Code = "CUBE-3004" // engine health check timed out or components not ready
+	CodeEngineUninstallFail Code = "CUBE-3005" // flux prune/uninstall timeout
+	CodeEngineArgocdRegFail Code = "CUBE-3006" // argocd OCI repo registration/capability failed (Phase 2)
 )
 
 // 4xxx: pack
