@@ -23,7 +23,7 @@ func ParseMultiDoc(data []byte) ([]*unstructured.Unstructured, error) {
 			if err == io.EOF {
 				break
 			}
-			return nil, diag.Wrap(err, "CUBE-2006", "cannot parse manifest YAML", "check the manifest for syntax errors")
+			return nil, diag.Wrap(err, "CUBE-2007", "cannot parse manifest YAML", "check the manifest for syntax errors")
 		}
 		if len(raw) == 0 {
 			continue // blank document between "---" separators

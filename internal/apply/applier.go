@@ -54,6 +54,9 @@ func (a *Applier) Client() client.Client { return a.c }
 // applies them all with field manager "cube-idp", and, if wait is true,
 // blocks until kstatus reports every object ready or timeout elapses.
 // A timeout produces CUBE-2001 wrapping the per-object status summary.
+//
+// Note: Apply mutates the passed objects in place — the cube label is set
+// on each element of objs as a side effect; the slice is not copied.
 func (a *Applier) Apply(ctx context.Context, objs []*unstructured.Unstructured, wait bool, timeout time.Duration) error {
 	for _, o := range objs {
 		labels := o.GetLabels()

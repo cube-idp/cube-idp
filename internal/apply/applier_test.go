@@ -2,10 +2,13 @@ package apply
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/fluxcd/cli-utils/pkg/object"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -72,5 +75,77 @@ func TestInventoryRoundTripAndDeleteAll(t *testing.T) {
 	}
 	if err := a.Client().Get(ctx, client.ObjectKey{Namespace: "t2", Name: "keep"}, cm("keep", "t2", nil)); err != nil {
 		t.Fatalf("annotated object must survive DeleteAll: %v", err)
+	}
+}
+
+// TestDeleteAllSkipsVanishedKinds proves that an inventory entry whose kind
+// no longer exists on the cluster (e.g. its CRD was already deleted) is
+// treated as "already gone": DeleteAll still prunes the remaining real
+// objects and returns nil, rather than failing or orphaning the rest.
+//
+// Note: the complementary case — an entry whose Get fails with a genuine
+// error (RBAC denial, transient failure) making DeleteAll return CUBE-2006 —
+// cannot be honestly fabricated under envtest (the test client is
+// cluster-admin and the API server is local), so it is not covered here.
+func TestDeleteAllSkipsVanishedKinds(t *testing.T) {
+	a, err := New(testREST, "dev3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	objs := []*unstructured.Unstructured{ns("t3"), cm("real", "t3", nil)}
+	if err := a.Apply(ctx, objs, true, 30*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RecordInventory(ctx, objs); err != nil {
+		t.Fatal(err)
+	}
+
+	// Append an entry for a kind that does not exist on the cluster
+	// directly into the inventory ConfigMap, as if its CRD had been deleted
+	// after the object was inventoried.
+	invKey := client.ObjectKey{Namespace: SystemNamespace, Name: "cube-idp-inventory-dev3"}
+	inv := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "v1", "kind": "ConfigMap"}}
+	if err := a.Client().Get(ctx, invKey, inv); err != nil {
+		t.Fatal(err)
+	}
+	raw, _, err := unstructured.NestedString(inv.Object, "data", "inventory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var strs []string
+	if err := json.Unmarshal([]byte(raw), &strs); err != nil {
+		t.Fatal(err)
+	}
+	ghost := object.ObjMetadata{
+		Namespace: "t3",
+		Name:      "ghost",
+		GroupKind: schema.GroupKind{Group: "nope.example.com", Kind: "Ghost"},
+	}
+	strs = append(strs, ghost.String())
+	payload, err := json.Marshal(strs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unstructured.SetNestedField(inv.Object, string(payload), "data", "inventory"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Client().Update(ctx, inv); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := a.LoadInventory(ctx)
+	if err != nil || len(loaded) != 3 {
+		t.Fatalf("inventory should hold ns+cm+ghost: %v %v", loaded, err)
+	}
+
+	if err := a.DeleteAll(ctx, 60*time.Second); err != nil {
+		t.Fatalf("DeleteAll must treat vanished kinds as already gone: %v", err)
+	}
+	if err := a.Client().Get(ctx, client.ObjectKey{Namespace: "t3", Name: "real"}, cm("real", "t3", nil)); err == nil {
+		t.Fatal("object 'real' should have been pruned despite the ghost entry")
+	}
+	if err := a.Client().Get(ctx, invKey, inv); err == nil {
+		t.Fatal("inventory ConfigMap should have been deleted on full success")
 	}
 }

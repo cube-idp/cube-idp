@@ -3,10 +3,13 @@ package apply
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -103,17 +106,27 @@ func (a *Applier) LoadInventory(ctx context.Context) ([]object.ObjMetadata, erro
 	return refs, nil
 }
 
-// DeleteAll deletes every object recorded in the inventory, in reverse apply
-// order, skipping any object annotated cube-idp.dev/prune=disabled, then
-// removes the inventory ConfigMap itself.
+// DeleteAll issues deletes for every object recorded in the inventory, in
+// reverse apply order (dependents first), skipping any object annotated
+// cube-idp.dev/prune=disabled, then removes the inventory ConfigMap itself.
+//
+// Contract notes for callers (e.g. `cube-idp down`):
+//   - It does NOT wait for termination: deletes are issued synchronously and
+//     return once the API server has set deletionTimestamp. The timeout
+//     parameter is reserved for future wait-for-termination semantics.
+//   - Inventory entries whose object is already gone, or whose kind no
+//     longer exists (CRD already deleted), are skipped silently.
+//   - Any other failure to inspect or delete an inventoried object (RBAC
+//     denial, transient API error) is collected; DeleteAll still attempts
+//     every remaining deletion, then returns all failures joined under
+//     CUBE-2006. The inventory ConfigMap is kept in that case so a re-run
+//     can retry the survivors — DeleteAll never returns nil after silently
+//     orphaning resources it could not inspect.
 func (a *Applier) DeleteAll(ctx context.Context, timeout time.Duration) error {
 	// timeout is reserved for a future kstatus wait-for-termination pass.
 	// envtest runs without a namespace controller, so Namespace deletions
 	// never actually complete there; a hard wait on all deleted kinds would
-	// make DeleteAll hang forever under test. Deletes below are issued
-	// synchronously (deletionTimestamp is set immediately by the API
-	// server) which is sufficient for the "gone"/"keep" contract this
-	// method promises today.
+	// make DeleteAll hang forever under test.
 	_ = timeout
 
 	refs, err := a.LoadInventory(ctx)
@@ -122,10 +135,19 @@ func (a *Applier) DeleteAll(ctx context.Context, timeout time.Duration) error {
 	}
 
 	var deletable []*unstructured.Unstructured
+	var failures []error
 	for _, ref := range refs {
 		obj, getErr := a.getByRef(ctx, ref)
-		if getErr != nil {
-			continue // already gone
+		switch {
+		case getErr == nil:
+			// fall through to the prune-annotation check below
+		case apierrors.IsNotFound(getErr) || meta.IsNoMatchError(getErr):
+			continue // genuinely gone (object deleted, or its whole kind is)
+		default:
+			// RBAC denial, transient failure, ...: we cannot know whether the
+			// object still exists, so surface it instead of orphaning it.
+			failures = append(failures, fmt.Errorf("inspect %s: %w", ref, getErr))
+			continue
 		}
 		if obj.GetAnnotations()[PruneAnnotation] == "disabled" {
 			continue
@@ -136,9 +158,18 @@ func (a *Applier) DeleteAll(ctx context.Context, timeout time.Duration) error {
 	// Reverse order: objects applied later (e.g. dependents) are deleted
 	// first, mirroring flux's teardown ordering.
 	for i := len(deletable) - 1; i >= 0; i-- {
-		if err := a.c.Delete(ctx, deletable[i]); err != nil && !apierrors.IsNotFound(err) {
-			return diag.Wrap(err, "CUBE-2005", "cannot delete resource during prune", "inspect the resource named above with kubectl and delete it manually if needed")
+		obj := deletable[i]
+		if err := a.c.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+			failures = append(failures, fmt.Errorf("delete %s %s/%s: %w",
+				obj.GetKind(), obj.GetNamespace(), obj.GetName(), err))
 		}
+	}
+
+	if len(failures) > 0 {
+		// Keep the inventory ConfigMap so a re-run can retry the survivors.
+		return diag.Wrap(errors.Join(failures...), "CUBE-2006",
+			"some inventoried resources could not be pruned",
+			"re-run `cube-idp down`; inspect the listed resources with kubectl")
 	}
 
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: a.inventoryName(), Namespace: SystemNamespace}}
