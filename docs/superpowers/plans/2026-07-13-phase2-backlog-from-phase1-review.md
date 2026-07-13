@@ -52,6 +52,34 @@ this list.
   `cube-idp <subcommand>` and verify against the cobra tree) — two phantom
   commands slipped through 13 task reviews before being caught.
 
+## Fundamentals review outcomes (2026-07-13, user-approved)
+
+Spec now carries **D11** (inert Pack discoverability CRD + `pack.cue expose:`
+contract; amended non-goal) and **D12** (TLS material generated before
+cluster creation; library-based mkcert mechanism, optional reuse of an
+installed mkcert CA; D6 consent posture unchanged). Additional accepted
+debt-paydown items (also added to spec §6 Phase 2):
+
+- Consolidate all OCI operations on oras-go v2; drop fluxcd/pkg/oci and its
+  go-containerregistry/docker-cli dep subtree (push-side artifact format is
+  ~50 lines, verified against zot).
+- Port `internal/pack/helm.go` (the only helm importer) to the Helm v4 SDK.
+- Central CUBE-code sentinel catalog (`internal/diag/codes.go` consts,
+  `Is()` support, grep-test banning string literals outside the catalog,
+  generated docs table).
+- go-getter as PackSource resolver (candidate: RafPe/go-getter v2.8.6 with
+  OCI support — review its OCI getter; keep our extraction guards in front;
+  weigh fork-maintenance cost).
+- ArgoCD credentials surfaced via the pack `expose:` block
+  (`argocd-initial-admin-secret`, implied username `admin`) — fixes
+  `get secrets -p argocd` returning nothing.
+- Terminal UX pass: lipgloss step lines + durations, live wait status,
+  styled diag rendering, status table, huh init wizard, `--plain` flag.
+- Declined after discussion: yq-as-library (unstable Go API; typed structs +
+  krusty cover our YAML needs), Viper for cube.yaml (it's a versioned API
+  object, not app config — CUE stays; Viper only if tool-level settings
+  ever appear).
+
 ## Error-code reservations (reconcile drafts)
 
 Shipped code now uses: CUBE-2006/2007 (apply), CUBE-4012/4013 (pack/up),
