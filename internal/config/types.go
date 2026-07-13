@@ -27,13 +27,21 @@ type Spec struct {
 // ClusterSpec configures the local or remote Kubernetes cluster cube-idp
 // targets.
 type ClusterSpec struct {
-	Provider          string        `yaml:"provider" json:"provider"` // "kind" | "existing"
-	Context           string        `yaml:"context" json:"context"`   // for existing
-	KubernetesVersion string        `yaml:"kubernetesVersion" json:"kubernetesVersion"`
-	ExtraPorts        []PortMapping `yaml:"extraPorts" json:"extraPorts"`         // D10 layer 1
-	Registry          RegistrySpec  `yaml:"registry" json:"registry"`             // D10 layer 1
-	Mounts            []Mount       `yaml:"mounts" json:"mounts"`                 // D10 layer 1
-	ProviderConfig    string        `yaml:"providerConfig" json:"providerConfig"` // D10 layer 2: file path or inline YAML
+	Provider          string        `yaml:"provider" json:"provider"`                             // "kind" | "existing"
+	Context           string        `yaml:"context,omitempty" json:"context,omitempty"`           // for existing
+	KubernetesVersion string        `yaml:"kubernetesVersion,omitempty" json:"kubernetesVersion,omitempty"`
+	// ExtraPorts, Registry's fields, Mounts, and ProviderConfig are all
+	// optional (`?`) in schema.cue. omitempty matters here, not just for
+	// tidy output: sigs.k8s.io/yaml.Marshal (cmd/init.go) would otherwise
+	// write explicit `extraPorts: null` / `mounts: null` for their nil zero
+	// values, and CUE's re-validation on the next Load rejects an explicit
+	// null against a `[...]`/`{...}`-typed optional field (mismatched types
+	// list/map and null) — every `cube-idp init`-generated cube.yaml would
+	// fail to load.
+	ExtraPorts     []PortMapping `yaml:"extraPorts,omitempty" json:"extraPorts,omitempty"`         // D10 layer 1
+	Registry       RegistrySpec  `yaml:"registry,omitempty" json:"registry,omitempty"`             // D10 layer 1
+	Mounts         []Mount       `yaml:"mounts,omitempty" json:"mounts,omitempty"`                 // D10 layer 1
+	ProviderConfig string        `yaml:"providerConfig,omitempty" json:"providerConfig,omitempty"` // D10 layer 2: file path or inline YAML
 }
 
 // PortMapping maps a host port to a kind node port.
@@ -45,8 +53,8 @@ type PortMapping struct {
 // RegistrySpec configures registry mirrors and insecure registries for the
 // cluster provider.
 type RegistrySpec struct {
-	Mirrors  map[string]string `yaml:"mirrors" json:"mirrors"`
-	Insecure []string          `yaml:"insecure" json:"insecure"`
+	Mirrors  map[string]string `yaml:"mirrors,omitempty" json:"mirrors,omitempty"`
+	Insecure []string          `yaml:"insecure,omitempty" json:"insecure,omitempty"`
 }
 
 // Mount describes a host path mounted into cluster nodes.
@@ -76,8 +84,11 @@ type GatewaySpec struct {
 type PackRef struct {
 	Ref string `yaml:"ref" json:"ref"`
 	// Values holds pack value overrides. Numeric entries are normalized by
-	// Load to int/float64 (never int64, CUE's raw decode type).
-	Values map[string]any `yaml:"values" json:"values"`
+	// Load to int/float64 (never int64, CUE's raw decode type). omitempty:
+	// see the ClusterSpec comment above — a nil Values map must round-trip
+	// as an absent key, not an explicit YAML null, or re-validation against
+	// schema.cue's `values?: {...}` fails.
+	Values map[string]any `yaml:"values,omitempty" json:"values,omitempty"`
 }
 
 // Default returns the D9 default profile that `cube-idp init` writes:
