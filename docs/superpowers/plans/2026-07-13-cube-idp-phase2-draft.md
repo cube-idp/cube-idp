@@ -1162,7 +1162,7 @@ func resolveGitPin(ctx context.Context, repoURL, rev string) (string, error) // 
 func GuardTree(root string) (removedSymlinks []string, err error)            // extraction guards, applied to ALL getter output
 ```
 
-- [ ] **Step 0: Add the fork dependency (exact commands — verified consumption path)**
+- [x] **Step 0: Add the fork dependency (exact commands — verified consumption path)**
 
 ```bash
 go mod edit -require=github.com/hashicorp/go-getter@v1.9.0 \
@@ -1173,7 +1173,7 @@ go mod tidy
 
 Expected: `go.mod` gains `replace github.com/hashicorp/go-getter => github.com/rafpe/go-getter v1.9.0` (verified end-to-end 2026-07-13 — resolve, build, and run all green). Smoke-check: `go build ./...` still green. If `go mod tidy` rejects the replace, checkpoint 0.18 was not honored — re-verify the fork state before proceeding.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `internal/pack/getter_test.go`:
 
@@ -1326,12 +1326,12 @@ func TestGuardTreeStripsSymlinks(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `go test ./internal/pack/ -short -run 'TestIsGitRef|TestIsGetterRef|TestGitRef|TestFetchGit|TestGuardTree' -v`
 Expected: FAIL (isGitRef/isGetterRef/GuardTree undefined)
 
-- [ ] **Step 3: Implement the guards and the pin probe**
+- [x] **Step 3: Implement the guards and the pin probe**
 
 `internal/pack/guards.go`:
 
@@ -1423,7 +1423,7 @@ func resolveGitPin(ctx context.Context, repoURL, rev string) (string, error) {
 }
 ```
 
-- [ ] **Step 4: Implement the getter source**
+- [x] **Step 4: Implement the getter source**
 
 `internal/pack/getter.go`:
 
@@ -1570,16 +1570,16 @@ case strings.Contains(ref, "://"):
 
 Add `Pinned string` to `Pack` in `internal/pack/pack.go` (document: `git+<sha>` for git sources; Task 5 fills `oci:<digest>` and `dir:<dirhash>`; http/s3 getter refs fall back to `dir:<dirhash>`).
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `go test ./internal/pack/ -short -v`
 Expected: PASS (all new + all Phase 1 pack tests; `TestFetchGit*` skip if the git CLI is absent)
 
-- [ ] **Step 6: Note for Task 12 (doctor)**
+- [x] **Step 6: Note for Task 12 (doctor)**
 
 Task 12's doctor gains one warning-level host check alongside `CheckRuntime`: if any `spec.packs` ref `isGitRef`/`git::`-schemed and the `git` CLI is not on PATH, emit CUBE-0101-adjacent warning text via the existing `CheckRuntime` pattern ("git sources configured but git CLI not found"). Implement it in Task 12, not here — this step exists so neither task forgets the seam.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A && git commit -m "feat: go-getter pack sources (RafPe fork) with extraction guards and ls-remote pinning"
