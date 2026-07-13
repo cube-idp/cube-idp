@@ -7,7 +7,7 @@ nodes:
       labels:
         corp.example/zone: local
       extraPortMappings:
-        - containerPort: 30080
+        - containerPort: 30443
           hostPort: 8443
           protocol: TCP
 featureGates:

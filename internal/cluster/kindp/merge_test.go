@@ -192,7 +192,7 @@ nodes:
 	}
 	var gwMapped, extraMapped bool
 	for _, pm := range cp.ExtraPortMappings {
-		if pm.HostPort == 8443 && pm.ContainerPort == 30080 {
+		if pm.HostPort == 8443 && pm.ContainerPort == 30443 {
 			gwMapped = true
 		}
 		if pm.HostPort == 32222 && pm.ContainerPort == 32222 {
@@ -204,6 +204,18 @@ nodes:
 	}
 	if len(cp.ExtraMounts) != 1 || cp.ExtraMounts[0].HostPath != "/tmp/images" || cp.ExtraMounts[0].ContainerPath != "/var/lib/images" {
 		t.Fatalf("control-plane missing injected mount: %+v", cp.ExtraMounts)
+	}
+}
+
+func TestRenderMapsGatewayPortToWebsecure(t *testing.T) {
+	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1"}
+	out, err := RenderConfig("dev", spec, gw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	if !strings.Contains(s, "hostPort: 8443") || !strings.Contains(s, "containerPort: 30443") {
+		t.Fatalf("gateway must map host %d to websecure NodePort 30443:\n%s", gw.Port, s)
 	}
 }
 

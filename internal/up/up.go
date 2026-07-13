@@ -20,6 +20,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/oci"
 	"github.com/rafpe/cube-idp/internal/pack"
 	"github.com/rafpe/cube-idp/internal/registry"
+	"github.com/rafpe/cube-idp/internal/trust"
 )
 
 const (
@@ -30,16 +31,32 @@ const (
 )
 
 // Run drives the full up sequence for the cube.yaml at cfgPath, writing
-// progress to out: load config -> ensure cluster -> install registry ->
-// install engine -> port-forward the registry -> fetch/render/push/deliver
-// every pack (gateway first) -> wait for engine-reported health -> print a
-// success summary.
+// progress to out: load config -> ensure the local CA (D12: before any
+// cluster artifact references the trust root) -> ensure cluster -> install
+// registry -> install engine -> ensure the gateway TLS secret -> port-forward
+// the registry -> fetch/render/push/deliver every pack (gateway first) ->
+// wait for engine-reported health -> print a success summary.
 func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	cube, err := config.Load(cfgPath)
 	if err != nil {
 		return err
 	}
 	step(out, "config", "cube %q loaded and validated", cube.Metadata.Name)
+
+	// D12 ("cert material is generated before cluster creation"): ensure the
+	// local CA — adopting an existing mkcert root if present — before
+	// ClusterProvider.Ensure runs, so the kind provider can mount it into
+	// containerd certs.d at cluster-create time (Task 10) and no cluster
+	// artifact ever references the trust root before it exists.
+	caDir, err := trust.Dir()
+	if err != nil {
+		return err
+	}
+	ca, err := trust.EnsureCA(caDir)
+	if err != nil {
+		return err
+	}
+	step(out, "ca", "local CA ready (%s)", ca.CertPath)
 
 	prov, err := cluster.New(cube.Spec.Cluster, cube.Spec.Gateway)
 	if err != nil {
@@ -85,6 +102,14 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 		return err
 	}
 	step(out, "engine", "%s installed", cube.Spec.Engine.Type)
+
+	// The gateway pack's websecure listener references this secret by name
+	// (packs/traefik/manifests/10-gateway.yaml); it must exist before the
+	// engine reconciles the Gateway, so this runs before the pack loop.
+	if err := ensureGatewayTLS(ctx, a, cube.Spec.Gateway); err != nil {
+		return err
+	}
+	step(out, "tls", "gateway certificate ready (CA: run `cube-idp trust` to make browsers trust it)")
 
 	tunnelAddr, stop, err := registry.PortForward(ctx, conn.REST)
 	if err != nil {
@@ -149,8 +174,10 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 		return err
 	}
 
-	// Phase 1 is HTTP end-to-end; TLS arrives with `cube-idp trust` (Phase 2).
-	fmt.Fprintf(out, "\n✔ cube %q is up — http://%s:%d\n  credentials: cube-idp get secrets\n",
+	// Phase 2: the gateway's websecure listener terminates TLS with a
+	// CA-issued cert (D6/D12), so this URL is genuinely HTTPS. Browsers only
+	// show a green lock once the CA is trusted — `cube-idp trust` does that.
+	fmt.Fprintf(out, "\n✔ cube %q is up — https://%s:%d\n  credentials: cube-idp get secrets\n",
 		cube.Metadata.Name, cube.Spec.Gateway.Host, cube.Spec.Gateway.Port)
 	return nil
 }

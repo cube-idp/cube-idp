@@ -78,12 +78,20 @@ spec:
 | `spec.engine.type` | `flux` \| `argocd` | `flux` | GitOps reconciler; `argocd` ships in Phase 2 (D2) |
 | `spec.gateway.pack` | string | `traefik` | Gateway API implementation |
 | `spec.gateway.host` | string | `cube-idp.localtest.me` | routable hostname for delivered packs |
-| `spec.gateway.port` | int | `8443` | host port mapped to the gateway |
+| `spec.gateway.port` | int | `8443` | host port mapped to the gateway's `websecure` (HTTPS) listener — see the note below |
 | `spec.gateway.ref` | string | — | overrides the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); falls back to `packs/<pack>` when unset, which only resolves from a checkout — `cube-idp init --local` fills this in |
 | `spec.packs` | `[{ref, values}]` | gitea + argocd (D9) | additional packs delivered after the gateway; `ref` is `oci://` or a local dir (git `github.com/...` refs ship in Phase 2); `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
 
 Run `cube-idp config render-cluster` to preview the final merged kind
 provider config (D10 layer 2) before `up` creates anything.
+
+> **Phase 1 → Phase 2 behavior change:** Phase 1 mapped host
+> `spec.gateway.port` (default `8443`) to Traefik's plain-HTTP NodePort
+> `30080` while printing an `https://` URL. Phase 2 makes that URL true:
+> host `gateway.port` now maps to the `websecure` NodePort `30443` (TLS
+> terminated by Traefik with a cube-idp CA-issued cert from `up`), and
+> plain HTTP stays available in-cluster on the `web` listener. Existing
+> kind clusters need `down`/`up` to pick up the new mapping.
 
 ## Pack format
 

@@ -22,17 +22,21 @@ values:
   # our explicit Gateway (manifests/10-gateway.yaml, name "cube-idp").
   gateway:
     enabled: false
-  # Phase 1 serves HTTP behind the host port (D6 defers TLS/`cube-idp
-  # trust` to Phase 2): expose the web entrypoint as a fixed NodePort so the
-  # kind port mapping (host 8443 -> containerPort 30080, see
-  # internal/cluster/kindp/merge.go) has a stable target. port: 8000
-  # matches the chart default but is pinned explicitly because both the
-  # Gateway manifest's listener (manifests/10-gateway.yaml, port 8000) and
-  # the node:30080 -> pod-port leg depend on it. See README.md.
+  # Phase 2 makes the host `spec.gateway.port` URL genuinely HTTPS (D6):
+  # expose both entrypoints as fixed NodePorts so the kind port mapping
+  # (host 8443 -> containerPort 30443, see internal/cluster/kindp/merge.go)
+  # has a stable websecure target, while plain HTTP stays reachable
+  # in-cluster on the web entrypoint. port: 8000/8443 match the chart
+  # defaults but are pinned explicitly because the Gateway manifest's
+  # listeners (manifests/10-gateway.yaml, ports 8000/8443) and the
+  # node:30443 -> pod-port leg depend on them. See README.md.
   ports:
     web:
       port: 8000
       nodePort: 30080
+    websecure:
+      port: 8443
+      nodePort: 30443
   service:
     spec:
       type: NodePort

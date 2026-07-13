@@ -16,32 +16,41 @@ Ingress). Renders:
   artifact ships (a release-tagging quirk in their VAP template), expected
   and harmless.
 - `manifests/10-gateway.yaml` — a `Gateway` named `cube-idp` in the
-  `traefik` namespace, one `web` listener on port 8000, `gatewayClassName:
-  traefik` (the `GatewayClass` the traefik chart creates by default).
+  `traefik` namespace: a `web` listener on port 8000 (plain HTTP, in-cluster
+  only) and a `websecure` listener on port 8443 (HTTPS, terminated with the
+  `cube-idp-gateway-tls` secret that `cube-idp up` creates — see
+  `internal/up/tls.go`), `gatewayClassName: traefik` (the `GatewayClass` the
+  traefik chart creates by default).
 - `chart.yaml` — the `traefik/traefik` helm chart (pinned `41.0.2`, app
   `v3.7.6`; the task brief's `34.1.0` pin was stale — this pack tracks the
   current stable chart release as of 2026-07-13).
 
-## Port wiring (host 8443 -> node 30080 -> traefik web)
+## Port wiring (host 8443 -> node 30443 -> traefik websecure)
 
-Phase 1 serves plain HTTP behind the host port; TLS via `cube-idp trust` is
-a Phase 2 concern (spec D6). To keep that simple, this pack exposes
-traefik's `web` entrypoint as a **fixed NodePort 30080** rather than a
-`LoadBalancer` Service (chart values: `ports.web.nodePort: 30080`,
-`service.spec.type: NodePort`).
+Phase 2 terminates TLS at Traefik with a cube-idp CA-issued cert (spec
+D6/D12; `cube-idp trust` makes browsers trust that CA). To keep the wiring
+simple, this pack exposes both traefik entrypoints as **fixed NodePorts**
+rather than a `LoadBalancer` Service: `ports.web.nodePort: 30080`,
+`ports.websecure.nodePort: 30443`, `service.spec.type: NodePort`.
 
 `internal/cluster/kindp/merge.go`'s `gatewayContainerPort` constant maps the
 kind cluster's host port (`spec.gateway.port`, default 8443) to
-**containerPort 30080** — i.e. kind's docker port-forward lands directly on
-the node port traefik's Service listens on. The chain is:
+**containerPort 30443** — i.e. kind's docker port-forward lands directly on
+the node port traefik's `websecure` entrypoint listens on. The chain is:
 
 ```
-host:8443 --(kind extraPortMapping)--> node:30080 --(NodePort Service)--> traefik pod:8000 (web entrypoint)
+host:8443 --(kind extraPortMapping)--> node:30443 --(NodePort Service)--> traefik pod:8443 (websecure entrypoint, TLS)
 ```
+
+Plain HTTP (`web`, node:30080) stays reachable in-cluster but is not mapped
+to a host port — the host-facing URL is HTTPS only.
 
 No `hostPort` on the traefik pod, no LoadBalancer controller (e.g.
 cloud-provider-kind) required — a plain NodePort is enough because kind
 already forwards the host port straight to the node's containerPort.
+
+Existing kind clusters created under Phase 1 need `cube-idp down` +
+`cube-idp up` to pick up the new mapping (pre-1.0, no live-migration path).
 
 ## What's disabled and why
 

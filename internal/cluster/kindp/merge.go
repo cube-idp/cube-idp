@@ -18,13 +18,13 @@ import (
 )
 
 // gatewayContainerPort is the kind node port the gateway hostPort maps to.
-// Task 12 pins it to the traefik starter pack's fixed NodePort (30080,
-// chart values ports.web.nodePort / service.spec.type: NodePort) rather
-// than 443: Phase 1 serves plain HTTP behind the host port (TLS via
-// `cube-idp trust` is a Phase 2 concern, spec D6), and a NodePort Service
+// It pins to the traefik starter pack's fixed websecure NodePort (30443,
+// chart values ports.websecure.nodePort / service.spec.type: NodePort)
+// rather than 443: Phase 2 terminates TLS at Traefik with a cube-idp
+// CA-issued cert (spec D6/D12, internal/up/tls.go), and a NodePort Service
 // is simpler than wiring a hostPort/LoadBalancer controller into a kind
 // node. See packs/traefik/README.md for the full host->node->pod chain.
-const gatewayContainerPort = 30080
+const gatewayContainerPort = 30443 // Traefik websecure NodePort (HTTPS, Phase 2)
 
 // RenderConfig performs the D10 two-layer merge and returns the final kind
 // config YAML. It is pure: no docker, no cluster, fully unit-testable.
