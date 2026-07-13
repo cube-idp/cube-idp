@@ -37,6 +37,7 @@
 | CUBE-0102 | new (0xxx preflight) | required host port already in use (doctor) |
 | CUBE-0103 | new (0xxx preflight) | low disk space in the cube-idp cache dir (doctor, warning) |
 | CUBE-0104 | new (0xxx preflight) | inotify limits too low (doctor, warning, linux-only) |
+| CUBE-0105 | new (0xxx preflight) | git CLI missing while git-sourced packs configured (doctor, warning; added at execution — review split it out of CUBE-0101) |
 | CUBE-2005 | new (2xxx apply) | server-side diff failed |
 | CUBE-4006 | new (4xxx pack) | remote pack source fetch/resolution failed (go-getter or git ls-remote) |
 | CUBE-4007 | new (4xxx pack) | remote pack ref not pinned (missing `@<rev>` / `:tag`) |
@@ -4019,7 +4020,7 @@ func CheckInotify() []diag.Finding                                 // CUBE-0104 
 func Render(out io.Writer, findings []diag.Finding) (hasErrors bool)
 ```
 
-- [ ] **Step 1: Write the failing fault-injection tests (spec §5 doctor tests)**
+- [x] **Step 1: Write the failing fault-injection tests (spec §5 doctor tests)**
 
 `internal/doctor/doctor_test.go`:
 
@@ -4102,12 +4103,12 @@ func TestRenderSeparatesErrorsFromWarnings(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `go test ./internal/doctor/ -v`
 Expected: FAIL (package does not exist)
 
-- [ ] **Step 3: Implement the checks**
+- [x] **Step 3: Implement the checks**
 
 `internal/doctor/doctor.go`:
 
@@ -4268,7 +4269,7 @@ func CheckInotify() []diag.Finding { return nil } // linux-only concern
 
 (RECONCILE: `unix.Statfs` exists on darwin and linux with slightly different field types — the two build-tagged files absorb that; if windows support is on the table, add a `checks_windows.go` using `golang.org/x/sys/windows.GetDiskFreeSpaceEx`. Keep the duplicated CUBE-0103 strings identical in both files.)
 
-- [ ] **Step 4: Implement the command**
+- [x] **Step 4: Implement the command**
 
 `cmd/doctor.go`:
 
@@ -4370,12 +4371,12 @@ func newDoctorCmd() *cobra.Command {
 
 (imports also `context`, `errors`. RECONCILE: the phase-1 kind provider's `Diagnose` may already cover the runtime check via `provider.List()` — if so, keep BOTH (fast PATH probe + real socket probe) but ensure they emit distinct messages, or drop `CheckRuntime` in favor of the provider finding if they fully overlap.) Register `newDoctorCmd()` in `cmd/root.go`. Also update the Phase 1 CUBE-1203 remediation that says "`cube-idp doctor` (Phase 2) will preflight this" — drop the parenthetical, the command exists now.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `go test ./internal/doctor/ ./cmd/ -v && go build ./...`
 Expected: PASS (including the broken-kubeconfig path already covered by the phase-1 `existing` provider tests feeding `Diagnose`)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "feat: cube-idp doctor — host preflights, provider diagnose, engine health, fault-injection tests"
