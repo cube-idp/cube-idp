@@ -60,7 +60,7 @@ func (k *Kind) Ensure(ctx context.Context, name string, spec config.ClusterSpec)
 		)
 		if err != nil {
 			return nil, diag.Wrap(err, diag.CodeKindCreateFailed, "kind cluster creation failed",
-				"check that the container runtime is running and has free resources; `cube-idp doctor` (Phase 2) will preflight this")
+				"check that the container runtime is running and has free resources; `cube-idp doctor` will preflight this")
 		}
 	}
 	kc, err := k.provider.KubeConfig(name, false)

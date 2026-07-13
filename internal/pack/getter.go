@@ -34,6 +34,14 @@ func isGetterRef(ref string) bool {
 		strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://")
 }
 
+// NeedsGitCLI reports whether ref would be fetched with the git CLI (go-getter's
+// GitGetter shells out to it): the bare git grammar <host>/<org>/<repo>@<rev>
+// (isGitRef), or an explicit git:: getter form. `cube-idp doctor` uses this to
+// warn when git-sourced packs are configured but git isn't on PATH.
+func NeedsGitCLI(ref string) bool {
+	return isGitRef(ref) || strings.HasPrefix(ref, "git::")
+}
+
 // sanitizeRef turns a ref into a filesystem-safe cache-dir segment. Separate
 // from pullOCI's sanitizeRepoDigest, which keys the OCI pull cache.
 func sanitizeRef(ref string) string {
