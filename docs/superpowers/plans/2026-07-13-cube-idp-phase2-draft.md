@@ -1,7 +1,6 @@
 # cube-idp Phase 2 Implementation Plan
 
-> **STATUS: DRAFT — DO NOT EXECUTE AS-IS.**
-> **MANDATORY GATE — RECONCILE AFTER PHASE 1:** This draft was written before Phase 1 was implemented. Every interface, signature, CUBE code, and file path below is taken from the Phase 1 *plan* (`docs/superpowers/plans/2026-07-13-cube-idp-phase1-mvp.md`), not from real code — and Phase 1's own plan flags several API-drift points that will have been resolved one way or the other during implementation. Before executing ANY task, the consuming agent MUST complete the "Task 0: Reconciliation Gate" below and update this plan to match the actual Phase 1 codebase. Executing a task whose reconcile checkpoint has not been verified is a plan violation.
+> **STATUS: RECONCILED against commit `0522799` on `2026-07-13`.** Task 0 was executed (investigation report: `.superpowers/sdd/task-0-report.md`); its findings are recorded in the "Task 0 Findings" section below and folded into the affected tasks — most notably: CUBE-3005→**3006** and CUBE-4012→**4014** renumbers (both original codes are already claimed by Phase 1 code), `InstallManifests()` is a method ON the `Engine` interface (not a package-level accessor), traefik chart is pinned at **41.0.2** with a nested values shape, and CI pins Go via `go-version-file: go.mod`. A remaining `RECONCILE:` marker means "verify this detail at implementation time" — the blocking ones were resolved by Task 0.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **Task 0 is blocking: no other task may start before it is checked off and this document has been amended with its findings.**
 
@@ -31,7 +30,7 @@
 |---|---|---|
 | CUBE-3002 | changed | **Deleted.** `engine.type: argocd` now constructs the Argo CD engine (Task 2). |
 | CUBE-3003 | reused, text generalized | embedded engine install manifests invalid (now flux **or** argocd) |
-| CUBE-3005 | new (3xxx engine) | Argo CD OCI repo registration/capability failure (spec §7 risk) |
+| CUBE-3006 | new (3xxx engine) | Argo CD OCI repo registration/capability failure (spec §7 risk). Renumbered by Task 0: CUBE-3005 is taken (flux Uninstall prune-timeout) |
 | CUBE-0003 | new (0xxx config) | `cube.lock` unreadable or corrupt |
 | CUBE-0005 | new (0xxx config) | `argocd` pack listed while `engine.type: argocd` (redundant install) |
 | CUBE-0101 | new (0xxx preflight) | container runtime not found (doctor) |
@@ -45,7 +44,7 @@
 | CUBE-4009 | new (4xxx pack) | cnoe-compat document invalid or unsupported |
 | CUBE-4010 | new (4xxx pack) | `cnoe://` path unresolvable |
 | CUBE-4011 | new (4xxx pack) | `expose:` block in pack.cue invalid (D11, Task 12.5) |
-| CUBE-4012 | new (4xxx pack) | extraction guard tripped: path traversal or symlink in fetched pack (Task 4) |
+| CUBE-4014 | new (4xxx pack) | extraction guard tripped: path traversal or symlink in fetched pack (Task 4). Renumbered by Task 0: CUBE-4012 (pullOCI failures) and CUBE-4013 (cacheDir) are taken |
 | CUBE-5004 | new (5xxx registry) | remote digest resolution failed (upgrade --plan) |
 | CUBE-6001 | new (6xxx trust) | local CA creation/load failed |
 | CUBE-6002 | new (6xxx trust) | OS trust-store install failed |
@@ -114,31 +113,48 @@ tests/e2e/e2e_test.go, .github/workflows/ci.yaml # MODIFY: engine matrix + new c
 
 **Purpose:** Replace every assumption this draft inherited from the Phase 1 *plan* with facts from the Phase 1 *code*. Work through the checklist in order; every item ends with the same obligation: **update the affected tasks below if reality differs.** When done, delete the words "DO NOT EXECUTE AS-IS" from the status block, replace them with "RECONCILED against commit `<sha>` on `<date>`", and commit the amended plan before starting Task 1.
 
-- [ ] **0.1 Module path + layout.** Run `go list -m` at the repo root and `ls internal/ cmd/`. Expected: `github.com/rafpe/cube-idp` and the Phase 1 File Structure (diag, config, cluster, cluster/kindp, kube, apply, registry, pack, engine, engine/flux, engine/factory, oci, up). Update the affected tasks below if reality differs.
-- [ ] **0.2 diag API.** Run `go doc ./internal/diag`. Expected: `Code`, `Error{Code,Summary,Cause,Remediation}`, `New`, `Wrap`, `Render`, `Severity`, `Finding{Code,Severity,Message,Remediation}`. Tasks 6/8/12 construct `Finding` values and every task constructs `Error`s. Update the affected tasks below if reality differs.
-- [ ] **0.3 config types + validation.** Run `go doc ./internal/config` and read `schema.cue` + `crossValidate`. Expected: `Cube/Metadata/Spec/ClusterSpec/PortMapping/RegistrySpec/Mount/EngineSpec/GatewaySpec/PackRef`, `Load(path)`, `Default(name)`; CUE codes CUBE-0001/0002, cross-check CUBE-1003. Task 2 extends `crossValidate`; Tasks 5/6/7/9/12/13 read `GatewaySpec`/`PackRef`. Update the affected tasks below if reality differs.
-- [ ] **0.4 kube.Conn location.** Phase 1 Task 5 moved `Conn` into a leaf package `internal/kube` (fields `Kubeconfig []byte; Context string; REST *rest.Config`). Verify with `go doc ./internal/kube`. Tasks 6/9/10/12/13 use `conn.REST`. Update the affected tasks below if reality differs.
-- [ ] **0.5 cluster provider seam.** Run `go doc ./internal/cluster` and `go doc ./internal/cluster/kindp`. Expected: `Provider` interface (`Ensure/Delete/Exists/Kubeconfig/Diagnose`), factory `cluster.New(spec, gw)`, and `kindp.RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec) ([]byte, error)`. **Critical sub-check:** what is the final `gatewayContainerPort` constant? Phase 1 Task 12's note changed it from 443 to **30080** (Traefik exposed as NodePort 30080, plain HTTP). Tasks 9/10 change this mapping and `RenderConfig`'s signature. Update the affected tasks below if reality differs.
-- [ ] **0.6 apply.Applier surface + fluxcd/pkg/ssa version.** Run `go doc ./internal/apply` and `grep fluxcd/pkg/ssa go.mod`. Expected: `New(cfg *rest.Config, cubeName string)`, `Apply(ctx, objs, wait, timeout)`, `RecordInventory`, `LoadInventory`, `DeleteAll`, `Client()`, `ParseMultiDoc`, constants `FieldManager/CubeLabel/PruneAnnotation/SystemNamespace`. Note the exact `ssa.ResourceManager` method set of the pinned version — Task 6 needs its server-side diff entry point (`Diff`/`DryRunApply` naming drifted historically). Also note how Apply labels objects (inline loop vs helper) — Task 6 factors it out. Update the affected tasks below if reality differs.
-- [ ] **0.7 registry package.** Run `go doc ./internal/registry`. Expected: `InClusterURL = "zot.cube-idp-system.svc.cluster.local:5000"`, `Manifests()`, `Install(ctx, a, timeout)`, `PortForward(ctx, cfg) (string, func(), error)`. Task 10 modifies `manifests/zot.yaml` and adds `route.go`. Update the affected tasks below if reality differs.
-- [ ] **0.8 pack package.** Run `go doc ./internal/pack` and read `source.go`, `render.go`, `helm.go`. Expected: `Pack{Name,Version,Dir}`, `Rendered{Name,Version,Objects}`, `Fetch(ctx, ref, cacheDir)`, `(*Pack).Render(values)`, private `chartRef` (does it already carry a `Values map[string]any` field from Phase 1 Task 12's note?), CUBE-4001's exact message text ("git refs arrive in Phase 2" — Task 4 replaces it). Confirm how `pullOCI` stores artifacts (Task 5 needs the pulled digest). Update the affected tasks below if reality differs.
-- [ ] **0.9 engine seam.** Run `go doc ./internal/engine ./internal/engine/factory ./internal/engine/flux`. Expected: `Engine` interface exactly `Install(ctx, a *apply.Applier, timeout time.Duration) error; Deliver(ctx, r *pack.Rendered, src ArtifactRef) ([]*unstructured.Unstructured, error); Health(ctx, a *apply.Applier) ([]ComponentHealth, error); Uninstall(ctx, a *apply.Applier, timeout time.Duration) error`; `ArtifactRef{Repo,Tag}`; `ComponentHealth{Name,Ready,Message}`; factory in `internal/engine/factory` (vs the init()-registration alternative Phase 1 allowed); `flux.InstallManifests()`; the flux Deliver object names (`cube-idp-<pack>`) and how flux `Health` selects objects (cube label value vs label presence). Also record which `OCIRepository` apiVersion the generated flux manifests use. Tasks 1/2 depend on all of this. Update the affected tasks below if reality differs.
-- [ ] **0.10 oci push.** Run `go doc ./internal/oci` and `grep fluxcd/pkg/oci go.mod`. Expected: `PushRendered(ctx, r *pack.Rendered, registryAddr string) (engine.ArtifactRef, error)` and how plain-HTTP/insecure was enabled for the 127.0.0.1 tunnel. Tasks 5/13 reuse it. Update the affected tasks below if reality differs.
-- [ ] **0.11 Helm SDK pin.** Run `grep -E 'helm.sh/helm/v[34]' go.mod`. Phase 1 allowed pinning v4 **or** falling back to v3 behind the same wrapper. Record which one landed and what `renderHelm`'s exact signature is. Tasks 3/13 touch rendering; Task 13 exports a chart-render entry point. Update the affected tasks below if reality differs.
-- [ ] **0.12 cmd/ conventions.** Read `cmd/root.go` and one command file. Expected: `newXxxCmd() *cobra.Command` + `root.AddCommand(...)`, `-f/--file` defaulting to `cube.yaml`, `SilenceUsage/SilenceErrors`, context via `cmd.ExecuteContext`. **Critical sub-check:** how did Phase 1 Task 13 resolve the `init` pack-ref wrinkle — a `--local <repo-root>` flag, repo-local `./packs/...` defaults, or something else? Task 14's e2e and Task 2's `--engine` flag build on the real answer. Update the affected tasks below if reality differs.
-- [ ] **0.13 up orchestrator.** Read `internal/up/up.go`. Expected: `Run(ctx, cfgPath string, out io.Writer) error`, helpers `step`, `cacheDir()`, `waitHealthy` (CUBE-3004), inventory recording after registry/engine/deliver applies, gateway pack prepended to the pack list. Tasks 5/9/10 insert steps into this sequence — record the actual line structure. Update the affected tasks below if reality differs.
-- [ ] **0.14 traefik pack final shape.** Read `packs/traefik/`. Expected per Phase 1 Task 12 note: Gateway API CRDs vendored, `Gateway` with one HTTP listener (port 8000), chart values enabling `providers.kubernetesGateway` and NodePort 30080, HTTP-only. Record the exact chart `values:` mechanism and the traefik Service name the chart produces (Task 10's CoreDNS rewrite targets it). Update the affected tasks below if reality differs.
-- [ ] **0.15 actual CUBE codes in use.** Run `grep -rhoE 'CUBE-[0-9]{4}' --include='*.go' . | sort -u` and diff against the Phase 1 plan's set (0001-0002, 1001, 1003, 1101-1102, 1201-1205, 2001-2004, 3001-3004, 4001-4005, 5001-5003). The new-code table above must not collide with anything implementation added. Update the code table and affected tasks below if reality differs.
-- [ ] **0.16 e2e + CI harness.** Read `tests/e2e/e2e_test.go`, `.github/workflows/ci.yaml`, `Makefile`. Expected: `CUBE_IDP_E2E=1` gate, `build/run` helpers, unit + e2e jobs, `make test-apply` envtest wiring. Task 14 extends all three. Update the affected tasks below if reality differs.
-- [ ] **0.17 `get secrets` label convention.** Read `cmd/get.go`. Record: the exact label key/value the `cli-secret` convention uses, how packs' secrets are selected, and the output format. Task 12.5 pivots this command to Pack → `authSecretRef` → Secret with the label convention honored for one release — the deprecation text must name the real label. Update Task 12.5 below if reality differs.
-- [ ] **0.18 go-getter fork consumption.** The RafPe fork's `go.mod` declares `module github.com/hashicorp/go-getter` (v1 line); tag `v1.9.0` carries the OCI getter and is consumed via a plain `replace` directive (verified end-to-end 2026-07-13 — resolve, build, run; exact commands in Task 4 Step 0). Re-run the Task 4 Step 0 smoke check; if the fork has moved (newer tag, digest exposure or plain-HTTP added to `OCIGetter`), update Task 4 and — if the getter now returns digests — simplify Task 5's oci pinning. Also confirm the getter registration name is `"oci"` and the detector auto-matches only {azurecr.io, gcr.io, registry.gitlab.com, ECR, localhost:5000/127.0.0.1:5000}.
-- [ ] **0.19 helm wrapper surface.** Enumerate every `helm.sh/helm/v3` symbol `internal/pack/helm.go` imports (action config, chart loader, repo/registry download path, values merging). This is Task 13.5's port checklist. Also check the helm v4 SDK's release state at implementation time — if it is not yet stable enough, Task 13.5 is explicitly skippable (spec §7 risk: "can pin to v3 SDK if v4 breaks"); record the decision either way. Update Task 13.5 below if reality differs.
-- [ ] **0.20 Amend and commit.** Rewrite every task below whose assumptions drifted; resolve or confirm every `RECONCILE:` marker; update the status block; commit:
+- [x] **0.1 Module path + layout.** Run `go list -m` at the repo root and `ls internal/ cmd/`. Expected: `github.com/rafpe/cube-idp` and the Phase 1 File Structure (diag, config, cluster, cluster/kindp, kube, apply, registry, pack, engine, engine/flux, engine/factory, oci, up). Update the affected tasks below if reality differs.
+- [x] **0.2 diag API.** Run `go doc ./internal/diag`. Expected: `Code`, `Error{Code,Summary,Cause,Remediation}`, `New`, `Wrap`, `Render`, `Severity`, `Finding{Code,Severity,Message,Remediation}`. Tasks 6/8/12 construct `Finding` values and every task constructs `Error`s. Update the affected tasks below if reality differs.
+- [x] **0.3 config types + validation.** Run `go doc ./internal/config` and read `schema.cue` + `crossValidate`. Expected: `Cube/Metadata/Spec/ClusterSpec/PortMapping/RegistrySpec/Mount/EngineSpec/GatewaySpec/PackRef`, `Load(path)`, `Default(name)`; CUE codes CUBE-0001/0002, cross-check CUBE-1003. Task 2 extends `crossValidate`; Tasks 5/6/7/9/12/13 read `GatewaySpec`/`PackRef`. Update the affected tasks below if reality differs.
+- [x] **0.4 kube.Conn location.** Phase 1 Task 5 moved `Conn` into a leaf package `internal/kube` (fields `Kubeconfig []byte; Context string; REST *rest.Config`). Verify with `go doc ./internal/kube`. Tasks 6/9/10/12/13 use `conn.REST`. Update the affected tasks below if reality differs.
+- [x] **0.5 cluster provider seam.** Run `go doc ./internal/cluster` and `go doc ./internal/cluster/kindp`. Expected: `Provider` interface (`Ensure/Delete/Exists/Kubeconfig/Diagnose`), factory `cluster.New(spec, gw)`, and `kindp.RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec) ([]byte, error)`. **Critical sub-check:** what is the final `gatewayContainerPort` constant? Phase 1 Task 12's note changed it from 443 to **30080** (Traefik exposed as NodePort 30080, plain HTTP). Tasks 9/10 change this mapping and `RenderConfig`'s signature. Update the affected tasks below if reality differs.
+- [x] **0.6 apply.Applier surface + fluxcd/pkg/ssa version.** Run `go doc ./internal/apply` and `grep fluxcd/pkg/ssa go.mod`. Expected: `New(cfg *rest.Config, cubeName string)`, `Apply(ctx, objs, wait, timeout)`, `RecordInventory`, `LoadInventory`, `DeleteAll`, `Client()`, `ParseMultiDoc`, constants `FieldManager/CubeLabel/PruneAnnotation/SystemNamespace`. Note the exact `ssa.ResourceManager` method set of the pinned version — Task 6 needs its server-side diff entry point (`Diff`/`DryRunApply` naming drifted historically). Also note how Apply labels objects (inline loop vs helper) — Task 6 factors it out. Update the affected tasks below if reality differs.
+- [x] **0.7 registry package.** Run `go doc ./internal/registry`. Expected: `InClusterURL = "zot.cube-idp-system.svc.cluster.local:5000"`, `Manifests()`, `Install(ctx, a, timeout)`, `PortForward(ctx, cfg) (string, func(), error)`. Task 10 modifies `manifests/zot.yaml` and adds `route.go`. Update the affected tasks below if reality differs.
+- [x] **0.8 pack package.** Run `go doc ./internal/pack` and read `source.go`, `render.go`, `helm.go`. Expected: `Pack{Name,Version,Dir}`, `Rendered{Name,Version,Objects}`, `Fetch(ctx, ref, cacheDir)`, `(*Pack).Render(values)`, private `chartRef` (does it already carry a `Values map[string]any` field from Phase 1 Task 12's note?), CUBE-4001's exact message text ("git refs arrive in Phase 2" — Task 4 replaces it). Confirm how `pullOCI` stores artifacts (Task 5 needs the pulled digest). Update the affected tasks below if reality differs.
+- [x] **0.9 engine seam.** Run `go doc ./internal/engine ./internal/engine/factory ./internal/engine/flux`. Expected: `Engine` interface exactly `Install(ctx, a *apply.Applier, timeout time.Duration) error; Deliver(ctx, r *pack.Rendered, src ArtifactRef) ([]*unstructured.Unstructured, error); Health(ctx, a *apply.Applier) ([]ComponentHealth, error); Uninstall(ctx, a *apply.Applier, timeout time.Duration) error`; `ArtifactRef{Repo,Tag}`; `ComponentHealth{Name,Ready,Message}`; factory in `internal/engine/factory` (vs the init()-registration alternative Phase 1 allowed); `flux.InstallManifests()`; the flux Deliver object names (`cube-idp-<pack>`) and how flux `Health` selects objects (cube label value vs label presence). Also record which `OCIRepository` apiVersion the generated flux manifests use. Tasks 1/2 depend on all of this. Update the affected tasks below if reality differs.
+- [x] **0.10 oci push.** Run `go doc ./internal/oci` and `grep fluxcd/pkg/oci go.mod`. Expected: `PushRendered(ctx, r *pack.Rendered, registryAddr string) (engine.ArtifactRef, error)` and how plain-HTTP/insecure was enabled for the 127.0.0.1 tunnel. Tasks 5/13 reuse it. Update the affected tasks below if reality differs.
+- [x] **0.11 Helm SDK pin.** Run `grep -E 'helm.sh/helm/v[34]' go.mod`. Phase 1 allowed pinning v4 **or** falling back to v3 behind the same wrapper. Record which one landed and what `renderHelm`'s exact signature is. Tasks 3/13 touch rendering; Task 13 exports a chart-render entry point. Update the affected tasks below if reality differs.
+- [x] **0.12 cmd/ conventions.** Read `cmd/root.go` and one command file. Expected: `newXxxCmd() *cobra.Command` + `root.AddCommand(...)`, `-f/--file` defaulting to `cube.yaml`, `SilenceUsage/SilenceErrors`, context via `cmd.ExecuteContext`. **Critical sub-check:** how did Phase 1 Task 13 resolve the `init` pack-ref wrinkle — a `--local <repo-root>` flag, repo-local `./packs/...` defaults, or something else? Task 14's e2e and Task 2's `--engine` flag build on the real answer. Update the affected tasks below if reality differs.
+- [x] **0.13 up orchestrator.** Read `internal/up/up.go`. Expected: `Run(ctx, cfgPath string, out io.Writer) error`, helpers `step`, `cacheDir()`, `waitHealthy` (CUBE-3004), inventory recording after registry/engine/deliver applies, gateway pack prepended to the pack list. Tasks 5/9/10 insert steps into this sequence — record the actual line structure. Update the affected tasks below if reality differs.
+- [x] **0.14 traefik pack final shape.** Read `packs/traefik/`. Expected per Phase 1 Task 12 note: Gateway API CRDs vendored, `Gateway` with one HTTP listener (port 8000), chart values enabling `providers.kubernetesGateway` and NodePort 30080, HTTP-only. Record the exact chart `values:` mechanism and the traefik Service name the chart produces (Task 10's CoreDNS rewrite targets it). Update the affected tasks below if reality differs.
+- [x] **0.15 actual CUBE codes in use.** Run `grep -rhoE 'CUBE-[0-9]{4}' --include='*.go' . | sort -u` and diff against the Phase 1 plan's set (0001-0002, 1001, 1003, 1101-1102, 1201-1205, 2001-2004, 3001-3004, 4001-4005, 5001-5003). The new-code table above must not collide with anything implementation added. Update the code table and affected tasks below if reality differs.
+- [x] **0.16 e2e + CI harness.** Read `tests/e2e/e2e_test.go`, `.github/workflows/ci.yaml`, `Makefile`. Expected: `CUBE_IDP_E2E=1` gate, `build/run` helpers, unit + e2e jobs, `make test-apply` envtest wiring. Task 14 extends all three. Update the affected tasks below if reality differs.
+- [x] **0.17 `get secrets` label convention.** Read `cmd/get.go`. Record: the exact label key/value the `cli-secret` convention uses, how packs' secrets are selected, and the output format. Task 12.5 pivots this command to Pack → `authSecretRef` → Secret with the label convention honored for one release — the deprecation text must name the real label. Update Task 12.5 below if reality differs.
+- [x] **0.18 go-getter fork consumption.** The RafPe fork's `go.mod` declares `module github.com/hashicorp/go-getter` (v1 line); tag `v1.9.0` carries the OCI getter and is consumed via a plain `replace` directive (verified end-to-end 2026-07-13 — resolve, build, run; exact commands in Task 4 Step 0). Re-run the Task 4 Step 0 smoke check; if the fork has moved (newer tag, digest exposure or plain-HTTP added to `OCIGetter`), update Task 4 and — if the getter now returns digests — simplify Task 5's oci pinning. Also confirm the getter registration name is `"oci"` and the detector auto-matches only {azurecr.io, gcr.io, registry.gitlab.com, ECR, localhost:5000/127.0.0.1:5000}.
+- [x] **0.19 helm wrapper surface.** Enumerate every `helm.sh/helm/v3` symbol `internal/pack/helm.go` imports (action config, chart loader, repo/registry download path, values merging). This is Task 13.5's port checklist. Also check the helm v4 SDK's release state at implementation time — if it is not yet stable enough, Task 13.5 is explicitly skippable (spec §7 risk: "can pin to v3 SDK if v4 breaks"); record the decision either way. Update Task 13.5 below if reality differs.
+- [x] **0.20 Amend and commit.** Rewrite every task below whose assumptions drifted; resolve or confirm every `RECONCILE:` marker; update the status block; commit:
 
 ```bash
 git add docs/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md
 git commit -m "docs: reconcile phase 2 plan against phase 1 implementation"
 ```
+
+### Task 0 Findings (executed 2026-07-13 against commit `0522799`; full evidence: `.superpowers/sdd/task-0-report.md`)
+
+Facts every implementer inherits (in addition to the amendments already folded into the tasks below):
+
+- **0.2/0.6 (apply/diag):** `diag` API exactly as planned (plus `SeverityInfo`). `apply.New(cfg *rest.Config, cubeName string)`; `Apply` labels via an inline loop (Task 6 factors out `label()`) and applies with `rm.ApplyAllStaged(ctx, objs, ssa.DefaultApplyOptions())`; wait path uses `rm.WaitForSet`. `ssa.ResourceManager.Diff` exists on v0.77.0.
+- **0.3 (config):** `GatewaySpec{Pack, Host, Port int, Ref string}` — `Ref` already shipped; `PackRef{Ref string, Values map[string]any}`; `Default(name)` already carries the D9 profile. `crossValidate` at `internal/config/load.go:93`.
+- **0.8 (pack):** `Pack{Name, Version, Dir}` (no digest field). `Fetch` switch: `oci://` → `pullOCI` (returns dir only; digest computed for cache naming then DISCARDED — Task 5 threads it out); `://` → CUBE-4001 whose REMEDIATION says "(git refs arrive in Phase 2)" — Task 4 edits that one call site, leaving the other two CUBE-4001 sites alone. `pullOCI` failures are **CUBE-4012** (taken). `chartRef` already has `Values map[string]any`.
+- **0.9 (engine):** `Engine` interface = Install / **InstallManifests()** / Deliver / Health / Uninstall. Flux Deliver names `cube-idp-<pack>`; `OCIRepository` is `source.toolkit.fluxcd.io/v1` with `spec.insecure: true`; Health selects `client.MatchingLabels{apply.CubeLabel: a.Cube()}` and has NO missing-CRD handling (argocd Health must, via `meta.IsNoMatchError` — see Task 2).
+- **0.10 (oci):** `fluxcd/pkg/oci` v0.69.0, `oci.NewClient([]crane.Option{crane.Insecure})`, `LayerTypeTarball` → single layer `application/vnd.cncf.flux.content.v1.tar+gzip` containing `all.yaml`. Task 3.5's byte-compat target.
+- **0.12 (cmd):** `NewRootCmd()` exists; `newXxxCmd()` + `AddCommand`; `-f/--file` default `cube.yaml`; `init` has `--name` + `--local <repo-root>` (writes `gateway.ref` + local pack paths) and refuses overwrite with CUBE-0006; `requireClusterExists` (CUBE-1004) guards read-only commands — `diff`/`doctor` should use it before `Ensure`.
+- **0.13 (up):** step format is exactly `fmt.Fprintf(w, "▸ [%s] %s\n", stage, fmt.Sprintf(format, args...))` — Task 13.8's plain format. `cacheDir()` lives in `internal/up`, errors are **CUBE-4013** — Task 7 moves it to `pack.DefaultCacheDir()` keeping that code. Gateway prepend via `gatewayPackRef(gw)` (`gw.Ref` else `"packs/"+gw.Pack`) — Task 6 moves it to `config.GatewaySpec.PackRef()`. Per-pack `Apply` uses `wait=false`; health is one global `waitHealthy` (5m, poll 5s, zero components = not ready). Timeouts: cluster 3m, apply 2m.
+- **0.14 (traefik):** chart **41.0.2**, `gateway.enabled: false` (pack's own `10-gateway.yaml` is the only Gateway), listener `web` port 8000, NodePort 30080, `service.spec.type: NodePort`. Service name inferred `traefik`/ns `traefik` (chart not vendored — e2e verifies).
+- **0.15 (codes):** in use today: 0001 0002 0004 0006, 1001 1003 1004, 1101 1102, 1201–1205, 2001–2004 2006 2007, 3001–3005, 4001–4005 4012 4013, 5001–5003. Collisions resolved by renumbering: argocd capability failure → **CUBE-3006**, extraction guards → **CUBE-4014**. Task 0.5's catalog seeds from this list plus this plan's table.
+- **0.16 (CI):** `go-version-file: go.mod` (currently go 1.26.2) — never reintroduce a hardcoded version. e2e uses `init --name e2e --local <repoRoot>`; a `deleteLingeringCluster` guard wraps the run.
+- **0.17 (get secrets):** TWO labels: `cube-idp.dev/cli-secret: "true"` (selection) + `cube-idp.dev/pack-name: <pack>` (`--pack` filter); output is a tabwriter table `PACK NAMESPACE NAME DATA`. Task 12.5's deprecation notice must name both.
+- **0.19 (helm):** v3.21.3 by deliberate API-shape choice (v4's `DryRunStrategy` vs v3's `DryRun/ClientOnly` bools — documented in helm.go). Symbols used: `action.Configuration/NewInstall`, `chartutil.ParseKubeVersion("v1.33.1")`, `registry.IsOCI/NewClient`, `LocateChart` + `cli.New()`, `loader.Load`, hand-rolled `mergeValues`. Task 13.5's port checklist.
 
 ---
 
@@ -301,9 +317,8 @@ git add -A && git commit -m "refactor: central CUBE-code catalog in internal/dia
 ```go
 package contract
 type Impl struct {
-    Name             string
-    New              func() engine.Engine
-    InstallManifests func() ([]*unstructured.Unstructured, error)
+    Name string
+    New  func() engine.Engine // Engine itself carries InstallManifests() — phase-1 interface method (Task 0 finding 0.9)
 }
 func Run(t *testing.T, impl Impl) // the one suite every engine must pass identically
 ```
@@ -340,9 +355,8 @@ import (
 )
 
 type Impl struct {
-	Name             string
-	New              func() engine.Engine
-	InstallManifests func() ([]*unstructured.Unstructured, error)
+	Name string
+	New  func() engine.Engine // Engine carries InstallManifests() (interface method since phase 1 Task 10)
 }
 
 func Run(t *testing.T, impl Impl) {
@@ -410,7 +424,7 @@ func Run(t *testing.T, impl Impl) {
 	})
 
 	t.Run("install_manifests_parse", func(t *testing.T) {
-		objs, err := impl.InstallManifests()
+		objs, err := impl.New().InstallManifests()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -434,7 +448,7 @@ func Run(t *testing.T, impl Impl) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		objs, err := impl.InstallManifests()
+		objs, err := impl.New().InstallManifests()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -481,7 +495,7 @@ func startEnvtest(t *testing.T) *rest.Config {
 }
 ```
 
-(Import `"k8s.io/client-go/rest"` for the helper's return type. RECONCILE: verify against phase-1 code that `apply.New` accepts an envtest `*rest.Config` directly — the Phase 1 apply tests did exactly this, so only the import path may differ.)
+(Import `"k8s.io/client-go/rest"` for the helper's return type. RESOLVED by Task 0 finding 0.6: `apply.New(cfg *rest.Config, cubeName string)` — takes an envtest `*rest.Config` directly, exactly as the phase-1 apply tests do.)
 
 - [ ] **Step 2: Register flux against the suite**
 
@@ -499,9 +513,8 @@ import (
 
 func TestFluxContract(t *testing.T) {
 	contract.Run(t, contract.Impl{
-		Name:             "flux",
-		New:              func() engine.Engine { return New() },
-		InstallManifests: InstallManifests,
+		Name: "flux",
+		New:  func() engine.Engine { return New() },
 	})
 }
 ```
@@ -542,12 +555,12 @@ git add -A && git commit -m "test: shared GitOpsEngine contract suite, flux pass
 
 ```go
 package argocd
-func New() *ArgoCD                                        // implements engine.Engine
-func InstallManifests() ([]*unstructured.Unstructured, error) // install.yaml + repo-secret.yaml
+func New() *ArgoCD                                                        // implements engine.Engine
+func (g *ArgoCD) InstallManifests() ([]*unstructured.Unstructured, error) // interface method (Task 0 finding 0.9): install.yaml + repo-secret.yaml
 const Namespace = "argocd"
 ```
 
-**Engine-specific requirement (spec §7 risk, documented here and in the package comment):** the Argo CD engine's primary Deliver path uses Argo CD's native OCI repository source pointing at the in-cluster zot registry. `RECONCILE:` verify during implementation, against the pinned Argo CD release, that an `Application` whose `spec.source.repoURL` is `oci://…` syncs a plain-manifest OCI artifact pushed by `oci.PushRendered` (Argo CD gained first-class OCI repository support in the 3.x line; confirm the exact minimum version and pin it in `hack/gen-argocd-manifests.sh`). **If it cannot** (artifact media-type mismatch, insecure-HTTP registry rejected, or feature gated off), the fallback per spec §7 is: the argocd engine declares a dependency on the **gitea pack** and `Deliver` pushes the rendered manifests to an in-cluster gitea repo (`cube-idp-delivery/<pack>`) instead of zot, emitting an `Application` with a git `repoURL` — documented as an engine-specific requirement, not a core component, and enforced at `up` time with `CUBE-3005` ("engine.type: argocd requires the gitea pack for delivery on this Argo CD version — add `oci://ghcr.io/cube-idp/packs/gitea` to spec.packs"). Do not build the fallback speculatively; build it only if the primary path fails verification, as its own inserted task.
+**Engine-specific requirement (spec §7 risk, documented here and in the package comment):** the Argo CD engine's primary Deliver path uses Argo CD's native OCI repository source pointing at the in-cluster zot registry. `RECONCILE:` verify during implementation, against the pinned Argo CD release, that an `Application` whose `spec.source.repoURL` is `oci://…` syncs a plain-manifest OCI artifact pushed by `oci.PushRendered` (Argo CD gained first-class OCI repository support in the 3.x line; confirm the exact minimum version and pin it in `hack/gen-argocd-manifests.sh`). **If it cannot** (artifact media-type mismatch, insecure-HTTP registry rejected, or feature gated off), the fallback per spec §7 is: the argocd engine declares a dependency on the **gitea pack** and `Deliver` pushes the rendered manifests to an in-cluster gitea repo (`cube-idp-delivery/<pack>`) instead of zot, emitting an `Application` with a git `repoURL` — documented as an engine-specific requirement, not a core component, and enforced at `up` time with `CUBE-3006` ("engine.type: argocd requires the gitea pack for delivery on this Argo CD version — add `oci://ghcr.io/cube-idp/packs/gitea` to spec.packs"). Do not build the fallback speculatively; build it only if the primary path fails verification, as its own inserted task.
 
 - [ ] **Step 1: Generate + pin the Argo CD install manifests**
 
@@ -643,7 +656,7 @@ func TestDeliverShapesApplication(t *testing.T) {
 }
 
 func TestInstallManifestsIncludeRepoSecret(t *testing.T) {
-	objs, err := InstallManifests()
+	objs, err := New().InstallManifests()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,9 +686,8 @@ import (
 
 func TestArgoCDContract(t *testing.T) {
 	contract.Run(t, contract.Impl{
-		Name:             "argocd",
-		New:              func() engine.Engine { return New() },
-		InstallManifests: InstallManifests,
+		Name: "argocd",
+		New:  func() engine.Engine { return New() },
 	})
 }
 ```
@@ -724,7 +736,7 @@ type ArgoCD struct{}
 
 func New() *ArgoCD { return &ArgoCD{} }
 
-func InstallManifests() ([]*unstructured.Unstructured, error) {
+func (g *ArgoCD) InstallManifests() ([]*unstructured.Unstructured, error) {
 	objs, err := apply.ParseMultiDoc(installYAML)
 	if err != nil {
 		return nil, err
@@ -737,7 +749,7 @@ func InstallManifests() ([]*unstructured.Unstructured, error) {
 }
 
 func (g *ArgoCD) Install(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
-	objs, err := InstallManifests()
+	objs, err := g.InstallManifests()
 	if err != nil {
 		return diag.Wrap(err, "CUBE-3003", "embedded argocd manifests are invalid",
 			"this is a cube-idp bug — regenerate with hack/gen-argocd-manifests.sh and report it")
@@ -775,7 +787,7 @@ func (g *ArgoCD) Health(ctx context.Context, a *apply.Applier) ([]engine.Compone
 }
 ```
 
-(RECONCILE: `client.IgnoreNotFound` handles a missing CRD as `NoKindMatchError`, not NotFound — verify against phase-1 flux Health's handling of the equivalent fresh-cluster case and mirror it exactly; if flux returns an empty slice via `meta.IsNoMatchError`, do the same here.)
+(RESOLVED by Task 0 finding 0.9: phase-1 flux `Health` does NOT handle the missing-CRD case — only flux's `listDelivered` (Uninstall path) uses `meta.IsNoMatchError`. The argocd engine must do better than flux here because the contract suite exercises Health right after an envtest install: replace the `client.IgnoreNotFound(err)` above with `if meta.IsNoMatchError(err) { return nil, nil }` (import `k8s.io/apimachinery/pkg/api/meta`) and otherwise wrap as a CUBE-3004 diag error, mirroring `listDelivered`'s treatment. Optionally apply the same one-line hardening to flux `Health` while in there — it is a real phase-1 gap the suite may expose.)
 
 `internal/engine/argocd/deliver.go`:
 
@@ -1145,7 +1157,7 @@ type Pack struct{ Name, Version, Dir, Pinned string } // Pinned: "git+<sha>" | "
 func isGitRef(ref string) bool     // host-with-dot + path, no scheme — github.com/org/repo//path@rev grammar
 func isGetterRef(ref string) bool  // explicit go-getter forms: git::…, s3::…, http(s):// archive refs
 // ref grammar (git): <host>/<org>/<repo>[//<subdir>]@<tag|branch|full-sha>  (spec §4.4)
-// unpinned (no @rev) -> CUBE-4007; fetch/resolution failure -> CUBE-4006; guard trip -> CUBE-4012
+// unpinned (no @rev) -> CUBE-4007; fetch/resolution failure -> CUBE-4006; guard trip -> CUBE-4014
 func resolveGitPin(ctx context.Context, repoURL, rev string) (string, error) // "git+<full-sha>" via go-git ls-remote; shared with Task 7's ResolveRemote
 func GuardTree(root string) (removedSymlinks []string, err error)            // extraction guards, applied to ALL getter output
 ```
@@ -1347,7 +1359,7 @@ func GuardTree(root string) ([]string, error) {
 			return nil
 		}
 		if err := os.Remove(path); err != nil {
-			return diag.Wrap(err, "CUBE-4012",
+			return diag.Wrap(err, "CUBE-4014",
 				"cannot remove symlink "+path+" from the fetched pack",
 				"the pack source contains symlinks cube-idp refuses to follow; re-publish the pack without them")
 		}
@@ -1359,7 +1371,7 @@ func GuardTree(root string) ([]string, error) {
 		if _, ok := err.(*diag.Error); ok {
 			return nil, err
 		}
-		return nil, diag.Wrap(err, "CUBE-4012", "cannot scan the fetched pack tree", "check permissions under the cache dir")
+		return nil, diag.Wrap(err, "CUBE-4014", "cannot scan the fetched pack tree", "check permissions under the cache dir")
 	}
 	return removed, nil
 }
@@ -2038,15 +2050,9 @@ func (a *Applier) Diff(ctx context.Context, objs []*unstructured.Unstructured) (
 	a.label(objs)
 	out := make([]Change, 0, len(objs))
 	for _, o := range objs {
-		// RECONCILE: fluxcd/pkg/ssa exposes server-side diff on ResourceManager
-		// (the flux CLI's `flux diff` is the reference consumer). Verify the
-		// pinned version's method name and returns — historically:
-		//   entry, _, _, err := a.rm.Diff(ctx, o, ssa.DefaultDiffOptions())
-		// where entry.Action stringifies to created/configured/unchanged/skipped.
-		// If the pinned version lacks Diff, implement with a DryRun apply:
-		//   opts := ssa.DefaultApplyOptions(); opts.DryRun = true
-		//   cs, err := a.rm.ApplyAllStaged(ctx, []*unstructured.Unstructured{o}, opts)
-		// and read cs.Entries[0].Action. Adjust mechanically; the test defines behavior.
+		// Task 0 confirmed (finding 0.6): ssa v0.77.0's ResourceManager exposes
+		//   Diff(ctx, object, opts) (*ChangeSetEntry, *unstructured.Unstructured, *unstructured.Unstructured, error)
+		// entry.Action stringifies to created/configured/unchanged/skipped.
 		entry, _, _, err := a.rm.Diff(ctx, o, ssa.DefaultDiffOptions())
 		if err != nil {
 			return nil, diag.Wrap(err, "CUBE-2005",
@@ -2175,7 +2181,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 ```
 
 Helpers in the same file (all real code, no cluster mutation):
-- `desiredState(ctx, cube, eng)` — `registry.Manifests()` + the engine's install manifests (switch on `cube.Spec.Engine.Type` to call `flux.InstallManifests()` / `argocd.InstallManifests()` — same accessor pattern the contract suite uses) + for each pack ref (gateway pack prepended, exactly as `up` does): `pack.Fetch` → `Render(pr.Values)` → `eng.Deliver(ctx, rendered, engine.ArtifactRef{Repo: "packs/" + rendered.Name, Tag: rendered.Version})` (Deliver is pure — no push happens) → collect delivery objects into the desired set and a `lock.Entry{Name, RenderedHash}` into `packEntries`.
+- `desiredState(ctx, cube, eng)` — `registry.Manifests()` + `eng.InstallManifests()` (interface method, Task 0 finding 0.9 — no per-engine switch needed) + for each pack ref (gateway pack prepended exactly as `up` does — Task 0 finding 0.13: `up.gatewayPackRef(gw)` returns `gw.Ref` when set, else `"packs/" + gw.Pack`; move that helper to `config` as `func (g GatewaySpec) PackRef() string` and update `up` to use it, so `diff`/`upgrade` share one implementation): `pack.Fetch` → `Render(pr.Values)` → `eng.Deliver(ctx, rendered, engine.ArtifactRef{Repo: "packs/" + rendered.Name, Tag: rendered.Version})` (Deliver is pure — no push happens) → collect delivery objects into the desired set and a `lock.Entry{Name, RenderedHash}` into `packEntries`.
 - `lockEntryFor(f *lock.File, name string) *lock.Entry` — nil-safe lookup.
 - `short(h string) string` — first 12 hex chars after "sha256:".
 - `orphanRefs(inv []object.ObjMetadata, desired []*unstructured.Unstructured) []string` — set-subtract by group/kind/ns/name strings.
@@ -2443,8 +2449,9 @@ func Plan(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	}
 
 	// Same ref list `up` uses: gateway pack first, then spec.packs.
-	// RECONCILE: copy the exact prepend expression from the phase-1 up.Run.
-	refs := append([]config.PackRef{{Ref: "packs/" + cube.Spec.Gateway.Pack}}, cube.Spec.Packs...)
+	// Task 0 finding 0.13: honor gateway.ref (init --local writes it) via the
+	// shared helper Task 6 moved to config.
+	refs := append([]config.PackRef{{Ref: cube.Spec.Gateway.PackRef()}}, cube.Spec.Packs...)
 	changed := false
 	var rows []Row
 	for _, pr := range refs {
@@ -3081,20 +3088,32 @@ spec:
 
 (RECONCILE: the listener `port` must equal the Traefik entrypoint port the chart configures for `websecure`, and the listener names must match the chart's entrypoint names — read the phase-1 `packs/traefik/chart.yaml` values (checkpoint 0.14) and align; the two facts to preserve are: HTTPS terminates at Traefik with secret `cube-idp-gateway-tls`, and the websecure entrypoint is exposed as NodePort 30443.)
 
-`packs/traefik/chart.yaml` — extend the `values:` block (exact merge point per checkpoint 0.14):
+`packs/traefik/chart.yaml` — Task 0 finding 0.14 captured the real phase-1 file (chart **41.0.2**, `gateway.enabled: false`, nested `deployment.replicas`, `service.spec.type`). This is the FULL new file — the only change is adding the `websecure` port entry:
 
 ```yaml
+chart: traefik
+repo: https://traefik.github.io/charts
+version: "41.0.2"          # app v3.7.6; pin; bump deliberately
+releaseName: traefik
+namespace: traefik
 values:
+  deployment:
+    replicas: 1
   providers:
     kubernetesGateway:
       enabled: true
-  service:
-    type: NodePort
+  gateway:
+    enabled: false
   ports:
     web:
+      port: 8000
       nodePort: 30080
     websecure:
+      port: 8443
       nodePort: 30443
+  service:
+    spec:
+      type: NodePort
 ```
 
 - [ ] **Step 2: Write the failing kind-merge test**
@@ -5648,7 +5667,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: {go-version: "1.24"}
+        with: {go-version-file: go.mod}   # Task 0 finding 0.16: go.mod is the single source of truth (go 1.26.x)
       - run: go vet ./...
       - run: go test ./... -short
       - run: make test-apply
@@ -5663,7 +5682,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: {go-version: "1.24"}
+        with: {go-version-file: go.mod}   # Task 0 finding 0.16: go.mod is the single source of truth (go 1.26.x)
       - run: CUBE_IDP_E2E=1 CUBE_IDP_E2E_ENGINE=${{ matrix.engine }} go test ./tests/e2e/ -v -timeout 25m
 ```
 
@@ -5700,14 +5719,14 @@ git add -A && git commit -m "feat: e2e engine matrix, Phase 2 command coverage, 
 
 | Spec §6 Phase 2 item | Tasks | Notes |
 |---|---|---|
-| Argo CD engine implementation + contract suite (D2) | 1, 2, 14 | Suite first (flux seeds it), argocd passes the identical suite, CI runs both engines e2e. CUBE-3002 removed. Spec §7 OCI-maturity risk handled as a verification step + documented gitea-pack fallback (engine-specific requirement, CUBE-3005), built only if the primary path fails. |
+| Argo CD engine implementation + contract suite (D2) | 1, 2, 14 | Suite first (flux seeds it), argocd passes the identical suite, CI runs both engines e2e. CUBE-3002 removed. Spec §7 OCI-maturity risk handled as a verification step + documented gitea-pack fallback (engine-specific requirement, CUBE-3006), built only if the primary path fails. |
 | TLS from first boot (D12) | 8, 9, 10 | CA ensured as `up.Run`'s FIRST step, before cluster creation (Task 9 Step 5 D12 ordering); mkcert root adoption with RSA/PKCS#8 key support (Task 8 Steps 3b/3c); CA mounted into containerd certs.d at create time (Task 10); OS trust store untouched until `cube-idp trust` (D6 unchanged). |
 | `cube-idp trust` + CoreDNS canonical hostname (D6) | 8, 9, 10, 11 | CA/leaf/state (8), HTTPS gateway completing the Phase 1 deferral (9), CoreDNS rewrite (overridable via `gateway.host`) + containerd certs.d via the kind provider + registry route (10), opt-in consent-gated OS install with full revert on `down` (11). |
 | `Pack` discoverability CRD + `expose:` contract (D11) | 12.5, 14 | One inert cluster-scoped CRD with printer columns (NAME/VERSION/URL/AUTH-SECRET/READY), `expose:` block in pack.cue (CUBE-4011), `${GATEWAY_HOST}` substitution, `get secrets` pivot with one-release label grace, gitea/argocd blocks shipped, `kubectl get packs` asserted in e2e. |
 | `diff` | 6 | Applier/SSA dry-run + inventory orphans + lock-hash pack drift; kubectl-diff exit convention. |
 | `doctor` with CUBE codes | 12 | Runtime/ports/disk/inotify preflights + provider `Diagnose` + engine `Health`; spec §5 fault-injection tests (port squat, missing runtime, broken kubeconfig via the provider path). Task 4 Step 6 adds the git-CLI warning seam. |
 | `cube.lock` + `upgrade --plan` | 5, 7 | Digests + full image list + rendered hashes written by `up`; plan = remote pin re-resolution vs lock + kernel diff; feeds Phase 3 `vendor`. |
-| go-getter pack sources (git/http/s3/OCI) | 4, 5, 7 | RafPe fork (commit-pinned replace, verified consumption path), extraction guards (CUBE-4012) on ALL getter output, bare git grammar kept (`host/org/repo//path@rev`, CUBE-4006/4007), `oci://` stays on oras (digest + plain-HTTP — fork's getter exposes neither), pins via one shared `resolveGitPin`/`dirPin`. |
+| go-getter pack sources (git/http/s3/OCI) | 4, 5, 7 | RafPe fork (v1.9.0 replace, verified consumption path), extraction guards (CUBE-4014) on ALL getter output, bare git grammar kept (`host/org/repo//path@rev`, CUBE-4006/4007), `oci://` stays on oras (digest + plain-HTTP — fork's getter exposes neither), pins via one shared `resolveGitPin`/`dirPin`. |
 | cnoe-compat loader | 13 | Application + list-generator ApplicationSet, `cnoe://` → OCI pushes, engine-neutral delivery, typed rejections. |
 | Kustomize overlays (Phase 1 deferral) | 3 | `kustomization.yaml` precedence rule; `RenderDir` reused by cnoe. |
 | Debt paydown (fundamentals review) | 0.5, 3.5, 13.5 | CUBE-code catalog + literal-ban test FIRST so all new code uses it (0.5); all OCI on oras-go v2, `fluxcd/pkg/oci` dropped, flux media types preserved byte-compatibly (3.5); helm v3→v4 behind the frozen wrapper, golden tests as acceptance, explicitly skippable per spec §7 (13.5). |
@@ -5739,7 +5758,7 @@ Markers added by the 2026-07-13 amendment: fork `Client` field set + consumption
 - **Argo CD OCI source maturity** (spec §7): explicitly a Task 2 verification gate with a designed fallback; the contract suite is deliberately delivery-mechanism-agnostic (it asserts the artifact is referenced, not how) so the fallback would still pass it after adjusting the `deliver_references_the_artifact` URL expectation — if the fallback activates, amend that subtest's expectation as part of the fallback task.
 - **certs.d node-reachability** (Task 10): the localhost-NodePort assumption is the weakest guess in this plan; the fallback (rewriting the bind-mounted hosts.toml with the node IP after create) is designed but unbuilt. Verify early in Task 10's e2e pass.
 - **Port-mapping migration**: Phase 2 changes the kind gateway mapping (30080→30443); existing Phase 1 clusters need `down`/`up`. Pre-1.0 acceptable; release-noted (Task 9/README).
-- **go-getter fork maintenance** (Task 4): the dependency is a single-maintainer fork (tag v1.9.0), consumed via a `replace` because its go.mod declares the upstream module path. Upstream security fixes do not flow in automatically — checkpoint 0.18 re-verifies the pin every reconcile, and the extraction guards (CUBE-4012) exist precisely because getter output is not blindly trusted. If the fork gains digest exposure + plain-HTTP on its OCI getter, collapsing the `oci://` branch onto go-getter is a designed follow-up, not a speculative build.
+- **go-getter fork maintenance** (Task 4): the dependency is a single-maintainer fork (tag v1.9.0), consumed via a `replace` because its go.mod declares the upstream module path. Upstream security fixes do not flow in automatically — checkpoint 0.18 re-verifies the pin every reconcile, and the extraction guards (CUBE-4014) exist precisely because getter output is not blindly trusted. If the fork gains digest exposure + plain-HTTP on its OCI getter, collapsing the `oci://` branch onto go-getter is a designed follow-up, not a speculative build.
 - **git CLI runtime dependency** (Task 4): go-getter's git getter shells out to `git`. Scoped to git pack sources only (everything else stays binary-pure); surfaced as CUBE-4006 remediation + the Task 12 doctor warning; README-documented.
 - **Flux media-type byte-compat** (Task 3.5): the oras rewrite must reproduce what `fluxcd/pkg/oci` pushed or flux stops syncing packs; the reconcile captures the real manifest and the engine-matrix e2e arbitrates.
 - **Helm v4 SDK youth** (Task 13.5, unchanged from spec §7): the port is explicitly skippable with a recorded decision; the wrapper keeps the blast radius to one file.
