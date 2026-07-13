@@ -1,0 +1,4 @@
+apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata:
+  name: dev

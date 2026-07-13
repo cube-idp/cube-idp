@@ -1,0 +1,29 @@
+apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata:
+  name: full
+spec:
+  cluster:
+    provider: kind
+    kubernetesVersion: v1.33.1
+    extraPorts:
+      - hostPort: 32222
+        nodePort: 32222
+    registry:
+      mirrors:
+        docker.io: https://mirror.corp.example
+      insecure: [registry.corp.example:5000]
+    mounts:
+      - hostPath: /tmp/images
+        nodePath: /var/lib/images
+  engine:
+    type: flux
+  gateway:
+    pack: traefik
+    host: cube-idp.localtest.me
+    port: 8443
+  packs:
+    - ref: oci://ghcr.io/cube-idp/packs/gitea:0.1.0
+    - ref: ./platform/backstage
+      values:
+        replicas: 2
