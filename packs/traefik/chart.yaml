@@ -25,9 +25,13 @@ values:
   # Phase 1 serves HTTP behind the host port (D6 defers TLS/`cube-idp
   # trust` to Phase 2): expose the web entrypoint as a fixed NodePort so the
   # kind port mapping (host 8443 -> containerPort 30080, see
-  # internal/cluster/kindp/merge.go) has a stable target. See README.md.
+  # internal/cluster/kindp/merge.go) has a stable target. port: 8000
+  # matches the chart default but is pinned explicitly because both the
+  # Gateway manifest's listener (manifests/10-gateway.yaml, port 8000) and
+  # the node:30080 -> pod-port leg depend on it. See README.md.
   ports:
     web:
+      port: 8000
       nodePort: 30080
   service:
     spec:

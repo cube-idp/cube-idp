@@ -9,7 +9,12 @@ Ingress). Renders:
   Traefik v3.7.6 (this pack's app version) documents conformance against
   Gateway API Standard v1.5.1 specifically — v1.5.1 was pinned instead of
   the newer v1.6.0 GA release to match Traefik's own documented/tested
-  compatibility rather than chasing latest.
+  compatibility rather than chasing latest. Note: the bundle's two
+  `ValidatingAdmissionPolicy`/`Binding` objects carry a
+  `gateway.networking.k8s.io/bundle-version: v1.5.0-dev` annotation while
+  all eight CRDs say `v1.5.1` — that's how the upstream v1.5.1 release
+  artifact ships (a release-tagging quirk in their VAP template), expected
+  and harmless.
 - `manifests/10-gateway.yaml` — a `Gateway` named `cube-idp` in the
   `traefik` namespace, one `web` listener on port 8000, `gatewayClassName:
   traefik` (the `GatewayClass` the traefik chart creates by default).
