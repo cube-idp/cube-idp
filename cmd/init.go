@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/rafpe/cube-idp/internal/config"
+	"github.com/rafpe/cube-idp/internal/diag"
 )
 
 func newInitCmd() *cobra.Command {
@@ -19,7 +20,8 @@ func newInitCmd() *cobra.Command {
 		Short: "Write the default cube.yaml (kind + flux + traefik + gitea + argocd, D9)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if _, err := os.Stat("cube.yaml"); err == nil {
-				return fmt.Errorf("cube.yaml already exists — refusing to overwrite")
+				return diag.New("CUBE-0006", "cube.yaml already exists — refusing to overwrite",
+					"remove or rename the existing cube.yaml, or edit it directly and re-run `cube-idp up`")
 			}
 			cube := config.Default(name)
 			if local != "" {

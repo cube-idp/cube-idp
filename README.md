@@ -36,6 +36,14 @@ go build -o cube-idp .
 just re-running it unchanged) **is** the upgrade command; there is no
 separate `upgrade` verb in Phase 1.
 
+**Caveat — cluster-shape fields apply only at cluster creation.** For
+`provider: kind`, the fields that shape the node itself (`extraPorts`,
+`mounts`, `registry`, `providerConfig`, `kubernetesVersion`, and
+`gateway.port`) are baked into the cluster when it is first created;
+re-running `up` against an existing cluster will not apply changes to them.
+To change any of these, recreate the cluster:
+`cube-idp down && cube-idp up`.
+
 Developing against an unreleased checkout (no published OCI packs yet)?
 Use `init --local <path-to-this-repo>` instead of `init --name dev`, which
 writes `gateway.ref` and pack `ref`s as absolute local paths into this
@@ -72,16 +80,16 @@ spec:
 | `spec.gateway.host` | string | `cube-idp.localtest.me` | routable hostname for delivered packs |
 | `spec.gateway.port` | int | `8443` | host port mapped to the gateway |
 | `spec.gateway.ref` | string | — | overrides the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); falls back to `packs/<pack>` when unset, which only resolves from a checkout — `cube-idp init --local` fills this in |
-| `spec.packs` | `[{ref, values}]` | gitea + argocd (D9) | additional packs delivered after the gateway; `ref` is `oci://`, a local dir, or a `github.com/...` source; `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
+| `spec.packs` | `[{ref, values}]` | gitea + argocd (D9) | additional packs delivered after the gateway; `ref` is `oci://` or a local dir (git `github.com/...` refs ship in Phase 2); `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
 
 Run `cube-idp config render-cluster` to preview the final merged kind
 provider config (D10 layer 2) before `up` creates anything.
 
 ## Pack format
 
-A pack (`internal/pack`) is a directory, fetched from a local dir,
-`oci://registry/pack:tag`, or a `github.com/org/repo//path@ref` source. It is
-**data only** — no code runs from a pack beyond CUE/Helm/kustomize
+A pack (`internal/pack`) is a directory, fetched from a local dir or
+`oci://registry/pack:tag` (git `github.com/org/repo//path@ref` sources ship
+in Phase 2). It is **data only** — no code runs from a pack beyond CUE/Helm
 rendering, entirely client-side:
 
 ```
@@ -97,7 +105,9 @@ mypack/
 name:    "gitea"
 version: "0.1.0"
 #Values: {
-    replicas: int & >0 | *1   // schema; `cube-idp add` validates before applying
+    replicas: int & >0 | *1   // schema; values from cube.yaml are validated
+                              // against this before anything touches the cluster —
+                              // edit spec.packs[].values and re-run `cube-idp up`
 }
 ```
 

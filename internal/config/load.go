@@ -15,6 +15,11 @@ import (
 //go:embed schema.cue
 var schemaCUE string
 
+// Schema returns the embedded CUE schema source cube.yaml is validated
+// against, surfaced by `cube-idp config schema` (the command every CUBE-0002
+// remediation points at).
+func Schema() string { return schemaCUE }
+
 func cuePath(s string) cue.Path { return cue.ParsePath(s) }
 
 func Load(path string) (*Cube, error) {

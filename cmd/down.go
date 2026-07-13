@@ -9,6 +9,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/apply"
 	"github.com/rafpe/cube-idp/internal/cluster"
 	"github.com/rafpe/cube-idp/internal/config"
+	enginefactory "github.com/rafpe/cube-idp/internal/engine/factory"
 )
 
 func newDownCmd() *cobra.Command {
@@ -28,6 +29,11 @@ func newDownCmd() *cobra.Command {
 			}
 			// existing clusters: remove only cube-idp-managed resources (spec §4.3)
 			if cube.Spec.Cluster.Provider == "existing" || keepCluster {
+				// Ensure would CREATE a missing kind cluster — never as a
+				// side effect of down --keep-cluster.
+				if err := requireClusterExists(c.Context(), prov, cube.Spec.Cluster.Provider, cube.Metadata.Name); err != nil {
+					return err
+				}
 				// "no infinite spinner": an unreachable existing cluster must
 				// not stall down indefinitely (mirrors status's connect timeout).
 				ensureCtx, cancel := context.WithTimeout(c.Context(), 3*time.Minute)
@@ -38,6 +44,19 @@ func newDownCmd() *cobra.Command {
 				}
 				a, err := apply.New(conn.REST, cube.Metadata.Name)
 				if err != nil {
+					return err
+				}
+				// Two-phase teardown: first the engine deletes its delivered
+				// sources and waits for their prune finalizers (so flux
+				// removes the workloads it delivered while its controllers
+				// are still alive), then the inventory cascade removes
+				// everything else — DeleteAll skips the already-gone engine
+				// objects via its IsNotFound/NoMatch handling.
+				eng, err := enginefactory.New(cube.Spec.Engine.Type)
+				if err != nil {
+					return err
+				}
+				if err := eng.Uninstall(c.Context(), a, 5*time.Minute); err != nil {
 					return err
 				}
 				return a.DeleteAll(c.Context(), 5*time.Minute)

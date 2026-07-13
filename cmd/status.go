@@ -30,6 +30,10 @@ func newStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// status is read-only: Ensure would CREATE a missing kind cluster.
+			if err := requireClusterExists(c.Context(), prov, cube.Spec.Cluster.Provider, cube.Metadata.Name); err != nil {
+				return err
+			}
 			ctx, cancel := context.WithTimeout(c.Context(), statusClusterTimeout)
 			conn, err := prov.Ensure(ctx, cube.Metadata.Name, cube.Spec.Cluster)
 			cancel()

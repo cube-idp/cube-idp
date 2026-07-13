@@ -10,9 +10,14 @@ package flux
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/rafpe/cube-idp/internal/apply"
 	"github.com/rafpe/cube-idp/internal/diag"
@@ -50,9 +55,101 @@ func (f *Flux) InstallManifests() ([]*unstructured.Unstructured, error) {
 	return InstallManifests()
 }
 
+// deliveredListGVKs are the engine-native kinds Deliver creates per pack;
+// Uninstall must remove exactly these, and wait for their prune finalizers.
+var deliveredListGVKs = []schema.GroupVersionKind{
+	{Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Kind: "KustomizationList"},
+	{Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "OCIRepositoryList"},
+}
+
+// Uninstall is phase one of teardown: it deletes this cube's delivered
+// Kustomizations and OCIRepositories, then polls until both lists are empty
+// — which means kustomize-controller has finished running the
+// Kustomizations' prune finalizers, i.e. every workload flux delivered is
+// gone. Only after that is it safe for `down` to delete the flux
+// controllers themselves (via the inventory-driven DeleteAll); deleting the
+// controllers first would orphan delivered workloads and leave the
+// finalized objects stuck Terminating forever.
 func (f *Flux) Uninstall(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
-	// Engine removal is inventory-driven like everything else; `down`
-	// deletes the whole inventory, so nothing engine-specific is needed
-	// in Phase 1 beyond being present in the inventory.
-	return nil
+	c := a.Client()
+	if remaining, err := deleteDelivered(ctx, c, a.Cube()); err != nil {
+		return err
+	} else if remaining == 0 {
+		return nil
+	}
+
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining, err := countDelivered(ctx, c, a.Cube())
+		if err != nil {
+			return err
+		}
+		if remaining == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return diag.New("CUBE-3005",
+				fmt.Sprintf("engine did not finish pruning delivered workloads within %s (%d object(s) still terminating)", timeout, remaining),
+				"check kustomize-controller logs in flux-system; re-run `cube-idp down`")
+		}
+		select {
+		case <-ctx.Done():
+			return diag.Wrap(ctx.Err(), "CUBE-3005", "engine did not finish pruning delivered workloads",
+				"check kustomize-controller logs in flux-system; re-run `cube-idp down`")
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+// deleteDelivered lists this cube's delivered flux objects in flux-system
+// and issues deletes for each, returning how many existed. Kinds whose CRD
+// is absent (engine never installed, or already torn down) count as zero.
+func deleteDelivered(ctx context.Context, c client.Client, cube string) (int, error) {
+	total := 0
+	for _, gvk := range deliveredListGVKs {
+		items, err := listDelivered(ctx, c, gvk, cube)
+		if err != nil {
+			return 0, err
+		}
+		for i := range items {
+			if err := c.Delete(ctx, &items[i]); err != nil && !apierrors.IsNotFound(err) {
+				return 0, diag.Wrap(err, "CUBE-3005",
+					fmt.Sprintf("cannot delete %s %s/%s", items[i].GetKind(), items[i].GetNamespace(), items[i].GetName()),
+					"check RBAC on namespace flux-system; re-run `cube-idp down`")
+			}
+		}
+		total += len(items)
+	}
+	return total, nil
+}
+
+// countDelivered reports how many of this cube's delivered flux objects
+// still exist (i.e. still hold prune finalizers).
+func countDelivered(ctx context.Context, c client.Client, cube string) (int, error) {
+	total := 0
+	for _, gvk := range deliveredListGVKs {
+		items, err := listDelivered(ctx, c, gvk, cube)
+		if err != nil {
+			return 0, err
+		}
+		total += len(items)
+	}
+	return total, nil
+}
+
+func listDelivered(ctx context.Context, c client.Client, gvk schema.GroupVersionKind, cube string) ([]unstructured.Unstructured, error) {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(gvk)
+	err := c.List(ctx, list,
+		client.InNamespace(fluxNS),
+		client.MatchingLabels{apply.CubeLabel: cube},
+	)
+	if meta.IsNoMatchError(err) {
+		return nil, nil // CRD absent: nothing was ever delivered via this kind
+	}
+	if err != nil {
+		return nil, diag.Wrap(err, "CUBE-3005", fmt.Sprintf("cannot list %s in %s", gvk.Kind, fluxNS),
+			"check kubeconfig and cluster connectivity; re-run `cube-idp down`")
+	}
+	return list.Items, nil
 }

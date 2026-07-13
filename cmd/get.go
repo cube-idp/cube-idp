@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
@@ -67,7 +69,15 @@ func newGetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			conn, err := prov.Ensure(c.Context(), cube.Metadata.Name, cube.Spec.Cluster)
+			// get is read-only: Ensure would CREATE a missing kind cluster.
+			if err := requireClusterExists(c.Context(), prov, cube.Spec.Cluster.Provider, cube.Metadata.Name); err != nil {
+				return err
+			}
+			// Bound the connect like status/down — no infinite spinner on an
+			// unreachable cluster.
+			ensureCtx, cancel := context.WithTimeout(c.Context(), 3*time.Minute)
+			conn, err := prov.Ensure(ensureCtx, cube.Metadata.Name, cube.Spec.Cluster)
+			cancel()
 			if err != nil {
 				return err
 			}

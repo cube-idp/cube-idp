@@ -7,6 +7,7 @@ import (
 
 	"github.com/rafpe/cube-idp/internal/cluster/kindp"
 	"github.com/rafpe/cube-idp/internal/config"
+	"github.com/rafpe/cube-idp/internal/diag"
 )
 
 // newConfigCmd exposes read-only inspection of the loaded cube.yaml, e.g.
@@ -24,7 +25,9 @@ func newConfigCmd() *cobra.Command {
 				return err
 			}
 			if cube.Spec.Cluster.Provider != "kind" {
-				return fmt.Errorf("render-cluster applies to provider: kind (got %q)", cube.Spec.Cluster.Provider)
+				return diag.New("CUBE-0004",
+					fmt.Sprintf("render-cluster applies to provider: kind (got %q)", cube.Spec.Cluster.Provider),
+					"provider: existing creates no cluster, so there is no provider config to render")
 			}
 			out, err := kindp.RenderConfig(cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway)
 			if err != nil {
@@ -34,7 +37,20 @@ func newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
+	// `cube-idp config schema` — the command every CUBE-0002 remediation
+	// points at: prints the embedded CUE schema cube.yaml is validated
+	// against. Needs no cube.yaml to exist.
+	schema := &cobra.Command{
+		Use:   "schema",
+		Short: "Print the CUE schema cube.yaml is validated against",
+		RunE: func(c *cobra.Command, _ []string) error {
+			fmt.Fprint(c.OutOrStdout(), config.Schema())
+			return nil
+		},
+	}
+
 	cfg.PersistentFlags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
 	cfg.AddCommand(render)
+	cfg.AddCommand(schema)
 	return cfg
 }

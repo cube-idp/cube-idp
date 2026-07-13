@@ -130,7 +130,8 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintf(out, "\n✔ cube %q is up — https://%s:%d\n  credentials: cube-idp get secrets\n",
+	// Phase 1 is HTTP end-to-end; TLS arrives with `cube-idp trust` (Phase 2).
+	fmt.Fprintf(out, "\n✔ cube %q is up — http://%s:%d\n  credentials: cube-idp get secrets\n",
 		cube.Metadata.Name, cube.Spec.Gateway.Host, cube.Spec.Gateway.Port)
 	return nil
 }
