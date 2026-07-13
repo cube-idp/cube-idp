@@ -87,6 +87,18 @@ type GatewaySpec struct {
 	Ref string `yaml:"ref,omitempty" json:"ref,omitempty"`
 }
 
+// PackRef resolves the pack source `up`/`diff` fetch for the gateway pack:
+// an explicit g.Ref always wins; otherwise it falls back to
+// "packs/<Pack>", a path that only resolves when cube-idp runs from a
+// checkout of its own repo. `cube-idp init --local <repo>` sets Ref to an
+// absolute path so callers work from any working directory.
+func (g GatewaySpec) PackRef() string {
+	if g.Ref != "" {
+		return g.Ref
+	}
+	return "packs/" + g.Pack
+}
+
 // PackRef references an installable pack and its values overrides.
 type PackRef struct {
 	Ref string `yaml:"ref" json:"ref"`

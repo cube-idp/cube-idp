@@ -54,14 +54,11 @@ func (a *Applier) Client() client.Client { return a.c }
 // engine.Health implementations to filter their component list.
 func (a *Applier) Cube() string { return a.cube }
 
-// Apply labels every object cube-idp.dev/cube=<cubeName>, server-side
-// applies them all with field manager "cube-idp", and, if wait is true,
-// blocks until kstatus reports every object ready or timeout elapses.
-// A timeout produces CUBE-2001 wrapping the per-object status summary.
-//
-// Note: Apply mutates the passed objects in place — the cube label is set
-// on each element of objs as a side effect; the slice is not copied.
-func (a *Applier) Apply(ctx context.Context, objs []*unstructured.Unstructured, wait bool, timeout time.Duration) error {
+// label sets cube-idp.dev/cube=<cubeName> on every object, mutating objs in
+// place. Both Apply and Diff label objects identically before handing them
+// to the ResourceManager, so the cube label never shows up as drift in a
+// server-side diff.
+func (a *Applier) label(objs []*unstructured.Unstructured) {
 	for _, o := range objs {
 		labels := o.GetLabels()
 		if labels == nil {
@@ -70,6 +67,17 @@ func (a *Applier) Apply(ctx context.Context, objs []*unstructured.Unstructured, 
 		labels[CubeLabel] = a.cube
 		o.SetLabels(labels)
 	}
+}
+
+// Apply labels every object cube-idp.dev/cube=<cubeName>, server-side
+// applies them all with field manager "cube-idp", and, if wait is true,
+// blocks until kstatus reports every object ready or timeout elapses.
+// A timeout produces CUBE-2001 wrapping the per-object status summary.
+//
+// Note: Apply mutates the passed objects in place — the cube label is set
+// on each element of objs as a side effect; the slice is not copied.
+func (a *Applier) Apply(ctx context.Context, objs []*unstructured.Unstructured, wait bool, timeout time.Duration) error {
+	a.label(objs)
 	if _, err := a.rm.ApplyAllStaged(ctx, objs, ssa.DefaultApplyOptions()); err != nil {
 		return diag.Wrap(err, diag.CodeApplyFailed, "server-side apply failed", "inspect the object in the error and re-run `cube-idp up`")
 	}

@@ -7,8 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -94,13 +92,13 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	}
 	defer stop()
 
-	dir, err := cacheDir()
+	dir, err := pack.DefaultCacheDir()
 	if err != nil {
 		return err
 	}
 
 	// Gateway pack goes first — everything else depends on ingress existing.
-	refs := append([]config.PackRef{{Ref: gatewayPackRef(cube.Spec.Gateway)}}, cube.Spec.Packs...)
+	refs := append([]config.PackRef{{Ref: cube.Spec.Gateway.PackRef()}}, cube.Spec.Packs...)
 	var entries []lock.Entry
 	for _, pr := range refs {
 		p, err := pack.Fetch(ctx, pr.Ref, dir)
@@ -155,34 +153,6 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	fmt.Fprintf(out, "\n✔ cube %q is up — http://%s:%d\n  credentials: cube-idp get secrets\n",
 		cube.Metadata.Name, cube.Spec.Gateway.Host, cube.Spec.Gateway.Port)
 	return nil
-}
-
-// gatewayPackRef resolves the pack source `up` fetches for the gateway
-// pack: an explicit gw.Ref always wins; otherwise it falls back to
-// "packs/<Pack>", a path that only resolves when cube-idp runs from a
-// checkout of its own repo. `cube-idp init --local <repo>` sets Ref to an
-// absolute path so `up` works from any working directory.
-func gatewayPackRef(gw config.GatewaySpec) string {
-	if gw.Ref != "" {
-		return gw.Ref
-	}
-	return "packs/" + gw.Pack
-}
-
-// cacheDir returns (creating if needed) the local pack cache directory,
-// $HOME/.cache/cube-idp/packs.
-func cacheDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", diag.Wrap(err, diag.CodePackCacheDirErr, "cannot determine home directory for the pack cache",
-			"set $HOME, or check your environment")
-	}
-	dir := filepath.Join(home, ".cache", "cube-idp", "packs")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", diag.Wrap(err, diag.CodePackCacheDirErr, fmt.Sprintf("cannot create pack cache dir %s", dir),
-			"check permissions on $HOME/.cache")
-	}
-	return dir, nil
 }
 
 // waitHealthy polls eng.Health every healthPoll until every reported
