@@ -3801,7 +3801,7 @@ func UninstallOS(dir string) error // truststore uninstall + state clear; CUBE-6
 
 D6 contract: `up` NEVER calls these. Only `cube-idp trust` (after an explicit y/N prompt or `--yes`) calls `InstallOS`; `cube-idp trust --uninstall` and `cube-idp down` call `UninstallOS`.
 
-- [ ] **Step 1: Write the failing consent test**
+- [x] **Step 1: Write the failing consent test**
 
 `cmd/trust_test.go`:
 
@@ -3849,12 +3849,12 @@ func TestTrustRequiresConsent(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./cmd/ -run TestTrustRequiresConsent -v`
 Expected: FAIL (trust command unknown)
 
-- [ ] **Step 3: Implement the store wrapper**
+- [x] **Step 3: Implement the store wrapper**
 
 ```bash
 go get github.com/smallstep/truststore@latest
@@ -3907,7 +3907,7 @@ func UninstallOS(dir string) error {
 }
 ```
 
-- [ ] **Step 4: Implement the command + down revert**
+- [x] **Step 4: Implement the command + down revert**
 
 `cmd/trust.go`:
 
@@ -3985,12 +3985,12 @@ if dir, derr := trust.Dir(); derr == nil {
 }
 ```
 
-- [ ] **Step 5: Run tests + manual OS verification**
+- [x] **Step 5: Run tests + manual OS verification**
 
 Run: `go test ./cmd/ ./internal/trust/ -v && go build ./...`
 Expected: PASS. Then, on the developer machine only (not CI): `./cube-idp trust` → check the OS store (macOS: `security find-certificate -c "cube-idp local CA" /Library/Keychains/System.keychain`); `./cube-idp trust --uninstall` → gone. Record the result in the commit message.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "feat: opt-in cube-idp trust command with full revert on down (D6)"
