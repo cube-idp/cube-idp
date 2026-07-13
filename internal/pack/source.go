@@ -54,11 +54,15 @@ func Fetch(ctx context.Context, ref, cacheDir string) (*Pack, error) {
 // pullOCI pulls the OCI artifact identified by ref (host/repo:tag, "oci://"
 // already trimmed) into cacheDir and returns the extracted pack directory.
 // Anonymous auth only (Phase 1); plain HTTP is used for 127.0.0.1/localhost
-// registries (the zot port-forward tunnel).
+// registries (the zot port-forward tunnel). Every failure in this family
+// (bad ref, network, corrupt artifact, extraction) reports CUBE-4012.
+// Note: the digest-keyed cache only skips re-extraction — the registry
+// round-trip (manifest resolve + blob fetch into the staging store) still
+// happens on every call.
 func pullOCI(ctx context.Context, ref, cacheDir string) (string, error) {
 	repo, err := remote.NewRepository(ref)
 	if err != nil {
-		return "", diag.Wrap(err, "CUBE-4001", fmt.Sprintf("invalid OCI pack ref %q", ref),
+		return "", diag.Wrap(err, "CUBE-4012", fmt.Sprintf("invalid OCI pack ref %q", ref),
 			"use the form oci://host/repo:tag")
 	}
 	repo.Client = auth.DefaultClient
@@ -67,25 +71,25 @@ func pullOCI(ctx context.Context, ref, cacheDir string) (string, error) {
 	}
 	tagOrDigest := repo.Reference.Reference
 	if tagOrDigest == "" {
-		return "", diag.New("CUBE-4001", fmt.Sprintf("OCI pack ref %q has no tag or digest", ref),
+		return "", diag.New("CUBE-4012", fmt.Sprintf("OCI pack ref %q has no tag or digest", ref),
 			"use the form oci://host/repo:tag")
 	}
 
 	staging, err := os.MkdirTemp(cacheDir, "pull-*")
 	if err != nil {
-		return "", diag.Wrap(err, "CUBE-4001", "cannot create pack cache staging dir", "check cacheDir permissions")
+		return "", diag.Wrap(err, "CUBE-4012", "cannot create pack cache staging dir", "check cacheDir permissions")
 	}
 	defer os.RemoveAll(staging)
 
 	store, err := oci.New(staging)
 	if err != nil {
-		return "", diag.Wrap(err, "CUBE-4001", "cannot create local OCI content store", "check cacheDir permissions")
+		return "", diag.Wrap(err, "CUBE-4012", "cannot create local OCI content store", "check cacheDir permissions")
 	}
 
 	desc, err := oras.Copy(ctx, repo, tagOrDigest, store, tagOrDigest, oras.DefaultCopyOptions)
 	if err != nil {
-		return "", diag.Wrap(err, "CUBE-4001", fmt.Sprintf("cannot pull pack %q", ref),
-			"check the registry is reachable and the ref (repo:tag) is correct")
+		return "", diag.Wrap(err, "CUBE-4012", fmt.Sprintf("cannot pull pack %q", ref),
+			"check the pack reference, registry availability, and network; re-run with the same command")
 	}
 
 	destDir := filepath.Join(cacheDir, sanitizeRepoDigest(repo.Reference.Repository, string(desc.Digest)))
@@ -93,7 +97,7 @@ func pullOCI(ctx context.Context, ref, cacheDir string) (string, error) {
 		return destDir, nil // already extracted by a previous pull
 	}
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return "", diag.Wrap(err, "CUBE-4001", "cannot create pack cache dir", "check cacheDir permissions")
+		return "", diag.Wrap(err, "CUBE-4012", "cannot create pack cache dir", "check cacheDir permissions")
 	}
 	if err := extractManifest(ctx, store, desc, destDir); err != nil {
 		return "", err
@@ -123,7 +127,7 @@ func sanitizeRepoDigest(repo, digest string) string {
 func extractManifest(ctx context.Context, store *oci.Store, desc ocispec.Descriptor, destDir string) error {
 	rc, err := store.Fetch(ctx, desc)
 	if err != nil {
-		return diag.Wrap(err, "CUBE-4001", "cannot read pulled pack manifest", "this is a cube-idp bug — please report it")
+		return diag.Wrap(err, "CUBE-4012", "cannot read pulled pack manifest", "this is a cube-idp bug — please report it")
 	}
 	var manifest ocispec.Manifest
 	err = func() error {
@@ -131,7 +135,7 @@ func extractManifest(ctx context.Context, store *oci.Store, desc ocispec.Descrip
 		return json.NewDecoder(rc).Decode(&manifest)
 	}()
 	if err != nil {
-		return diag.Wrap(err, "CUBE-4001", "pulled pack manifest is not valid OCI JSON", "this is a cube-idp bug — please report it")
+		return diag.Wrap(err, "CUBE-4012", "pulled pack manifest is not valid OCI JSON", "this is a cube-idp bug — please report it")
 	}
 
 	wrote := false
@@ -142,7 +146,7 @@ func extractManifest(ctx context.Context, store *oci.Store, desc ocispec.Descrip
 		wrote = true
 	}
 	if !wrote {
-		return diag.New("CUBE-4001", "pulled pack artifact has no layers", "check the pack was published correctly")
+		return diag.New("CUBE-4012", "pulled pack artifact has no layers", "check the pack was published correctly")
 	}
 	return nil
 }
@@ -150,7 +154,7 @@ func extractManifest(ctx context.Context, store *oci.Store, desc ocispec.Descrip
 func extractLayer(ctx context.Context, store *oci.Store, layer ocispec.Descriptor, destDir string) error {
 	rc, err := store.Fetch(ctx, layer)
 	if err != nil {
-		return diag.Wrap(err, "CUBE-4001", "cannot read pulled pack layer", "this is a cube-idp bug — please report it")
+		return diag.Wrap(err, "CUBE-4012", "cannot read pulled pack layer", "this is a cube-idp bug — please report it")
 	}
 	defer rc.Close()
 
@@ -158,7 +162,7 @@ func extractLayer(ctx context.Context, store *oci.Store, layer ocispec.Descripto
 	case strings.Contains(layer.MediaType, "tar+gzip") || strings.Contains(layer.MediaType, "tar.gzip"):
 		gr, err := gzip.NewReader(rc)
 		if err != nil {
-			return diag.Wrap(err, "CUBE-4001", "pulled pack layer is not valid gzip", "this is a cube-idp bug — please report it")
+			return diag.Wrap(err, "CUBE-4012", "pulled pack layer is not valid gzip", "this is a cube-idp bug — please report it")
 		}
 		defer gr.Close()
 		return untar(gr, destDir)
@@ -181,7 +185,7 @@ func untar(r io.Reader, destDir string) error {
 			return nil
 		}
 		if err != nil {
-			return diag.Wrap(err, "CUBE-4001", "pulled pack tarball is corrupt", "this is a cube-idp bug — please report it")
+			return diag.Wrap(err, "CUBE-4012", "pulled pack tarball is corrupt", "this is a cube-idp bug — please report it")
 		}
 		target, err := safeJoin(destDir, hdr.Name)
 		if err != nil {
@@ -190,11 +194,11 @@ func untar(r io.Reader, destDir string) error {
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil {
-				return diag.Wrap(err, "CUBE-4001", "cannot extract pulled pack", "check cacheDir permissions")
+				return diag.Wrap(err, "CUBE-4012", "cannot extract pulled pack", "check cacheDir permissions")
 			}
 		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return diag.Wrap(err, "CUBE-4001", "cannot extract pulled pack", "check cacheDir permissions")
+				return diag.Wrap(err, "CUBE-4012", "cannot extract pulled pack", "check cacheDir permissions")
 			}
 			if err := writeFile(filepath.Dir(target), filepath.Base(target), tr); err != nil {
 				return err
@@ -209,15 +213,15 @@ func writeFile(destDir, relPath string, r io.Reader) error {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return diag.Wrap(err, "CUBE-4001", "cannot extract pulled pack", "check cacheDir permissions")
+		return diag.Wrap(err, "CUBE-4012", "cannot extract pulled pack", "check cacheDir permissions")
 	}
 	f, err := os.Create(target)
 	if err != nil {
-		return diag.Wrap(err, "CUBE-4001", "cannot extract pulled pack", "check cacheDir permissions")
+		return diag.Wrap(err, "CUBE-4012", "cannot extract pulled pack", "check cacheDir permissions")
 	}
 	defer f.Close()
 	if _, err := io.Copy(f, r); err != nil {
-		return diag.Wrap(err, "CUBE-4001", "cannot extract pulled pack", "check cacheDir permissions")
+		return diag.Wrap(err, "CUBE-4012", "cannot extract pulled pack", "check cacheDir permissions")
 	}
 	return nil
 }
@@ -227,7 +231,7 @@ func writeFile(destDir, relPath string, r io.Reader) error {
 func safeJoin(destDir, rel string) (string, error) {
 	target := filepath.Join(destDir, rel)
 	if target != destDir && !strings.HasPrefix(target, destDir+string(filepath.Separator)) {
-		return "", diag.New("CUBE-4001", fmt.Sprintf("pulled pack contains an unsafe path %q", rel),
+		return "", diag.New("CUBE-4012", fmt.Sprintf("pulled pack contains an unsafe path %q", rel),
 			"this is a cube-idp bug — please report it")
 	}
 	return target, nil

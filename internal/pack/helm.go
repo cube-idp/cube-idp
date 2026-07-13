@@ -38,13 +38,17 @@ import (
 const defaultRenderKubeVersion = "v1.33.1"
 
 // chartRef is the chart.yaml shape documented in pack.go's package doc.
+// Field tags are json (not yaml) because sigs.k8s.io/yaml converts the YAML
+// to JSON and then unmarshals with encoding/json, which honors json tags
+// only — yaml tags would work solely via encoding/json's case-insensitive
+// field-name fallback.
 type chartRef struct {
-	Chart       string         `yaml:"chart"`
-	Repo        string         `yaml:"repo"`
-	Version     string         `yaml:"version"`
-	ReleaseName string         `yaml:"releaseName"`
-	Namespace   string         `yaml:"namespace"`
-	Values      map[string]any `yaml:"values"`
+	Chart       string         `json:"chart"`
+	Repo        string         `json:"repo"`
+	Version     string         `json:"version"`
+	ReleaseName string         `json:"releaseName"`
+	Namespace   string         `json:"namespace"`
+	Values      map[string]any `json:"values"`
 }
 
 // renderHelm reads chart.yaml in dir, pulls the pinned chart, and
