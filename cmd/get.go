@@ -90,6 +90,10 @@ func newGetCmd() *cobra.Command {
 	return get
 }
 
+// cellEscaper keeps secret values from corrupting the tabwriter table:
+// newlines (e.g. PEM keys) and tabs are shown as literal \n and \t.
+var cellEscaper = strings.NewReplacer("\n", `\n`, "\t", `\t`)
+
 // printSecretRows renders rows as an aligned PACK/NAMESPACE/NAME/DATA table.
 func printSecretRows(w io.Writer, rows []secretRow) {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
@@ -102,7 +106,7 @@ func printSecretRows(w io.Writer, rows []secretRow) {
 		sort.Strings(keys)
 		pairs := make([]string, 0, len(keys))
 		for _, k := range keys {
-			pairs = append(pairs, fmt.Sprintf("%s=%s", k, r.Fields[k]))
+			pairs = append(pairs, fmt.Sprintf("%s=%s", k, cellEscaper.Replace(r.Fields[k])))
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Pack, r.Namespace, r.Name, strings.Join(pairs, ","))
 	}

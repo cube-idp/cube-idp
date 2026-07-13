@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -27,7 +28,11 @@ func newDownCmd() *cobra.Command {
 			}
 			// existing clusters: remove only cube-idp-managed resources (spec §4.3)
 			if cube.Spec.Cluster.Provider == "existing" || keepCluster {
-				conn, err := prov.Ensure(c.Context(), cube.Metadata.Name, cube.Spec.Cluster)
+				// "no infinite spinner": an unreachable existing cluster must
+				// not stall down indefinitely (mirrors status's connect timeout).
+				ensureCtx, cancel := context.WithTimeout(c.Context(), 3*time.Minute)
+				conn, err := prov.Ensure(ensureCtx, cube.Metadata.Name, cube.Spec.Cluster)
+				cancel()
 				if err != nil {
 					return err
 				}
