@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rafpe/cube-idp/internal/cluster/kindp"
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/kube"
@@ -35,7 +36,7 @@ func New(spec config.ClusterSpec, gw config.GatewaySpec) (Provider, error) {
 	}
 }
 
-// newKind is a temporary stub for Task 5.
+// newKind returns the kind ClusterProvider implementation.
 func newKind(gw config.GatewaySpec) Provider {
-	panic("kind provider: Task 5")
+	return kindp.New(gw)
 }

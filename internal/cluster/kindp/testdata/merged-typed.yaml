@@ -1,0 +1,23 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: dev
+nodes:
+    - role: control-plane
+      image: kindest/node:v1.33.1
+      extraMounts:
+        - containerPath: /var/lib/images
+          hostPath: /tmp/images
+      extraPortMappings:
+        - containerPort: 443
+          hostPort: 8443
+          protocol: TCP
+        - containerPort: 32222
+          hostPort: 32222
+          protocol: TCP
+containerdConfigPatches:
+    - |-
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+        endpoint = ["https://mirror.corp.example"]
+    - |-
+      [plugins."io.containerd.grpc.v1.cri".registry.configs."registry.corp.example:5000".tls]
+        insecure_skip_verify = true
