@@ -48,6 +48,15 @@ type Pack struct {
 	Name    string
 	Version string
 	Dir     string
+
+	// Pinned records the fetch-time pin for cube.lock, in one of:
+	//   "git+<sha>"   — git pack refs (this task), the full commit SHA
+	//                   resolved via resolveGitPin.
+	//   "oci:<digest>" — OCI pack refs (Task 5).
+	//   "dir:<dirhash>" — local directory and http/s3 getter refs, which have
+	//                   no upstream pin protocol of their own (Task 5).
+	// Empty until the relevant task fills it in for that source kind.
+	Pinned string
 }
 
 // Rendered is the final set of objects a pack produces for a given set of

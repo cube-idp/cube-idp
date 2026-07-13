@@ -21,12 +21,14 @@ import (
 )
 
 // Fetch resolves ref to a local, on-disk pack directory and parses its
-// pack.cue. ref forms (spec §4.4 MVP):
+// pack.cue. ref forms (spec §4.4):
 //
 //	local directory path
 //	oci://host/repo:tag  (or @digest)
+//	<host>/<org>/<repo>[//subdir]@<tag|branch|sha>  (bare git grammar)
+//	git::…, s3::…, http(s)://… (explicit go-getter forms)
 //
-// git refs land in Phase 2. Any other URL scheme is rejected as CUBE-4001.
+// Any other URL scheme is rejected as CUBE-4001.
 func Fetch(ctx context.Context, ref, cacheDir string) (*Pack, error) {
 	switch {
 	case strings.HasPrefix(ref, "oci://"):
@@ -35,9 +37,22 @@ func Fetch(ctx context.Context, ref, cacheDir string) (*Pack, error) {
 			return nil, err
 		}
 		return loadMeta(dir)
+	case isGitRef(ref):
+		return fetchGit(ctx, ref, cacheDir)
+	case isGetterRef(ref):
+		dst := filepath.Join(cacheDir, "getter", sanitizeRef(ref))
+		if err := fetchGetter(ctx, ref, dst); err != nil {
+			return nil, err
+		}
+		p, err := loadMeta(dst)
+		if err != nil {
+			return nil, err
+		}
+		// http/s3 refs have no upstream pin protocol; Task 5's dirhash covers them.
+		return p, nil
 	case strings.Contains(ref, "://"):
 		return nil, diag.New(diag.CodePackRefInvalid, fmt.Sprintf("unsupported pack ref scheme in %q", ref),
-			"use a local directory path or oci://host/repo:tag (git refs arrive in Phase 2)")
+			"use a local directory path, oci://host/repo:tag, github.com/org/repo//path@rev, or an explicit go-getter URL (git::…, s3::…, https://…)")
 	default: // local directory
 		abs, err := filepath.Abs(ref)
 		if err != nil {
