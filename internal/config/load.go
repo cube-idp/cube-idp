@@ -46,6 +46,12 @@ func Load(path string) (*Cube, error) {
 	if err := crossValidate(&c); err != nil {
 		return nil, err
 	}
+	// kubernetesVersion has no CUE default (an explicit version with
+	// provider "existing" must be rejected above, D10/spec §4.1), so the
+	// documented default for kind clusters is applied here instead.
+	if c.Spec.Cluster.Provider == "kind" && c.Spec.Cluster.KubernetesVersion == "" {
+		c.Spec.Cluster.KubernetesVersion = "v1.33.1"
+	}
 	return &c, nil
 }
 
@@ -82,9 +88,9 @@ func normalizeAny(v any) any {
 func crossValidate(c *Cube) error {
 	cl := c.Spec.Cluster
 	if cl.Provider == "existing" {
-		if len(cl.ExtraPorts) > 0 || len(cl.Mounts) > 0 || cl.ProviderConfig != "" {
+		if len(cl.ExtraPorts) > 0 || len(cl.Mounts) > 0 || cl.ProviderConfig != "" || cl.KubernetesVersion != "" {
 			return diag.New("CUBE-1003",
-				"cluster.extraPorts/mounts/providerConfig imply node creation and are not valid with provider: existing",
+				"cluster.extraPorts/mounts/providerConfig/kubernetesVersion imply node creation and are not valid with provider: existing",
 				"remove those fields, or switch to provider: kind")
 		}
 	}

@@ -2,6 +2,8 @@ package config
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rafpe/cube-idp/internal/diag"
@@ -26,6 +28,9 @@ func TestLoadMinimalAppliesDefaults(t *testing.T) {
 	}
 	if c.Spec.Gateway.Host != "cube-idp.localtest.me" || c.Spec.Gateway.Port != 8443 || c.Spec.Gateway.Pack != "traefik" {
 		t.Fatalf("gateway defaults: %+v", c.Spec.Gateway)
+	}
+	if c.Spec.Cluster.KubernetesVersion != "v1.33.1" {
+		t.Fatalf("kubernetesVersion default not applied: %+v", c.Spec.Cluster)
 	}
 }
 
@@ -54,6 +59,28 @@ func TestLoadRejectsBadProvider(t *testing.T) {
 
 func TestLoadRejectsNodeFieldsOnExisting(t *testing.T) {
 	_, err := Load("testdata/existing-with-ports.yaml")
+	if codeOf(t, err) != "CUBE-1003" {
+		t.Fatalf("want CUBE-1003, got %v", err)
+	}
+}
+
+func TestLoadRejectsKubernetesVersionOnExisting(t *testing.T) { // D10, spec §4.1
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cube.yaml")
+	doc := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata:
+  name: remote
+spec:
+  cluster:
+    provider: existing
+    context: my-eks
+    kubernetesVersion: v1.30.0
+`
+	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
 	if codeOf(t, err) != "CUBE-1003" {
 		t.Fatalf("want CUBE-1003, got %v", err)
 	}

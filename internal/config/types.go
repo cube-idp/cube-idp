@@ -69,7 +69,9 @@ type GatewaySpec struct {
 
 // PackRef references an installable pack and its values overrides.
 type PackRef struct {
-	Ref    string         `yaml:"ref" json:"ref"`
+	Ref string `yaml:"ref" json:"ref"`
+	// Values holds pack value overrides. Numeric entries are normalized by
+	// Load to int/float64 (never int64, CUE's raw decode type).
 	Values map[string]any `yaml:"values" json:"values"`
 }
 
