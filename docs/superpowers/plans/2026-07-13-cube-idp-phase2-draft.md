@@ -3057,7 +3057,7 @@ git add -A && git commit -m "feat: local CA with mkcert adoption (D12), server c
 
 **Phase 1 → Phase 2 behavior change (document in README):** Phase 1 mapped host `spec.gateway.port` (default 8443) to Traefik's plain-HTTP NodePort 30080 while printing an `https://` URL. Phase 2 makes that URL true: host `gateway.port` now maps to the websecure NodePort **30443** (TLS terminated by Traefik with a cube-idp CA-issued cert), and plain HTTP stays available in-cluster on the `web` listener. Existing kind clusters need `down`/`up` to pick up the new mapping — acceptable pre-1.0, called out in the release notes.
 
-- [ ] **Step 1: Extend the traefik pack**
+- [x] **Step 1: Extend the traefik pack**
 
 `packs/traefik/manifests/10-gateway.yaml` — add the HTTPS listener alongside the existing web listener:
 
@@ -3116,7 +3116,7 @@ values:
       type: NodePort
 ```
 
-- [ ] **Step 2: Write the failing kind-merge test**
+- [x] **Step 2: Write the failing kind-merge test**
 
 Append to `internal/cluster/kindp/merge_test.go`:
 
@@ -3136,7 +3136,7 @@ func TestRenderMapsGatewayPortToWebsecure(t *testing.T) {
 
 Run: `go test ./internal/cluster/kindp/ -run TestRenderMapsGatewayPort -v` — Expected: FAIL (still 30080).
 
-- [ ] **Step 3: Implement the mapping change**
+- [x] **Step 3: Implement the mapping change**
 
 In `internal/cluster/kindp/merge.go`, change the constant:
 
@@ -3148,7 +3148,7 @@ Regenerate + re-review the golden fixtures (`merged-typed.yaml`, `merged-with-us
 
 Run: `go test ./internal/cluster/kindp/ -v` — Expected: PASS.
 
-- [ ] **Step 4: Write the failing TLS-secret test**
+- [x] **Step 4: Write the failing TLS-secret test**
 
 `internal/up/tls_test.go`:
 
@@ -3196,7 +3196,7 @@ func TestGatewayTLSSecretShape(t *testing.T) {
 
 (import `k8s.io/apimachinery/pkg/apis/meta/v1/unstructured`.) Run: `go test ./internal/up/ -run TestGatewayTLS -v` — Expected: FAIL.
 
-- [ ] **Step 5: Implement `gatewayTLSObjects` + wire into `up.Run`**
+- [x] **Step 5: Implement `gatewayTLSObjects` + wire into `up.Run`**
 
 Add to `internal/up/up.go` (new file section or `tls.go` in the same package):
 
@@ -3259,14 +3259,14 @@ func ensureGatewayTLS(ctx context.Context, a *apply.Applier, gw config.GatewaySp
 
 (imports: `corev1 "k8s.io/api/core/v1"`, `sigs.k8s.io/controller-runtime/pkg/client`.) In `up.Run`, call `ensureGatewayTLS(ctx, a, cube.Spec.Gateway)` **after** the engine install step and **before** the pack delivery loop (the gateway pack's listener references the secret; the secret must exist before Flux/Argo reconciles the Gateway), followed by `step(out, "tls", "gateway certificate ready (CA: run `cube-idp trust` to make browsers trust it)")`.
 
-**D12 ordering (spec: "cert material is generated before cluster creation"):** additionally make `up.Run`'s FIRST step — before `ClusterProvider.Ensure` — a `trust.Dir()` + `trust.EnsureCA(dir)` call with `step(out, "ca", "local CA ready (%s)", ca.CertPath)`. This is what lets the kind provider mount the CA into containerd `certs.d` at cluster-create time (Task 10 builds on it) and guarantees the mkcert adoption (Task 8 Step 3c) happens before any cluster artifact references the trust root. `ensureGatewayTLS` keeps its own internal `EnsureCA` (idempotent load — by this point it always hits the fast path), so its signature stays as written above. Assert the ordering in a test: extend the Task 9 tls test file with a check that `up.Run`'s step sequence emits `"ca"` before the cluster step (RECONCILE: use whatever step-recording seam the phase-1 `up.Run` structure from checkpoint 0.13 makes available — if none exists, assert by refactoring `Run` into an ordered `[]stepFn` slice and testing the slice order, not by parsing output strings).
+**D12 ordering (spec: "cert material is generated before cluster creation"):** additionally make `up.Run`'s FIRST step — before `ClusterProvider.Ensure` — a `trust.Dir()` + `trust.EnsureCA(dir)` call with `step(out, "ca", "local CA ready (%s)", ca.CertPath)`. This is what lets the kind provider mount the CA into containerd `certs.d` at cluster-create time (Task 10 builds on it) and guarantees the mkcert adoption (Task 8 Step 3c) happens before any cluster artifact references the trust root. `ensureGatewayTLS` keeps its own internal `EnsureCA` (idempotent load — by this point it always hits the fast path), so its signature stays as written above. Assert the ordering in a test: extend the Task 9 tls test file with a check that `up.Run`'s step sequence emits `"ca"` before the cluster step. RESOLVED at execution (controller adjudication): the test asserts on the output order of the `▸ [ca]` line using a fail-fast bogus-context config — acceptable because Task 13.8 pins the plain step format byte-for-byte, making the string-based assertion stable by design; the `[]stepFn` refactor was judged disproportionate.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `go test ./internal/up/ ./internal/cluster/kindp/ -short -v && go build ./...`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A && git commit -m "feat: HTTPS gateway — websecure listener, 30443 mapping, CA-issued TLS secret from up"
