@@ -1624,7 +1624,7 @@ func RenderedHash(objs []*unstructured.Unstructured) (string, error)
 func ImagesFrom(objs []*unstructured.Unstructured) []string
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `internal/lock/lock_test.go`:
 
@@ -1722,12 +1722,12 @@ func TestReadCorrupt(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `go test ./internal/lock/ -v`
 Expected: FAIL (package does not exist)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `internal/lock/lock.go`:
 
@@ -1869,7 +1869,7 @@ func RenderedHash(objs []*unstructured.Unstructured) (string, error) {
 }
 ```
 
-- [ ] **Step 4: Fill `Pinned` for oci and local-dir sources**
+- [x] **Step 4: Fill `Pinned` for oci and local-dir sources**
 
 ```bash
 go get golang.org/x/mod@latest
@@ -1895,7 +1895,7 @@ func TestFetchLocalDirSetsPinned(t *testing.T) {
 }
 ```
 
-- [ ] **Step 5: Write cube.lock from `up`**
+- [x] **Step 5: Write cube.lock from `up`**
 
 In `internal/up/up.go` (RECONCILE: splice into the actual phase-1 pack loop from checkpoint 0.13): declare `var entries []lock.Entry` before the loop; inside the loop after `oci.PushRendered` succeeds:
 
@@ -1925,12 +1925,12 @@ if err := lock.Write(lock.PathFor(cfgPath), lf); err != nil {
 step(out, "lock", "cube.lock written (%d packs)", len(entries))
 ```
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `go test ./internal/lock/ ./internal/pack/ -short -v && go build ./...`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A && git commit -m "feat: cube.lock with resolved pins, rendered hashes, and full image lists"
