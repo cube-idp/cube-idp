@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -66,13 +67,38 @@ func newDownCmd() *cobra.Command {
 				if err := trust.RemoveCoreDNSRewrite(c.Context(), a.Client(), 2*time.Minute); err != nil {
 					return err
 				}
-				return a.DeleteAll(c.Context(), 5*time.Minute)
+				if err := a.DeleteAll(c.Context(), 5*time.Minute); err != nil {
+					return err
+				}
+				return revertTrust(c)
 			}
 			// kind: deleting the cluster IS the cascade
-			return prov.Delete(c.Context(), cube.Metadata.Name)
+			if err := prov.Delete(c.Context(), cube.Metadata.Name); err != nil {
+				return err
+			}
+			return revertTrust(c)
 		},
 	}
 	c.Flags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
 	c.Flags().BoolVar(&keepCluster, "keep-cluster", false, "delete cube-idp resources but keep the cluster")
 	return c
+}
+
+// revertTrust reverts `cube-idp trust`'s OS trust-store install (D6 contract:
+// `down` always undoes it, on both the kind-delete and keep-cluster paths).
+// No-op if `trust` was never run.
+func revertTrust(c *cobra.Command) error {
+	dir, derr := trust.Dir()
+	if derr != nil {
+		return nil
+	}
+	st, serr := trust.LoadState(dir)
+	if serr != nil || !st.Installed {
+		return nil
+	}
+	if err := trustUninstall(dir); err != nil {
+		return err // CUBE-6003 with manual remediation
+	}
+	fmt.Fprintln(c.OutOrStdout(), "reverted: cube-idp CA removed from OS trust stores")
+	return nil
 }

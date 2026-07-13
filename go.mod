@@ -9,6 +9,7 @@ require (
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/hashicorp/go-getter v0.0.0-00010101000000-000000000000
 	github.com/opencontainers/image-spec v1.1.1
+	github.com/smallstep/truststore v0.13.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/mod v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -202,6 +203,7 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
+	howett.net/plist v1.0.0 // indirect
 	k8s.io/apiserver v0.36.2 // indirect
 	k8s.io/cli-runtime v0.36.2 // indirect
 	k8s.io/component-base v0.36.2 // indirect
