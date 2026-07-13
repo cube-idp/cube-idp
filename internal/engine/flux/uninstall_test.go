@@ -50,7 +50,9 @@ func TestMain(m *testing.M) {
 // are ever added and deletion completes immediately. On a real cluster the
 // poll is what waits for the controller to finish pruning delivered
 // workloads; here it proves the list/delete/poll mechanics, not the
-// finalizer wait itself (that is covered by the e2e suite's down).
+// finalizer wait itself. The e2e suite currently exercises only the kind
+// down path (cluster deletion), so the live-controller prune wait has no
+// end-to-end proof yet — a down --keep-cluster e2e leg is Phase 2 backlog.
 func TestUninstallDeletesDeliveredSources(t *testing.T) {
 	if testREST == nil {
 		t.Skip("KUBEBUILDER_ASSETS not set; envtest unavailable")
