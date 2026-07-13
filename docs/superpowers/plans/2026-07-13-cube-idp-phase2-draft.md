@@ -2597,7 +2597,7 @@ func LoadState(dir string) (*State, error)        // missing -> zero value; corr
 func SaveState(dir string, s *State) error
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `internal/trust/trust_test.go`:
 
@@ -2695,12 +2695,12 @@ func TestStateRoundTripAndCorrupt(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `go test ./internal/trust/ -v`
 Expected: FAIL (package does not exist)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `internal/trust/ca.go`:
 
@@ -2925,7 +2925,7 @@ func SaveState(dir string, s *State) error {
 }
 ```
 
-- [ ] **Step 3b: Write the failing mkcert-reuse test (D12)**
+- [x] **Step 3b: Write the failing mkcert-reuse test (D12)**
 
 Append to `internal/trust/trust_test.go`:
 
@@ -2973,7 +2973,7 @@ func TestEnsureCAAdoptsMkcertRoot(t *testing.T) {
 
 Run: `go test ./internal/trust/ -run TestEnsureCAAdoptsMkcert -v` — Expected: FAIL (fresh CA generated instead).
 
-- [ ] **Step 3c: Implement mkcert detection (D12)**
+- [x] **Step 3c: Implement mkcert detection (D12)**
 
 In `internal/trust/ca.go`, extend `EnsureCA`: after the "cube-idp CA already exists" fast path and **before** generating a new one, probe mkcert:
 
@@ -3034,12 +3034,12 @@ if adoptMkcertCA(dir) {
 
 Run: `go test ./internal/trust/ -v` — Expected: PASS, including all earlier Task 8 tests (idempotency etc. — the adopt path must not regress them; note `TestEnsureCAIsIdempotent` runs with no CAROOT set, so `t.Setenv("CAROOT", t.TempDir())` there if the developer machine has a real mkcert install — add that guard to ALL Task 8 tests that expect a generated CA).
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `go test ./internal/trust/ -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "feat: local CA with mkcert adoption (D12), server cert issuance, trust state (D6 groundwork)"
