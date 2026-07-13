@@ -184,7 +184,7 @@ const (
 )
 ```
 
-- [ ] **Step 1: Write the failing literal-ban + format tests**
+- [x] **Step 1: Write the failing literal-ban + format tests**
 
 `internal/diag/codes_test.go`:
 
@@ -279,21 +279,21 @@ func TestCatalogWellFormed(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `go test ./internal/diag/ -run 'TestNoCubeLiterals|TestCatalogWellFormed' -v`
 Expected: FAIL — `TestCatalogWellFormed` (codes.go missing) and `TestNoCubeLiteralsOutsideCatalog` (Phase 1 literals everywhere).
 
-- [ ] **Step 3: Write the catalog and sweep the call sites**
+- [x] **Step 3: Write the catalog and sweep the call sites**
 
 Create `internal/diag/codes.go` with one constant per code from the checkpoint 0.15 inventory **plus** every code in this plan's table (constants for codes owned by future tasks are fine to add now — the table is frozen). Then mechanically replace each `"CUBE-xxxx"` literal in non-test code with its constant. No behavior change: constants have identical string values, so every existing test keeps passing unmodified.
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 Run: `go build ./... && go test ./... -short`
 Expected: PASS — including both new tests and all untouched Phase 1 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "refactor: central CUBE-code catalog in internal/diag with literal-ban test"
