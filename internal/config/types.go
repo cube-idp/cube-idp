@@ -21,7 +21,10 @@ type Spec struct {
 	Cluster ClusterSpec `yaml:"cluster" json:"cluster"`
 	Engine  EngineSpec  `yaml:"engine" json:"engine"`
 	Gateway GatewaySpec `yaml:"gateway" json:"gateway"`
-	Packs   []PackRef   `yaml:"packs" json:"packs"`
+	// Packs is optional (`packs?` in schema.cue); omitempty keeps a nil or
+	// empty slice out of marshaled output instead of an explicit `packs:
+	// null`, which CUE re-validation would reject (see ClusterSpec).
+	Packs []PackRef `yaml:"packs,omitempty" json:"packs,omitempty"`
 }
 
 // ClusterSpec configures the local or remote Kubernetes cluster cube-idp
@@ -30,16 +33,20 @@ type ClusterSpec struct {
 	Provider          string        `yaml:"provider" json:"provider"`                             // "kind" | "existing"
 	Context           string        `yaml:"context,omitempty" json:"context,omitempty"`           // for existing
 	KubernetesVersion string        `yaml:"kubernetesVersion,omitempty" json:"kubernetesVersion,omitempty"`
-	// ExtraPorts, Registry's fields, Mounts, and ProviderConfig are all
-	// optional (`?`) in schema.cue. omitempty matters here, not just for
-	// tidy output: sigs.k8s.io/yaml.Marshal (cmd/init.go) would otherwise
-	// write explicit `extraPorts: null` / `mounts: null` for their nil zero
-	// values, and CUE's re-validation on the next Load rejects an explicit
-	// null against a `[...]`/`{...}`-typed optional field (mismatched types
-	// list/map and null) — every `cube-idp init`-generated cube.yaml would
-	// fail to load.
+	// omitempty on the nil-able optional fields (ExtraPorts and Mounts here;
+	// Mirrors/Insecure inside RegistrySpec; Spec.Packs and PackRef.Values)
+	// matters, not just for tidy output: sigs.k8s.io/yaml.Marshal
+	// (cmd/init.go) would otherwise write explicit `extraPorts: null` /
+	// `mounts: null` for their nil zero values, and CUE's re-validation on
+	// the next Load rejects an explicit null against a `[...]`/`{...}`-typed
+	// optional field (mismatched types list/map and null) — every `cube-idp
+	// init`-generated cube.yaml would fail to load. Optional strings
+	// (Context, KubernetesVersion, ProviderConfig) marshal as "" rather than
+	// null, so their omitempty is cosmetic only. Registry carries no
+	// omitempty: it is a non-pointer struct, on which the tag is a no-op —
+	// the real fix lives on RegistrySpec's own fields.
 	ExtraPorts     []PortMapping `yaml:"extraPorts,omitempty" json:"extraPorts,omitempty"`         // D10 layer 1
-	Registry       RegistrySpec  `yaml:"registry,omitempty" json:"registry,omitempty"`             // D10 layer 1
+	Registry       RegistrySpec  `yaml:"registry" json:"registry"`                                 // D10 layer 1
 	Mounts         []Mount       `yaml:"mounts,omitempty" json:"mounts,omitempty"`                 // D10 layer 1
 	ProviderConfig string        `yaml:"providerConfig,omitempty" json:"providerConfig,omitempty"` // D10 layer 2: file path or inline YAML
 }

@@ -8,6 +8,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
+        # go.mod (single source of truth) requires a toolchain newer than the
+        # plan's hardcoded "1.24" — currently go 1.26.2.
         with: {go-version-file: go.mod}
       - run: go vet ./...
       - run: go test ./... -short
@@ -18,7 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
+        # go.mod (single source of truth) requires a toolchain newer than the
+        # plan's hardcoded "1.24" — currently go 1.26.2.
         with: {go-version-file: go.mod}
+      # cube-idp itself creates/deletes kind clusters via the kind Go
+      # library, but the e2e's lingering-cluster guard shells out to the
+      # kind CLI — install it so the guard isn't inert on ubuntu-latest.
+      - run: go install sigs.k8s.io/kind@latest
       # GitHub-hosted runners are amd64 and include docker; kind works out
       # of the box. The zot registry image is a multi-arch manifest list
       # (internal/registry/manifests/zot.yaml), so it resolves correctly

@@ -4,7 +4,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
+
+	sigyaml "sigs.k8s.io/yaml"
 
 	"github.com/rafpe/cube-idp/internal/diag"
 )
@@ -104,6 +107,70 @@ func TestLoadMissingFile(t *testing.T) {
 	if codeOf(t, err) != "CUBE-0001" {
 		t.Fatalf("want CUBE-0001, got %v", err)
 	}
+}
+
+// TestDefaultRoundTripsThroughLoad pins the bug class fixed by the omitempty
+// tags in types.go: `cube-idp init` marshals config.Default with
+// sigs.k8s.io/yaml, and any optional (`?` in schema.cue) slice/map field
+// WITHOUT omitempty serializes its nil zero value as an explicit YAML null,
+// which CUE re-validation rejects (mismatched types list/map and null) —
+// making every init-generated cube.yaml unloadable. A future optional field
+// added without omitempty fails this test.
+func TestDefaultRoundTripsThroughLoad(t *testing.T) {
+	writeAndLoad := func(t *testing.T, c *Cube) *Cube {
+		t.Helper()
+		raw, err := sigyaml.Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "cube.yaml")
+		if err := os.WriteFile(path, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load rejected marshaled config:\n%s\nerror: %v", raw, err)
+		}
+		return loaded
+	}
+
+	t.Run("default profile", func(t *testing.T) {
+		def := Default("dev")
+		loaded := writeAndLoad(t, def)
+		if loaded.Spec.Cluster.Provider != def.Spec.Cluster.Provider {
+			t.Fatalf("provider: got %q, want %q", loaded.Spec.Cluster.Provider, def.Spec.Cluster.Provider)
+		}
+		if loaded.Spec.Engine != def.Spec.Engine {
+			t.Fatalf("engine: got %+v, want %+v", loaded.Spec.Engine, def.Spec.Engine)
+		}
+		if loaded.Spec.Gateway != def.Spec.Gateway {
+			t.Fatalf("gateway: got %+v, want %+v", loaded.Spec.Gateway, def.Spec.Gateway)
+		}
+		if !reflect.DeepEqual(loaded.Spec.Packs, def.Spec.Packs) {
+			t.Fatalf("packs: got %+v, want %+v", loaded.Spec.Packs, def.Spec.Packs)
+		}
+	})
+
+	// packs? is optional in schema.cue, so a Cube without any packs (nil or
+	// explicitly empty slice) must also round-trip — omitempty on Spec.Packs
+	// keeps both out of the output instead of emitting `packs: null`.
+	t.Run("empty packs slice", func(t *testing.T) {
+		c := Default("dev")
+		c.Spec.Packs = []PackRef{}
+		loaded := writeAndLoad(t, c)
+		if len(loaded.Spec.Packs) != 0 {
+			t.Fatalf("packs should be absent, got %+v", loaded.Spec.Packs)
+		}
+	})
+
+	t.Run("nil packs", func(t *testing.T) {
+		c := Default("dev")
+		c.Spec.Packs = nil
+		loaded := writeAndLoad(t, c)
+		if len(loaded.Spec.Packs) != 0 {
+			t.Fatalf("packs should be absent, got %+v", loaded.Spec.Packs)
+		}
+	})
 }
 
 func TestDefaultProfileIncludesGitea(t *testing.T) { // D9
