@@ -65,6 +65,11 @@ type GatewaySpec struct {
 	Pack string `yaml:"pack" json:"pack"`
 	Host string `yaml:"host" json:"host"`
 	Port int    `yaml:"port" json:"port"`
+	// Ref overrides the pack source `up` fetches for the gateway pack. When
+	// unset, `up` falls back to "packs/<Pack>" (a repo-local checkout path,
+	// only valid when cube-idp runs from a checkout); `cube-idp init
+	// --local` fills this with an absolute path so `up` works from any cwd.
+	Ref string `yaml:"ref,omitempty" json:"ref,omitempty"`
 }
 
 // PackRef references an installable pack and its values overrides.

@@ -22,6 +22,7 @@ package config
 			pack: *"traefik" | string
 			host: *"cube-idp.localtest.me" | string
 			port: *8443 | (int & >0 & <65536)
+			ref?: string & !=""
 		}
 		packs?: [...{ref: string & !="", values?: {...}}]
 	}

@@ -1,6 +1,10 @@
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"context"
+
+	"github.com/spf13/cobra"
+)
 
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
@@ -11,7 +15,12 @@ func NewRootCmd() *cobra.Command {
 	}
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newConfigCmd())
+	root.AddCommand(newUpCmd())
+	root.AddCommand(newInitCmd())
 	return root
 }
 
-func Execute() error { return NewRootCmd().Execute() }
+// Execute runs the root command to completion using ctx for cancellation —
+// main.go wires this to a SIGINT-cancelable context so long-running steps
+// like `up` can unwind cleanly on Ctrl-C.
+func Execute(ctx context.Context) error { return NewRootCmd().ExecuteContext(ctx) }

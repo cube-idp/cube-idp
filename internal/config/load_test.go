@@ -48,6 +48,19 @@ func TestLoadFullRoundTrips(t *testing.T) {
 	if len(c.Spec.Packs) != 2 || c.Spec.Packs[1].Values["replicas"] != 2 {
 		t.Fatalf("packs: %+v", c.Spec.Packs)
 	}
+	if c.Spec.Gateway.Ref != "/repo/packs/traefik" {
+		t.Fatalf("gateway.ref did not round-trip: %+v", c.Spec.Gateway)
+	}
+}
+
+func TestLoadGatewayRefDefaultsEmpty(t *testing.T) {
+	c, err := Load("testdata/minimal.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Spec.Gateway.Ref != "" {
+		t.Fatalf("gateway.ref should default to empty (falls back to packs/<pack> in `up`), got %q", c.Spec.Gateway.Ref)
+	}
 }
 
 func TestLoadRejectsBadProvider(t *testing.T) {

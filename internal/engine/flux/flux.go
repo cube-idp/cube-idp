@@ -35,12 +35,19 @@ func InstallManifests() ([]*unstructured.Unstructured, error) {
 }
 
 func (f *Flux) Install(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
-	objs, err := InstallManifests()
+	objs, err := f.InstallManifests()
 	if err != nil {
 		return diag.Wrap(err, "CUBE-3003", "embedded flux manifests are invalid",
 			"this is a cube-idp bug — regenerate with hack/gen-flux-manifests.sh and report it")
 	}
 	return a.Apply(ctx, objs, true, timeout)
+}
+
+// InstallManifests implements engine.Engine, delegating to the package-level
+// InstallManifests func (kept for tests and for callers that only need the
+// manifests, not a Flux value).
+func (f *Flux) InstallManifests() ([]*unstructured.Unstructured, error) {
+	return InstallManifests()
 }
 
 func (f *Flux) Uninstall(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
