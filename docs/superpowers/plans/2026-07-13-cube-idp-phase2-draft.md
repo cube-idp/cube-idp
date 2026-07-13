@@ -4412,7 +4412,7 @@ func CRD() (*unstructured.Unstructured, error)  // the inert Pack CRD (go:embed)
 func PackObject(p *Pack, gatewayHost string, ready bool) *unstructured.Unstructured
 ```
 
-- [ ] **Step 1: Write the failing expose-parse tests**
+- [x] **Step 1: Write the failing expose-parse tests**
 
 `internal/pack/expose_test.go`:
 
@@ -4484,7 +4484,7 @@ expose: {authSecretRef: {namespace: "x"}}
 }
 ```
 
-- [ ] **Step 2: Write the failing discovery-shape tests**
+- [x] **Step 2: Write the failing discovery-shape tests**
 
 `internal/pack/discovery_test.go`:
 
@@ -4551,12 +4551,12 @@ func TestPackObjectWithoutExpose(t *testing.T) {
 
 (import `k8s.io/apimachinery/pkg/apis/meta/v1/unstructured` in both test files.)
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `go test ./internal/pack/ -short -run 'TestExpose|TestCRD|TestPackObject' -v`
 Expected: FAIL (Expose/CRD/PackObject undefined)
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 `internal/pack/manifests/pack-crd.yaml`:
 
@@ -4694,7 +4694,7 @@ func CRD() (*unstructured.Unstructured, error) {
 
 CUE schema + parse: extend the phase-1 `pack.cue` schema with an optional `expose?: {urls?: [...string], authSecretRef?: {namespace: string, name: string}, impliedFields?: {[string]: string}}` and decode it into `Pack.Expose` inside `loadMeta`. `RECONCILE:` hook this into the exact phase-1 CUE validation mechanism (checkpoint 0.8); schema violations wrap as `diag.New("CUBE-4011", "expose: block in <dir>/pack.cue is invalid: <cue error>", "fix the expose block — see the pack authoring docs for the shape")`. Note: adding a field to the CUE schema must not reject packs written before it existed (`TestExposeIsOptional` guards this).
 
-- [ ] **Step 5: Wire into `up` (and therefore `down`)**
+- [x] **Step 5: Wire into `up` (and therefore `down`)**
 
 In `internal/up/up.go` (RECONCILE: splice per the real structure from checkpoint 0.13):
 1. **Before the pack delivery loop** (right after the registry install): apply + inventory-record `pack.CRD()` with `wait=true` (kstatus waits for `Established`) — the CRD must exist before any Pack record is written.
@@ -4703,14 +4703,14 @@ In `internal/up/up.go` (RECONCILE: splice per the real structure from checkpoint
 
 `down` needs NO change: Pack records and the CRD are in the inventory, so the existing reverse-order delete removes them (records before CRD — reverse of apply order; verify in the Task 14 e2e that `down` leaves neither).
 
-- [ ] **Step 6: Pivot `cube-idp get secrets` (label convention honored one release)**
+- [x] **Step 6: Pivot `cube-idp get secrets` (label convention honored one release)**
 
 In `cmd/get.go` (RECONCILE: adapt to the real phase-1 body from checkpoint 0.17):
 1. Primary path: list `Pack` records, follow `spec.authSecretRef` to each Secret, merge `spec.impliedFields` into the rendered output (implied fields print alongside the secret's own keys — that is how ArgoCD's `username: admin` appears).
 2. Fallback path: the existing label-convention lookup, prefixed with a deprecation notice: `"note: <pack> was found via the legacy cli-secret label; pack authors should declare expose.authSecretRef in pack.cue (label support ends next release)"`.
 3. Extend `cmd/get_test.go` with a fake-client case: one Pack record + referenced Secret → output contains the secret data AND the implied field; one label-only Secret → output contains the deprecation notice.
 
-- [ ] **Step 7: Add `expose:` blocks to the shipped packs**
+- [x] **Step 7: Add `expose:` blocks to the shipped packs**
 
 `packs/gitea/pack.cue` — append (RECONCILE: the real secret namespace/name and admin username from the phase-1 gitea pack, checkpoints 0.14/0.17):
 
@@ -4734,12 +4734,12 @@ expose: {
 
 `packs/traefik/pack.cue` — deliberately unchanged: it demonstrates that `expose:` is optional (traefik IS the gateway; it exposes nothing through itself).
 
-- [ ] **Step 8: Run everything**
+- [x] **Step 8: Run everything**
 
 Run: `go test ./internal/pack/ ./cmd/ -short -v && go build ./... && go test ./... -short`
 Expected: PASS (including the render tests over the modified gitea/argocd pack.cue files — the schema extension must not break their existing rendering)
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add -A && git commit -m "feat: Pack discoverability CRD + expose contract, get secrets pivot (D11)"
