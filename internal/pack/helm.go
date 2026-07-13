@@ -37,18 +37,27 @@ import (
 // charts to render against.
 const defaultRenderKubeVersion = "v1.33.1"
 
-// chartRef is the chart.yaml shape documented in pack.go's package doc.
+// ChartRef is the chart.yaml shape documented in pack.go's package doc.
 // Field tags are json (not yaml) because sigs.k8s.io/yaml converts the YAML
 // to JSON and then unmarshals with encoding/json, which honors json tags
 // only — yaml tags would work solely via encoding/json's case-insensitive
-// field-name fallback.
-type chartRef struct {
+// field-name fallback. Exported for the cnoe-compat loader (Task 13), which
+// builds a ChartRef straight from an Argo Application's helm source — this
+// file remains the only one importing the Helm SDK.
+type ChartRef struct {
 	Chart       string         `json:"chart"`
 	Repo        string         `json:"repo"`
 	Version     string         `json:"version"`
 	ReleaseName string         `json:"releaseName"`
 	Namespace   string         `json:"namespace"`
 	Values      map[string]any `json:"values"`
+}
+
+// RenderChart renders a chart reference exactly as a pack's chart.yaml would
+// be rendered. Exported for the cnoe-compat loader; helm.go remains the only
+// file importing the Helm SDK.
+func RenderChart(ref ChartRef, values map[string]any) ([]*unstructured.Unstructured, error) {
+	return renderChartRef(ref, values)
 }
 
 // renderHelm reads chart.yaml in dir, pulls the pinned chart, and
@@ -59,10 +68,17 @@ func renderHelm(dir string, values map[string]any) ([]*unstructured.Unstructured
 	if err != nil {
 		return nil, diag.Wrap(err, diag.CodePackChartErr, "cannot read chart.yaml", "check file permissions")
 	}
-	var ref chartRef
+	var ref ChartRef
 	if err := yaml.Unmarshal(raw, &ref); err != nil {
 		return nil, diag.Wrap(err, diag.CodePackChartErr, "chart.yaml is not valid YAML", "fix the chart.yaml syntax")
 	}
+	return renderChartRef(ref, values)
+}
+
+// renderChartRef pulls the chart referenced by ref and template-renders it
+// with values (ref.Values as the base, overridden by the caller's values).
+// Failures are reported as CUBE-4005.
+func renderChartRef(ref ChartRef, values map[string]any) ([]*unstructured.Unstructured, error) {
 	if ref.Chart == "" {
 		return nil, diag.New(diag.CodePackChartErr, "chart.yaml is missing 'chart'", "add: chart: \"<chart-name>\"")
 	}

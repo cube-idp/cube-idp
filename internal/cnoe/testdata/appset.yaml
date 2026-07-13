@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: envs
+spec:
+  generators:
+    - list:
+        elements:
+          - env: dev
+          - env: stage
+  template:
+    metadata:
+      name: "web-{{env}}"
+    spec:
+      destination:
+        namespace: "web-{{env}}"
+        server: https://kubernetes.default.svc
+      source:
+        repoURL: cnoe://manifests
+        targetRevision: HEAD
+        path: "."

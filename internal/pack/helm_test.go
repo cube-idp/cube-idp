@@ -7,7 +7,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// TestChartRefDecode pins chartRef's struct tags: sigs.k8s.io/yaml converts
+// TestChartRefDecode pins ChartRef's struct tags: sigs.k8s.io/yaml converts
 // YAML to JSON and unmarshals with encoding/json, so the tags must be json
 // tags. Every key in our chart.yaml schema also happens to match its field
 // name case-insensitively (encoding/json's fallback), so no single key can
@@ -24,11 +24,11 @@ values:
   service:
     type: ClusterIP
 `)
-	var got chartRef
+	var got ChartRef
 	if err := yaml.Unmarshal(doc, &got); err != nil {
 		t.Fatal(err)
 	}
-	want := chartRef{
+	want := ChartRef{
 		Chart:       "traefik",
 		Repo:        "https://traefik.github.io/charts",
 		Version:     "34.1.0",
@@ -40,7 +40,7 @@ values:
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("chartRef decode mismatch:\n got: %+v\nwant: %+v", got, want)
+		t.Fatalf("ChartRef decode mismatch:\n got: %+v\nwant: %+v", got, want)
 	}
 }
 
