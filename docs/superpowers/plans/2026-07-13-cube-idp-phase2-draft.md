@@ -2265,7 +2265,7 @@ func Plan(ctx context.Context, cfgPath string, out io.Writer) (changed bool, err
 
 Semantics (spec: *re-running `up` IS the upgrade command*): `upgrade` never mutates. `upgrade --plan` = pack-pin resolution against cube.lock + the Task 6 kernel diff. Running `upgrade` without `--plan` errors with the pointer to `up`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `internal/pack/resolve_test.go`:
 
@@ -2340,12 +2340,12 @@ func TestRenderTableAligns(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `go test ./internal/upgrade/ ./internal/pack/ -short -run 'TestResolveRemote|TestPlan|TestRenderTable' -v`
 Expected: FAIL
 
-- [ ] **Step 3: Implement `ResolveRemote`**
+- [x] **Step 3: Implement `ResolveRemote`**
 
 Append to `internal/pack/resolve.go` (created in Task 4 — `resolveGitPin` and `gitCloneURL` already live there; add imports `path/filepath`, `strings`, `oras.land/oras-go/v2/registry/remote`):
 
@@ -2406,7 +2406,7 @@ func ResolveRemote(ctx context.Context, ref, cacheDir string) (string, error) {
 }
 ```
 
-- [ ] **Step 4: Implement the plan orchestrator + command**
+- [x] **Step 4: Implement the plan orchestrator + command**
 
 `internal/upgrade/plan.go`:
 
@@ -2558,12 +2558,12 @@ func newUpgradeCmd() *cobra.Command {
 
 (import `fmt`; register `newUpgradeCmd()` in `cmd/root.go`.)
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `go test ./internal/upgrade/ ./internal/pack/ -short -v && go build ./...`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "feat: upgrade --plan — pack pin resolution against cube.lock plus kernel diff"
