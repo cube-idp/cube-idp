@@ -1965,7 +1965,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (changed bool, err 
 
 Exit contract (scripts rely on it, kubectl-diff convention): exit 0 = no changes, exit 1 = changes found; any error renders a CUBE diagnosis and exits 1 via the normal main.go path.
 
-- [ ] **Step 1: Write the failing envtest test**
+- [x] **Step 1: Write the failing envtest test**
 
 `internal/apply/diff_test.go` (same envtest gate as the Phase 1 apply tests — reuses `testREST` from `testenv_test.go`):
 
@@ -2018,12 +2018,12 @@ func TestDiffReportsCreatedConfiguredUnchanged(t *testing.T) {
 
 (RECONCILE: `cm`/`ns` helpers exist in the phase-1 `applier_test.go` — reuse them; the exact `Ref` format and action strings must be aligned with whatever the pinned ssa library's ChangeSetEntry exposes — fix the test and `Change` doc together, keeping the three-way created/configured/unchanged distinction.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `make test-apply`
 Expected: FAIL (Diff undefined)
 
-- [ ] **Step 3: Implement `Applier.Diff`**
+- [x] **Step 3: Implement `Applier.Diff`**
 
 `internal/apply/diff.go`:
 
@@ -2067,7 +2067,7 @@ func (a *Applier) Diff(ctx context.Context, objs []*unstructured.Unstructured) (
 
 (Also in this step: factor the labeling loop out of `Apply` into `func (a *Applier) label(objs []*unstructured.Unstructured)` and call it from both `Apply` and `Diff`. Run `make test-apply` after — the Phase 1 apply tests must stay green.)
 
-- [ ] **Step 4: Implement the orchestrator**
+- [x] **Step 4: Implement the orchestrator**
 
 `internal/diff/diff.go`:
 
@@ -2222,12 +2222,12 @@ func newDiffCmd() *cobra.Command {
 
 Register `newDiffCmd()` in `cmd/root.go`.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `make test-apply && go build ./... && go test ./... -short`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "feat: cube-idp diff — SSA dry-run + lock-hash pack drift + inventory orphans"
