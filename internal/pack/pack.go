@@ -56,19 +56,19 @@ type Rendered struct {
 func loadMeta(dir string) (*Pack, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "pack.cue"))
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-4003", fmt.Sprintf("pack at %s has no pack.cue", dir),
+		return nil, diag.Wrap(err, diag.CodePackCueInvalid, fmt.Sprintf("pack at %s has no pack.cue", dir),
 			"every pack needs a pack.cue with at least name and version")
 	}
 	v := cuecontext.New().CompileBytes(raw)
 	if v.Err() != nil {
-		return nil, diag.Wrap(v.Err(), "CUBE-4003", "pack.cue does not compile", "fix the CUE syntax")
+		return nil, diag.Wrap(v.Err(), diag.CodePackCueInvalid, "pack.cue does not compile", "fix the CUE syntax")
 	}
 	p := &Pack{Dir: dir}
 	if err := v.LookupPath(cue.ParsePath("name")).Decode(&p.Name); err != nil || p.Name == "" {
-		return nil, diag.New("CUBE-4003", "pack.cue is missing 'name'", "add: name: \"<pack-name>\"")
+		return nil, diag.New(diag.CodePackCueInvalid, "pack.cue is missing 'name'", "add: name: \"<pack-name>\"")
 	}
 	if err := v.LookupPath(cue.ParsePath("version")).Decode(&p.Version); err != nil || p.Version == "" {
-		return nil, diag.New("CUBE-4003", "pack.cue is missing 'version'", "add: version: \"0.1.0\"")
+		return nil, diag.New(diag.CodePackCueInvalid, "pack.cue is missing 'version'", "add: version: \"0.1.0\"")
 	}
 	return p, nil
 }
@@ -79,13 +79,13 @@ func loadMeta(dir string) (*Pack, error) {
 func (p *Pack) validateValues(values map[string]any) (map[string]any, error) {
 	raw, err := os.ReadFile(filepath.Join(p.Dir, "pack.cue"))
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-4003", fmt.Sprintf("pack at %s has no pack.cue", p.Dir),
+		return nil, diag.Wrap(err, diag.CodePackCueInvalid, fmt.Sprintf("pack at %s has no pack.cue", p.Dir),
 			"every pack needs a pack.cue with at least name and version")
 	}
 	ctx := cuecontext.New()
 	root := ctx.CompileBytes(raw)
 	if root.Err() != nil {
-		return nil, diag.Wrap(root.Err(), "CUBE-4003", "pack.cue does not compile", "fix the CUE syntax")
+		return nil, diag.Wrap(root.Err(), diag.CodePackCueInvalid, "pack.cue does not compile", "fix the CUE syntax")
 	}
 	schema := root.LookupPath(cue.ParsePath("#Values"))
 	if !schema.Exists() {
@@ -93,13 +93,13 @@ func (p *Pack) validateValues(values map[string]any) (map[string]any, error) {
 	}
 	unified := schema.Unify(ctx.Encode(values))
 	if err := unified.Validate(cue.Concrete(true)); err != nil {
-		return nil, diag.Wrap(err, "CUBE-4002",
+		return nil, diag.Wrap(err, diag.CodePackValuesInv,
 			fmt.Sprintf("values for pack %q do not match its #Values schema", p.Name),
 			"compare your values with the pack's pack.cue #Values definition")
 	}
 	var out map[string]any
 	if err := unified.Decode(&out); err != nil {
-		return nil, diag.Wrap(err, "CUBE-4002", "cannot decode validated values", "simplify the values to plain YAML types")
+		return nil, diag.Wrap(err, diag.CodePackValuesInv, "cannot decode validated values", "simplify the values to plain YAML types")
 	}
 	return out, nil
 }

@@ -27,31 +27,31 @@ func (e *existing) Ensure(ctx context.Context, name string, spec config.ClusterS
 	cc, _ := e.load(spec.Context)
 	raw, err := cc.RawConfig()
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-1102", "cannot load kubeconfig", "check $KUBECONFIG")
+		return nil, diag.Wrap(err, diag.CodeKubeconfigError, "cannot load kubeconfig", "check $KUBECONFIG")
 	}
 	kctx := spec.Context
 	if kctx == "" {
 		kctx = raw.CurrentContext
 	}
 	if _, ok := raw.Contexts[kctx]; !ok {
-		return nil, diag.New("CUBE-1102", fmt.Sprintf("kubeconfig context %q not found", kctx),
+		return nil, diag.New(diag.CodeKubeconfigError, fmt.Sprintf("kubeconfig context %q not found", kctx),
 			"run `kubectl config get-contexts` and set spec.cluster.context to one of them")
 	}
 	restCfg, err := cc.ClientConfig()
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-1102", "cannot build client config", "check $KUBECONFIG")
+		return nil, diag.Wrap(err, diag.CodeKubeconfigError, "cannot build client config", "check $KUBECONFIG")
 	}
 	dc, err := discovery.NewDiscoveryClientForConfig(restCfg)
 	if err == nil {
 		_, err = dc.ServerVersion()
 	}
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-1101", fmt.Sprintf("cluster behind context %q is unreachable", kctx),
+		return nil, diag.Wrap(err, diag.CodeKubeUnreachable, fmt.Sprintf("cluster behind context %q is unreachable", kctx),
 			"check that the cluster is running and the context credentials are valid")
 	}
 	kubeconfig, err := clientcmd.Write(raw)
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-1102", "cannot serialize kubeconfig", "check $KUBECONFIG")
+		return nil, diag.Wrap(err, diag.CodeKubeconfigError, "cannot serialize kubeconfig", "check $KUBECONFIG")
 	}
 	return &kube.Conn{Kubeconfig: kubeconfig, Context: kctx, REST: restCfg}, nil
 }
@@ -71,14 +71,14 @@ func (e *existing) Kubeconfig(ctx context.Context, name string) ([]byte, error) 
 	cc, _ := e.load("")
 	raw, err := cc.RawConfig()
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-1102", "cannot load kubeconfig", "check $KUBECONFIG")
+		return nil, diag.Wrap(err, diag.CodeKubeconfigError, "cannot load kubeconfig", "check $KUBECONFIG")
 	}
 	return clientcmd.Write(raw)
 }
 
 func (e *existing) Diagnose(ctx context.Context, name string) []diag.Finding {
 	if _, err := e.Ensure(ctx, name, config.ClusterSpec{Provider: "existing"}); err != nil {
-		return []diag.Finding{{Code: "CUBE-1101", Severity: diag.SeverityError,
+		return []diag.Finding{{Code: diag.CodeKubeUnreachable, Severity: diag.SeverityError,
 			Message: err.Error(), Remediation: "verify kubeconfig and cluster health"}}
 	}
 	return nil

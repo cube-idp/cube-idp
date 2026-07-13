@@ -42,7 +42,7 @@ func InstallManifests() ([]*unstructured.Unstructured, error) {
 func (f *Flux) Install(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
 	objs, err := f.InstallManifests()
 	if err != nil {
-		return diag.Wrap(err, "CUBE-3003", "embedded flux manifests are invalid",
+		return diag.Wrap(err, diag.CodeEngineManifestsInv, "embedded flux manifests are invalid",
 			"this is a cube-idp bug — regenerate with hack/gen-flux-manifests.sh and report it")
 	}
 	return a.Apply(ctx, objs, true, timeout)
@@ -88,13 +88,13 @@ func (f *Flux) Uninstall(ctx context.Context, a *apply.Applier, timeout time.Dur
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return diag.New("CUBE-3005",
+			return diag.New(diag.CodeEngineUninstallFail,
 				fmt.Sprintf("engine did not finish pruning delivered workloads within %s (%d object(s) still terminating)", timeout, remaining),
 				"check kustomize-controller logs in flux-system; re-run `cube-idp down`")
 		}
 		select {
 		case <-ctx.Done():
-			return diag.Wrap(ctx.Err(), "CUBE-3005", "engine did not finish pruning delivered workloads",
+			return diag.Wrap(ctx.Err(), diag.CodeEngineUninstallFail, "engine did not finish pruning delivered workloads",
 				"check kustomize-controller logs in flux-system; re-run `cube-idp down`")
 		case <-time.After(2 * time.Second):
 		}
@@ -113,7 +113,7 @@ func deleteDelivered(ctx context.Context, c client.Client, cube string) (int, er
 		}
 		for i := range items {
 			if err := c.Delete(ctx, &items[i]); err != nil && !apierrors.IsNotFound(err) {
-				return 0, diag.Wrap(err, "CUBE-3005",
+				return 0, diag.Wrap(err, diag.CodeEngineUninstallFail,
 					fmt.Sprintf("cannot delete %s %s/%s", items[i].GetKind(), items[i].GetNamespace(), items[i].GetName()),
 					"check RBAC on namespace flux-system; re-run `cube-idp down`")
 			}
@@ -148,7 +148,7 @@ func listDelivered(ctx context.Context, c client.Client, gvk schema.GroupVersion
 		return nil, nil // CRD absent: nothing was ever delivered via this kind
 	}
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-3005", fmt.Sprintf("cannot list %s in %s", gvk.Kind, fluxNS),
+		return nil, diag.Wrap(err, diag.CodeEngineUninstallFail, fmt.Sprintf("cannot list %s in %s", gvk.Kind, fluxNS),
 			"check kubeconfig and cluster connectivity; re-run `cube-idp down`")
 	}
 	return list.Items, nil

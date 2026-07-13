@@ -46,7 +46,7 @@ func requireClusterExists(ctx context.Context, prov cluster.Provider, provider, 
 		return err
 	}
 	if !exists {
-		return diag.New("CUBE-1004",
+		return diag.New(diag.CodeClusterNotExists,
 			fmt.Sprintf("kind cluster %q does not exist", name),
 			"run `cube-idp up` first")
 	}

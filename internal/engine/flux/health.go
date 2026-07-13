@@ -28,7 +28,7 @@ func (f *Flux) Health(ctx context.Context, a *apply.Applier) ([]engine.Component
 		client.InNamespace(fluxNS),
 		client.MatchingLabels{apply.CubeLabel: a.Cube()},
 	); err != nil {
-		return nil, diag.Wrap(err, "CUBE-3004", "cannot list flux Kustomizations",
+		return nil, diag.Wrap(err, diag.CodeEngineHealthTimeout, "cannot list flux Kustomizations",
 			"check kubeconfig and cluster connectivity")
 	}
 

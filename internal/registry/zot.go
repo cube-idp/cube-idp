@@ -26,7 +26,7 @@ func Manifests() ([]*unstructured.Unstructured, error) {
 func Install(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
 	objs, err := Manifests()
 	if err != nil {
-		return diag.Wrap(err, "CUBE-5001", "embedded zot manifests are invalid", "this is a cube-idp bug — please report it")
+		return diag.Wrap(err, diag.CodeZotManifestsInv, "embedded zot manifests are invalid", "this is a cube-idp bug — please report it")
 	}
 	return a.Apply(ctx, objs, true, timeout)
 }

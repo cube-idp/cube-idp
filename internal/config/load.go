@@ -25,12 +25,12 @@ func cuePath(s string) cue.Path { return cue.ParsePath(s) }
 func Load(path string) (*Cube, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-0001", fmt.Sprintf("cannot read %s", path),
+		return nil, diag.Wrap(err, diag.CodeConfigRead, fmt.Sprintf("cannot read %s", path),
 			"run `cube-idp init` to generate a starter cube.yaml")
 	}
 	var doc map[string]any
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return nil, diag.Wrap(err, "CUBE-0002", fmt.Sprintf("%s is not valid YAML", path),
+		return nil, diag.Wrap(err, diag.CodeConfigInvalid, fmt.Sprintf("%s is not valid YAML", path),
 			"fix the YAML syntax; run `cube-idp config schema` for the expected shape")
 	}
 
@@ -38,13 +38,13 @@ func Load(path string) (*Cube, error) {
 	schema := ctx.CompileString(schemaCUE).LookupPath(cuePath("#Cube"))
 	val := schema.Unify(ctx.Encode(doc))
 	if err := val.Validate(); err != nil {
-		return nil, diag.Wrap(err, "CUBE-0002", fmt.Sprintf("%s failed validation", path),
+		return nil, diag.Wrap(err, diag.CodeConfigInvalid, fmt.Sprintf("%s failed validation", path),
 			"run `cube-idp config schema` to see allowed fields and values")
 	}
 
 	var c Cube
 	if err := val.Decode(&c); err != nil { // decodes with CUE defaults applied
-		return nil, diag.Wrap(err, "CUBE-0002", fmt.Sprintf("%s failed validation", path),
+		return nil, diag.Wrap(err, diag.CodeConfigInvalid, fmt.Sprintf("%s failed validation", path),
 			"run `cube-idp config schema` to see allowed fields and values")
 	}
 	normalizePackValues(&c)
@@ -94,7 +94,7 @@ func crossValidate(c *Cube) error {
 	cl := c.Spec.Cluster
 	if cl.Provider == "existing" {
 		if len(cl.ExtraPorts) > 0 || len(cl.Mounts) > 0 || cl.ProviderConfig != "" || cl.KubernetesVersion != "" {
-			return diag.New("CUBE-1003",
+			return diag.New(diag.CodeClusterSetupFailed,
 				"cluster.extraPorts/mounts/providerConfig/kubernetesVersion imply node creation and are not valid with provider: existing",
 				"remove those fields, or switch to provider: kind")
 		}

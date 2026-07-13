@@ -46,7 +46,7 @@ import (
 func PushRendered(ctx context.Context, r *pack.Rendered, registryAddr string) (engine.ArtifactRef, error) {
 	dir, err := os.MkdirTemp("", "cube-idp-artifact-*")
 	if err != nil {
-		return engine.ArtifactRef{}, diag.Wrap(err, "CUBE-5003", "cannot create temp dir for artifact staging",
+		return engine.ArtifactRef{}, diag.Wrap(err, diag.CodeOCIPushFail, "cannot create temp dir for artifact staging",
 			"check disk space and permissions on the system temp directory")
 	}
 	defer os.RemoveAll(dir)
@@ -55,14 +55,14 @@ func PushRendered(ctx context.Context, r *pack.Rendered, registryAddr string) (e
 	for _, o := range r.Objects {
 		y, err := yaml.Marshal(o.Object)
 		if err != nil {
-			return engine.ArtifactRef{}, diag.Wrap(err, "CUBE-5003", "cannot marshal rendered object to YAML",
+			return engine.ArtifactRef{}, diag.Wrap(err, diag.CodeOCIPushFail, "cannot marshal rendered object to YAML",
 				"this is a cube-idp bug — please report it")
 		}
 		buf = append(buf, []byte("---\n")...)
 		buf = append(buf, y...)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "all.yaml"), buf, 0o644); err != nil {
-		return engine.ArtifactRef{}, diag.Wrap(err, "CUBE-5003", "cannot write staged artifact",
+		return engine.ArtifactRef{}, diag.Wrap(err, diag.CodeOCIPushFail, "cannot write staged artifact",
 			"check disk space and permissions on the system temp directory")
 	}
 
@@ -73,7 +73,7 @@ func PushRendered(ctx context.Context, r *pack.Rendered, registryAddr string) (e
 	if _, err := c.Push(ctx, url, dir, fluxoci.WithPushMetadata(fluxoci.Metadata{
 		Source: "cube-idp", Revision: r.Version,
 	})); err != nil {
-		return engine.ArtifactRef{}, diag.Wrap(err, "CUBE-5003",
+		return engine.ArtifactRef{}, diag.Wrap(err, diag.CodeOCIPushFail,
 			fmt.Sprintf("failed to push pack %q to the in-cluster registry", r.Name),
 			"re-run `cube-idp up`; check that the zot pod is running")
 	}

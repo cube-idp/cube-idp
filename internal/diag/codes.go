@@ -1,0 +1,99 @@
+// Package diag defines cube-idp's error codes as typed constants.
+package diag
+
+// 0xxx: preflight/config
+const (
+	CodeConfigRead    Code = "CUBE-0001" // cannot read cube.yaml
+	CodeConfigInvalid Code = "CUBE-0002" // cube.yaml YAML syntax or schema validation error
+	CodeLockCorrupt   Code = "CUBE-0003" // cube.lock unreadable or corrupt (Phase 2)
+	CodeProviderMiss  Code = "CUBE-0004" // cluster provider config mismatch (e.g., render-cluster for non-kind)
+	CodeArgoPackRedun Code = "CUBE-0005" // argocd pack listed while engine.type: argocd (Phase 2)
+	CodeInitExists    Code = "CUBE-0006" // cube.yaml already exists; refusing overwrite
+)
+
+// 01xx: doctor preflight checks (Phase 2)
+const (
+	CodeDoctorRuntime Code = "CUBE-0101" // container runtime not found
+	CodeDoctorPort    Code = "CUBE-0102" // required host port already in use
+	CodeDoctorDisk    Code = "CUBE-0103" // low disk space in cache directory (warning)
+	CodeDoctorInotify Code = "CUBE-0104" // inotify limits too low (warning, Linux-only)
+)
+
+// 1xxx: cluster
+const (
+	CodeClusterTypeUnknown Code = "CUBE-1001" // cluster provider type unknown or unsupported
+	CodeClusterSetupFailed Code = "CUBE-1003" // cluster provider setup failed (RECONCILE: Task 0 use unclear)
+	CodeClusterNotExists   Code = "CUBE-1004" // cluster does not exist; run `cube-idp up`
+)
+
+// 11xx: kubeconfig/connectivity
+const (
+	CodeKubeUnreachable Code = "CUBE-1101" // cluster behind context unreachable
+	CodeKubeconfigError Code = "CUBE-1102" // kubeconfig load/parse/validation error
+)
+
+// 12xx: kind provider
+const (
+	CodeKindConfigMerge   Code = "CUBE-1201" // kind providerConfig merge failed
+	CodeKindConfigInvalid Code = "CUBE-1202" // kind providerConfig structure invalid
+	CodeKindCreateFailed  Code = "CUBE-1203" // kind cluster creation failed
+	CodeKindKubeconfigGet Code = "CUBE-1204" // cannot get kubeconfig from kind
+	CodeKindDeleteFailed  Code = "CUBE-1205" // kind cluster deletion failed
+)
+
+// 2xxx: apply
+const (
+	CodeApplyWaitTimeout Code = "CUBE-2001" // timed out waiting for resources to become ready
+	CodeApplyClientBuild Code = "CUBE-2002" // cannot build Kubernetes client
+	CodeApplyFailed      Code = "CUBE-2003" // server-side apply failed
+	CodeInventoryFailed  Code = "CUBE-2004" // inventory read/write/parse failed
+	CodeApplyDiffFailed  Code = "CUBE-2005" // server-side diff failed (Phase 2)
+	CodeApplyPruneFailed Code = "CUBE-2006" // prune delete of untracked objects failed
+	CodeApplyParseYAML   Code = "CUBE-2007" // cannot parse manifest YAML
+)
+
+// 3xxx: engine
+const (
+	CodeEngineTypeUnknown    Code = "CUBE-3001" // unknown engine type in config
+	CodeEngineArgocdNotReady Code = "CUBE-3002" // argocd engine (Phase 1 only, deprecated message)
+	CodeEngineManifestsInv   Code = "CUBE-3003" // embedded engine install manifests invalid
+	CodeEngineHealthTimeout  Code = "CUBE-3004" // engine health check timed out or components not ready
+	CodeEngineUninstallFail  Code = "CUBE-3005" // flux prune/uninstall timeout
+	CodeEngineArgocdRegFail  Code = "CUBE-3006" // argocd OCI repo registration/capability failed (Phase 2)
+)
+
+// 4xxx: pack
+const (
+	CodePackRefInvalid   Code = "CUBE-4001" // unsupported pack ref scheme
+	CodePackValuesInv    Code = "CUBE-4002" // pack values decode or type validation error
+	CodePackCueInvalid   Code = "CUBE-4003" // pack.cue missing, syntax error, or compilation failure
+	CodePackManifestErr  Code = "CUBE-4004" // pack manifests/ directory read or YAML parse error
+	CodePackChartErr     Code = "CUBE-4005" // Helm chart load/parse/render error
+	CodePackFetchFail    Code = "CUBE-4006" // remote pack source fetch/resolution failed (Phase 2)
+	CodePackRefUnpin     Code = "CUBE-4007" // remote pack ref not pinned (missing @<rev> or :tag) (Phase 2)
+	CodePackKustomizeErr Code = "CUBE-4008" // kustomize render failed (Phase 2)
+	CodePackCnoeInvalid  Code = "CUBE-4009" // cnoe-compat document invalid or unsupported (Phase 2)
+	CodePackCnoeUnres    Code = "CUBE-4010" // cnoe:// path unresolvable (Phase 2)
+	CodePackExposeInv    Code = "CUBE-4011" // expose: block in pack.cue invalid (Phase 2)
+	CodePackOCIErr       Code = "CUBE-4012" // OCI pack pull/extract error (pullOCI failures)
+	CodePackCacheDirErr  Code = "CUBE-4013" // cache directory access/creation error
+	CodePackGuardTrip    Code = "CUBE-4014" // extraction guard tripped (path traversal/symlink) (Phase 2)
+)
+
+// 5xxx: registry
+const (
+	CodeZotManifestsInv   Code = "CUBE-5001" // embedded zot manifests invalid
+	CodePortForwardFail   Code = "CUBE-5002" // port-forward to registry failed
+	CodeOCIPushFail       Code = "CUBE-5003" // OCI push (artifact staging or push) failed
+	CodeDigestResolveFail Code = "CUBE-5004" // remote digest resolution failed (upgrade --plan) (Phase 2)
+)
+
+// 6xxx: trust/hostname (Phase 2)
+const (
+	CodeTrustCAFail        Code = "CUBE-6001" // local CA creation/load failed (Phase 2)
+	CodeTrustOSStoreFail   Code = "CUBE-6002" // OS trust-store install failed (Phase 2)
+	CodeTrustOSStoreRevert Code = "CUBE-6003" // OS trust-store uninstall/revert failed (Phase 2)
+	CodeTrustCoreDNSFail   Code = "CUBE-6004" // CoreDNS rewrite patch failed or did not roll out (Phase 2)
+	CodeTrustCertIssueFail Code = "CUBE-6005" // server certificate issuance failed (Phase 2)
+	CodeTrustStateFail     Code = "CUBE-6006" // trust state file corrupt (Phase 2)
+)

@@ -38,12 +38,12 @@ func (a *Applier) RecordInventory(ctx context.Context, objs []*unstructured.Unst
 	}
 	payload, err := json.Marshal(strs)
 	if err != nil {
-		return diag.Wrap(err, "CUBE-2004", "cannot encode inventory", "this is a bug; please report it")
+		return diag.Wrap(err, diag.CodeInventoryFailed, "cannot encode inventory", "this is a bug; please report it")
 	}
 
 	nsObj := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: SystemNamespace}}
 	if err := a.c.Create(ctx, nsObj); err != nil && !apierrors.IsAlreadyExists(err) {
-		return diag.Wrap(err, "CUBE-2004", "cannot create system namespace", "check RBAC on namespace cube-idp-system")
+		return diag.Wrap(err, diag.CodeInventoryFailed, "cannot create system namespace", "check RBAC on namespace cube-idp-system")
 	}
 
 	var cm corev1.ConfigMap
@@ -58,12 +58,12 @@ func (a *Applier) RecordInventory(ctx context.Context, objs []*unstructured.Unst
 			Data: map[string]string{"inventory": string(payload)},
 		}
 		if err := a.c.Create(ctx, &cm); err != nil {
-			return diag.Wrap(err, "CUBE-2004", "cannot write inventory", "check RBAC on namespace cube-idp-system")
+			return diag.Wrap(err, diag.CodeInventoryFailed, "cannot write inventory", "check RBAC on namespace cube-idp-system")
 		}
 		return nil
 	}
 	if getErr != nil {
-		return diag.Wrap(getErr, "CUBE-2004", "cannot read inventory", "check RBAC on namespace cube-idp-system")
+		return diag.Wrap(getErr, diag.CodeInventoryFailed, "cannot read inventory", "check RBAC on namespace cube-idp-system")
 	}
 	if cm.Data == nil {
 		cm.Data = map[string]string{}
@@ -74,7 +74,7 @@ func (a *Applier) RecordInventory(ctx context.Context, objs []*unstructured.Unst
 	}
 	cm.Labels[CubeLabel] = a.cube
 	if err := a.c.Update(ctx, &cm); err != nil {
-		return diag.Wrap(err, "CUBE-2004", "cannot write inventory", "check RBAC on namespace cube-idp-system")
+		return diag.Wrap(err, diag.CodeInventoryFailed, "cannot write inventory", "check RBAC on namespace cube-idp-system")
 	}
 	return nil
 }
@@ -89,17 +89,17 @@ func (a *Applier) LoadInventory(ctx context.Context) ([]object.ObjMetadata, erro
 		return nil, nil
 	}
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-2004", "cannot read inventory", "check RBAC on namespace cube-idp-system")
+		return nil, diag.Wrap(err, diag.CodeInventoryFailed, "cannot read inventory", "check RBAC on namespace cube-idp-system")
 	}
 	var strs []string
 	if err := json.Unmarshal([]byte(cm.Data["inventory"]), &strs); err != nil {
-		return nil, diag.Wrap(err, "CUBE-2004", "inventory is corrupt", "delete the ConfigMap and re-run `cube-idp up` to rebuild it")
+		return nil, diag.Wrap(err, diag.CodeInventoryFailed, "inventory is corrupt", "delete the ConfigMap and re-run `cube-idp up` to rebuild it")
 	}
 	refs := make([]object.ObjMetadata, 0, len(strs))
 	for _, s := range strs {
 		ref, err := object.ParseObjMetadata(s)
 		if err != nil {
-			return nil, diag.Wrap(err, "CUBE-2004", "inventory is corrupt", "delete the ConfigMap and re-run `cube-idp up` to rebuild it")
+			return nil, diag.Wrap(err, diag.CodeInventoryFailed, "inventory is corrupt", "delete the ConfigMap and re-run `cube-idp up` to rebuild it")
 		}
 		refs = append(refs, ref)
 	}
@@ -167,14 +167,14 @@ func (a *Applier) DeleteAll(ctx context.Context, timeout time.Duration) error {
 
 	if len(failures) > 0 {
 		// Keep the inventory ConfigMap so a re-run can retry the survivors.
-		return diag.Wrap(errors.Join(failures...), "CUBE-2006",
+		return diag.Wrap(errors.Join(failures...), diag.CodeApplyPruneFailed,
 			"some inventoried resources could not be pruned",
 			"re-run `cube-idp down`; inspect the listed resources with kubectl")
 	}
 
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: a.inventoryName(), Namespace: SystemNamespace}}
 	if err := a.c.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
-		return diag.Wrap(err, "CUBE-2004", "cannot delete inventory", "check RBAC on namespace cube-idp-system")
+		return diag.Wrap(err, diag.CodeInventoryFailed, "cannot delete inventory", "check RBAC on namespace cube-idp-system")
 	}
 	return nil
 }

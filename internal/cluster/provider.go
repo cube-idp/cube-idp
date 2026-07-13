@@ -30,7 +30,7 @@ func New(spec config.ClusterSpec, gw config.GatewaySpec) (Provider, error) {
 	case "existing":
 		return &existing{}, nil
 	default:
-		return nil, diag.New("CUBE-1001",
+		return nil, diag.New(diag.CodeClusterTypeUnknown,
 			fmt.Sprintf("unknown cluster provider %q", spec.Provider),
 			"use provider: kind or provider: existing")
 	}

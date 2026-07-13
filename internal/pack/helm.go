@@ -57,14 +57,14 @@ type chartRef struct {
 func renderHelm(dir string, values map[string]any) ([]*unstructured.Unstructured, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "chart.yaml"))
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-4005", "cannot read chart.yaml", "check file permissions")
+		return nil, diag.Wrap(err, diag.CodePackChartErr, "cannot read chart.yaml", "check file permissions")
 	}
 	var ref chartRef
 	if err := yaml.Unmarshal(raw, &ref); err != nil {
-		return nil, diag.Wrap(err, "CUBE-4005", "chart.yaml is not valid YAML", "fix the chart.yaml syntax")
+		return nil, diag.Wrap(err, diag.CodePackChartErr, "chart.yaml is not valid YAML", "fix the chart.yaml syntax")
 	}
 	if ref.Chart == "" {
-		return nil, diag.New("CUBE-4005", "chart.yaml is missing 'chart'", "add: chart: \"<chart-name>\"")
+		return nil, diag.New(diag.CodePackChartErr, "chart.yaml is missing 'chart'", "add: chart: \"<chart-name>\"")
 	}
 	if ref.ReleaseName == "" {
 		ref.ReleaseName = ref.Chart
@@ -90,7 +90,7 @@ func renderHelm(dir string, values map[string]any) ([]*unstructured.Unstructured
 	if registry.IsOCI(ref.Chart) {
 		rc, err := registry.NewClient()
 		if err != nil {
-			return nil, diag.Wrap(err, "CUBE-4005", "cannot create helm registry client", "check network access to the OCI chart registry")
+			return nil, diag.Wrap(err, diag.CodePackChartErr, "cannot create helm registry client", "check network access to the OCI chart registry")
 		}
 		install.SetRegistryClient(rc)
 	} else {
@@ -99,24 +99,24 @@ func renderHelm(dir string, values map[string]any) ([]*unstructured.Unstructured
 
 	chartPath, err := install.ChartPathOptions.LocateChart(ref.Chart, settings)
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-4005", fmt.Sprintf("cannot locate chart %q", ref.Chart),
+		return nil, diag.Wrap(err, diag.CodePackChartErr, fmt.Sprintf("cannot locate chart %q", ref.Chart),
 			"check chart repo/version in chart.yaml; try `helm template` manually")
 	}
 	chrt, err := loader.Load(chartPath)
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-4005", fmt.Sprintf("cannot load chart %q", ref.Chart),
+		return nil, diag.Wrap(err, diag.CodePackChartErr, fmt.Sprintf("cannot load chart %q", ref.Chart),
 			"check chart repo/version in chart.yaml; try `helm template` manually")
 	}
 
 	rel, err := install.Run(chrt, mergeValues(ref.Values, values))
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-4005", fmt.Sprintf("helm render failed for pack chart %q", ref.Chart),
+		return nil, diag.Wrap(err, diag.CodePackChartErr, fmt.Sprintf("helm render failed for pack chart %q", ref.Chart),
 			"check chart repo/version in chart.yaml; try `helm template` manually")
 	}
 
 	objs, err := apply.ParseMultiDoc([]byte(rel.Manifest))
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-4005", fmt.Sprintf("helm chart %q rendered invalid YAML", ref.Chart),
+		return nil, diag.Wrap(err, diag.CodePackChartErr, fmt.Sprintf("helm chart %q rendered invalid YAML", ref.Chart),
 			"this is likely a bug in the chart; try `helm template` manually")
 	}
 

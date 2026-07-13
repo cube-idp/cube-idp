@@ -55,13 +55,13 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec) (
 	}
 	cp := controlPlane(cfg.Nodes)
 	if cp == nil {
-		return nil, diag.New("CUBE-1202", "providerConfig declares no control-plane node",
+		return nil, diag.New(diag.CodeKindConfigInvalid, "providerConfig declares no control-plane node",
 			"add a node with role: control-plane to providerConfig; see https://kind.sigs.k8s.io/docs/user/configuration/#nodes")
 	}
 
 	image := "kindest/node:" + spec.KubernetesVersion
 	if cp.Image != "" && cp.Image != image {
-		return nil, diag.New("CUBE-1201",
+		return nil, diag.New(diag.CodeKindConfigMerge,
 			fmt.Sprintf("providerConfig sets node image %q but spec.cluster.kubernetesVersion implies %q", cp.Image, image),
 			"remove the image from providerConfig or align kubernetesVersion; inspect with `cube-idp config render-cluster`")
 	}
@@ -70,7 +70,7 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec) (
 	// Required injection: gateway port (spec D10 "injects only what it requires").
 	for _, pm := range cp.ExtraPortMappings {
 		if pm.HostPort == int32(gw.Port) && pm.ContainerPort != gatewayContainerPort {
-			return nil, diag.New("CUBE-1201",
+			return nil, diag.New(diag.CodeKindConfigMerge,
 				fmt.Sprintf("providerConfig maps hostPort %d to containerPort %d, but cube-idp requires %d -> %d for the gateway",
 					gw.Port, pm.ContainerPort, gw.Port, gatewayContainerPort),
 				"remove that extraPortMapping or change spec.gateway.port; inspect with `cube-idp config render-cluster`")
@@ -86,11 +86,11 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec) (
 	for _, p := range spec.ExtraPorts {
 		if hasHostPort(cp.ExtraPortMappings, p.HostPort) {
 			if p.HostPort == int32(gw.Port) {
-				return nil, diag.New("CUBE-1201",
+				return nil, diag.New(diag.CodeKindConfigMerge,
 					fmt.Sprintf("spec.cluster.extraPorts maps hostPort %d which cube-idp reserves for the gateway", p.HostPort),
 					"remove that entry from spec.cluster.extraPorts or change spec.gateway.port")
 			}
-			return nil, diag.New("CUBE-1201",
+			return nil, diag.New(diag.CodeKindConfigMerge,
 				fmt.Sprintf("hostPort %d is mapped both in providerConfig and spec.cluster.extraPorts", p.HostPort),
 				"keep exactly one of the two mappings")
 		}
@@ -115,13 +115,13 @@ func loadUserConfig(pc string) (*v1alpha4.Cluster, error) {
 	if !strings.Contains(pc, "\n") { // single line -> treat as file path
 		b, err := os.ReadFile(pc)
 		if err != nil {
-			return nil, diag.Wrap(err, "CUBE-1202", fmt.Sprintf("cannot read providerConfig file %s", pc),
+			return nil, diag.Wrap(err, diag.CodeKindConfigInvalid, fmt.Sprintf("cannot read providerConfig file %s", pc),
 				"set spec.cluster.providerConfig to a readable kind config file or an inline YAML document")
 		}
 		raw = b
 	}
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		return nil, diag.Wrap(err, "CUBE-1202", "providerConfig is not a valid kind Cluster document",
+		return nil, diag.Wrap(err, diag.CodeKindConfigInvalid, "providerConfig is not a valid kind Cluster document",
 			"see https://kind.sigs.k8s.io/docs/user/configuration/")
 	}
 	return &cfg, nil

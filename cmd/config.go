@@ -25,7 +25,7 @@ func newConfigCmd() *cobra.Command {
 				return err
 			}
 			if cube.Spec.Cluster.Provider != "kind" {
-				return diag.New("CUBE-0004",
+				return diag.New(diag.CodeProviderMiss,
 					fmt.Sprintf("render-cluster applies to provider: kind (got %q)", cube.Spec.Cluster.Provider),
 					"provider: existing creates no cluster, so there is no provider config to render")
 			}

@@ -71,7 +71,7 @@ func newStatusCmd() *cobra.Command {
 			fmt.Fprintf(out, "\n%d object(s) in inventory\n", len(inventory))
 
 			if len(health) == 0 || !allReady {
-				return diag.New("CUBE-3004", "one or more components are not ready",
+				return diag.New(diag.CodeEngineHealthTimeout, "one or more components are not ready",
 					"inspect the components listed above with kubectl; re-run `cube-idp up` if needed")
 			}
 			return nil

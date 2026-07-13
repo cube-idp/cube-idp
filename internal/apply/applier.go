@@ -39,7 +39,7 @@ type Applier struct {
 func New(cfg *rest.Config, cubeName string) (*Applier, error) {
 	c, err := client.New(cfg, client.Options{})
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-2002", "cannot build cluster client", "check kubeconfig and connectivity")
+		return nil, diag.Wrap(err, diag.CodeApplyClientBuild, "cannot build cluster client", "check kubeconfig and connectivity")
 	}
 	poller := polling.NewStatusPoller(c, c.RESTMapper(), polling.Options{})
 	rm := ssa.NewResourceManager(c, poller, ssa.Owner{Field: FieldManager, Group: "cube-idp.dev"})
@@ -71,14 +71,14 @@ func (a *Applier) Apply(ctx context.Context, objs []*unstructured.Unstructured, 
 		o.SetLabels(labels)
 	}
 	if _, err := a.rm.ApplyAllStaged(ctx, objs, ssa.DefaultApplyOptions()); err != nil {
-		return diag.Wrap(err, "CUBE-2003", "server-side apply failed", "inspect the object in the error and re-run `cube-idp up`")
+		return diag.Wrap(err, diag.CodeApplyFailed, "server-side apply failed", "inspect the object in the error and re-run `cube-idp up`")
 	}
 	if !wait {
 		return nil
 	}
 	set := object.UnstructuredSetToObjMetadataSet(objs)
 	if err := a.rm.WaitForSet(set, ssa.WaitOptions{Interval: 2 * time.Second, Timeout: timeout}); err != nil {
-		return diag.Wrap(err, "CUBE-2001", "timed out waiting for resources to become ready",
+		return diag.Wrap(err, diag.CodeApplyWaitTimeout, "timed out waiting for resources to become ready",
 			"re-run `cube-idp up` (idempotent); if it persists, inspect the resources named above with kubectl")
 	}
 	return nil

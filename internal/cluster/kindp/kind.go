@@ -53,17 +53,17 @@ func (k *Kind) Ensure(ctx context.Context, name string, spec config.ClusterSpec)
 			kindcluster.CreateWithWaitForReady(120*time.Second),
 		)
 		if err != nil {
-			return nil, diag.Wrap(err, "CUBE-1203", "kind cluster creation failed",
+			return nil, diag.Wrap(err, diag.CodeKindCreateFailed, "kind cluster creation failed",
 				"check that the container runtime is running and has free resources; `cube-idp doctor` (Phase 2) will preflight this")
 		}
 	}
 	kc, err := k.provider.KubeConfig(name, false)
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-1204", "cannot get kubeconfig from kind", "retry; if it persists, `cube-idp down` and `up` again")
+		return nil, diag.Wrap(err, diag.CodeKindKubeconfigGet, "cannot get kubeconfig from kind", "retry; if it persists, `cube-idp down` and `up` again")
 	}
 	restCfg, err := clientcmd.RESTConfigFromKubeConfig([]byte(kc))
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-1204", "kind kubeconfig is invalid", "delete the cluster with `cube-idp down` and retry")
+		return nil, diag.Wrap(err, diag.CodeKindKubeconfigGet, "kind kubeconfig is invalid", "delete the cluster with `cube-idp down` and retry")
 	}
 	return &kube.Conn{Kubeconfig: []byte(kc), Context: "kind-" + name, REST: restCfg}, nil
 }
@@ -72,7 +72,7 @@ func (k *Kind) Ensure(ctx context.Context, name string, spec config.ClusterSpec)
 func (k *Kind) Exists(ctx context.Context, name string) (bool, error) {
 	names, err := k.provider.List()
 	if err != nil {
-		return false, diag.Wrap(err, "CUBE-1203", "cannot list kind clusters", "is the container runtime running?")
+		return false, diag.Wrap(err, diag.CodeKindCreateFailed, "cannot list kind clusters", "is the container runtime running?")
 	}
 	return slices.Contains(names, name), nil
 }
@@ -80,7 +80,7 @@ func (k *Kind) Exists(ctx context.Context, name string) (bool, error) {
 // Delete tears down the named kind cluster.
 func (k *Kind) Delete(ctx context.Context, name string) error {
 	if err := k.provider.Delete(name, ""); err != nil {
-		return diag.Wrap(err, "CUBE-1205", fmt.Sprintf("failed to delete kind cluster %q", name), "retry, or remove the container manually")
+		return diag.Wrap(err, diag.CodeKindDeleteFailed, fmt.Sprintf("failed to delete kind cluster %q", name), "retry, or remove the container manually")
 	}
 	return nil
 }
@@ -89,7 +89,7 @@ func (k *Kind) Delete(ctx context.Context, name string) error {
 func (k *Kind) Kubeconfig(ctx context.Context, name string) ([]byte, error) {
 	kc, err := k.provider.KubeConfig(name, false)
 	if err != nil {
-		return nil, diag.Wrap(err, "CUBE-1204", "cannot get kubeconfig from kind", "retry; if it persists, `cube-idp down` and `up` again")
+		return nil, diag.Wrap(err, diag.CodeKindKubeconfigGet, "cannot get kubeconfig from kind", "retry; if it persists, `cube-idp down` and `up` again")
 	}
 	return []byte(kc), nil
 }
@@ -98,7 +98,7 @@ func (k *Kind) Kubeconfig(ctx context.Context, name string) ([]byte, error) {
 // environment (Phase 2's `doctor` command surfaces these).
 func (k *Kind) Diagnose(ctx context.Context, name string) []diag.Finding {
 	if _, err := k.provider.List(); err != nil {
-		return []diag.Finding{{Code: "CUBE-1203", Severity: diag.SeverityError,
+		return []diag.Finding{{Code: diag.CodeKindCreateFailed, Severity: diag.SeverityError,
 			Message:     "container runtime unreachable: " + err.Error(),
 			Remediation: "start Docker/Podman and retry"}}
 	}

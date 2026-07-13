@@ -153,12 +153,12 @@ func gatewayPackRef(gw config.GatewaySpec) string {
 func cacheDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", diag.Wrap(err, "CUBE-4013", "cannot determine home directory for the pack cache",
+		return "", diag.Wrap(err, diag.CodePackCacheDirErr, "cannot determine home directory for the pack cache",
 			"set $HOME, or check your environment")
 	}
 	dir := filepath.Join(home, ".cache", "cube-idp", "packs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", diag.Wrap(err, "CUBE-4013", fmt.Sprintf("cannot create pack cache dir %s", dir),
+		return "", diag.Wrap(err, diag.CodePackCacheDirErr, fmt.Sprintf("cannot create pack cache dir %s", dir),
 			"check permissions on $HOME/.cache")
 	}
 	return dir, nil
@@ -182,14 +182,14 @@ func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, out i
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return diag.New("CUBE-3004",
+			return diag.New(diag.CodeEngineHealthTimeout,
 				fmt.Sprintf("timed out after %s waiting for components to become healthy: %s",
 					timeout, unreadySummary(health)),
 				"re-run `cube-idp up` (idempotent); inspect the listed components with kubectl")
 		}
 		select {
 		case <-ctx.Done():
-			return diag.Wrap(ctx.Err(), "CUBE-3004", "health wait aborted before completion",
+			return diag.Wrap(ctx.Err(), diag.CodeEngineHealthTimeout, "health wait aborted before completion",
 				"re-run `cube-idp up` — it is idempotent and resumes where it left off")
 		case <-time.After(healthPoll):
 		}
