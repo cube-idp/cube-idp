@@ -3307,7 +3307,7 @@ func GatewayRoute(host string) *unstructured.Unstructured // HTTPRoute registry.
 - *Registry route + NodePort*: `registry.<gateway.host>` routes to zot through the gateway for host-side `docker push` (TLS via the CA once `cube-idp trust` ran); kind *nodes* pull through certs.d instead, because localtest.me on a node points at the node itself.
 - *containerd certs.d*: maps image refs `registry.<gateway.host>/...` on kind nodes to a working endpoint, injected at cluster create via the kind provider.
 
-- [ ] **Step 1: Write the failing CoreDNS tests (fake client, pure string surgery)**
+- [x] **Step 1: Write the failing CoreDNS tests (fake client, pure string surgery)**
 
 `internal/trust/coredns_test.go`:
 
@@ -3411,7 +3411,7 @@ func TestEnsureCoreDNSRewriteHostChange(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail, then implement coredns.go**
+- [x] **Step 2: Run tests to verify they fail, then implement coredns.go**
 
 Run: `go test ./internal/trust/ -run TestEnsureCoreDNS -v` — Expected: FAIL.
 
@@ -3531,7 +3531,7 @@ func patchCorefile(ctx context.Context, c client.Client, timeout time.Duration, 
 
 Run: `go test ./internal/trust/ -run TestEnsureCoreDNS -v` — Expected: PASS.
 
-- [ ] **Step 3: certs.d writer + kind merge injection (failing tests first)**
+- [x] **Step 3: certs.d writer + kind merge injection (failing tests first)**
 
 `internal/trust/certsd_test.go`:
 
@@ -3657,7 +3657,7 @@ if certsd.Host != "" {
 
 Update the two callers: `kind.go` `Ensure` (build the CertsD by calling `trust.Dir()` + `trust.EnsureCA` + `trust.WriteCertsD(filepath.Join(dir, "certsd", host), host, "http://localhost:30500", ca.CertPath)` where `host = "registry." + k.gw.Host` — the kind provider already holds the GatewaySpec) and `cmd/config.go` render-cluster (pass a zero `CertsD{}` — render-cluster stays pure and file-free). Update all existing merge tests for the new parameter (`CertsD{}` for old cases).
 
-- [ ] **Step 4: zot NodePort + gateway route (failing test first)**
+- [x] **Step 4: zot NodePort + gateway route (failing test first)**
 
 Append to `internal/registry/zot_test.go`:
 
@@ -3744,7 +3744,7 @@ func GatewayRoute(host string) *unstructured.Unstructured {
 
 (RECONCILE: the `parentRefs` name/namespace must match the phase-1 Gateway (`cube-idp` in ns `traefik`, checkpoint 0.14). Cross-namespace backendRefs are same-namespace here — route lives in `cube-idp-system` next to zot, so the parentRef crosses namespaces, which the phase-1 Gateway allows via `allowedRoutes: {namespaces: {from: All}}`.)
 
-- [ ] **Step 5: Wire into `up` and `down`**
+- [x] **Step 5: Wire into `up` and `down`**
 
 In `internal/up/up.go`, after the pack delivery loop and before `waitHealthy` (all deadline-bound):
 
@@ -3767,12 +3767,12 @@ with `func gatewayServiceFQDN(gw config.GatewaySpec) string { return fmt.Sprintf
 
 In `cmd/down.go`, on the `existing`/`--keep-cluster` path, call `trust.RemoveCoreDNSRewrite(c.Context(), a.Client(), 2*time.Minute)` before `a.DeleteAll(...)` (kind-delete path needs nothing — the cluster dies).
 
-- [ ] **Step 6: Run everything**
+- [x] **Step 6: Run everything**
 
 Run: `go test ./internal/trust/ ./internal/registry/ ./internal/cluster/kindp/ -short -v && go build ./... && go test ./... -short`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A && git commit -m "feat: canonical hostname — CoreDNS rewrite, containerd certs.d, registry gateway route (D6)"
