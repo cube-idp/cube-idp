@@ -4,11 +4,20 @@
 //
 // Pack format: a directory containing:
 //
-//	pack.cue          required: name, version; optional #Values schema
-//	manifests/*.yaml  optional: raw multi-doc YAML manifests
-//	chart.yaml        optional: a helm chart reference, rendered client-side
-//	                   (spec §4: engines receive rendered manifests only;
-//	                   helm-controller is not installed in-cluster)
+//	pack.cue             required: name, version; optional #Values schema
+//	manifests/*.yaml     optional: raw multi-doc YAML manifests
+//	kustomization.yaml   optional: a kustomize overlay rooted at the pack
+//	chart.yaml           optional: a helm chart reference, rendered client-side
+//	                      (spec §4: engines receive rendered manifests only;
+//	                      helm-controller is not installed in-cluster)
+//
+// Render precedence for raw manifests: if kustomization.yaml exists at the
+// pack root, it is the *sole* source of raw manifests — manifests/ is
+// consumed through it (as `resources:`), never walked independently, so
+// objects are not double-rendered. Otherwise the Phase 1 behavior (walk
+// manifests/*.yaml directly, in sorted filename order) is unchanged.
+// chart.yaml helm rendering is orthogonal to this precedence and is always
+// appended, regardless of which raw-manifest path was taken.
 //
 // chart.yaml shape:
 //

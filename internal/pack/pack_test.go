@@ -3,7 +3,11 @@ package pack
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/rafpe/cube-idp/internal/diag"
 )
@@ -66,5 +70,39 @@ func TestRenderHelmChart(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("helm render produced no Deployment")
+	}
+}
+
+func TestRenderKustomizeOverlay(t *testing.T) {
+	p, err := Fetch(context.Background(), "testdata/demo-kustomize", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := p.Render(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// exactly one object: kustomization governs manifests/, no double-count
+	if len(r.Objects) != 1 {
+		t.Fatalf("want 1 object (no double-render of manifests/), got %d", len(r.Objects))
+	}
+	msg, _, _ := unstructured.NestedString(r.Objects[0].Object, "data", "message")
+	if msg != "patched" {
+		t.Fatalf("kustomize patch not applied, message=%q", msg)
+	}
+}
+
+func TestRenderKustomizeFailureIsTyped(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "pack.cue"), []byte("name: \"bad\"\nversion: \"0.1.0\"\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "kustomization.yaml"), []byte("resources: [does-not-exist.yaml]\n"), 0o644)
+	p, err := Fetch(context.Background(), dir, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.Render(nil)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != "CUBE-4008" {
+		t.Fatalf("want CUBE-4008, got %v", err)
 	}
 }

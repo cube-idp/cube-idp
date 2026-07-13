@@ -1,0 +1,10 @@
+resources:
+  - manifests/cm.yaml
+patches:
+  - target:
+      kind: ConfigMap
+      name: demo
+    patch: |-
+      - op: replace
+        path: /data/message
+        value: patched
