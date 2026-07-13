@@ -26,6 +26,12 @@ import (
 // node. See packs/traefik/README.md for the full host->node->pod chain.
 const gatewayContainerPort = 30443 // Traefik websecure NodePort (HTTPS, Phase 2)
 
+// CertsD requests a containerd certs.d bind mount on every kind node so
+// image refs on Host resolve through the hosts.toml/ca.crt staged in HostDir
+// (internal/trust.WriteCertsD) rather than through localtest.me, which on a
+// kind node resolves to the node itself (D6). Zero value = no injection.
+type CertsD struct{ Host, HostDir string }
+
 // RenderConfig performs the D10 two-layer merge and returns the final kind
 // config YAML. It is pure: no docker, no cluster, fully unit-testable.
 //
@@ -42,7 +48,7 @@ const gatewayContainerPort = 30443 // Traefik websecure NodePort (HTTPS, Phase 2
 // conflict = user config already maps gw.Port to a different containerPort,
 //
 //	or sets a different node image than kubernetesVersion -> CUBE-1201
-func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec) ([]byte, error) {
+func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, certsd CertsD) ([]byte, error) {
 	cfg, err := loadUserConfig(spec.ProviderConfig)
 	if err != nil {
 		return nil, err
@@ -102,6 +108,14 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec) (
 		cp.ExtraMounts = append(cp.ExtraMounts, v1alpha4.Mount{HostPath: m.HostPath, ContainerPath: m.NodePath})
 	}
 	cfg.ContainerdConfigPatches = append(cfg.ContainerdConfigPatches, containerdPatches(spec.Registry)...)
+
+	// D6 canonical hostname: containerd certs.d injection (Task 10).
+	if certsd.Host != "" {
+		cfg.ContainerdConfigPatches = append(cfg.ContainerdConfigPatches,
+			"[plugins.\"io.containerd.grpc.v1.cri\".registry]\n  config_path = \"/etc/containerd/certs.d\"")
+		cp.ExtraMounts = append(cp.ExtraMounts, v1alpha4.Mount{
+			HostPath: certsd.HostDir, ContainerPath: "/etc/containerd/certs.d/" + certsd.Host})
+	}
 
 	return yaml.Marshal(cfg)
 }

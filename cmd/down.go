@@ -10,6 +10,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/cluster"
 	"github.com/rafpe/cube-idp/internal/config"
 	enginefactory "github.com/rafpe/cube-idp/internal/engine/factory"
+	"github.com/rafpe/cube-idp/internal/trust"
 )
 
 func newDownCmd() *cobra.Command {
@@ -57,6 +58,12 @@ func newDownCmd() *cobra.Command {
 					return err
 				}
 				if err := eng.Uninstall(c.Context(), a, 5*time.Minute); err != nil {
+					return err
+				}
+				// D6: revert the CoreDNS rewrite before tearing the rest down
+				// — the cluster (and CoreDNS with it) survives this path, so
+				// nothing else undoes it.
+				if err := trust.RemoveCoreDNSRewrite(c.Context(), a.Client(), 2*time.Minute); err != nil {
 					return err
 				}
 				return a.DeleteAll(c.Context(), 5*time.Minute)

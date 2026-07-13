@@ -36,7 +36,7 @@ func TestRenderTypedFieldsOnly(t *testing.T) {
 		},
 		Mounts: []config.Mount{{HostPath: "/tmp/images", NodePath: "/var/lib/images"}},
 	}
-	out, err := RenderConfig("dev", spec, gw)
+	out, err := RenderConfig("dev", spec, gw, CertsD{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestRenderMergesUserProviderConfig(t *testing.T) {
 		KubernetesVersion: "v1.33.1",
 		ProviderConfig:    filepath.Join("testdata", "user-kind-config.yaml"),
 	}
-	out, err := RenderConfig("dev", spec, gw)
+	out, err := RenderConfig("dev", spec, gw, CertsD{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ nodes:
     hostPort: 8443
 `
 	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1", ProviderConfig: inline}
-	_, err := RenderConfig("dev", spec, gw)
+	_, err := RenderConfig("dev", spec, gw, CertsD{})
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != "CUBE-1201" {
 		t.Fatalf("want CUBE-1201 conflict, got %v", err)
@@ -97,7 +97,7 @@ nodes:
   image: kindest/node:v1.30.0
 `
 	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1", ProviderConfig: inline}
-	_, err := RenderConfig("dev", spec, gw)
+	_, err := RenderConfig("dev", spec, gw, CertsD{})
 	wantDiag(t, err, "CUBE-1201")
 }
 
@@ -117,7 +117,7 @@ nodes:
 		ProviderConfig:    inline,
 		ExtraPorts:        []config.PortMapping{{HostPort: 32222, NodePort: 32222}},
 	}
-	_, err := RenderConfig("dev", spec, gw)
+	_, err := RenderConfig("dev", spec, gw, CertsD{})
 	de := wantDiag(t, err, "CUBE-1201")
 	if !strings.Contains(de.Summary, "providerConfig") {
 		t.Fatalf("duplicate against providerConfig should mention providerConfig, got %q", de.Summary)
@@ -130,7 +130,7 @@ func TestRenderConflictOnExtraPortReservedForGateway(t *testing.T) {
 		KubernetesVersion: "v1.33.1",
 		ExtraPorts:        []config.PortMapping{{HostPort: 8443, NodePort: 30443}},
 	}
-	_, err := RenderConfig("dev", spec, gw)
+	_, err := RenderConfig("dev", spec, gw, CertsD{})
 	de := wantDiag(t, err, "CUBE-1201")
 	if !strings.Contains(de.Summary, "reserves for the gateway") {
 		t.Fatalf("gateway-port duplicate should blame extraPorts, not providerConfig; got %q", de.Summary)
@@ -143,14 +143,14 @@ func TestRenderProviderConfigFileMissing(t *testing.T) {
 		KubernetesVersion: "v1.33.1",
 		ProviderConfig:    filepath.Join("testdata", "does-not-exist.yaml"),
 	}
-	_, err := RenderConfig("dev", spec, gw)
+	_, err := RenderConfig("dev", spec, gw, CertsD{})
 	wantDiag(t, err, "CUBE-1202")
 }
 
 func TestRenderProviderConfigInvalidYAML(t *testing.T) {
 	inline := "kind: Cluster\nnodes: {not: [a, valid, kind, document\n"
 	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1", ProviderConfig: inline}
-	_, err := RenderConfig("dev", spec, gw)
+	_, err := RenderConfig("dev", spec, gw, CertsD{})
 	wantDiag(t, err, "CUBE-1202")
 }
 
@@ -169,7 +169,7 @@ nodes:
 		Mounts:            []config.Mount{{HostPath: "/tmp/images", NodePath: "/var/lib/images"}},
 		ProviderConfig:    inline,
 	}
-	out, err := RenderConfig("dev", spec, gw)
+	out, err := RenderConfig("dev", spec, gw, CertsD{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,13 +209,28 @@ nodes:
 
 func TestRenderMapsGatewayPortToWebsecure(t *testing.T) {
 	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1"}
-	out, err := RenderConfig("dev", spec, gw)
+	out, err := RenderConfig("dev", spec, gw, CertsD{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(out)
 	if !strings.Contains(s, "hostPort: 8443") || !strings.Contains(s, "containerPort: 30443") {
 		t.Fatalf("gateway must map host %d to websecure NodePort 30443:\n%s", gw.Port, s)
+	}
+}
+
+func TestRenderConfigInjectsCertsD(t *testing.T) {
+	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1"}
+	out, err := RenderConfig("dev", spec, gw, CertsD{Host: "registry.cube-idp.localtest.me", HostDir: "/tmp/certsd"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	if !strings.Contains(s, "/etc/containerd/certs.d/registry.cube-idp.localtest.me") {
+		t.Fatalf("certs.d mount missing:\n%s", s)
+	}
+	if !strings.Contains(s, `config_path = "/etc/containerd/certs.d"`) {
+		t.Fatalf("containerd config_path patch missing:\n%s", s)
 	}
 }
 
@@ -228,7 +243,7 @@ nodes:
 - role: worker
 `
 	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1", ProviderConfig: inline}
-	_, err := RenderConfig("dev", spec, gw)
+	_, err := RenderConfig("dev", spec, gw, CertsD{})
 	de := wantDiag(t, err, "CUBE-1202")
 	if !strings.Contains(de.Summary, "no control-plane node") {
 		t.Fatalf("summary should say no control-plane node, got %q", de.Summary)

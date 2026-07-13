@@ -3,6 +3,7 @@ package kindp
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/kube"
+	"github.com/rafpe/cube-idp/internal/trust"
 )
 
 // Kind implements cluster.Provider for local kind (kubernetes-in-docker)
@@ -44,7 +46,11 @@ func (k *Kind) Ensure(ctx context.Context, name string, spec config.ClusterSpec)
 		return nil, err
 	}
 	if !exists {
-		cfg, err := RenderConfig(name, spec, k.gw)
+		certsd, err := k.certsD()
+		if err != nil {
+			return nil, err
+		}
+		cfg, err := RenderConfig(name, spec, k.gw, certsd)
 		if err != nil {
 			return nil, err
 		}
@@ -66,6 +72,28 @@ func (k *Kind) Ensure(ctx context.Context, name string, spec config.ClusterSpec)
 		return nil, diag.Wrap(err, diag.CodeKindKubeconfigGet, "kind kubeconfig is invalid", "delete the cluster with `cube-idp down` and retry")
 	}
 	return &kube.Conn{Kubeconfig: []byte(kc), Context: "kind-" + name, REST: restCfg}, nil
+}
+
+// certsD prepares the containerd certs.d host directory that maps
+// registry.<gw.Host> image refs on kind nodes to the zot NodePort (D6
+// canonical hostname, Task 10). It depends on the trust package's CA (D12:
+// EnsureCA runs before cluster creation in up.Run) so certs.d exists before
+// RenderConfig ever mounts it.
+func (k *Kind) certsD() (CertsD, error) {
+	dir, err := trust.Dir()
+	if err != nil {
+		return CertsD{}, err
+	}
+	ca, err := trust.EnsureCA(dir)
+	if err != nil {
+		return CertsD{}, err
+	}
+	host := "registry." + k.gw.Host
+	hostDir := filepath.Join(dir, "certsd", host)
+	if err := trust.WriteCertsD(hostDir, host, "http://localhost:30500", ca.CertPath); err != nil {
+		return CertsD{}, err
+	}
+	return CertsD{Host: host, HostDir: hostDir}, nil
 }
 
 // Exists reports whether a kind cluster with the given name exists.

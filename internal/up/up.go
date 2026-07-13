@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/rafpe/cube-idp/internal/apply"
 	"github.com/rafpe/cube-idp/internal/cluster"
 	"github.com/rafpe/cube-idp/internal/config"
@@ -22,6 +24,8 @@ import (
 	"github.com/rafpe/cube-idp/internal/registry"
 	"github.com/rafpe/cube-idp/internal/trust"
 )
+
+const dnsTimeout = 2 * time.Minute
 
 const (
 	clusterTimeout = 3 * time.Minute
@@ -170,6 +174,22 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	}
 	step(out, "lock", "cube.lock written (%d packs)", len(entries))
 
+	// D6 canonical hostname: route registry.<host> through the gateway (for
+	// host-side docker/oras push), then make *.<host> resolve in-cluster to
+	// the same gateway Service so pod-side clients use identical URLs.
+	route := registry.GatewayRoute(cube.Spec.Gateway.Host)
+	if err := a.Apply(ctx, []*unstructured.Unstructured{route}, false, applyTimeout); err != nil {
+		return err
+	}
+	if err := a.RecordInventory(ctx, []*unstructured.Unstructured{route}); err != nil {
+		return err
+	}
+	if err := trust.EnsureCoreDNSRewrite(ctx, a.Client(), cube.Spec.Gateway.Host,
+		gatewayServiceFQDN(cube.Spec.Gateway), dnsTimeout); err != nil {
+		return err
+	}
+	step(out, "dns", "*.%s resolves to the gateway in-cluster", cube.Spec.Gateway.Host)
+
 	if err := waitHealthy(ctx, eng, a, out, healthTimeout); err != nil {
 		return err
 	}
@@ -180,6 +200,17 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	fmt.Fprintf(out, "\n✔ cube %q is up — https://%s:%d\n  credentials: cube-idp get secrets\n",
 		cube.Metadata.Name, cube.Spec.Gateway.Host, cube.Spec.Gateway.Port)
 	return nil
+}
+
+// gatewayServiceFQDN returns the in-cluster DNS name of the gateway pack's
+// Service, the CoreDNS rewrite target for *.<gw.Host> (D6). Hardcoded to the
+// traefik chart's fullname convention (packs/traefik/chart.yaml: releaseName
+// "traefik" == chart name "traefik" -> fullname "traefik"), so the Service
+// lands at traefik.traefik.svc.cluster.local — verified against the phase-1
+// chart values (checkpoint 0.14). gw.Pack doubles as both name and
+// namespace, matching that chart's install (namespace: traefik).
+func gatewayServiceFQDN(gw config.GatewaySpec) string {
+	return fmt.Sprintf("%s.%s.svc.cluster.local", gw.Pack, gw.Pack)
 }
 
 // waitHealthy polls eng.Health every healthPoll until every reported

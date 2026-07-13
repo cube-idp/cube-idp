@@ -29,7 +29,8 @@ func newConfigCmd() *cobra.Command {
 					fmt.Sprintf("render-cluster applies to provider: kind (got %q)", cube.Spec.Cluster.Provider),
 					"provider: existing creates no cluster, so there is no provider config to render")
 			}
-			out, err := kindp.RenderConfig(cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway)
+			// render-cluster stays pure and file-free: no certs.d staging here.
+			out, err := kindp.RenderConfig(cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, kindp.CertsD{})
 			if err != nil {
 				return err
 			}

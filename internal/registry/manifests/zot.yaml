@@ -36,5 +36,6 @@ metadata:
   name: zot
   namespace: cube-idp-system
 spec:
+  type: NodePort
   selector: {app: zot}
-  ports: [{port: 5000, targetPort: 5000}]
+  ports: [{port: 5000, targetPort: 5000, nodePort: 30500}]
