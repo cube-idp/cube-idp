@@ -126,9 +126,20 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, z
 	}
 	if reg := registriesYAML(spec.Registry, zot); reg != "" {
 		if cfg.Registries.Config != "" {
+			// Two distinct conflicts share this branch — diagnose the one the
+			// user actually caused. registries.config is an opaque blob we
+			// cannot merge into without parsing, so both are rejected, but on
+			// the Ensure path zot.Host is ALWAYS set: blaming
+			// spec.cluster.registry there would point at a field the user
+			// never touched.
+			if len(spec.Registry.Mirrors) > 0 || len(spec.Registry.Insecure) > 0 {
+				return nil, diag.New(diag.CodeK3dConfigMerge,
+					"registry mirrors are set both in providerConfig (registries.config) and spec.cluster.registry",
+					"keep exactly one of the two")
+			}
 			return nil, diag.New(diag.CodeK3dConfigMerge,
-				"registry mirrors are set both in providerConfig (registries.config) and spec.cluster.registry",
-				"keep exactly one of the two")
+				fmt.Sprintf("providerConfig sets registries.config, but cube-idp must inject a zot registry mirror (%s -> the in-cluster zot NodePort) into the same registries.yaml and cannot merge into an opaque registries.config block", zot.Host),
+				"move your mirrors/insecure entries from providerConfig's registries.config into spec.cluster.registry so cube-idp can compose them with the zot mirror")
 		}
 		cfg.Registries.Config = reg
 	}

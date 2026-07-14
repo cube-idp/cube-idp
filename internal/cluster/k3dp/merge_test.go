@@ -200,6 +200,59 @@ registries:
 	}
 }
 
+// TestRenderConflictOnUserRegistriesWithZotMirror pins the Ensure-path
+// diagnostic: zot.Host is ALWAYS non-empty on Ensure, so a user
+// providerConfig carrying registries.config collides with the injected zot
+// mirror even when spec.cluster.registry is completely empty. The conflict
+// must still be rejected (registries.config is an opaque blob we can't merge
+// the zot entry into without parsing), but the message must name the injected
+// zot mirror requirement — NOT misdiagnose it as "set both in providerConfig
+// and spec.cluster.registry", pointing at a field the user never set.
+func TestRenderConflictOnUserRegistriesWithZotMirror(t *testing.T) {
+	inline := `
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+registries:
+  config: |
+    mirrors:
+      docker.io:
+        endpoint: ["https://mirror.other.example"]
+`
+	spec := config.ClusterSpec{Provider: "k3d", KubernetesVersion: "v1.33.1", ProviderConfig: inline}
+	_, err := RenderConfig("dev", spec, gw, ZotMirror{Host: "registry.cube-idp.localtest.me"})
+	de := wantDiag(t, err, "CUBE-1301")
+	if !strings.Contains(de.Summary, "zot") {
+		t.Fatalf("summary must name the injected zot mirror as the conflicting requirement, got %q", de.Summary)
+	}
+	if strings.Contains(de.Summary, "spec.cluster.registry") {
+		t.Fatalf("summary must not blame spec.cluster.registry (the user never set it), got %q", de.Summary)
+	}
+}
+
+// TestRenderKeepsUserRegistriesWithoutZotOrSpecRegistry: on the pure
+// render-cluster path (zero ZotMirror) with no spec.cluster.registry, a user
+// providerConfig registries.config has nothing to conflict with and must
+// survive the merge untouched.
+func TestRenderKeepsUserRegistriesWithoutZotOrSpecRegistry(t *testing.T) {
+	inline := `
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+registries:
+  config: |
+    mirrors:
+      docker.io:
+        endpoint: ["https://mirror.other.example"]
+`
+	spec := config.ClusterSpec{Provider: "k3d", KubernetesVersion: "v1.33.1", ProviderConfig: inline}
+	out, err := RenderConfig("dev", spec, gw, ZotMirror{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "mirror.other.example") {
+		t.Fatalf("user registries.config must be preserved when nothing conflicts:\n%s", out)
+	}
+}
+
 // TestRenderConfigInjectsZotMirror covers the D12 zot-mirror wiring: a
 // non-zero ZotMirror adds a registries.yaml mirror entry for it even when
 // spec.cluster.registry is unset.
