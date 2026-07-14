@@ -43,6 +43,17 @@ func (fakeEngine) Deliver(_ context.Context, r *pack.Rendered, src engine.Artifa
 	}, nil
 }
 
+func (fakeEngine) DeliverGit(_ context.Context, name string, _ engine.GitSource) ([]*unstructured.Unstructured, error) {
+	return []*unstructured.Unstructured{
+		{Object: map[string]any{
+			"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization",
+			"metadata": map[string]any{"name": "cube-idp-" + name, "namespace": "engine-system"},
+		}},
+	}, nil
+}
+
+func (fakeEngine) Poke(context.Context, *apply.Applier, string) error { return nil }
+
 func (fakeEngine) Health(context.Context, *apply.Applier) ([]engine.ComponentHealth, error) {
 	return nil, nil
 }

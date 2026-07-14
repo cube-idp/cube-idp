@@ -60,6 +60,7 @@ const (
 	CodeEngineHealthTimeout Code = "CUBE-3004" // engine health check timed out or components not ready
 	CodeEngineUninstallFail Code = "CUBE-3005" // flux prune/uninstall timeout
 	CodeEngineArgocdRegFail Code = "CUBE-3006" // reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design
+	CodePokeTargetMissing   Code = "CUBE-3007" // Poke found no delivery source (OCIRepository/GitRepository/Application) for the pack
 )
 
 // 4xxx: pack
