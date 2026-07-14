@@ -11,6 +11,8 @@ import (
 
 	lipgloss "charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/fluxcd/cli-utils/pkg/object"
 
@@ -88,7 +90,13 @@ func newStatusCmd() *cobra.Command {
 					return err
 				}
 			case p.Styled():
-				renderStatusStyled(p, health, inventory, details)
+				// Access URLs come from the D11 Pack records `up` writes —
+				// zero new plumbing (get secrets already lists the same CRD)
+				// and best-effort (nil on any error): styled-mode garnish
+				// must never fail an otherwise-healthy status. Fetched only
+				// on this branch, so plain/JSON runs make no extra API call
+				// and stay byte-frozen.
+				renderStatusStyled(p, health, inventory, details, packAccessRows(c.Context(), a.Client()))
 			default:
 				renderStatusPlain(out, p, health, inventory, details)
 			}
@@ -131,9 +139,10 @@ var (
 
 // renderStatusStyled is the stage-B rich static snapshot (design doc §10): a
 // glyph-led component table with dimmed status messages, the inventory count,
-// and, under --details, the inventory table. Transient static output — it
-// exits immediately (no --watch, no resident view).
-func renderStatusStyled(p *ui.Printer, health []engine.ComponentHealth, inventory []object.ObjMetadata, details bool) {
+// the access URLs from the Pack records (when any), and, under --details, the
+// inventory table. Transient static output — it exits immediately (no
+// --watch, no resident view).
+func renderStatusStyled(p *ui.Printer, health []engine.ComponentHealth, inventory []object.ObjMetadata, details bool, access []ui.PackAccess) {
 	out := p.Out()
 	fmt.Fprintln(out, statusHeaderStyle.Render("Components"))
 	name := 0
@@ -149,10 +158,41 @@ func renderStatusStyled(p *ui.Printer, health []engine.ComponentHealth, inventor
 		}
 		fmt.Fprintf(out, "  %s %-*s  %s\n", glyph, name, h.Name, statusDimStyle.Render(msg))
 	}
+	if len(access) > 0 {
+		fmt.Fprintf(out, "\n%s\n", statusHeaderStyle.Render("Access"))
+		for _, pk := range access {
+			for _, u := range pk.URLs {
+				fmt.Fprintf(out, "  %-12s %s\n", pk.Name, u)
+			}
+		}
+	}
 	fmt.Fprintf(out, "\n%s\n", statusHeaderStyle.Render(fmt.Sprintf("%d object(s) in inventory", len(inventory))))
 	if details {
 		fmt.Fprintf(out, "\n%s", formatInventory(inventory))
 	}
+}
+
+// packAccessRows reads the access URLs the D11 Pack records already carry
+// (spec.urls — written by pack.PackObject with ${GATEWAY_HOST} substituted at
+// `up` time), for the styled status render. Best-effort by design: any list
+// error (CRD absent on an older cube, RBAC, transient apiserver) returns nil
+// and status simply omits the Access section — it never fails the command.
+func packAccessRows(ctx context.Context, c client.Client) []ui.PackAccess {
+	var list unstructured.UnstructuredList
+	list.SetGroupVersionKind(packListGVK)
+	if err := c.List(ctx, &list); err != nil {
+		return nil
+	}
+	rows := make([]ui.PackAccess, 0, len(list.Items))
+	for _, item := range list.Items {
+		urls, _, _ := unstructured.NestedStringSlice(item.Object, "spec", "urls")
+		if len(urls) == 0 {
+			continue
+		}
+		rows = append(rows, ui.PackAccess{Name: item.GetName(), URLs: urls})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
+	return rows
 }
 
 // statusDoc is the gh-style status document (design doc §10). The objects

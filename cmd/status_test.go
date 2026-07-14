@@ -2,16 +2,57 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/fluxcd/cli-utils/pkg/object"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/rafpe/cube-idp/internal/engine"
 	"github.com/rafpe/cube-idp/internal/ui"
 )
+
+// TestPackAccessRows pins the styled-status Access source (design doc §10):
+// the D11 Pack records' spec.urls, sorted by pack name; packs without urls are
+// skipped; a client error yields nil (best-effort — status never fails on it).
+func TestPackAccessRows(t *testing.T) {
+	gitea := newPack("gitea", "", "", nil)
+	_ = unstructured.SetNestedStringSlice(gitea.Object, []string{"https://gitea.cube.local:8443"}, "spec", "urls")
+	noURLs := newPack("argocd", "", "", nil)
+	c := newGetFakeClient(t, gitea, noURLs)
+
+	rows := packAccessRows(context.Background(), c)
+	if len(rows) != 1 || rows[0].Name != "gitea" || rows[0].URLs[0] != "https://gitea.cube.local:8443" {
+		t.Fatalf("want gitea's urls only (argocd has none): %+v", rows)
+	}
+}
+
+// TestRenderStatusStyledIncludesAccess checks the styled snapshot carries the
+// Access section when pack URLs exist (ModeLive is the NewFor escape hatch
+// that forces styled onto a bytes.Buffer).
+func TestRenderStatusStyledIncludesAccess(t *testing.T) {
+	defer ui.SetMode(ui.ModeStyled)
+	ui.SetMode(ui.ModeLive)
+	var b bytes.Buffer
+	p := ui.NewFor(&b)
+	renderStatusStyled(p, []engine.ComponentHealth{{Name: "flux", Ready: true}}, nil, false,
+		[]ui.PackAccess{{Name: "gitea", URLs: []string{"https://gitea.cube.local:8443"}}})
+	got := b.String()
+	for _, want := range []string{"Components", "flux", "Access", "https://gitea.cube.local:8443"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("styled status missing %q:\n%s", want, got)
+		}
+	}
+	// And with no access rows the section is omitted entirely.
+	b.Reset()
+	renderStatusStyled(p, nil, nil, false, nil)
+	if strings.Contains(b.String(), "Access") {
+		t.Fatalf("Access section must be omitted when no pack carries URLs:\n%s", b.String())
+	}
+}
 
 // TestStatusPlainByteStable pins the byte-frozen plain projection (design doc
 // §8 item 4): even after stage B adds the styled/JSON surfaces, a
