@@ -540,9 +540,10 @@ columns, that the gateway serves a cube-idp CA-issued TLS cert, that `cnoe
 import` round-trips a fixture Application, and that `get secrets -p gitea`
 surfaces `gitea_admin` — then `down`s the cluster. The Phase 3 scenarios
 (`tests/e2e/phase3_test.go`) add: k3d up/down, `vendor` → offline `up
---bundle` (asserting the image node-load ran and no `oci://ghcr.io` ref
-leaked), `sync` one-shot, `repo create --deploy` (git push over the gateway
-→ engine syncs → ConfigMap appears), and an envoy-gateway smoke test.
+--bundle` (asserting the image node-load ran and that every per-pack
+`fetching <source>` output line resolves into the bundle staging dir, never
+an `oci://` ref), `sync` one-shot, `repo create --deploy` (git push over the
+gateway → engine syncs → ConfigMap appears), and an envoy-gateway smoke test.
 It records the first `up`'s wall-clock time as a tracked metric (`t.Logf`,
 plus a `GITHUB_STEP_SUMMARY` line when running under GitHub Actions) —
 spec §3's <60s goal is warm, not a hard assertion here, since image-pull

@@ -305,16 +305,23 @@ func TestK3dUpDown(t *testing.T) {
 // LoadImageArchive / k3d ImageImportIntoClusterMulti). Flow: `up` (online) ->
 // `vendor -o b.tgz` (reads cube.lock) -> `down` -> `up --bundle b.tgz`.
 //
-// Offline assertions on the bundle-up output: it MUST contain the "loading
-// images into cluster nodes" step (proving the node-load path ran) and MUST
-// NOT contain "oci://ghcr.io" (proving no pack ref fell through to a network
-// pull — bundle refs are rewritten to bundle-local dirs before pack.Fetch, and
-// a ref absent from the bundle is CUBE-7004, never a silent fetch). A true
-// network-namespace cutoff is not feasible on shared runners; the
-// ref-resolution guarantee plus these output assertions are the CI-shaped
-// proof, stated here on purpose. If `up --bundle` fails at LoadImages, that is
-// the recorded arbiter result: containerd rejected the per-image OCI-layout
-// tar shape and the internal/bundle fallback is required — report it, do not
+// Offline assertions on the bundle-up output, keyed on the per-pack
+// "fetching <source>" step line internal/up emits with the RESOLVED fetch
+// source (stepFetchSource, added by the Task 13 review — an online run
+// demonstrably prints the network/checkout ref there, pinned by
+// TestStepFetchSourcePlainOutput in internal/up): the output MUST contain the
+// "loading images into cluster nodes" step (the node-load path ran); EVERY
+// "fetching" line's source must point into the bundle's cube-idp-bundle-*
+// staging dir (positive: each pack was read from the bundle, not the network
+// or the checkout — this would fail on any online run, whose sources are
+// checkout paths or oci:// refs); and NO "fetching" line may name an oci://
+// source (negative). A ref absent from the bundle is CUBE-7004, never a
+// silent fetch. A true network-namespace cutoff is not feasible on shared
+// runners; the ref-resolution guarantee plus these falsifiable output
+// assertions are what CI can prove, and that limitation is stated in this
+// comment on purpose. If `up --bundle` fails at LoadImages, that is the
+// recorded arbiter result: containerd rejected the per-image OCI-layout tar
+// shape and the internal/bundle fallback is required — report it, do not
 // mask it.
 func TestVendorBundleOffline(t *testing.T) {
 	requireE2E(t)
@@ -350,13 +357,41 @@ func TestVendorBundleOffline(t *testing.T) {
 	if !strings.Contains(out, "loading images into cluster nodes") {
 		t.Fatalf("bundle up did not node-load images (missing offline load step):\n%s", out)
 	}
-	if strings.Contains(out, "oci://ghcr.io") {
-		t.Fatalf("bundle up leaked a network pack ref (oci://ghcr.io) — bundle install must be offline:\n%s", out)
-	}
+	assertFetchSourcesFromBundle(t, out)
 	// A converged bundle-installed cube is Ready like any other.
 	run(t, dir, bin, "status")
 
 	run(t, dir, bin, "down")
+}
+
+// assertFetchSourcesFromBundle parses every per-pack resolved-fetch-source
+// line ("▸ [pack] fetching <source>", emitted by internal/up's
+// stepFetchSource) out of a `up --bundle` run's output and asserts, per line:
+// the source points into the bundle's cube-idp-bundle-* staging dir
+// (positive) and is not an oci:// ref (negative). At least one such line must
+// exist — zero would mean the pack loop never ran or the line was renamed,
+// either of which must fail loudly rather than pass vacuously.
+func assertFetchSourcesFromBundle(t *testing.T, out string) {
+	t.Helper()
+	const marker = "fetching "
+	count := 0
+	for _, line := range strings.Split(out, "\n") {
+		idx := strings.Index(line, marker)
+		if idx < 0 || !strings.Contains(line, "[pack]") {
+			continue
+		}
+		count++
+		source := strings.TrimSpace(line[idx+len(marker):])
+		if strings.HasPrefix(source, "oci://") {
+			t.Fatalf("bundle up fetched a pack from the network (%s) — bundle install must be offline:\n%s", source, out)
+		}
+		if !strings.Contains(source, "cube-idp-bundle-") {
+			t.Fatalf("bundle up fetched a pack from outside the bundle staging dir (%s):\n%s", source, out)
+		}
+	}
+	if count == 0 {
+		t.Fatalf("no per-pack \"fetching <source>\" lines found — the offline assertion would be vacuous:\n%s", out)
+	}
 }
 
 // TestSyncOneShot proves D7's one-shot delivery: `up`, write a bare dir with a
