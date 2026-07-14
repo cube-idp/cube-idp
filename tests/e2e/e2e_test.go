@@ -10,6 +10,7 @@ package e2e
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -99,8 +100,7 @@ func TestUpStatusDown(t *testing.T) {
 
 	upStart := time.Now()
 	run(t, dir, bin, "up") // must exit 0 (spec: diagnose loudly and exit)
-	upWall := time.Since(upStart)
-	t.Logf("cube-idp up wall time (engine=%s): %s (goal: <60s excluding image pulls, tracked not asserted)", eng, upWall)
+	recordUpWallTime(t, eng, time.Since(upStart))
 
 	// Task 10 deferred verification: a kind node's containerd can pull
 	// registry.<host>/... through certs.d + the zot NodePort (never through
@@ -164,6 +164,35 @@ func TestUpStatusDown(t *testing.T) {
 		t.Fatalf("gitea admin secret not surfaced (D9/D11):\n%s", secrets)
 	}
 	run(t, dir, bin, "down")
+}
+
+// recordUpWallTime is Task 0.5(j)'s tracked CI metric: spec §3's <60s goal
+// is now scoped to a WARM run (node images already cached — see README's
+// mounts:-based node-image cache recipe; this repo does no pre-pull
+// engineering itself, so CI's own runs are typically cold and expected to
+// exceed 60s). t.Logf keeps the number visible in -v output; when running
+// under GitHub Actions (GITHUB_STEP_SUMMARY set), the same line is also
+// appended to the job's step summary — visible in the Actions UI without
+// digging through verbose logs, and diffable run over run. Best-effort: a
+// summary-file write failure only degrades to log-only, never fails the
+// test — this is telemetry, not a correctness assertion.
+func recordUpWallTime(t *testing.T, engine string, wall time.Duration) {
+	t.Helper()
+	line := fmt.Sprintf("cube-idp up wall time (engine=%s): %s (goal: <60s warm, spec §3; tracked not asserted)", engine, wall)
+	t.Logf("%s", line)
+	summary := os.Getenv("GITHUB_STEP_SUMMARY")
+	if summary == "" {
+		return
+	}
+	f, err := os.OpenFile(summary, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Logf("could not open GITHUB_STEP_SUMMARY %s: %v (metric only logged above)", summary, err)
+		return
+	}
+	defer f.Close()
+	if _, err := fmt.Fprintf(f, "- %s\n", line); err != nil {
+		t.Logf("could not write GITHUB_STEP_SUMMARY %s: %v (metric only logged above)", summary, err)
+	}
 }
 
 // patchGatewayPort rewrites the just-written cube.yaml's spec.gateway.port,
@@ -330,4 +359,46 @@ func run(t *testing.T, dir, bin string, args ...string) string {
 		t.Fatalf("cube-idp %v failed: %v", args, err)
 	}
 	return string(out)
+}
+
+// TestRecordUpWallTimeWritesStepSummary and TestRecordUpWallTimeNoopWithoutStepSummary
+// cover Task 0.5(j)'s tracked-metric helper directly — no docker/cluster
+// needed, so these run unconditionally (not gated by CUBE_IDP_E2E).
+func TestRecordUpWallTimeWritesStepSummary(t *testing.T) {
+	summary := filepath.Join(t.TempDir(), "summary.md")
+	t.Setenv("GITHUB_STEP_SUMMARY", summary)
+
+	recordUpWallTime(t, "flux", 42*time.Second)
+
+	raw, err := os.ReadFile(summary)
+	if err != nil {
+		t.Fatalf("expected GITHUB_STEP_SUMMARY to be written: %v", err)
+	}
+	got := string(raw)
+	if !strings.Contains(got, "flux") || !strings.Contains(got, "42s") {
+		t.Fatalf("expected the engine and wall time in the step summary, got:\n%s", got)
+	}
+}
+
+func TestRecordUpWallTimeAppendsAcrossCalls(t *testing.T) {
+	summary := filepath.Join(t.TempDir(), "summary.md")
+	t.Setenv("GITHUB_STEP_SUMMARY", summary)
+
+	recordUpWallTime(t, "flux", time.Second)
+	recordUpWallTime(t, "argocd", 2*time.Second)
+
+	raw, err := os.ReadFile(summary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(raw)
+	if !strings.Contains(got, "flux") || !strings.Contains(got, "argocd") {
+		t.Fatalf("expected both engine matrix legs recorded (appended, not overwritten), got:\n%s", got)
+	}
+}
+
+func TestRecordUpWallTimeNoopWithoutStepSummary(t *testing.T) {
+	t.Setenv("GITHUB_STEP_SUMMARY", "") // unset: local runs never have this
+	recordUpWallTime(t, "flux", time.Second)
+	// Only requirement: must not panic or fail the test (t.Logf-only path).
 }

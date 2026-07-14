@@ -93,6 +93,46 @@ provider config (D10 layer 2) before `up` creates anything.
 > plain HTTP stays available in-cluster on the `web` listener. Existing
 > kind clusters need `down`/`up` to pick up the new mapping.
 
+## Node-image cache (warm `up`, spec §3's <60s goal)
+
+Spec §3's "`up` completes in under 60 seconds" is a **warm** goal: it
+excludes the time a cold node spends pulling `kindest/node:<version>` and
+every pack's images from upstream registries the first time. cube-idp does
+no pre-pull engineering itself (no bundled image cache, no background
+warmer) — `spec.cluster.mounts` (D10 layer 1) is general enough to build one
+yourself:
+
+```yaml
+spec:
+  cluster:
+    provider: kind
+    mounts:
+      - hostPath: ~/.cache/cube-idp/containerd   # persists across `down && up`
+        nodePath: /var/lib/containerd
+```
+
+kind's node is itself a container; its containerd content store and
+snapshots normally live at `/var/lib/containerd` and vanish with the node
+when `cube-idp down` deletes the cluster. Mounting a stable host directory
+over that path instead means a subsequent `cube-idp up` (after `down`, or
+after switching `cube.yaml` and recreating per the cluster-shape caveat
+above) reuses every image layer already pulled into that directory — no
+registry round-trip for anything unchanged since the last run. The first
+`up` against an empty cache directory is still cold; every one after it, on
+the same host, is warm.
+
+Two caveats:
+
+- **Cluster-shape fields apply only at creation** (see the caveat above) —
+  `mounts` included. Adding this mount to an existing cluster's `cube.yaml`
+  has no effect until the next `down && up`.
+- **CI runners are typically ephemeral** — a fresh GitHub-hosted runner has
+  no prior `~/.cache/cube-idp/containerd` to mount, so CI's own `up` runs
+  are cold by default (`tests/e2e/e2e_test.go` tracks the wall time as a
+  metric, not an assertion, for exactly this reason). A self-hosted runner,
+  or a CI cache-restore step that seeds that directory before `up` runs,
+  gets the same warm-run benefit real hosts do.
+
 ## Pack format
 
 A pack (`internal/pack`) is a directory, fetched from a local dir or
@@ -348,9 +388,11 @@ that `status` and `kubectl get packs` (D11) surface the expected
 components/printer columns, that the gateway serves a cube-idp CA-issued
 TLS cert, that `cnoe import` round-trips a fixture Application, and that
 `get secrets -p gitea` surfaces `gitea_admin` — then `down`s the cluster.
-It logs the first `up`'s wall-clock time; the sub-60s goal (spec §3) is a
-tracked metric there, not a hard assertion, since image-pull time varies by
-host and network.
+It records the first `up`'s wall-clock time as a tracked metric (`t.Logf`,
+plus a `GITHUB_STEP_SUMMARY` line when running under GitHub Actions) —
+spec §3's <60s goal is warm, not a hard assertion here, since image-pull
+time varies by host and network and this repo's own CI runs are typically
+cold (see "Node-image cache" above).
 
 Locally, a host port already bound by an unrelated cluster (e.g. another
 kind cluster squatting `0.0.0.0:8443`) can be dodged without touching that

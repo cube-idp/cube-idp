@@ -161,8 +161,8 @@ git commit -m "docs: reconcile phase 3 plan against post-phase-2 codebase"
 - [x] **(g) diff blind spot:** the CoreDNS rewrite is outside `diff`'s model — either add a check or narrow `internal/diff/diff.go`'s doc claim; same note for `cmd/config.go render-cluster` output (print that certs.d is injected at up-time).
 - [x] **(h) message polish:** `cmd/trust.go` consent prompt hardcodes `cube-idp.localtest.me` — use the configured `gateway.host` (load via `-f` or accept the generic wording deliberately).
 - [x] **(i) CUBE-3006 constant:** `internal/diag/codes.go` keeps `CodeEngineArgocdRegFail` reserved-unused — update its comment to say "reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design"; Phase 3 allocates 3007 for the delivery-shape error.
-- [ ] **(j) RESOLVED 2026-07-14 (Owner Decisions #9) — `up` wall time vs spec §3's <60s:** re-scoped honestly. Spec §3 now says "<60s warm"; remaining work here: make warm-up the tracked CI metric and write the `mounts:` node-image cache recipe into the README. No pre-pull engineering.
-- [ ] **(k) RESOLVED 2026-07-14 (Owner Decisions #10, spec D13) — rich UX by default:** spec amended. Remaining work here: none in this task — the UX overhaul is its own workstream (research spike → owner picks a proposal → design doc → implementation), gated on the owner's proposal choice.
+- [x] **(j) RESOLVED 2026-07-14 (Owner Decisions #9) — `up` wall time vs spec §3's <60s:** re-scoped honestly. Spec §3 now says "<60s warm"; remaining work here: make warm-up the tracked CI metric and write the `mounts:` node-image cache recipe into the README. No pre-pull engineering.
+- [x] **(k) RESOLVED 2026-07-14 (Owner Decisions #10, spec D13) — rich UX by default:** spec amended. Remaining work here: none in this task — the UX overhaul is its own workstream (research spike → owner picks a proposal → design doc → implementation), gated on the owner's proposal choice.
 
 ---
 
