@@ -1,0 +1,11 @@
+# cert-manager: cluster-wide TLS certificate issuance/renewal (spec D12,
+# TLS-from-first-boot). CRDs installed via the chart's own crds.enabled flag
+# — no vendored CRD manifest needed.
+chart: cert-manager
+repo: https://charts.jetstack.io
+version: "1.16.3"          # pin; bump deliberately
+releaseName: cert-manager
+namespace: cert-manager
+values:
+  crds:
+    enabled: true

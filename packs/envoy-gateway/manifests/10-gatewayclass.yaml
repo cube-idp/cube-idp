@@ -1,0 +1,56 @@
+# envoy-gateway pack: a full cube-idp gateway implementation. Set
+# spec.gateway.pack: envoy-gateway in cube.yaml — this pack provides the
+# GatewayClass, the Gateway named cube-idp (20-gateway.yaml), and pins the
+# data-plane service to the cube-idp NodePorts via the EnvoyProxy config
+# below (parametersRef).
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-gateway
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: cube-idp
+    namespace: envoy-gateway
+---
+# Pins the generated Envoy data-plane Service to NodePort 30443/30080 (the
+# same host-port mapping packs/traefik relies on, see
+# internal/cluster/kindp/merge.go) and to a stable name so CoreDNS's
+# *.<host> rewrite (envoy-gateway.envoy-gateway.svc.cluster.local) resolves.
+#
+# Verified against the pinned chart's CRD (gateway-helm 1.3.0,
+# crds/generated/gateway.envoyproxy.io_envoyproxies.yaml): envoyService is
+# a first-class home for `name` and `type: NodePort` but has NO `ports`
+# property — the structural schema would silently prune one, leaving
+# Kubernetes to auto-assign random NodePorts. Exact port numbers therefore
+# go through the schema's `patch` field: a StrategicMerge over the
+# generated Service (applied via strategicpatch.StrategicMergePatch in EG
+# v1.3.0's api/v1alpha1/kubernetes_helpers.go), keyed on ServicePort's
+# `port` merge key — and the generated Service's port numbers equal the
+# Gateway's listener ports (8000/8443, per Service() in EG v1.3.0's
+# internal/infrastructure/kubernetes/proxy/resource_provider.go), so these
+# entries merge nodePort into the right generated ports. Runtime honor is
+# arbitrated by Task 13's envoy e2e smoke.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: cube-idp
+  namespace: envoy-gateway
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: NodePort
+        name: envoy-gateway
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                - port: 8000
+                  nodePort: 30080
+                - port: 8443
+                  nodePort: 30443
