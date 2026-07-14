@@ -13,13 +13,18 @@ import (
 
 const fluxNS = "flux-system"
 
+// deliveryName is the single source of truth for the name of every flux
+// object a pack owns — shared by Deliver, DeliverGit, Uninstall's label
+// selector, and Poke so all four agree on what "the delivery for pack X" is.
+func deliveryName(pack string) string { return "cube-idp-" + pack }
+
 // Deliver translates a rendered pack + already-pushed OCI artifact into the
 // Flux objects that pull and apply it: one OCIRepository (source) and one
 // Kustomization (apply), both named cube-idp-<pack>. The caller applies the
 // returned objects via the Applier — Deliver itself never touches the
 // cluster.
 func (f *Flux) Deliver(ctx context.Context, r *pack.Rendered, src engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
-	name := "cube-idp-" + r.Name
+	name := deliveryName(r.Name)
 	repo := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "source.toolkit.fluxcd.io/v1",
 		"kind":       "OCIRepository",

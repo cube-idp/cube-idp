@@ -26,6 +26,17 @@ type ComponentHealth struct {
 	Message string
 }
 
+// GitSource describes a continuously-synced git delivery source. It is the
+// git-flavoured counterpart of ArtifactRef: DeliverGit turns it into
+// engine-native objects (flux GitRepository + Kustomization; argocd
+// Application with a git source). Branch and Path have engine-applied
+// defaults ("main" and "./") when left empty.
+type GitSource struct {
+	URL    string // in-cluster clone URL, e.g. http://gitea-http.gitea.svc.cluster.local:3000/<owner>/<repo>.git
+	Branch string // default "main"
+	Path   string // default "./"
+}
+
 // Engine is the seam between packs (intent) and a concrete GitOps
 // controller (delivery). Implementations install their own controllers,
 // translate a rendered pack + pushed artifact into engine-native objects,
@@ -40,6 +51,20 @@ type Engine interface {
 	// Deliver RETURNS engine-native objects; the caller applies them via the
 	// Applier (keeps Deliver pure/testable and one apply path).
 	Deliver(ctx context.Context, r *pack.Rendered, src ArtifactRef) ([]*unstructured.Unstructured, error)
+	// DeliverGit registers a continuously-synced git source with the engine
+	// (flux: GitRepository + Kustomization; argocd: Application with a git
+	// source). Same purity rule as Deliver: it RETURNS objects, the caller
+	// applies them — DeliverGit never touches the cluster. name matches the
+	// name Deliver/Poke use; delivered objects are named cube-idp-<name>.
+	DeliverGit(ctx context.Context, name string, src GitSource) ([]*unstructured.Unstructured, error)
+	// Poke asks the engine to reconcile the delivered pack now instead of on
+	// its poll interval. packName matches the name Deliver/DeliverGit was
+	// called with. Implementations must be idempotent and cheap (an
+	// annotation patch — no apply, no wait). Poke works for BOTH delivery
+	// shapes: flux pokes the OCIRepository or GitRepository named
+	// cube-idp-<pack> (whichever exists), argocd always pokes the Application.
+	// A pack with no delivery source to poke is CUBE-3007.
+	Poke(ctx context.Context, a *apply.Applier, packName string) error
 	Health(ctx context.Context, a *apply.Applier) ([]ComponentHealth, error)
 	Uninstall(ctx context.Context, a *apply.Applier, timeout time.Duration) error
 }
