@@ -25,7 +25,7 @@ func TestInitWritesDefaultOCIRefs(t *testing.T) {
 	if cube.Spec.Gateway.Ref != "" {
 		t.Fatalf("gateway.ref should be unset without --local, got %q", cube.Spec.Gateway.Ref)
 	}
-	if len(cube.Spec.Packs) != 2 || cube.Spec.Packs[0].Ref != "oci://ghcr.io/cube-idp/packs/gitea:0.1.0" {
+	if len(cube.Spec.Packs) != 2 || cube.Spec.Packs[0].Ref != "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0" {
 		t.Fatalf("expected default OCI pack refs, got %+v", cube.Spec.Packs)
 	}
 }
@@ -74,7 +74,7 @@ func TestInitEngineArgoCDDropsArgoPack(t *testing.T) { // CUBE-0005 avoidance
 	if cube.Spec.Engine.Type != "argocd" {
 		t.Fatalf("engine.type = %q, want argocd", cube.Spec.Engine.Type)
 	}
-	if len(cube.Spec.Packs) != 1 || cube.Spec.Packs[0].Ref != "oci://ghcr.io/cube-idp/packs/gitea:0.1.0" {
+	if len(cube.Spec.Packs) != 1 || cube.Spec.Packs[0].Ref != "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0" {
 		t.Fatalf("expected only the gitea pack (argocd pack would trip CUBE-0005), got %+v", cube.Spec.Packs)
 	}
 }

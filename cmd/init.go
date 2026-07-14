@@ -47,7 +47,7 @@ func newInitCmd() *cobra.Command {
 			// the argocd pack would trip CUBE-0005 (redundant pack).
 			if engineType == "argocd" {
 				cube.Spec.Packs = []config.PackRef{
-					{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"},
+					{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0"},
 				}
 			}
 			if local != "" {
@@ -86,7 +86,7 @@ func newInitCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&name, "name", "dev", "cube name")
-	c.Flags().StringVar(&local, "local", "", "path to a cube-idp repo checkout; writes local packs/ paths instead of released OCI refs")
+	c.Flags().StringVar(&local, "local", "", "use repo-local pack paths instead of published OCI refs")
 	c.Flags().StringVar(&engineType, "engine", "flux", "gitops engine: flux | argocd")
 	return c
 }
