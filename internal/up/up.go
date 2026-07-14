@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -193,7 +194,10 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 			Version:      rendered.Version,
 			Resolved:     pk.Pinned,
 			RenderedHash: rh,
-			Images:       lock.ImagesFrom(rendered.Objects),
+			// D14: union rendered-manifest images with the pack's own
+			// declared images (pack.cue images:) — see the Entry.Images
+			// field comment for why both sources matter.
+			Images: mergeImages(lock.ImagesFrom(rendered.Objects), pk.Images),
 		})
 		deliverObjs, err := eng.Deliver(ctx, rendered, artifact)
 		if err != nil {
@@ -282,6 +286,28 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	}
 	p.AccessSummary(access, "credentials: cube-idp get secrets")
 	return nil
+}
+
+// mergeImages returns the sorted, deduplicated union of rendered (images
+// found by walking a pack's rendered manifests) and declared (pack.cue's
+// optional images: list, spec D14) — the Entry.Images the lock records.
+// Operator-style packs (e.g. envoy-gateway) provision images that never
+// appear in their own rendered objects, so `declared` closes that air-gap
+// blind spot for `cube-idp vendor` (Task 6).
+func mergeImages(rendered, declared []string) []string {
+	set := make(map[string]struct{}, len(rendered)+len(declared))
+	for _, img := range rendered {
+		set[img] = struct{}{}
+	}
+	for _, img := range declared {
+		set[img] = struct{}{}
+	}
+	out := make([]string, 0, len(set))
+	for img := range set {
+		out = append(out, img)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // gatewayServiceFQDN returns the in-cluster DNS name of the gateway pack's

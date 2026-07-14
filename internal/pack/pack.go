@@ -63,6 +63,15 @@ type Pack struct {
 	// packs predating this field, and packs like traefik that expose
 	// nothing through themselves, load exactly as before.
 	Expose *Expose
+
+	// Images is the pack's declared runtime image list (spec D14, optional
+	// pack.cue `images: [...string]`): images the pack pulls at runtime that
+	// never appear in its own rendered manifests (e.g. envoy-gateway's
+	// dynamically-provisioned proxy image). nil when the pack declares none
+	// — packs predating this field load exactly as before. `up`'s lock
+	// assembly unions this into Entry.Images so `cube-idp vendor` (Task 6)
+	// can bundle it for air-gapped installs.
+	Images []string
 }
 
 // Rendered is the final set of objects a pack produces for a given set of
@@ -100,6 +109,14 @@ func loadMeta(dir string) (*Pack, error) {
 		return nil, err
 	}
 	p.Expose = expose
+
+	if iv := v.LookupPath(cue.ParsePath("images")); iv.Exists() {
+		if err := iv.Decode(&p.Images); err != nil {
+			return nil, diag.Wrap(err, diag.CodePackCueInvalid,
+				fmt.Sprintf("pack.cue images: in %s is invalid", dir),
+				`images: must be a list of strings, e.g. images: ["envoyproxy/envoy:v1.29"]`)
+		}
+	}
 	return p, nil
 }
 
