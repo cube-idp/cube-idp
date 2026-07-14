@@ -9,21 +9,27 @@ package pack
 // values merged UNDER the caller's (already CUE-validated) values, and
 // returns unstructured objects.
 //
-// Helm SDK version note: helm.sh/helm/v4's action.Install API (DryRunStrategy
-// instead of DryRun/ClientOnly bools) differs materially from the classic
-// recipe this file follows, so this pins helm.sh/helm/v3 per the plan's
-// fallback rule.
+// Helm SDK version note (Task 13.5, 2026-07-14): ported from helm.sh/helm/v3
+// to helm.sh/helm/v4 (v4.2.3). v4's action.Install replaces the v3
+// DryRun/ClientOnly bools with a single DryRunStrategy enum; the client-only,
+// no-cluster-access rendering path this file needs is action.DryRunClient
+// (verified against the v4 source: with that strategy, Install.Run mocks
+// Capabilities/KubeClient/Releases internally and bails out before any
+// cluster interaction — the same semantics the old DryRun=true,
+// ClientOnly=true combination provided). The v3-vs-v4 API-shape concern noted
+// in the original plan did not block the port.
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/registry"
+	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/chart/common"
+	"helm.sh/helm/v4/pkg/chart/loader"
+	"helm.sh/helm/v4/pkg/cli"
+	"helm.sh/helm/v4/pkg/registry"
+	release "helm.sh/helm/v4/pkg/release/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
@@ -90,7 +96,7 @@ func renderChartRef(ref ChartRef, values map[string]any) ([]*unstructured.Unstru
 	cfg := new(action.Configuration) // zero config: client-only, no cluster access
 
 	install := action.NewInstall(cfg)
-	install.DryRun, install.ClientOnly, install.Replace = true, true, true
+	install.DryRunStrategy, install.Replace = action.DryRunClient, true
 	install.ReleaseName = ref.ReleaseName
 	install.Namespace = ref.Namespace
 	install.ChartPathOptions.Version = ref.Version
@@ -99,7 +105,7 @@ func renderChartRef(ref ChartRef, values map[string]any) ([]*unstructured.Unstru
 	// enough that many current charts refuse to render against it; use the
 	// same default Kubernetes version cube-idp provisions kind clusters
 	// with (internal/config's default), so charts see a realistic target.
-	if kv, err := chartutil.ParseKubeVersion(defaultRenderKubeVersion); err == nil {
+	if kv, err := common.ParseKubeVersion(defaultRenderKubeVersion); err == nil {
 		install.KubeVersion = kv
 	}
 
@@ -124,10 +130,15 @@ func renderChartRef(ref ChartRef, values map[string]any) ([]*unstructured.Unstru
 			"check chart repo/version in chart.yaml; try `helm template` manually")
 	}
 
-	rel, err := install.Run(chrt, mergeValues(ref.Values, values))
+	relAny, err := install.Run(chrt, mergeValues(ref.Values, values))
 	if err != nil {
 		return nil, diag.Wrap(err, diag.CodePackChartErr, fmt.Sprintf("helm render failed for pack chart %q", ref.Chart),
 			"check chart repo/version in chart.yaml; try `helm template` manually")
+	}
+	rel, ok := relAny.(*release.Release)
+	if !ok {
+		return nil, diag.New(diag.CodePackChartErr, fmt.Sprintf("helm render for pack chart %q returned an unexpected release type", ref.Chart),
+			"this is likely a helm SDK version mismatch; report a cube-idp bug")
 	}
 
 	objs, err := apply.ParseMultiDoc([]byte(rel.Manifest))
