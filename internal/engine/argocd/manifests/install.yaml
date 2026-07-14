@@ -31273,6 +31273,23 @@ metadata:
     app.kubernetes.io/part-of: argocd
   name: argocd-cm
 ---
+# reposerver.oci.layer.media.types (below) is a cube-idp addition to the
+# vendored upstream ConfigMap, not part of argo-cd's community install.yaml:
+# it widens argocd-repo-server's --oci-layer-media-types allow-list (see
+# cmd/argocd-repo-server/commands/argocd_repo_server.go, wired via
+# ARGOCD_REPO_SERVER_OCI_LAYER_MEDIA_TYPES / this ConfigMap key — install.yaml
+# already carries the env-from-configmap wiring, only the data key is new)
+# to also accept application/vnd.cncf.flux.content.v1.tar+gzip, the single
+# layer media type oci.PushRendered (internal/oci/push.go) writes for EVERY
+# engine, chosen so the identical artifact byte-for-byte also satisfies
+# Flux's OCIRepository reconciler. Without this, argocd-repo-server rejects
+# every cube-idp pack pull with a media-type error (verified against a real
+# kind cluster, Task 14's e2e engine matrix) — the documented, designed fix
+# (see argocd.go's package doc), applied as one field on the SAME ConfigMap
+# object already in this file (not a second partial-object apply of the
+# same name/namespace/kind), so there is no SSA field-manager/pruning risk.
+# If hack/gen-argocd-manifests.sh is re-run, this data: block must be
+# reapplied by hand (the script re-curls the file from upstream).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -31280,6 +31297,8 @@ metadata:
     app.kubernetes.io/name: argocd-cmd-params-cm
     app.kubernetes.io/part-of: argocd
   name: argocd-cmd-params-cm
+data:
+  reposerver.oci.layer.media.types: "application/vnd.oci.image.layer.v1.tar+gzip,application/vnd.oci.image.layer.v1.tar,application/vnd.cncf.helm.chart.content.v1.tar+gzip,application/vnd.cncf.flux.content.v1.tar+gzip"
 ---
 apiVersion: v1
 kind: ConfigMap

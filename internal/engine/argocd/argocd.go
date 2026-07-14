@@ -11,28 +11,28 @@
 // native OCI application-source support
 // (https://argo-cd.readthedocs.io/en/stable/user-guide/oci/).
 //
-// Known concern (documented, not blocking — see the Phase 2 plan, Task 2
-// report): oci.PushRendered (shared by every engine) pushes packs using
-// fluxcd/pkg/oci's default layer media type
-// (application/vnd.cncf.flux.content.v1.tar+gzip), which is NOT one of
-// argo-cd's default accepted OCI layer media types
+// Resolved concern (was an open Task 2 risk; closed by Task 14): oci.PushRendered
+// (shared by every engine) pushes packs using fluxcd/pkg/oci's default
+// layer media type (application/vnd.cncf.flux.content.v1.tar+gzip), which
+// is NOT one of argo-cd's default accepted OCI layer media types
 // (application/vnd.oci.image.layer.v1.tar[+gzip],
 // application/vnd.cncf.helm.chart.content.v1.tar+gzip — see
 // cmd/argocd-repo-server/commands/argocd_repo_server.go's --oci-layer-media-types
-// default). Argo CD's repo-server accepts a wider list via the
-// ARGOCD_REPO_SERVER_OCI_LAYER_MEDIA_TYPES env var (wired from the
-// argocd-cmd-params-cm ConfigMap key reposerver.oci.layer.media.types), but
-// this engine does not patch that ConfigMap: since it ships in the same
-// install-manifest batch as the vendored install.yaml's own
-// argocd-cmd-params-cm and both would be applied by the same
-// apply.FieldManager ("cube-idp"), a second partial-object apply of the same
-// name/namespace/kind would make that field manager's own last-applied
-// fields authoritative and risk pruning unrelated keys the base install set
-// — an SSA footgun best resolved with real cluster verification (Task 14's
-// e2e engine matrix), not guessed at here. Until resolved, packs delivered
-// through this engine may fail to sync with a media-type rejection from
-// argocd-repo-server; this is exactly the class of failure spec §7's
-// gitea-pack fallback exists for, and should be revisited then.
+// default), so argocd-repo-server would otherwise reject every cube-idp
+// pack pull with a media-type error. The fix lives in the vendored manifest
+// itself, not in Go: manifests/install.yaml's argocd-cmd-params-cm
+// ConfigMap (the SAME object the base install already ships, edited in
+// place — not a second partial-object apply of the same
+// name/namespace/kind, so there's no SSA field-manager/pruning risk) adds a
+// reposerver.oci.layer.media.types data key appending
+// application/vnd.cncf.flux.content.v1.tar+gzip to the allow-list;
+// install.yaml already wires ARGOCD_REPO_SERVER_OCI_LAYER_MEDIA_TYPES from
+// that key (upstream's own env-from-configmap plumbing), so repo-server
+// picks it up with no further changes. Verified against a real kind cluster
+// via Task 14's e2e engine matrix (`CUBE_IDP_E2E_ENGINE=argocd`). If
+// hack/gen-argocd-manifests.sh is re-run against a newer ARGOCD_VERSION,
+// that data: block must be reapplied by hand (see the comment above the
+// ConfigMap in manifests/install.yaml).
 package argocd
 
 import (

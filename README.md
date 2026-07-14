@@ -157,6 +157,160 @@ artifact to the in-cluster zot registry and delivered via the configured
 `GitOpsEngine` (a Flux `OCIRepository` + `Kustomization` in Phase 1) — the
 engine, not cube-idp, owns continuous reconciliation from then on.
 
+## Engines
+
+`spec.engine.type: flux | argocd` selects the in-cluster GitOps reconciler.
+Both pass the identical contract suite (`make test-engines`, D2) — the same
+behavior (install → deliver a pack → report health → uninstall) is asserted
+delivery-mechanism-agnostically, so either engine is a drop-in choice:
+
+- **`flux`** (default) delivers packs as a Flux `OCIRepository` + `Kustomization`
+  pair per pack.
+- **`argocd`** delivers packs as one Argo CD `Application` per pack, sourced
+  from the in-cluster OCI registry (`spec.source.repoURL: oci://...`,
+  requires an Argo CD build with native OCI application-source support —
+  cube-idp vendors v3.4.5). Because `engine.type: argocd` already installs
+  Argo CD (UI included), `init --engine argocd` drops the redundant `argocd`
+  pack from the default profile (CUBE-0005). Argo CD's repo-server only
+  accepts a fixed allow-list of OCI layer media types by default, which does
+  not include the one cube-idp's shared pusher writes
+  (`application/vnd.cncf.flux.content.v1.tar+gzip` — chosen so the same
+  artifact byte-for-byte satisfies Flux's `OCIRepository` reconciler too);
+  the vendored `argocd-cmd-params-cm` ConfigMap in
+  `internal/engine/argocd/manifests/install.yaml` patches
+  `reposerver.oci.layer.media.types` to add it, so the argocd engine accepts
+  cube-idp's artifacts out of the box with no extra configuration.
+
+## HTTPS & trust
+
+`cube-idp up` gives you real HTTPS from first boot (D12): a local
+certificate authority is generated (or an existing mkcert root is adopted
+automatically — same CA, zero prompts, green padlocks if your browser
+already trusts mkcert) *before* the cluster is even created, then mounted
+into every node's containerd `certs.d` and used to issue the gateway's
+leaf certificate. `https://gitea.cube-idp.localtest.me:8443` works
+immediately after `up` — no manual cert setup.
+
+The OS trust store itself is **never** touched automatically. Making your
+browser trust the generated CA (so it stops just being "not actively
+warning because you added an exception") is `cube-idp trust` — opt-in,
+consent-prompted (`--yes` to skip the prompt in scripts). `cube-idp trust
+--uninstall`, or a plain `cube-idp down`, fully reverts the OS trust store
+change (D6).
+
+> **Phase 1 → Phase 2 port-mapping change:** Phase 1 mapped host
+> `spec.gateway.port` (default `8443`) to Traefik's plain-HTTP NodePort
+> `30080` while merely *printing* an `https://` URL. Phase 2 makes that URL
+> true: `gateway.port` now maps to the `websecure` NodePort `30443` (TLS
+> terminated by Traefik with the cube-idp-issued cert), and plain HTTP stays
+> reachable only in-cluster on the `web` listener. Existing kind clusters
+> need `down`/`up` to pick up the new mapping.
+
+## Day 2
+
+- **`cube-idp diff`** — a dry-run server-side-apply diff (what would change
+  on the cluster) plus inventory-orphan detection and lock-hash pack drift.
+  A converged cube prints nothing and exits 0.
+- **`cube-idp upgrade --plan`** — re-resolves every remote pack ref's pin
+  (git tags/branches, OCI tags) against `cube.lock` and reports what would
+  move, without touching the cluster. Exits 0 on a converged cube.
+- **`cube-idp doctor`** — preflight and live diagnostics: container runtime
+  present, gateway port free, disk space, inotify limits (Linux), git CLI
+  present when git-sourced packs are configured, plus provider/engine health
+  — every finding carries a `CUBE-xxxx` code and a copy-pasteable
+  remediation.
+- **`cube.lock`** — written by `up`, one entry per pack:
+  - `resolved` — the concrete ref `up` actually fetched (a resolved git SHA,
+    an OCI digest, or a content dirhash for local/http/s3 sources).
+  - `renderedHash` — a stable content hash of the rendered manifests, used
+    by `diff` to detect pack-level drift without re-rendering everything.
+  - `images` — every container image referenced by the rendered objects,
+    for offline auditing/vulnerability scanning.
+
+  Commit `cube.lock` alongside `cube.yaml` — it pins what actually shipped,
+  the way a lockfile does for a package manager.
+
+## Pack sources
+
+A pack ref (`spec.gateway.ref` / `spec.packs[].ref`) accepts:
+
+| Form | Example | Pin behavior |
+| --- | --- | --- |
+| local directory | `./mypack`, `packs/gitea` | content dirhash |
+| OCI | `oci://ghcr.io/cube-idp/packs/gitea:0.1.0` | digest |
+| bare git grammar | `github.com/org/repo//path@v1.2.3` | tag/branch resolved to a commit SHA, or a full SHA passed through |
+| explicit go-getter URL | `git::https://example.com/repo.git//path?ref=v1`, `s3::https://s3.amazonaws.com/bucket/pack.tar.gz`, `https://example.com/pack.tar.gz` | dirhash of the fetched tree |
+
+Remote refs must be pinned (a tag, a full commit SHA, or an explicit
+`?ref=`) — `HEAD`, a bare branch name with no `@rev`, or a wildcard is
+rejected (CUBE-4007) so `cube.lock` always records something reproducible.
+
+Git-sourced packs (the bare grammar and `git::` URLs) shell out to the
+system `git` binary (go-getter's `GitGetter`) — every other source form is
+binary-pure. `cube-idp doctor` warns (CUBE-0105) if git-sourced packs are
+configured but `git` isn't on `PATH`. Every fetched tree, regardless of
+source, passes cube-idp's extraction guards (path traversal / symlink
+escape, CUBE-4014) before anything is read from it.
+
+## Pack discoverability (D11)
+
+Every delivered pack gets a cluster-scoped `Pack` custom resource
+(`packs.cube-idp.dev`), so `kubectl get packs` works with zero cube-idp
+tooling on the query path:
+
+```console
+$ kubectl get packs
+NAME     VERSION   URL                                    AUTH-SECRET             READY
+gitea    0.1.0     https://gitea.cube-idp.localtest.me   gitea/gitea-admin-cube-idp   true
+```
+
+The columns come straight from the pack's own `pack.cue` **`expose:`**
+block — data, not code:
+
+```cue
+expose: {
+    urls: ["https://gitea.${GATEWAY_HOST}"]         // ${GATEWAY_HOST} -> spec.gateway.host
+    authSecretRef: {namespace: "gitea", name: "gitea-admin-cube-idp"}
+    impliedFields: {username: "gitea_admin"}         // merged under the secret's own keys
+}
+```
+
+`cube-idp get secrets` follows `expose.authSecretRef` to the referenced
+Secret and merges `impliedFields` underneath it (the secret's own keys win
+on conflict — `impliedFields` only fills in what the secret itself doesn't
+carry, e.g. Argo CD's implicit `admin` username, never actually stored in
+`argocd-initial-admin-secret`). The older `cube-idp.dev/cli-secret` label
+convention is **deprecated** (one release of grace) in favor of this
+`expose:`-driven pivot.
+
+## Terminal output
+
+On a real terminal, `cube-idp` prints styled, colorized status lines
+(lipgloss). Piped output, `--plain`, or `$CI` set all force stable,
+machine-readable plain lines instead — the plain format is pinned
+byte-for-byte to what phase 1 shipped, so scripts/CI never see output
+churn across releases. `cube-idp init` runs a short interactive wizard
+(huh) when no flags are given on a TTY; any flag short-circuits the wizard
+for scripted/CI use.
+
+## Migrating from idpbuilder
+
+`cube-idp cnoe import ./your-idpbuilder-packages` ingests idpbuilder-style
+Argo CD `Application`/`ApplicationSet` YAML:
+
+- Plain `Application` manifests translate directly; local-dir sources
+  (`cnoe://<relative-dir>`) are pushed as an OCI artifact and delivered
+  through whichever engine `cube.yaml` configures (engine-neutral — the
+  import doesn't care if you're on flux or argocd).
+- `ApplicationSet` **list** generators expand into one `App` per list entry;
+  every other generator kind (`git`, `clusters`, `matrix`, …) is rejected
+  with a typed error (CUBE-4009) naming the unsupported generator, rather
+  than silently dropping entries.
+- Git sources with an **unpinned** `targetRevision` (empty, `HEAD`, or a
+  glob) are rejected (CUBE-4009) — "set `spec.source.targetRevision` to a
+  tag or full commit SHA, then re-import" — the same reproducibility
+  requirement `cube.lock` enforces for native pack refs.
+
 ## Development
 
 ```bash
@@ -164,6 +318,7 @@ make build          # CGO_ENABLED=0 go build -o cube-idp .
 make test           # go test ./...
 make test-apply     # internal/apply against a real envtest API server
                      # (downloads/reuses envtest assets under KUBEBUILDER_ASSETS)
+make test-engines   # the engine contract suite (flux + argocd) against envtest
 ```
 
 Full local verification, mirroring CI:
@@ -172,16 +327,31 @@ Full local verification, mirroring CI:
 go vet ./...
 go test ./... -short
 make test-apply
-CUBE_IDP_E2E=1 go test ./tests/e2e/ -v -timeout 25m   # real kind cluster; needs docker
+make test-engines
+CUBE_IDP_E2E=1 CUBE_IDP_E2E_ENGINE=flux   go test ./tests/e2e/ -v -timeout 25m   # real kind cluster; needs docker
+CUBE_IDP_E2E=1 CUBE_IDP_E2E_ENGINE=argocd go test ./tests/e2e/ -v -timeout 25m
 ```
 
-The e2e suite (`tests/e2e/e2e_test.go`) is skipped unless `CUBE_IDP_E2E=1` —
-it builds the binary, `init --local`s against this checkout, runs `up` twice
-(proving idempotency), asserts `status` and `get secrets -p gitea` surface
-the expected components/credentials, then `down`s the cluster. It logs the
-first `up`'s wall-clock time; the sub-60s goal (spec §3) is a tracked
-metric there, not a hard assertion, since image-pull time varies by host and
-network.
+The e2e suite (`tests/e2e/e2e_test.go`) is skipped unless `CUBE_IDP_E2E=1`,
+and runs across the `{flux, argocd}` engine matrix via
+`CUBE_IDP_E2E_ENGINE` (defaults to `flux`; CI runs both as a matrix job,
+spec §5: `{kind} x {flux, argocd} x {up, diff, upgrade, down}`). It builds
+the binary, `init --local`s against this checkout, runs `doctor` then `up`
+twice (proving idempotency), asserts `cube.lock` was written with a
+`renderedHash`, that a converged cube's `diff`/`upgrade --plan` both exit 0,
+that `status` and `kubectl get packs` (D11) surface the expected
+components/printer columns, that the gateway serves a cube-idp CA-issued
+TLS cert, that `cnoe import` round-trips a fixture Application, and that
+`get secrets -p gitea` surfaces `gitea_admin` — then `down`s the cluster.
+It logs the first `up`'s wall-clock time; the sub-60s goal (spec §3) is a
+tracked metric there, not a hard assertion, since image-pull time varies by
+host and network.
+
+Locally, a host port already bound by an unrelated cluster (e.g. another
+kind cluster squatting `0.0.0.0:8443`) can be dodged without touching that
+cluster: `CUBE_IDP_E2E_GATEWAY_PORT=18443` rewrites the generated
+`cube.yaml`'s `spec.gateway.port` before `up` runs. CI always uses the real
+default (`8443`).
 
 See [`docs/superpowers/specs/2026-07-13-cube-idp-architecture-design.md`](docs/superpowers/specs/2026-07-13-cube-idp-architecture-design.md)
 for the full architecture, decision log (D1–D10), and phased roadmap.

@@ -1,10 +1,30 @@
+# Every schema-defaulted field (parentRefs group/kind, backendRefs
+# group/kind/weight, the rules[].matches block) is written out explicitly:
+# the Gateway API CRDs default them server-side, and Argo CD's SSA-based
+# diff reports desired-omits-what-live-has as a permanent OutOfSync (found
+# on the Task 14 argocd e2e leg — Applications stuck OutOfSync forever,
+# failing the Synced && Healthy readiness gate). Explicit fields keep
+# desired == live for BOTH engines with zero engine-specific
+# ignoreDifferences configuration; if you edit this route, keep new list
+# entries equally explicit.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: gitea
   namespace: gitea
 spec:
-  parentRefs: [{name: cube-idp, namespace: traefik}]
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: cube-idp
+      namespace: traefik
   hostnames: ["gitea.cube-idp.localtest.me"]
   rules:
-    - backendRefs: [{name: gitea-http, port: 3000}]
+    - matches:
+        - path: {type: PathPrefix, value: /}
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: gitea-http
+          port: 3000
+          weight: 1
