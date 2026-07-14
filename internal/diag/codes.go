@@ -122,3 +122,10 @@ const (
 	CodeSyncNoManifests   Code = "CUBE-7201" // sync dir has no pack.cue and no renderable *.yaml manifests
 	CodeSyncWatchNotBuilt Code = "CUBE-7202" // `sync --watch` stub — watch mode lands in Task 11
 )
+
+// 73xx: repo (Task 12)
+const (
+	CodeRepoGiteaUnavailable Code = "CUBE-7301" // gitea admin secret missing or port-forward to the gitea pod failed
+	CodeRepoGiteaAPIFail     Code = "CUBE-7302" // gitea REST API returned an unexpected status (create/fetch repo)
+	CodeRepoDeployFail       Code = "CUBE-7303" // repo created but engine git source registration/apply failed
+)

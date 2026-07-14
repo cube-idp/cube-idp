@@ -51,6 +51,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newCnoeCmd())
 	root.AddCommand(newPluginCmd())
 	root.AddCommand(newSyncCmd())
+	root.AddCommand(newRepoCmd())
 	return root
 }
 

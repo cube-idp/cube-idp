@@ -21,13 +21,16 @@ type Expose struct {
 	ImpliedFields map[string]string
 }
 
-// gatewayHostString renders gw as the ${GATEWAY_HOST} substitution value:
+// GatewayHostString renders gw as the ${GATEWAY_HOST} substitution value:
 // host[:port], with the port omitted whenever the gateway listens on 443
 // (HTTPS's default) so the resulting links are actually clickable instead
 // of dialing the bare host on 443 and failing (Task 15.1). Shared by
 // ExposeURLs and the D15 chart-value/manifest substitution below — one
 // definition of "the gateway's host string", used everywhere it's needed.
-func gatewayHostString(gw config.GatewaySpec) string {
+// Exported (Task 12) so cmd/repo.go can print the same https gateway form
+// for the printed operator clone URL without duplicating the port-omission
+// rule.
+func GatewayHostString(gw config.GatewaySpec) string {
 	if gw.Port != 443 {
 		return fmt.Sprintf("%s:%d", gw.Host, gw.Port)
 	}
@@ -35,7 +38,7 @@ func gatewayHostString(gw config.GatewaySpec) string {
 }
 
 // substitute performs the D15 gateway substitution on s: ${GATEWAY_HOST}
-// expands to gw's host[:port] (gatewayHostString) and ${GATEWAY_FQDN}
+// expands to gw's host[:port] (GatewayHostString) and ${GATEWAY_FQDN}
 // expands to the bare gw.Host, for Gateway API `hostnames:` fields, which
 // cannot carry ports. A zero gw (Host == "") performs no substitution — the
 // literal tokens pass through untouched, which is what Render's
@@ -44,7 +47,7 @@ func substitute(s string, gw config.GatewaySpec) string {
 	if gw.Host == "" {
 		return s
 	}
-	s = strings.ReplaceAll(s, "${GATEWAY_HOST}", gatewayHostString(gw))
+	s = strings.ReplaceAll(s, "${GATEWAY_HOST}", GatewayHostString(gw))
 	s = strings.ReplaceAll(s, "${GATEWAY_FQDN}", gw.Host)
 	return s
 }
