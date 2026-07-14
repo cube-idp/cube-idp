@@ -21,23 +21,29 @@ jobs:
       - run: make test-engines   # contract suite incl. envtest subtests, both engines
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        engine: [flux, argocd]   # spec §5: {kind} x {flux, argocd} x {up, diff, upgrade, down}
+        provider: [kind, k3d]
+        engine: [flux, argocd]   # spec §5: {kind, k3d} x {flux, argocd} x {up, diff, upgrade, down}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         # go.mod (single source of truth) requires a toolchain newer than the
         # plan's hardcoded "1.24" — currently go 1.26.2.
         with: {go-version-file: go.mod}
-      # cube-idp itself creates/deletes kind clusters via the kind Go
-      # library, but the e2e's lingering-cluster guard shells out to the
-      # kind CLI — install it so the guard isn't inert on ubuntu-latest.
+      # cube-idp itself creates/deletes clusters via the kind/k3d Go
+      # libraries, but the e2e's lingering-cluster guards shell out to the
+      # provider CLIs — install both so the guards aren't inert on
+      # ubuntu-latest.
       - run: go install sigs.k8s.io/kind@latest
-      # GitHub-hosted runners are amd64 and include docker; kind works out
-      # of the box. The zot registry image is a multi-arch manifest list
+      - run: curl -sfL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+      # GitHub-hosted runners are amd64 and include docker; kind and k3d work
+      # out of the box. The zot registry image is a multi-arch manifest list
       # (internal/registry/manifests/zot.yaml), so it resolves correctly
-      # here even though local dev on Apple Silicon is arm64.
-      - run: CUBE_IDP_E2E=1 CUBE_IDP_E2E_ENGINE=${{ matrix.engine }} go test ./tests/e2e/ -v -timeout 25m
+      # here even though local dev on Apple Silicon is arm64. Phase 3's e2e
+      # suite reads CUBE_IDP_E2E_PROVIDER to pick the provider it writes into
+      # cube.yaml (TestK3dUpDown always forces k3d, being the dedicated k3d
+      # leg).
+      - run: CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=${{ matrix.provider }} CUBE_IDP_E2E_ENGINE=${{ matrix.engine }} go test ./tests/e2e/ -v -timeout 35m
