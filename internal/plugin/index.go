@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -96,6 +97,15 @@ func Install(ctx context.Context, indexURL, name string) error {
 	return Trust(name, installedPath)
 }
 
+// indexPinPattern is the conservative charset a pinned "@<commit>" must
+// match before it is ever handed to a git subprocess: it must start with an
+// alphanumeric — so it can never be parsed as a git OPTION (the classic
+// argument-injection → command-execution vector) — followed only by
+// ref-safe characters. Full and abbreviated hex shas, branch names, and
+// tags all fit; anything option-shaped ("-evil", "--upload-pack=…") does
+// not.
+var indexPinPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`)
+
 // splitIndexPin splits an optional "@<commit>" pin off the end of indexURL.
 // Only a trailing segment with neither "/" nor ":" is treated as a pin —
 // that keeps ssh-style URLs like "git@github.com:org/repo.git" (whose only
@@ -125,6 +135,22 @@ func cloneIndex(ctx context.Context, indexURL string) (string, error) {
 	}
 
 	url, commit := splitIndexPin(indexURL)
+	// Argument-injection guard: neither the URL nor the pin may ever be
+	// parseable as a git OPTION. An option-shaped URL (e.g.
+	// "--upload-pack=…") or pin ("-evil") would otherwise be interpreted by
+	// git as a flag — for --upload-pack, that is attacker-chosen command
+	// execution on an install path. Validate BEFORE any git subprocess
+	// runs; the "--" separators below are defense in depth.
+	if strings.HasPrefix(url, "-") {
+		return "", diag.New(diag.CodePluginTrustIO,
+			fmt.Sprintf("invalid index URL %q: must not begin with '-'", url), failRemediation)
+	}
+	if commit != "" && !indexPinPattern.MatchString(commit) {
+		return "", diag.New(diag.CodePluginTrustIO,
+			fmt.Sprintf("invalid index pin %q: a pin must be a commit sha, tag, or branch name", commit),
+			failRemediation)
+	}
+
 	tmp, err := os.MkdirTemp("", "cube-idp-index-*")
 	if err != nil {
 		return "", diag.Wrap(err, diag.CodePluginTrustIO, failSummary, failRemediation)
@@ -139,16 +165,16 @@ func cloneIndex(ctx context.Context, indexURL string) (string, error) {
 		return nil
 	}
 
-	if err := runGit("clone", "--depth", "1", url, tmp); err != nil {
+	if err := runGit("clone", "--depth", "1", "--", url, tmp); err != nil {
 		os.RemoveAll(tmp)
 		return "", err
 	}
 	if commit != "" {
-		if err := runGit("-C", tmp, "fetch", "-q", "origin", commit); err != nil {
+		if err := runGit("-C", tmp, "fetch", "-q", "origin", "--", commit); err != nil {
 			os.RemoveAll(tmp)
 			return "", err
 		}
-		if err := runGit("-C", tmp, "checkout", "-q", commit); err != nil {
+		if err := runGit("-C", tmp, "checkout", "-q", commit, "--"); err != nil {
 			os.RemoveAll(tmp)
 			return "", err
 		}
