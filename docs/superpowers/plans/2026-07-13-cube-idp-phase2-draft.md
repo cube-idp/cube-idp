@@ -5516,7 +5516,7 @@ git add -A && git commit -m "feat: terminal UX pass — lipgloss status output, 
 **Files:**
 - Modify: `tests/e2e/e2e_test.go`, `.github/workflows/ci.yaml`, `README.md`, `Makefile` (ensure `test-engines` runs in CI)
 
-- [ ] **Step 1: Extend the e2e loop with the engine matrix and Phase 2 commands**
+- [x] **Step 1: Extend the e2e loop with the engine matrix and Phase 2 commands**
 
 Rework `tests/e2e/e2e_test.go`'s main test (keep the `build`/`run` helpers; RECONCILE: keep the phase-1 `init` invocation incl. its `--local`-style flag exactly as checkpoint 0.12 found it — the `--engine` flag from Task 2 is appended to it):
 
@@ -5657,7 +5657,7 @@ func mustUserConfigDir(t *testing.T) string {
 
 (imports: `crypto/tls`, `crypto/x509`, `path/filepath`.)
 
-- [ ] **Step 2: CI — engine matrix + contract suite**
+- [x] **Step 2: CI — engine matrix + contract suite**
 
 `.github/workflows/ci.yaml` — extend the two jobs:
 
@@ -5687,7 +5687,7 @@ jobs:
       - run: CUBE_IDP_E2E=1 CUBE_IDP_E2E_ENGINE=${{ matrix.engine }} go test ./tests/e2e/ -v -timeout 25m
 ```
 
-- [ ] **Step 3: README additions**
+- [x] **Step 3: README additions**
 
 Extend `README.md` with (each a short section, copy wording from the spec where it exists):
 - `Engines`: `engine.type: flux | argocd`, both pass the same contract suite (D2); the argocd engine's OCI requirement (or its gitea fallback, per what Task 2 verification concluded).
@@ -5698,7 +5698,7 @@ Extend `README.md` with (each a short section, copy wording from the spec where 
 - `Terminal output`: styled status lines on a TTY; `--plain` (or piped output / `CI=true`) yields stable machine-readable lines; `cube-idp init` runs a short interactive wizard on a TTY when flags are absent.
 - `Migrating from idpbuilder`: `cube-idp cnoe import ./your-packages` — what translates, what is rejected (unpinned revisions, non-list ApplicationSet generators) and why.
 
-- [ ] **Step 4: Full verification + commit**
+- [x] **Step 4: Full verification + commit**
 
 Run locally:
 ```
