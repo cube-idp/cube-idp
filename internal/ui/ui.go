@@ -16,40 +16,108 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	lipgloss "charm.land/lipgloss/v2"
 	"golang.org/x/term"
+
+	"github.com/rafpe/cube-idp/internal/ui/event"
 )
 
-// PlainFlag mirrors the --plain persistent flag. cmd/root.go sets it once,
-// in PersistentPreRunE, before any command's RunE executes — every call
-// site that builds a Printer (internal/up's step(), cmd/cnoe.go, ...) reads
-// it via New(w, ui.PlainFlag) instead of threading a bool through every
-// orchestrator signature. This is the least invasive threading choice:
-// orchestrators keep their existing `(ctx, cfgPath, out io.Writer)`
-// signatures untouched (Task 13.8).
-var PlainFlag bool
-
-// Mode controls whether a Printer emits ANSI-styled or plain output.
+// Mode is the process-wide output mode, resolved exactly once by
+// cmd/root.go's PersistentPreRunE via Resolve (the §6 ladder) and stored
+// with SetMode. Existing constants keep their order and numeric values.
 type Mode int
 
 const (
 	// ModeStyled renders a lipgloss-styled stage badge and dimmed message —
-	// only ever selected for an interactive terminal.
+	// rich (auto-resolved): styled static output; the LiveRenderer on
+	// event-stream commands; per-writer downgradeable (NewFor).
 	ModeStyled Mode = iota
-	// ModePlain reproduces the phase-1 step() format verbatim.
+	// ModePlain reproduces the phase-1 step() format verbatim — the
+	// byte-stable projection.
 	ModePlain
+	// ModeJSON is the machine mode: a JSON-lines event stream on
+	// event-stream commands (up/down); the plain projection elsewhere.
+	// Never styled. EXPERIMENTAL until the D5 v1 config freeze.
+	ModeJSON
+	// ModeLive is explicitly forced live (CUBE_IDP_PROGRESS=live; the
+	// --progress=live flag ships in stage B): the LiveRenderer even on a
+	// non-TTY — the ONLY mode that bypasses the per-writer downgrade.
+	// Auto-detection can only ever produce ModeStyled, so NewFor and
+	// RunPipeline can distinguish "the user demanded live" from "live
+	// because a TTY was detected".
+	ModeLive
 )
 
-// Resolve is the pure decision function behind New. Plain wins if the
-// --plain flag was passed, if the destination is not an interactive
-// terminal, or if $CI is set (the common CI convention) — in that order,
-// but any one of them is sufficient. Kept side-effect-free (no real
-// terminal or environment lookups) so callers can unit-test every
-// precedence case, including "--plain forces plain even on a TTY".
-func Resolve(plainFlag, isTTY bool, ciEnv string) Mode {
-	if plainFlag || !isTTY || ciEnv != "" {
+// currentMode holds the resolved Mode. Zero value ModeStyled matches
+// today's default: every non-terminal writer still downgrades to plain in
+// NewFor/RunPipeline, so tests that never call SetMode stay byte-stable.
+var currentMode atomic.Int32
+
+// SetMode stores the process-wide resolved Mode. cmd/root.go calls it once,
+// in PersistentPreRunE, before any command's RunE executes — the successor
+// of the deleted ui.PlainFlag package var.
+func SetMode(m Mode) { currentMode.Store(int32(m)) }
+
+// CurrentMode returns the Mode stored by SetMode (ModeStyled when nothing
+// resolved one — always per-writer downgraded before any styling engages).
+func CurrentMode() Mode { return Mode(currentMode.Load()) }
+
+// Request carries every input the resolve ladder consults. cmd/root.go
+// fills it exactly once, in PersistentPreRunE.
+type Request struct {
+	ProgressFlag string // --progress value; "" or "auto" = not forced (flag ships in stage B, field exists from stage A)
+	PlainFlag    bool   // --plain, the permanent alias
+	EnvProgress  string // $CUBE_IDP_PROGRESS
+	IsTTY        bool   // ui.IsTerminal(os.Stdout)
+	CIEnv        string // $CI
+	NoColor      bool   // $NO_COLOR present (os.LookupEnv ok-bool; presence suffices, no-color.org semantics)
+	Term         string // $TERM
+}
+
+// Resolve is the pure, side-effect-free resolve ladder (design doc §6.2) —
+// single resolve, highest rung wins; codifies gh/buildx/terraform practice,
+// clig.dev, and no-color.org:
+//
+//  1. --progress=json  → ModeJSON
+//  2. --progress=plain → ModePlain
+//  3. --progress=live  → ModeLive (explicit force, works on a non-TTY)
+//  4. --plain          → ModePlain (permanent alias, never deprecated)
+//  5. CUBE_IDP_PROGRESS ∈ {plain,live,json} (CI images set policy once —
+//     the BUILDKIT_PROGRESS precedent; auto/empty/unknown falls through)
+//  6. stdout not a TTY → ModePlain
+//  7. $CI set (non-empty) → ModePlain
+//  8. $NO_COLOR present (even empty) or TERM dumb/unset → ModePlain (the
+//     strictest reading: plain, not merely uncolored)
+//  9. → ModeStyled (the rich-by-default decision)
+//
+// --progress beats --plain (more specific); documented, never an error.
+func Resolve(r Request) Mode {
+	switch r.ProgressFlag {
+	case "json":
+		return ModeJSON
+	case "plain":
+		return ModePlain
+	case "live":
+		return ModeLive
+	}
+	if r.PlainFlag {
+		return ModePlain
+	}
+	switch r.EnvProgress {
+	case "plain":
+		return ModePlain
+	case "live":
+		return ModeLive
+	case "json":
+		return ModeJSON
+	}
+	if !r.IsTTY || r.CIEnv != "" {
+		return ModePlain
+	}
+	if r.NoColor || r.Term == "dumb" || r.Term == "" {
 		return ModePlain
 	}
 	return ModeStyled
@@ -77,10 +145,37 @@ type Printer struct {
 
 // New builds a Printer for out. plain forces ModePlain regardless of
 // terminal status; ModePlain is also auto-forced when out is not a TTY or
-// $CI is set (Resolve holds the exact precedence).
+// $CI is set — the pre-14b precedence, kept for tests (its plain=true form
+// is used throughout ui_test.go). Production call sites use NewFor.
 func New(out io.Writer, plain bool) *Printer {
-	mode := Resolve(plain, IsTerminal(out), os.Getenv("CI"))
-	return &Printer{out: out, mode: mode}
+	if plain || !IsTerminal(out) || os.Getenv("CI") != "" {
+		return &Printer{out: out, mode: ModePlain}
+	}
+	return &Printer{out: out, mode: ModeStyled}
+}
+
+// NewFor builds a Printer for out from the process-wide resolved mode,
+// downgraded per-writer: auto-resolved styled output only ever reaches a
+// real terminal; only an explicit ModeLive skips that check.
+//
+// The per-writer downgrade rule is load-bearing: even when the resolved
+// mode is ModeStyled, a writer that is not a real terminal renders plain.
+// This is exactly the old New(out, plain)+IsTerminal behavior and is what
+// keeps every unit test (bytes.Buffer), every e2e pipe, and every CI log
+// byte-stable with zero plumbing. The sole exception is ModeLive
+// (producible only by an explicit live request, never by auto-detection) —
+// a documented escape hatch, the GH_FORCE_TTY analog.
+func NewFor(out io.Writer) *Printer {
+	m := CurrentMode()
+	switch {
+	case m == ModeJSON:
+		m = ModePlain // a Printer has no JSON form: plain IS the machine contract for static commands in stage A
+	case m == ModeLive:
+		m = ModeStyled // explicit force: the ONLY path that skips the TTY downgrade
+	case m == ModeStyled && !IsTerminal(out):
+		m = ModePlain // per-writer downgrade: auto-styled never reaches a non-terminal
+	}
+	return &Printer{out: out, mode: m}
 }
 
 var (
@@ -265,22 +360,30 @@ func (pr *Progress) Done(format string, args ...any) {
 	pr.p.Step(pr.stage, format, args...)
 }
 
-// PackAccess is one delivered pack's access info for up.Run's Task 15.3c
+// PackAccess is one delivered pack's access info for up.Run's access
 // summary: the pack's name and its ${GATEWAY_HOST}-substituted expose URLs
 // (internal/pack.ExposeURLs — the same substitution PackObject uses, not
-// duplicated here).
-type PackAccess struct {
-	Name string
-	URLs []string
-}
+// duplicated here). An alias of event.PackAccess (Task 14b) so
+// internal/up's construction sites and the event stream share one type.
+type PackAccess = event.PackAccess
 
 // AccessSummary prints a short "here's what you just got" block after `up`
 // finishes: one line per pack URL plus a closing hint (typically
-// "credentials: cube-idp get secrets"). ModeStyled only — ModePlain is a
-// complete no-op, so `up`'s plain-mode final output is exactly what it was
-// before Task 15.3 added this call.
+// "credentials: cube-idp get secrets"). As of Task 14b (Owner Decision #15,
+// design doc §9) this is DATA with a stable plain projection — the one
+// owner-ratified plain-output change: scripts and CI want to scrape "what
+// URLs did I just get". The plain bytes mirror the styled layout minus ANSI
+// and are pinned by TestAccessSummaryPlainStableLines (and reproduced by
+// the plain event renderer, internal/ui/render).
 func (p *Printer) AccessSummary(packs []PackAccess, hint string) {
 	if p.mode != ModeStyled {
+		fmt.Fprint(p.out, "\nAccess\n")
+		for _, pk := range packs {
+			for _, u := range pk.URLs {
+				fmt.Fprintf(p.out, "  %-12s %s\n", pk.Name, u)
+			}
+		}
+		fmt.Fprintf(p.out, "  %s\n", hint)
 		return
 	}
 	var b strings.Builder

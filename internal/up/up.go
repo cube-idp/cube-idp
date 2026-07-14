@@ -6,7 +6,6 @@ package up
 import (
 	"context"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -24,6 +23,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/registry"
 	"github.com/rafpe/cube-idp/internal/trust"
 	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/rafpe/cube-idp/internal/ui/event"
 )
 
 const dnsTimeout = 2 * time.Minute
@@ -35,24 +35,21 @@ const (
 	healthPoll     = 5 * time.Second
 )
 
-// Run drives the full up sequence for the cube.yaml at cfgPath, writing
-// progress to out: load config -> ensure the local CA (D12: before any
-// cluster artifact references the trust root) -> ensure cluster -> install
-// registry -> install engine -> ensure the gateway TLS secret -> port-forward
-// the registry -> fetch/render/push/deliver every pack (gateway first) ->
-// wait for engine-reported health -> print a success summary.
-func Run(ctx context.Context, cfgPath string, out io.Writer) error {
+// Run drives the full up sequence for the cube.yaml at cfgPath, emitting
+// progress events through con (Task 14b: cmd/up.go wraps Run in
+// ui.RunPipeline, which owns the renderer for the resolved mode): load
+// config -> ensure the local CA (D12: before any cluster artifact
+// references the trust root) -> ensure cluster -> install registry ->
+// install engine -> ensure the gateway TLS secret -> port-forward the
+// registry -> fetch/render/push/deliver every pack (gateway first) -> wait
+// for engine-reported health -> emit a success summary.
+func Run(ctx context.Context, cfgPath string, con *ui.Console) error {
 	cube, err := config.Load(cfgPath)
 	if err != nil {
-		return err
+		return err // no RunStarted: a failed load emits only RunDone+Diagnosis
 	}
-	step(out, "config", "cube %q loaded and validated", cube.Metadata.Name)
-
-	// One Printer for the whole run: its Mode is decided once (Resolve),
-	// same as step()'s per-call ui.New — reused here for the Task 15.3
-	// Progress wraps (the three long, previously-silent waits) and the
-	// styled-only access summary at the end.
-	p := ui.New(out, ui.PlainFlag)
+	con.Start("up", cube.Metadata.Name)
+	con.Step("config", "cube %q loaded and validated", cube.Metadata.Name)
 
 	// D12 ("cert material is generated before cluster creation"): ensure the
 	// local CA — adopting an existing mkcert root if present — before
@@ -67,7 +64,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	step(out, "ca", "local CA ready (%s)", ca.CertPath)
+	con.Step("ca", "local CA ready (%s)", ca.CertPath)
 
 	prov, err := cluster.New(cube.Spec.Cluster, cube.Spec.Gateway)
 	if err != nil {
@@ -77,7 +74,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	// pr.Stop() on error prints nothing (matching the phase-1 behavior of
 	// printing nothing when a step failed); pr.Done prints the same
 	// "cluster" step line step() always printed on success.
-	pr := p.Progress("cluster", fmt.Sprintf("creating %s cluster", cube.Spec.Cluster.Provider))
+	pr := con.Progress("cluster", fmt.Sprintf("creating %s cluster", cube.Spec.Cluster.Provider))
 	clusterCtx, cancel := context.WithTimeout(ctx, clusterTimeout)
 	conn, err := prov.Ensure(clusterCtx, cube.Metadata.Name, cube.Spec.Cluster)
 	cancel()
@@ -106,7 +103,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	if err := a.RecordInventory(ctx, regObjs); err != nil {
 		return err
 	}
-	step(out, "registry", "zot ready at %s", registry.InClusterURL)
+	con.Step("registry", "zot ready at %s", registry.InClusterURL)
 
 	// D11: the inert Pack CRD must exist before any Pack record is written,
 	// so it goes in right after the registry — before the engine and the
@@ -123,11 +120,11 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	if err := a.RecordInventory(ctx, crdObjs); err != nil {
 		return err
 	}
-	step(out, "packs-crd", "Pack CRD established")
+	con.Step("packs-crd", "Pack CRD established")
 
 	// Task 15.3a: the engine install (Flux/Argo CD's own controllers coming
 	// up) is the second long, previously-silent wait.
-	pr = p.Progress("engine", fmt.Sprintf("installing %s", cube.Spec.Engine.Type))
+	pr = con.Progress("engine", fmt.Sprintf("installing %s", cube.Spec.Engine.Type))
 	if err := eng.Install(ctx, a, applyTimeout); err != nil {
 		pr.Stop()
 		return err
@@ -149,7 +146,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	if err := ensureGatewayTLS(ctx, a, cube.Spec.Gateway); err != nil {
 		return err
 	}
-	step(out, "tls", "gateway certificate ready (CA: run `cube-idp trust` to make browsers trust it)")
+	con.Step("tls", "gateway certificate ready (CA: run `cube-idp trust` to make browsers trust it)")
 
 	tunnelAddr, stop, err := registry.PortForward(ctx, conn.REST)
 	if err != nil {
@@ -205,7 +202,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 		if err := a.RecordInventory(ctx, deliverObjs); err != nil {
 			return err
 		}
-		step(out, "pack", "%s@%s delivered", rendered.Name, rendered.Version)
+		con.Step("pack", "%s@%s delivered", rendered.Name, rendered.Version)
 	}
 
 	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
@@ -213,7 +210,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	if err := lock.Write(lock.PathFor(cfgPath), lf); err != nil {
 		return err
 	}
-	step(out, "lock", "cube.lock written (%d packs)", len(entries))
+	con.Step("lock", "cube.lock written (%d packs)", len(entries))
 
 	// D6 canonical hostname: route registry.<host> through the gateway (for
 	// host-side docker/oras push), then make *.<host> resolve in-cluster to
@@ -229,9 +226,9 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 		gatewayServiceFQDN(cube.Spec.Gateway), dnsTimeout); err != nil {
 		return err
 	}
-	step(out, "dns", "*.%s resolves to the gateway in-cluster", cube.Spec.Gateway.Host)
+	con.Step("dns", "*.%s resolves to the gateway in-cluster", cube.Spec.Gateway.Host)
 
-	if err := waitHealthy(ctx, eng, a, out, healthTimeout); err != nil {
+	if err := waitHealthy(ctx, eng, a, con, healthTimeout); err != nil {
 		return err
 	}
 
@@ -259,28 +256,30 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	if err := a.RecordInventory(ctx, packObjs); err != nil {
 		return err
 	}
-	step(out, "packs", "%d pack records written — try `kubectl get packs`", len(packObjs))
+	con.Step("packs", "%d pack records written — try `kubectl get packs`", len(packObjs))
 
 	// Phase 2: the gateway's websecure listener terminates TLS with a
 	// CA-issued cert (D6/D12), so this URL is genuinely HTTPS. Browsers only
 	// show a green lock once the CA is trusted — `cube-idp trust` does that.
-	// This line is unchanged from before Task 15.3 in every mode, plain
-	// included — the access summary below is additive and styled-only.
-	fmt.Fprintf(out, "\n✔ cube %q is up — https://%s:%d\n  credentials: cube-idp get secrets\n",
+	// The Note projection adds exactly one trailing newline, so the plain
+	// bytes are unchanged from before Task 15.3 (the format string drops the
+	// old trailing \n on purpose).
+	con.Note("\n✔ cube %q is up — https://%s:%d\n  credentials: cube-idp get secrets",
 		cube.Metadata.Name, cube.Spec.Gateway.Host, cube.Spec.Gateway.Port)
 
-	// Task 15.3c: a styled-only "what did I just get" block — every
-	// delivered pack's expose URLs (reusing pack.ExposeURLs, the same
-	// ${GATEWAY_HOST} substitution PackObject's spec.url/spec.urls used
-	// above) plus the get-secrets hint. AccessSummary no-ops entirely in
-	// ModePlain, so this adds zero bytes to plain/CI output.
+	// The "what did I just get" access summary — every delivered pack's
+	// expose URLs (reusing pack.ExposeURLs, the same ${GATEWAY_HOST}
+	// substitution PackObject's spec.url/spec.urls used above) plus the
+	// get-secrets hint. Since Task 14b (Owner Decision #15, design doc §9)
+	// Access is DATA with a stable plain projection — the one deliberate
+	// plain-output addition: a "\nAccess\n" block scripts and CI can scrape.
 	access := make([]ui.PackAccess, 0, len(packs))
 	for _, pk := range packs {
 		if urls := pack.ExposeURLs(pk, cube.Spec.Gateway); len(urls) > 0 {
 			access = append(access, ui.PackAccess{Name: pk.Name, URLs: urls})
 		}
 	}
-	p.AccessSummary(access, "credentials: cube-idp get secrets")
+	con.Access(access, "credentials: cube-idp get secrets")
 	return nil
 }
 
@@ -301,13 +300,15 @@ func gatewayServiceFQDN(gw config.GatewaySpec) string {
 // is treated as not-ready rather than vacuously healthy — the "no infinite
 // spinner" rule still applies: on timeout, CUBE-3004 lists every unready
 // component's name and message so the user knows what to look at.
-func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, out io.Writer, timeout time.Duration) error {
+func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, con *ui.Console, timeout time.Duration) error {
 	// Task 15.3a: the third long, previously-silent wait — health polling
 	// can run for minutes while packs converge. pr spans the whole poll
 	// loop; every error/timeout return below is unchanged from before
-	// (nothing printed), so pr.Stop() keeps that contract in plain mode and
-	// silently erases the spinner in styled mode.
-	pr := ui.New(out, ui.PlainFlag).Progress("health", "waiting for components to become ready")
+	// (nothing printed in plain mode), so pr.Stop() keeps that contract.
+	// Each poll additionally emits a change-filtered HealthTick (Task 14b)
+	// so the live renderer's component table and the JSON stream see every
+	// state transition — zero plain bytes, as before.
+	pr := con.Progress("health", "waiting for components to become ready")
 	deadline := time.Now().Add(timeout)
 	for {
 		health, err := eng.Health(ctx, a)
@@ -315,6 +316,7 @@ func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, out i
 			pr.Stop()
 			return err
 		}
+		con.Health(componentStates(health))
 		if allReady(health) {
 			pr.Done("%d component(s) ready", len(health))
 			return nil
@@ -361,12 +363,12 @@ func unreadySummary(health []engine.ComponentHealth) string {
 	return strings.Join(msgs, "; ")
 }
 
-// step prints one line of user-facing progress. It delegates to
-// internal/ui, which reproduces this exact phase-1 format
-// ("▸ [%s] %s\n") in plain mode and only ever renders styled output on a
-// real terminal (never in tests, e2e, or CI — see ui.Resolve). ui.PlainFlag
-// mirrors the --plain persistent flag set once by cmd/root.go's
-// PersistentPreRunE, before any orchestrator runs.
-func step(w io.Writer, stage, format string, args ...any) {
-	ui.New(w, ui.PlainFlag).Step(stage, format, args...)
+// componentStates mirrors engine.ComponentHealth into the event package's
+// dependency-light ComponentState (event never imports internal/engine).
+func componentStates(health []engine.ComponentHealth) []event.ComponentState {
+	states := make([]event.ComponentState, len(health))
+	for i, h := range health {
+		states[i] = event.ComponentState{Name: h.Name, Ready: h.Ready, Message: h.Message}
+	}
+	return states
 }

@@ -2,16 +2,26 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	"github.com/rafpe/cube-idp/internal/trust"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
+
+// runRevertTrust wraps revertTrust in the Task 14b event pipeline exactly
+// the way cmd/down.go's RunE does — a bytes.Buffer always projects plain,
+// so every substring assertion below sees the same bytes a piped `down`
+// run prints. Only this call plumbing changed with 14b; the assertions are
+// byte-for-byte the pre-14b ones.
+func runRevertTrust(out *bytes.Buffer) error {
+	return ui.RunPipeline(context.Background(), "down", out,
+		func(_ context.Context, con *ui.Console) error { return revertTrust(con) })
+}
 
 // TestRevertTrustWarnsOnCorruptState covers CUBE-6006: a corrupt
 // trust-state.yaml must not fail `down` (deletion already succeeded by the
@@ -27,11 +37,9 @@ func TestRevertTrustWarnsOnCorruptState(t *testing.T) {
 	trustDir = func() (string, error) { return dir, nil }
 	defer func() { trustDir = restore }()
 
-	c := &cobra.Command{}
 	var out bytes.Buffer
-	c.SetOut(&out)
 
-	if err := revertTrust(c); err != nil {
+	if err := runRevertTrust(&out); err != nil {
 		t.Fatalf("revertTrust must not fail down on a corrupt state file: %v", err)
 	}
 	got := out.String()
@@ -50,11 +58,9 @@ func TestRevertTrustDirErrorWarns(t *testing.T) {
 	trustDir = func() (string, error) { return "", os.ErrPermission }
 	defer func() { trustDir = restore }()
 
-	c := &cobra.Command{}
 	var out bytes.Buffer
-	c.SetOut(&out)
 
-	if err := revertTrust(c); err != nil {
+	if err := runRevertTrust(&out); err != nil {
 		t.Fatalf("revertTrust must not fail down when the trust dir is unavailable: %v", err)
 	}
 	got := out.String()
@@ -81,11 +87,9 @@ func TestRevertTrustUninstallsWhenInstalled(t *testing.T) {
 	trustUninstall = func(d string) error { uninstalled = true; return nil }
 	defer func() { trustUninstall = restoreUninstall }()
 
-	c := &cobra.Command{}
 	var out bytes.Buffer
-	c.SetOut(&out)
 
-	if err := revertTrust(c); err != nil {
+	if err := runRevertTrust(&out); err != nil {
 		t.Fatalf("revertTrust must not fail: %v", err)
 	}
 	if !uninstalled {
@@ -110,11 +114,9 @@ func TestRevertTrustNoOpWhenNotInstalled(t *testing.T) {
 	trustUninstall = func(d string) error { uninstalled = true; return nil }
 	defer func() { trustUninstall = restoreUninstall }()
 
-	c := &cobra.Command{}
 	var out bytes.Buffer
-	c.SetOut(&out)
 
-	if err := revertTrust(c); err != nil {
+	if err := runRevertTrust(&out); err != nil {
 		t.Fatalf("revertTrust must not fail: %v", err)
 	}
 	if uninstalled {
@@ -143,11 +145,9 @@ func TestRevertTrustPropagatesUninstallError(t *testing.T) {
 	trustUninstall = func(d string) error { return errors.New("boom") }
 	defer func() { trustUninstall = restoreUninstall }()
 
-	c := &cobra.Command{}
 	var out bytes.Buffer
-	c.SetOut(&out)
 
-	if err := revertTrust(c); err == nil {
+	if err := runRevertTrust(&out); err == nil {
 		t.Fatal("expected trustUninstall's error to propagate")
 	}
 }

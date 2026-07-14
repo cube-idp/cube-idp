@@ -36,7 +36,7 @@ func newPluginListCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			descs := plugin.List()
 			out := c.OutOrStdout()
-			p := ui.New(out, ui.PlainFlag)
+			p := ui.NewFor(out)
 			if len(descs) == 0 {
 				p.Warn("no plugins found — install a cube-idp-<name> binary on PATH")
 				return nil
@@ -71,7 +71,7 @@ func newPluginTrustCmd() *cobra.Command {
 			if err := plugin.Trust(name, path); err != nil {
 				return err
 			}
-			p := ui.New(c.OutOrStdout(), ui.PlainFlag)
+			p := ui.NewFor(c.OutOrStdout())
 			fmt.Fprintf(c.OutOrStdout(), "%s plugin %q (%s) is now trusted\n", p.Glyph(ui.GlyphOK), name, path)
 			return nil
 		},
@@ -97,7 +97,7 @@ func newPluginInstallCmd() *cobra.Command {
 			if err := plugin.Install(c.Context(), index, name); err != nil {
 				return err
 			}
-			p := ui.New(c.OutOrStdout(), ui.PlainFlag)
+			p := ui.NewFor(c.OutOrStdout())
 			fmt.Fprintf(c.OutOrStdout(), "%s plugin %q installed and trusted\n", p.Glyph(ui.GlyphOK), name)
 			return nil
 		},

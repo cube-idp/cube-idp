@@ -93,7 +93,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 		return false, err
 	}
 
-	p := ui.New(out, ui.PlainFlag)
+	p := ui.NewFor(out)
 	changed := false
 	changes, err := a.Diff(ctx, desired)
 	if err != nil {

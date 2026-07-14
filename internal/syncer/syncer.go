@@ -79,7 +79,7 @@ func SyncOnce(ctx context.Context, deps Deps, dir string) (Result, error) {
 		return Result{}, err
 	}
 
-	printer := ui.New(deps.Out, ui.PlainFlag)
+	printer := ui.NewFor(deps.Out)
 	printer.Step("sync", "%s@%s rendered (%d object(s))", rendered.Name, rendered.Version, len(rendered.Objects))
 
 	addr := deps.PushAddr

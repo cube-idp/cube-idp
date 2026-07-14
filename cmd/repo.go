@@ -125,7 +125,7 @@ idempotent, and --deploy re-registers the same delivery source.`,
 			}
 
 			out := c.OutOrStdout()
-			p := ui.New(out, ui.PlainFlag)
+			p := ui.NewFor(out)
 			printRepoAccess(out, p, cube.Spec.Gateway, repoInfo, deploy)
 			return nil
 		},

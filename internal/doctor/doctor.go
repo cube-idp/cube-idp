@@ -88,7 +88,7 @@ func CheckGitCLI(refs []string) *diag.Finding {
 // character this function printed inline before, so the literal output is
 // unchanged.
 func Render(out io.Writer, findings []diag.Finding) bool {
-	p := ui.New(out, ui.PlainFlag)
+	p := ui.NewFor(out)
 	hasErrors := false
 	for _, f := range findings {
 		icon := ui.GlyphWarn

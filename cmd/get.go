@@ -193,7 +193,7 @@ func newGetCmd() *cobra.Command {
 				return err
 			}
 			out := c.OutOrStdout()
-			p := ui.New(out, ui.PlainFlag)
+			p := ui.NewFor(out)
 			for _, n := range notes {
 				// ModePlain: exactly fmt.Fprintln(out, n), unchanged from
 				// before Task 15.3. ModeStyled: prefixed with the amber

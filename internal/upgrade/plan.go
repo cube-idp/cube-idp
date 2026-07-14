@@ -64,7 +64,7 @@ func Plan(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	}
 	fmt.Fprint(out, renderTable(rows))
 
-	ui.New(out, ui.PlainFlag).Section("\nKernel + delivery object changes:")
+	ui.NewFor(out).Section("\nKernel + delivery object changes:")
 	kernelChanged, err := diff.Run(ctx, cfgPath, out)
 	if err != nil {
 		return false, err

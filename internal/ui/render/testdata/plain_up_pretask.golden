@@ -1,0 +1,16 @@
+▸ [config] cube "dev" loaded and validated
+▸ [ca] local CA ready (/home/u/.config/cube-idp/ca.crt)
+▸ [cluster] kind cluster ready (context kind-dev)
+▸ [registry] zot ready at http://zot.zot.svc.cluster.local:5000
+▸ [packs-crd] Pack CRD established
+▸ [engine] flux installed
+▸ [tls] gateway certificate ready (CA: run `cube-idp trust` to make browsers trust it)
+▸ [pack] traefik@0.1.0 delivered
+▸ [pack] gitea@0.1.0 delivered
+▸ [lock] cube.lock written (2 packs)
+▸ [dns] *.cube.local resolves to the gateway in-cluster
+▸ [health] 3 component(s) ready
+▸ [packs] 2 pack records written — try `kubectl get packs`
+
+✔ cube "dev" is up — https://cube.local:8443
+  credentials: cube-idp get secrets

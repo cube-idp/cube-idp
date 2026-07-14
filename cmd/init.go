@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/charmbracelet/huh"
+	huh "charm.land/huh/v2"
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
