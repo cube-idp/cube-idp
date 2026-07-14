@@ -19,6 +19,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/apply"
 	"github.com/rafpe/cube-idp/internal/cluster"
 	"github.com/rafpe/cube-idp/internal/config"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 const (
@@ -191,10 +192,15 @@ func newGetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			out := c.OutOrStdout()
+			p := ui.New(out, ui.PlainFlag)
 			for _, n := range notes {
-				fmt.Fprintln(c.OutOrStdout(), n)
+				// ModePlain: exactly fmt.Fprintln(out, n), unchanged from
+				// before Task 15.3. ModeStyled: prefixed with the amber
+				// warning glyph — the same unification doctor/status use.
+				p.Warn("%s", n)
 			}
-			printSecretRows(c.OutOrStdout(), rows)
+			printSecretRows(out, rows)
 			return nil
 		},
 	}

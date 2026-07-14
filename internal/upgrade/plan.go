@@ -15,6 +15,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/diff"
 	"github.com/rafpe/cube-idp/internal/lock"
 	"github.com/rafpe/cube-idp/internal/pack"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 type Row struct {
@@ -63,7 +64,7 @@ func Plan(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	}
 	fmt.Fprint(out, renderTable(rows))
 
-	fmt.Fprintln(out, "\nKernel + delivery object changes:")
+	ui.New(out, ui.PlainFlag).Section("\nKernel + delivery object changes:")
 	kernelChanged, err := diff.Run(ctx, cfgPath, out)
 	if err != nil {
 		return false, err

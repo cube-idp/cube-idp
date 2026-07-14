@@ -21,27 +21,42 @@ type Expose struct {
 	ImpliedFields map[string]string
 }
 
+// ExposeURLs returns p's expose.urls with ${GATEWAY_HOST} substituted for
+// the cube's spec.gateway.host[:port] — the one substitution the D11
+// contract allows. The port is included whenever the gateway doesn't listen
+// on 443 (HTTPS's default), so the resulting links are actually clickable
+// instead of dialing the bare host on 443 and failing (Task 15.1). Returns
+// nil if p declares no expose block or no urls. Shared by PackObject (the
+// Pack record's spec.urls/spec.url) and up.Run's Task 15.3c access summary —
+// one substitution, used everywhere a pack's URLs are shown.
+func ExposeURLs(p *Pack, gw config.GatewaySpec) []string {
+	if p.Expose == nil || len(p.Expose.URLs) == 0 {
+		return nil
+	}
+	host := gw.Host
+	if gw.Port != 443 {
+		host = fmt.Sprintf("%s:%d", gw.Host, gw.Port)
+	}
+	urls := make([]string, 0, len(p.Expose.URLs))
+	for _, u := range p.Expose.URLs {
+		urls = append(urls, strings.ReplaceAll(u, "${GATEWAY_HOST}", host))
+	}
+	return urls
+}
+
 // PackObject builds the cluster-scoped Pack record `up` writes (and `down`,
-// via the inventory, deletes). ${GATEWAY_HOST} in urls is replaced with the
-// cube's spec.gateway.host[:port] — the one substitution the contract
-// allows. The port is included whenever the gateway doesn't listen on 443
-// (HTTPS's default), so `kubectl get packs` links are actually clickable
-// instead of dialing the bare host on 443 and failing (D11/Task 15.1).
+// via the inventory, deletes).
 func PackObject(p *Pack, gw config.GatewaySpec, ready bool) *unstructured.Unstructured {
 	spec := map[string]any{"version": p.Version, "ready": ready}
-	if e := p.Expose; e != nil {
-		if len(e.URLs) > 0 {
-			host := gw.Host
-			if gw.Port != 443 {
-				host = fmt.Sprintf("%s:%d", gw.Host, gw.Port)
-			}
-			urls := make([]any, 0, len(e.URLs))
-			for _, u := range e.URLs {
-				urls = append(urls, strings.ReplaceAll(u, "${GATEWAY_HOST}", host))
-			}
-			spec["urls"] = urls
-			spec["url"] = urls[0]
+	if urls := ExposeURLs(p, gw); len(urls) > 0 {
+		anyURLs := make([]any, len(urls))
+		for i, u := range urls {
+			anyURLs[i] = u
 		}
+		spec["urls"] = anyURLs
+		spec["url"] = urls[0]
+	}
+	if e := p.Expose; e != nil {
 		if r := e.AuthSecretRef; r != nil {
 			spec["authSecretRef"] = map[string]any{"namespace": r.Namespace, "name": r.Name}
 			spec["authSecret"] = r.Namespace + "/" + r.Name

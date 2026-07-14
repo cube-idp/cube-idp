@@ -48,6 +48,12 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	}
 	step(out, "config", "cube %q loaded and validated", cube.Metadata.Name)
 
+	// One Printer for the whole run: its Mode is decided once (Resolve),
+	// same as step()'s per-call ui.New — reused here for the Task 15.3
+	// Progress wraps (the three long, previously-silent waits) and the
+	// styled-only access summary at the end.
+	p := ui.New(out, ui.PlainFlag)
+
 	// D12 ("cert material is generated before cluster creation"): ensure the
 	// local CA — adopting an existing mkcert root if present — before
 	// ClusterProvider.Ensure runs, so the kind provider can mount it into
@@ -67,13 +73,19 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// Task 15.3a: cluster creation can take minutes with zero prior output —
+	// pr.Stop() on error prints nothing (matching the phase-1 behavior of
+	// printing nothing when a step failed); pr.Done prints the same
+	// "cluster" step line step() always printed on success.
+	pr := p.Progress("cluster", fmt.Sprintf("creating %s cluster", cube.Spec.Cluster.Provider))
 	clusterCtx, cancel := context.WithTimeout(ctx, clusterTimeout)
 	conn, err := prov.Ensure(clusterCtx, cube.Metadata.Name, cube.Spec.Cluster)
 	cancel()
 	if err != nil {
+		pr.Stop()
 		return err
 	}
-	step(out, "cluster", "%s cluster ready (context %s)", cube.Spec.Cluster.Provider, conn.Context)
+	pr.Done("%s cluster ready (context %s)", cube.Spec.Cluster.Provider, conn.Context)
 
 	a, err := apply.New(conn.REST, cube.Metadata.Name)
 	if err != nil {
@@ -113,17 +125,23 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	}
 	step(out, "packs-crd", "Pack CRD established")
 
+	// Task 15.3a: the engine install (Flux/Argo CD's own controllers coming
+	// up) is the second long, previously-silent wait.
+	pr = p.Progress("engine", fmt.Sprintf("installing %s", cube.Spec.Engine.Type))
 	if err := eng.Install(ctx, a, applyTimeout); err != nil {
+		pr.Stop()
 		return err
 	}
 	installObjs, err := eng.InstallManifests()
 	if err != nil {
+		pr.Stop()
 		return err
 	}
 	if err := a.RecordInventory(ctx, installObjs); err != nil {
+		pr.Stop()
 		return err
 	}
-	step(out, "engine", "%s installed", cube.Spec.Engine.Type)
+	pr.Done("%s installed", cube.Spec.Engine.Type)
 
 	// The gateway pack's websecure listener references this secret by name
 	// (packs/traefik/manifests/10-gateway.yaml); it must exist before the
@@ -149,12 +167,15 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	var entries []lock.Entry
 	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
 	for _, pr := range refs {
-		p, err := pack.Fetch(ctx, pr.Ref, dir)
+		// pk (not p): p is this function's *ui.Printer — shadowing it with a
+		// same-named *pack.Pack here would still compile (the shadow is
+		// scoped to this loop body), but pk keeps the two unambiguous.
+		pk, err := pack.Fetch(ctx, pr.Ref, dir)
 		if err != nil {
 			return err
 		}
-		packs = append(packs, p)
-		rendered, err := p.Render(pr.Values)
+		packs = append(packs, pk)
+		rendered, err := pk.Render(pr.Values)
 		if err != nil {
 			return err
 		}
@@ -170,7 +191,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 			Ref:          pr.Ref,
 			Name:         rendered.Name,
 			Version:      rendered.Version,
-			Resolved:     p.Pinned,
+			Resolved:     pk.Pinned,
 			RenderedHash: rh,
 			Images:       lock.ImagesFrom(rendered.Objects),
 		})
@@ -229,8 +250,8 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	// "cube-idp-"+name is the Deliver object name convention both engines
 	// use (internal/engine/flux/deliver.go, internal/engine/argocd/deliver.go).
 	packObjs := make([]*unstructured.Unstructured, 0, len(packs))
-	for _, p := range packs {
-		packObjs = append(packObjs, pack.PackObject(p, cube.Spec.Gateway, healthByName["cube-idp-"+p.Name]))
+	for _, pk := range packs {
+		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name]))
 	}
 	if err := a.Apply(ctx, packObjs, false, applyTimeout); err != nil {
 		return err
@@ -243,8 +264,23 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	// Phase 2: the gateway's websecure listener terminates TLS with a
 	// CA-issued cert (D6/D12), so this URL is genuinely HTTPS. Browsers only
 	// show a green lock once the CA is trusted — `cube-idp trust` does that.
+	// This line is unchanged from before Task 15.3 in every mode, plain
+	// included — the access summary below is additive and styled-only.
 	fmt.Fprintf(out, "\n✔ cube %q is up — https://%s:%d\n  credentials: cube-idp get secrets\n",
 		cube.Metadata.Name, cube.Spec.Gateway.Host, cube.Spec.Gateway.Port)
+
+	// Task 15.3c: a styled-only "what did I just get" block — every
+	// delivered pack's expose URLs (reusing pack.ExposeURLs, the same
+	// ${GATEWAY_HOST} substitution PackObject's spec.url/spec.urls used
+	// above) plus the get-secrets hint. AccessSummary no-ops entirely in
+	// ModePlain, so this adds zero bytes to plain/CI output.
+	access := make([]ui.PackAccess, 0, len(packs))
+	for _, pk := range packs {
+		if urls := pack.ExposeURLs(pk, cube.Spec.Gateway); len(urls) > 0 {
+			access = append(access, ui.PackAccess{Name: pk.Name, URLs: urls})
+		}
+	}
+	p.AccessSummary(access, "credentials: cube-idp get secrets")
 	return nil
 }
 
@@ -266,17 +302,25 @@ func gatewayServiceFQDN(gw config.GatewaySpec) string {
 // spinner" rule still applies: on timeout, CUBE-3004 lists every unready
 // component's name and message so the user knows what to look at.
 func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, out io.Writer, timeout time.Duration) error {
+	// Task 15.3a: the third long, previously-silent wait — health polling
+	// can run for minutes while packs converge. pr spans the whole poll
+	// loop; every error/timeout return below is unchanged from before
+	// (nothing printed), so pr.Stop() keeps that contract in plain mode and
+	// silently erases the spinner in styled mode.
+	pr := ui.New(out, ui.PlainFlag).Progress("health", "waiting for components to become ready")
 	deadline := time.Now().Add(timeout)
 	for {
 		health, err := eng.Health(ctx, a)
 		if err != nil {
+			pr.Stop()
 			return err
 		}
 		if allReady(health) {
-			step(out, "health", "%d component(s) ready", len(health))
+			pr.Done("%d component(s) ready", len(health))
 			return nil
 		}
 		if time.Now().After(deadline) {
+			pr.Stop()
 			return diag.New(diag.CodeEngineHealthTimeout,
 				fmt.Sprintf("timed out after %s waiting for components to become healthy: %s",
 					timeout, unreadySummary(health)),
@@ -284,6 +328,7 @@ func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, out i
 		}
 		select {
 		case <-ctx.Done():
+			pr.Stop()
 			return diag.Wrap(ctx.Err(), diag.CodeEngineHealthTimeout, "health wait aborted before completion",
 				"re-run `cube-idp up` — it is idempotent and resumes where it left off")
 		case <-time.After(healthPoll):

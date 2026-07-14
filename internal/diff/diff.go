@@ -23,6 +23,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/lock"
 	"github.com/rafpe/cube-idp/internal/pack"
 	"github.com/rafpe/cube-idp/internal/registry"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 // ensureTimeout bounds the connect step, mirroring status/get: no infinite
@@ -85,12 +86,13 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 		return false, err
 	}
 
+	p := ui.New(out, ui.PlainFlag)
 	changed := false
 	changes, err := a.Diff(ctx, desired)
 	if err != nil {
 		return false, err
 	}
-	fmt.Fprintln(out, "KERNEL OBJECTS")
+	p.Section("KERNEL OBJECTS")
 	for _, c := range changes {
 		if c.Action != "unchanged" {
 			changed = true
@@ -103,7 +105,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fmt.Fprintln(out, "PACK CONTENT")
+	p.Section("PACK CONTENT")
 	for _, e := range packEntries {
 		old := lockEntryFor(prev, e.Name)
 		switch {
@@ -127,7 +129,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	orphans := orphanRefs(inv, append(desired, orphanOnly...))
 	if len(orphans) > 0 {
 		changed = true
-		fmt.Fprintln(out, "ORPHANS (in inventory, no longer desired)")
+		p.Section("ORPHANS (in inventory, no longer desired)")
 		for _, ref := range orphans {
 			fmt.Fprintf(out, "  orphaned    %s\n", ref)
 		}

@@ -17,6 +17,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
 	enginefactory "github.com/rafpe/cube-idp/internal/engine/factory"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 const statusClusterTimeout = 3 * time.Minute
@@ -56,6 +57,7 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			out := c.OutOrStdout()
+			p := ui.New(out, ui.PlainFlag)
 			health, err := eng.Health(c.Context(), a)
 			if err != nil {
 				return err
@@ -63,11 +65,11 @@ func newStatusCmd() *cobra.Command {
 			allReady := true
 			for _, h := range health {
 				if h.Ready {
-					fmt.Fprintf(out, "✔ %s Ready\n", h.Name)
+					fmt.Fprintf(out, "%s %s Ready\n", p.Glyph(ui.GlyphOK), h.Name)
 					continue
 				}
 				allReady = false
-				fmt.Fprintf(out, "✗ %s %s\n", h.Name, h.Message)
+				fmt.Fprintf(out, "%s %s %s\n", p.Glyph(ui.GlyphErr), h.Name, h.Message)
 			}
 
 			inventory, err := a.LoadInventory(c.Context())

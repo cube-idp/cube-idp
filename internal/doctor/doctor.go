@@ -14,6 +14,7 @@ import (
 
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/pack"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 // portProbeTimeout bounds the localhost dial CheckPortFree uses to detect a
@@ -80,18 +81,24 @@ func CheckGitCLI(refs []string) *diag.Finding {
 		Remediation: "install git and ensure it is on PATH"}
 }
 
-// Render prints findings and reports whether any is an error.
+// Render prints findings and reports whether any is an error. The ✔/✗/⚠
+// glyphs go through ui.Printer.Glyph so doctor, status, and get secrets
+// share one visual language (Task 15.3b) — in ModePlain (every existing
+// test, since none writes to a real terminal) Glyph returns the same bare
+// character this function printed inline before, so the literal output is
+// unchanged.
 func Render(out io.Writer, findings []diag.Finding) bool {
+	p := ui.New(out, ui.PlainFlag)
 	hasErrors := false
 	for _, f := range findings {
-		icon := "⚠"
+		icon := ui.GlyphWarn
 		if f.Severity == diag.SeverityError {
-			icon, hasErrors = "✗", true
+			icon, hasErrors = ui.GlyphErr, true
 		}
-		fmt.Fprintf(out, "%s %s  %s\n    fix: %s\n", icon, f.Code, f.Message, f.Remediation)
+		fmt.Fprintf(out, "%s %s  %s\n    fix: %s\n", p.Glyph(icon), f.Code, f.Message, f.Remediation)
 	}
 	if len(findings) == 0 {
-		fmt.Fprintln(out, "✔ no problems found")
+		fmt.Fprintf(out, "%s no problems found\n", p.Glyph(ui.GlyphOK))
 	}
 	return hasErrors
 }
