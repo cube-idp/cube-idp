@@ -28,11 +28,11 @@ type EngineLock struct {
 
 // Entry is the reproducibility record for one delivered pack.
 type Entry struct {
-	Ref          string   `yaml:"ref" json:"ref"`
-	Name         string   `yaml:"name" json:"name"`
-	Version      string   `yaml:"version" json:"version"`
-	Resolved     string   `yaml:"resolved" json:"resolved"`
-	RenderedHash string   `yaml:"renderedHash" json:"renderedHash"`
+	Ref          string `yaml:"ref" json:"ref"`
+	Name         string `yaml:"name" json:"name"`
+	Version      string `yaml:"version" json:"version"`
+	Resolved     string `yaml:"resolved" json:"resolved"`
+	RenderedHash string `yaml:"renderedHash" json:"renderedHash"`
 	// Images is the sorted union of every container image this pack pulls:
 	// images found by walking the rendered manifests (lock.ImagesFrom) PLUS
 	// any images the pack declares itself via pack.cue's optional images:

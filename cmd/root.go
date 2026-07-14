@@ -50,6 +50,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newTrustCmd())
 	root.AddCommand(newCnoeCmd())
 	root.AddCommand(newPluginCmd())
+	root.AddCommand(newVendorCmd())
 	return root
 }
 
