@@ -115,26 +115,61 @@ func fetchGetter(ctx context.Context, src, dst string) error {
 	return nil
 }
 
-// fetchGit resolves the bare git grammar <host>/<org>/<repo>[//subdir]@rev:
-// pin first (ls-remote — fails fast, no clone on bad revs), then go-getter
-// fetch of the subdir at that exact SHA.
+// FetchTree resolves the bare git grammar <host>/<org>/<repo>[//subdir]@rev
+// to a local, guarded directory WITHOUT requiring pack.cue: the cnoe-compat
+// loader (Task 13) imports plain Kubernetes manifest trees from git that
+// were never authored as cube packs. Fetch/fetchGit layer pack.cue loading
+// on top of the same single fetch implementation (fetchGitTree).
+func FetchTree(ctx context.Context, ref, cacheDir string) (string, error) {
+	dir, _, err := fetchGitTree(ctx, ref, cacheDir)
+	return dir, err
+}
+
+// fetchGit resolves a bare git ref to a *Pack: the shared tree fetch, then
+// pack.cue metadata plus the cube.lock pin.
 func fetchGit(ctx context.Context, ref, cacheDir string) (*Pack, error) {
+	dst, pin, err := fetchGitTree(ctx, ref, cacheDir)
+	if err != nil {
+		return nil, err
+	}
+	p, err := loadMeta(dst)
+	if err != nil {
+		return nil, err
+	}
+	p.Pinned = pin
+	return p, nil
+}
+
+// fetchGitTree is the single git fetch implementation behind FetchTree and
+// fetchGit — bare grammar <host>/<org>/<repo>[//subdir]@rev: pin first
+// (ls-remote — fails fast, no clone on bad revs), then go-getter fetch of
+// the subdir at that exact SHA. Returns the on-disk tree and its
+// "git+<sha>" pin.
+func fetchGitTree(ctx context.Context, ref, cacheDir string) (dir, pin string, err error) {
 	base, rev, ok := strings.Cut(ref, "@")
 	if !ok || rev == "" {
-		return nil, diag.New(diag.CodePackRefUnpin,
+		return "", "", diag.New(diag.CodePackRefUnpin,
 			fmt.Sprintf("git pack ref %q is not pinned", ref),
 			"append @<tag|branch|commit>, e.g. github.com/org/repo//packs/foo@v1.2.0")
 	}
 	repoPath, subdir, _ := strings.Cut(base, "//")
 	repoURL := gitCloneURL(repoPath)
 
-	pin, err := resolveGitPin(ctx, repoURL, rev)
+	pin, err = resolveGitPin(ctx, repoURL, rev)
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 	sha := strings.TrimPrefix(pin, "git+")
 
-	dst := filepath.Join(cacheDir, "git", strings.ReplaceAll(repoPath, "/", "_")+"@"+sha)
+	// The subdir is part of the cache key: only the subdir's tree is fetched
+	// into dst, so two refs into the same repo@sha but different subdirs
+	// (common in cnoe imports — many Applications, one repo) must not share
+	// a cache entry.
+	key := strings.ReplaceAll(repoPath, "/", "_") + "@" + sha
+	if subdir != "" {
+		key += "_" + strings.ReplaceAll(subdir, "/", "_")
+	}
+	dst := filepath.Join(cacheDir, "git", key)
 	if _, statErr := os.Stat(dst); statErr != nil {
 		src := fmt.Sprintf("git::%s?ref=%s", repoURL, sha)
 		if subdir != "" {
@@ -143,13 +178,8 @@ func fetchGit(ctx context.Context, ref, cacheDir string) (*Pack, error) {
 		// fetchGetter is atomic: on any failure nothing exists at dst,
 		// so the cache-hit stat above can never trust a partial tree.
 		if err := fetchGetter(ctx, src, dst); err != nil {
-			return nil, err
+			return "", "", err
 		}
 	}
-	p, err := loadMeta(dst)
-	if err != nil {
-		return nil, err
-	}
-	p.Pinned = pin
-	return p, nil
+	return dst, pin, nil
 }

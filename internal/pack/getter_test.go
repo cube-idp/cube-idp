@@ -99,6 +99,61 @@ func TestFetchGitByTag(t *testing.T) {
 	}
 }
 
+// makeGitFixturePlain creates a local repo holding PLAIN Kubernetes
+// manifests (no pack.cue) under apps/web, tagged v0.1.0 — the shape of a
+// real idpbuilder Application's git source, which was never authored as a
+// cube pack.
+func makeGitFixturePlain(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git CLI not on PATH")
+	}
+	dir := t.TempDir()
+	appDir := filepath.Join(dir, "apps", "web")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(appDir, "deploy.yaml"),
+		[]byte("apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: web}\n"), 0o644)
+	for _, args := range [][]string{
+		{"init", "-q"}, {"add", "."},
+		{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"},
+		{"tag", "v0.1.0"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return dir
+}
+
+// TestFetchTreePlainManifests pins FetchTree's contract for the cnoe-compat
+// loader: a git subdir of plain manifests fetches fine WITHOUT pack.cue
+// (Fetch would fail this same tree with CUBE-4003).
+func TestFetchTreePlainManifests(t *testing.T) {
+	fixture := makeGitFixturePlain(t)
+	restore := gitCloneURL
+	gitCloneURL = func(repoPath string) string { return "file://" + fixture }
+	defer func() { gitCloneURL = restore }()
+
+	dir, err := FetchTree(context.Background(), "example.com/org/repo//apps/web@v0.1.0", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "deploy.yaml")); err != nil {
+		t.Fatalf("fetched tree is missing deploy.yaml: %v", err)
+	}
+	// Same ref through Fetch must still demand pack.cue — the seam is only
+	// FetchTree skipping loadMeta, not a loosened pack contract.
+	_, err = Fetch(context.Background(), "example.com/org/repo//apps/web@v0.1.0", t.TempDir())
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodePackCueInvalid {
+		t.Fatalf("Fetch of a plain tree: want %s, got %v", diag.CodePackCueInvalid, err)
+	}
+}
+
 func TestFetchGitUnknownRevision(t *testing.T) {
 	fixture := makeGitFixture(t)
 	restore := gitCloneURL

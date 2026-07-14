@@ -85,12 +85,13 @@ func (a *App) Render(ctx context.Context, cacheDir string) (*pack.Rendered, erro
 	case a.CnoeDir != "":
 		objs, err = renderLocalDir(a.CnoeDir)
 	case a.GitRef != "":
-		var p *pack.Pack
-		if p, err = pack.Fetch(ctx, a.GitRef, cacheDir); err == nil {
-			var r *pack.Rendered
-			if r, err = p.Render(nil); err == nil {
-				objs = r.Objects
-			}
+		// FetchTree, not Fetch: real idpbuilder Applications point at plain
+		// manifest trees that were never authored as cube packs, so there is
+		// no pack.cue to load — render the fetched tree exactly like a
+		// cnoe:// directory (kustomization.yaml if present, else a walk).
+		var dir string
+		if dir, err = pack.FetchTree(ctx, a.GitRef, cacheDir); err == nil {
+			objs, err = renderLocalDir(dir)
 		}
 	case a.Helm != nil:
 		objs, err = pack.RenderChart(*a.Helm, a.Helm.Values)
@@ -149,7 +150,11 @@ var clusterScoped = map[string]bool{
 
 // applyDestinationNamespace defaults every namespaced object with no
 // namespace of its own to ns, and prepends a Namespace object (Argo's
-// CreateNamespace behavior) when ns is set.
+// CreateNamespace behavior) when ns is set — unless the render already
+// carries one: pack.RenderChart prepends a Namespace for chart sources
+// (helm.go's hasNamespaceObject path), and manifest trees may declare their
+// own, so prepending unconditionally would bake a byte-identical duplicate
+// into the artifact (and its content hash).
 func applyDestinationNamespace(objs []*unstructured.Unstructured, ns string) []*unstructured.Unstructured {
 	if ns == "" {
 		return objs
@@ -157,6 +162,11 @@ func applyDestinationNamespace(objs []*unstructured.Unstructured, ns string) []*
 	for _, o := range objs {
 		if o.GetNamespace() == "" && !clusterScoped[o.GetKind()] {
 			o.SetNamespace(ns)
+		}
+	}
+	for _, o := range objs {
+		if o.GetKind() == "Namespace" && o.GetName() == ns {
+			return objs // already present — don't duplicate it
 		}
 	}
 	nsObj := &unstructured.Unstructured{Object: map[string]any{

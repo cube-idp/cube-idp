@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -78,7 +79,8 @@ func expandApplicationSet(doc *unstructured.Unstructured, fileDir string) ([]App
 		listGen, ok := gm["list"].(map[string]any)
 		if !ok {
 			return nil, diag.New(diag.CodePackCnoeInvalid,
-				fmt.Sprintf("applicationset %q uses a generator cube-idp does not support (only list generators)", name),
+				fmt.Sprintf("applicationset %q uses the %q generator, which cube-idp does not support (only list generators)",
+					name, generatorName(gm)),
 				"expand the ApplicationSet into plain Applications and re-import")
 		}
 		elements, _ := listGen["elements"].([]any)
@@ -97,6 +99,24 @@ func expandApplicationSet(doc *unstructured.Unstructured, fileDir string) ([]App
 		}
 	}
 	return apps, nil
+}
+
+// generatorName names the generator a rejected ApplicationSet entry uses
+// (e.g. "clusters", "git"): the first non-"list" key in the generator map,
+// sorted for determinism. Falls back to "unknown" for an empty or opaque
+// entry (or a "list" key holding a non-map value).
+func generatorName(gm map[string]any) string {
+	keys := make([]string, 0, len(gm))
+	for k := range gm {
+		if k != "list" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) > 0 {
+		return keys[0]
+	}
+	return "unknown"
 }
 
 // substitute deep-copies v, replacing {{key}} placeholders in every string.
