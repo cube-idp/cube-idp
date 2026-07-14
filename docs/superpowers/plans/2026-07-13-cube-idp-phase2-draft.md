@@ -5726,9 +5726,9 @@ git add -A && git commit -m "feat: e2e engine matrix, Phase 2 command coverage, 
 
 **Files:** modify `internal/pack/expose.go` (`PackObject` takes `gw config.GatewaySpec` instead of `gatewayHost string`; substitution value = `gw.Host` when `gw.Port == 443`, else `fmt.Sprintf("%s:%d", gw.Host, gw.Port)`), its call site in `internal/up`, `internal/pack/discovery_test.go` (port-8443 and port-443 cases), `tests/e2e/e2e_test.go` (the `kubectl get packs` assertion additionally greps `:<gatewayPort>` in the URL column), `README.md` D11 section (document the substitution semantics).
 
-- [ ] Failing tests: PackObject with Port 8443 → `spec.url == "https://gitea.cube-idp.localtest.me:8443"`; with Port 443 → no suffix. Run, fail.
-- [ ] Implement; run `go build ./... && go vet ./... && go test ./internal/pack/ ./internal/up/ ./cmd/ -short -count=1 && go test ./... -short`.
-- [ ] Commit: `fix: pack expose URLs carry the gateway port — kubectl get packs links are clickable (D11)`.
+- [x] Failing tests: PackObject with Port 8443 → `spec.url == "https://gitea.cube-idp.localtest.me:8443"`; with Port 443 → no suffix. Run, fail.
+- [x] Implement; run `go build ./... && go vet ./... && go test ./internal/pack/ ./internal/up/ ./cmd/ -short -count=1 && go test ./... -short`.
+- [x] Commit: `fix: pack expose URLs carry the gateway port — kubectl get packs links are clickable (D11)`.
 
 ### Task 15.2: `cube-idp status --details` — show the inventory objects
 
