@@ -1,13 +1,17 @@
 package up
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/lock"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 // TestMergeImagesUnion pins spec D14's lock-assembly merge: the sorted,
@@ -106,5 +110,52 @@ func TestResolveBundleRefs_PreservesValues(t *testing.T) {
 	}
 	if resolved[0].Values["replicas"] != 2 {
 		t.Fatalf("values lost: %+v", resolved[0])
+	}
+}
+
+// TestStepFetchSourcePlainOutput pins the per-pack resolved-fetch-source line
+// (Task 13 review): the plain stream must name the ACTUAL source pack.Fetch
+// will read — the oci:// ref online, the bundle-local dir (under a
+// cube-idp-bundle-* staging dir) in --bundle mode — so the e2e's offline
+// assertions ("every fetch source points into the bundle", "no fetch source
+// is oci://") are falsifiable from output alone: an online run demonstrably
+// prints oci:// here, a bundle run demonstrably does not.
+func TestStepFetchSourcePlainOutput(t *testing.T) {
+	emit := func(refs []config.PackRef) string {
+		var out bytes.Buffer // never a TTY -> plain renderer
+		err := ui.RunPipeline(context.Background(), "up", &out,
+			func(_ context.Context, con *ui.Console) error {
+				for _, pr := range refs {
+					stepFetchSource(con, pr.Ref)
+				}
+				return nil
+			})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+
+	// Online: the network ref itself must appear, byte-for-byte.
+	online := emit([]config.PackRef{{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0"}})
+	if want := "▸ [pack] fetching oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0\n"; !strings.Contains(online, want) {
+		t.Fatalf("online fetch-source line missing %q in:\n%s", want, online)
+	}
+
+	// Bundle: refs resolved via resolveBundleRefs print the bundle-local dir
+	// and no oci:// ref survives.
+	lk := &lock.File{Packs: []lock.Entry{{Ref: "oci://ghcr.io/x/packs/gitea:0.1.0", Name: "gitea"}}}
+	resolved, err := resolveBundleRefs(
+		[]config.PackRef{{Ref: "oci://ghcr.io/x/packs/gitea:0.1.0"}}, lk,
+		func(name string) (string, bool) { return "/tmp/cube-idp-bundle-123/packs/" + name, true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	offline := emit(resolved)
+	if want := "▸ [pack] fetching /tmp/cube-idp-bundle-123/packs/gitea\n"; !strings.Contains(offline, want) {
+		t.Fatalf("bundle fetch-source line missing %q in:\n%s", want, offline)
+	}
+	if strings.Contains(offline, "oci://") {
+		t.Fatalf("bundle fetch-source output leaked an oci:// ref:\n%s", offline)
 	}
 }

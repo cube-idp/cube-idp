@@ -66,10 +66,10 @@ spec:
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `metadata.name` | string | *(required)* | Cube identity; also the `kind` cluster name for `provider: kind`. `^[a-z0-9][a-z0-9-]{0,30}$` |
-| `spec.cluster.provider` | `kind` \| `existing` | `kind` | `existing` targets any kubeconfig context |
+| `metadata.name` | string | *(required)* | Cube identity; also the `kind`/`k3d` cluster name for the local providers. `^[a-z0-9][a-z0-9-]{0,30}$` |
+| `spec.cluster.provider` | `kind` \| `k3d` \| `existing` | `kind` | `kind` and `k3d` create a local cluster; `existing` targets any kubeconfig context (see "k3d provider" below) |
 | `spec.cluster.context` | string | — | kubeconfig context, for `provider: existing` |
-| `spec.cluster.kubernetesVersion` | string | `v1.33.1` | `provider: kind` only; rejected for `existing` (CUBE-1003) |
+| `spec.cluster.kubernetesVersion` | string | `v1.33.1` | local providers only (kind node image `kindest/node:<ver>`, k3d node image `rancher/k3s:<ver>-k3s1`); rejected for `existing` (CUBE-1003) |
 | `spec.cluster.extraPorts` | `[{hostPort, nodePort}]` | — | D10 layer 1: extra host→node port mappings beyond the gateway's |
 | `spec.cluster.registry.mirrors` | map | — | D10 layer 1: registry mirror rewrites for the node's containerd |
 | `spec.cluster.registry.insecure` | `[string]` | — | D10 layer 1: registries the node's containerd treats as HTTP/self-signed |
@@ -92,6 +92,29 @@ provider config (D10 layer 2) before `up` creates anything.
 > terminated by Traefik with a cube-idp CA-issued cert from `up`), and
 > plain HTTP stays available in-cluster on the `web` listener. Existing
 > kind clusters need `down`/`up` to pick up the new mapping.
+
+## k3d provider
+
+`spec.cluster.provider: k3d` stands the platform up on k3d (k3s-in-docker,
+D4) instead of kind — same single-binary flow, same everything-else. It is a
+drop-in alternative to `kind`: both are cluster-creating providers that
+node-load images (so both support air-gapped `up --bundle`, below), both map
+the host `gateway.port` onto the gateway's pinned NodePort `30443`, and both
+honor the D10 layer-1/2 cluster-shape fields (`extraPorts`, `mounts`,
+`registry`, `providerConfig`). The e2e suite runs the full `{kind, k3d}`
+provider matrix in CI.
+
+```yaml
+spec:
+  cluster:
+    provider: k3d
+    kubernetesVersion: v1.33.1   # -> rancher/k3s:v1.33.1-k3s1 node image
+```
+
+`cube-idp config render-cluster` previews the final merged provider config
+for k3d exactly as it does for kind — pipe it out and inspect the k3d
+`SimpleConfig` before `up` creates anything. The `--local` node-image cache
+recipe below applies to k3d too (mount over the k3s containerd store).
 
 ## Node-image cache (warm `up`, spec §3's <60s goal)
 
@@ -270,6 +293,114 @@ change (D6).
   Commit `cube.lock` alongside `cube.yaml` — it pins what actually shipped,
   the way a lockfile does for a package manager.
 
+## Delivering your own work
+
+Two ways to get *your* manifests onto a running cube, beyond the packs in
+`cube.yaml`:
+
+### `cube-idp sync <dir>` — push a directory (D7)
+
+`sync` renders a local directory as a pack, pushes it to the cube's
+in-cluster registry, delivers it through the configured engine, and pokes
+the engine to reconcile now. A directory with a `pack.cue` is treated as a
+full pack; a bare directory of `*.yaml`/`*.yml` manifests is synthesized
+into one (named after the directory). It targets an already-`up` cube and
+never creates a cluster as a side effect.
+
+```bash
+cube-idp sync ./my-manifests           # one-shot: render, push, deliver, exit
+cube-idp sync ./my-manifests --watch   # re-sync on every debounced change until Ctrl-C
+```
+
+`--watch` is the sanctioned long-running **foreground** mode — a fast local
+edit loop, not a daemon: it runs once immediately, then re-syncs on every
+debounced filesystem change under `dir` until interrupted, and a sync
+failure mid-watch is printed in full without stopping the watch (fix the
+file and save again). **Boundary (D7):** `sync` pushes OCI artifacts
+directly to the registry; it is *not* a git-push flow. The git-push
+delivery flow lives in the gitea pack — see `repo create` below.
+
+### `cube-idp repo create <name> [--deploy]` — git-push delivery
+
+Creates a repository in the cube's built-in Gitea for the admin user (with
+`auto_init`, public so the in-cluster engine needs no pull secret). With
+`--deploy` it also registers the repo as a continuously-synced engine
+delivery source — the classic "empty repo to deployed" loop:
+
+```bash
+cube-idp repo create app --deploy
+# clone: https://gitea.cube-idp.localtest.me:8443/gitea_admin/app.git
+# push:  git push <clone-url> main
+#   ...push a manifest, and the engine (cloning the repo from *inside* the
+#   cluster via the gitea Service) applies it — no laptop tunnel involved
+```
+
+A human clones/pushes over the **gateway** URL (real TLS via the cube-idp
+CA); the engine reaches the gitea Service directly in-cluster. Re-running is
+idempotent (`--deploy` re-registers the same source). Admin credentials come
+from `cube-idp get secrets -p gitea`.
+
+## Air-gapped install (`vendor` + `up --bundle`)
+
+For a host with no registry access, split the install into a connected
+*vendor* step and an offline *up* step (spec §4.1):
+
+```bash
+# On a connected machine (reads cube.lock; pure lock consumer, no cluster):
+cube-idp vendor -o cube-bundle.tar.gz              # host platform
+cube-idp vendor -o cube-bundle.tar.gz --platform linux/amd64   # cross-arch
+
+# Carry the tarball to the air-gapped host, then:
+cube-idp up --bundle cube-bundle.tar.gz
+```
+
+`vendor` pulls every pack source and container image pinned in `cube.lock`
+into one self-contained tarball — a bundle is complete or an error (any pull
+failure aborts rather than shipping a partial bundle). `up --bundle` is
+offline-honest: after the cluster exists it node-loads every bundled image
+into the nodes (so pods start with no registry pull), rewrites every pack ref
+to its bundle-local source before fetching, and fails **loudly** (CUBE-7004)
+on any ref missing from the bundle rather than silently falling through to a
+network fetch. It requires an image-loading provider (`kind` or `k3d`);
+`provider: existing` cannot node-load images and is rejected up front
+(CUBE-7005).
+
+## Plugins
+
+cube-idp is extensible via exec-plugins (spec §4.4 tier 2): any executable
+named `cube-idp-<name>` on `$PATH` (or in the plugin install dir) is
+invokable as `cube-idp <name>`, and `cube-idp plugin list` shows every one
+discovered.
+
+**Environment contract.** cube-idp runs a plugin with the parent environment
+plus these variables (Owner Decisions #5). Each is set **only** when
+available — an omitted field is absent from the child's environment entirely
+(a stale `CUBE_IDP_*` in your shell never leaks through as if cube-idp set
+it), so a cluster-independent plugin keeps working with no cube.yaml around:
+
+| Variable | Value | Set when |
+| --- | --- | --- |
+| `CUBE_IDP_CUBE_NAME` | the cube's `metadata.name` | a loadable `cube.yaml` is present |
+| `CUBE_IDP_KUBECONFIG` | path to a temp kubeconfig for the cube's cluster (0600, removed on exit) | the cluster exists |
+| `CUBE_IDP_REGISTRY` | the in-cluster zot registry URL | the cluster exists |
+| `CUBE_IDP_CA` | path to the cube-idp local CA cert (`ca.crt`) | a CA has been generated by a prior `up` |
+
+A plugin reaches the registry either through its own port-forward or, on a
+host where the gateway hostname resolves, at `https://registry.<gateway.host>`
+(the same `internal/registry` gateway route the host-side `docker`/`oras`
+push uses) — with `CUBE_IDP_CA` as the trust anchor. So zot is reachable
+from the host, not just in-cluster.
+
+**Trust model.** A discovered plugin runs only after its current sha256 is
+approved: `cube-idp plugin trust <name>` records the hash so it runs without
+prompting; an untrusted plugin prompts interactively (CUBE-7104) or, in a
+non-TTY, is refused. Any change to the binary invalidates the recorded hash
+and re-prompts.
+
+**Install.** `cube-idp plugin install <name> --index <url>` fetches a plugin
+from a sha256-pinned git index and records its trust in one step. `--index`
+is required (Owner Decisions #8) — there is no implicit default index.
+
 ## Pack sources
 
 A pack ref (`spec.gateway.ref` / `spec.packs[].ref`) accepts:
@@ -389,21 +520,30 @@ go vet ./...
 go test ./... -short
 make test-apply
 make test-engines
-CUBE_IDP_E2E=1 CUBE_IDP_E2E_ENGINE=flux   go test ./tests/e2e/ -v -timeout 25m   # real kind cluster; needs docker
-CUBE_IDP_E2E=1 CUBE_IDP_E2E_ENGINE=argocd go test ./tests/e2e/ -v -timeout 25m
+# real cluster; needs docker. Provider x engine matrix (spec §5):
+CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=kind CUBE_IDP_E2E_ENGINE=flux   go test ./tests/e2e/ -v -timeout 35m
+CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=k3d  CUBE_IDP_E2E_ENGINE=flux   go test ./tests/e2e/ -v -timeout 35m
+CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=kind CUBE_IDP_E2E_ENGINE=argocd go test ./tests/e2e/ -v -timeout 35m
+CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=k3d  CUBE_IDP_E2E_ENGINE=argocd go test ./tests/e2e/ -v -timeout 35m
 ```
 
-The e2e suite (`tests/e2e/e2e_test.go`) is skipped unless `CUBE_IDP_E2E=1`,
-and runs across the `{flux, argocd}` engine matrix via
-`CUBE_IDP_E2E_ENGINE` (defaults to `flux`; CI runs both as a matrix job,
-spec §5: `{kind} x {flux, argocd} x {up, diff, upgrade, down}`). It builds
-the binary, `init --local`s against this checkout, runs `doctor` then `up`
-twice (proving idempotency), asserts `cube.lock` was written with a
-`renderedHash`, that a converged cube's `diff`/`upgrade --plan` both exit 0,
-that `status` and `kubectl get packs` (D11) surface the expected
-components/printer columns, that the gateway serves a cube-idp CA-issued
-TLS cert, that `cnoe import` round-trips a fixture Application, and that
-`get secrets -p gitea` surfaces `gitea_admin` — then `down`s the cluster.
+The e2e suite is skipped unless `CUBE_IDP_E2E=1`, and runs across the
+`{kind, k3d} x {flux, argocd}` matrix via `CUBE_IDP_E2E_PROVIDER` (default
+`kind`) and `CUBE_IDP_E2E_ENGINE` (default `flux`); CI runs all four legs as
+a matrix job (spec §5: `{kind, k3d} x {flux, argocd} x {up, diff, upgrade,
+down}`). The Phase 1 loop (`tests/e2e/e2e_test.go`) builds the binary,
+`init --local`s against this checkout, runs `doctor` then `up` twice
+(proving idempotency), asserts `cube.lock` was written with a `renderedHash`,
+that a converged cube's `diff`/`upgrade --plan` both exit 0, that `status`
+and `kubectl get packs` (D11) surface the expected components/printer
+columns, that the gateway serves a cube-idp CA-issued TLS cert, that `cnoe
+import` round-trips a fixture Application, and that `get secrets -p gitea`
+surfaces `gitea_admin` — then `down`s the cluster. The Phase 3 scenarios
+(`tests/e2e/phase3_test.go`) add: k3d up/down, `vendor` → offline `up
+--bundle` (asserting the image node-load ran and that every per-pack
+`fetching <source>` output line resolves into the bundle staging dir, never
+an `oci://` ref), `sync` one-shot, `repo create --deploy` (git push over the
+gateway → engine syncs → ConfigMap appears), and an envoy-gateway smoke test.
 It records the first `up`'s wall-clock time as a tracked metric (`t.Logf`,
 plus a `GITHUB_STEP_SUMMARY` line when running under GitHub Actions) —
 spec §3's <60s goal is warm, not a hard assertion here, since image-pull

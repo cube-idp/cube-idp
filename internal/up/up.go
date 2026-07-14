@@ -235,6 +235,12 @@ func Run(ctx context.Context, opts Options) error {
 	var entries []lock.Entry
 	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
 	for _, pr := range refs {
+		// Task 13 review: record the RESOLVED fetch source before Fetch runs.
+		// This is the falsifiable output proof of offline honesty: an online
+		// run prints the oci:// ref here; a --bundle run prints the
+		// bundle-local dir (under cube-idp-bundle-*), never oci://. A new
+		// additive plain line, consistent with the existing step conventions.
+		stepFetchSource(con, pr.Ref)
 		// pk (not p): p is this function's *ui.Printer — shadowing it with a
 		// same-named *pack.Pack here would still compile (the shadow is
 		// scoped to this loop body), but pk keeps the two unambiguous.
@@ -355,6 +361,19 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	con.Access(access, "credentials: cube-idp get secrets")
 	return nil
+}
+
+// stepFetchSource emits the per-pack resolved-fetch-source step line —
+// "fetching <source>" where source is exactly what pack.Fetch is about to
+// read: the oci://... (or local/git) ref online, or the bundle-local staging
+// dir (under a cube-idp-bundle-* temp dir) after resolveBundleRefs in
+// --bundle mode. Added by the Task 13 review so offline honesty is
+// falsifiable from output alone: the e2e bundle test asserts every fetch
+// source points into the bundle and none is an oci:// ref — assertions that
+// would FAIL on an online run, because this line demonstrably prints the
+// network ref there (pinned by TestStepFetchSourcePlainOutput).
+func stepFetchSource(con *ui.Console, ref string) {
+	con.Step("pack", "fetching %s", ref)
 }
 
 // mergeImages returns the sorted, deduplicated union of rendered (images
