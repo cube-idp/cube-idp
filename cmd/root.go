@@ -33,9 +33,11 @@ func NewRootCmd() *cobra.Command {
 		// (Task 14c) activates the --progress flag: rungs 1–3 of the ladder go
 		// live, --plain stays a permanent alias (rung 4).
 		PersistentPreRunE: func(*cobra.Command, []string) error {
-			if err := validateProgressFlag(progress); err != nil {
-				return err
-			}
+			// Resolve the mode first — an unrecognized --progress value already
+			// falls through the ladder (Resolve matches only json/plain/live),
+			// so SetMode still reflects the real environment (TTY/CI/NO_COLOR).
+			// The bad-value error then renders in the right mode (plain when
+			// piped or in CI), instead of a styled panel on a machine pipe.
 			_, noColor := os.LookupEnv("NO_COLOR")
 			ui.SetMode(ui.Resolve(ui.Request{
 				ProgressFlag: progress,
@@ -46,7 +48,7 @@ func NewRootCmd() *cobra.Command {
 				NoColor:      noColor,
 				Term:         os.Getenv("TERM"),
 			}))
-			return nil
+			return validateProgressFlag(progress)
 		},
 	}
 	root.PersistentFlags().BoolVar(&plain, "plain", false,
