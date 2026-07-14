@@ -5391,12 +5391,12 @@ git add -A && git commit -m "feat: cnoe-compat loader — Application/Applicatio
 - Modify: `internal/pack/helm.go` (imports + adapted call sites only — the wrapper surface `renderHelm`/`RenderChart`/`ChartRef` is frozen), `go.mod`
 - Test: none new — the existing pack golden-file render tests ARE the port's acceptance suite
 
-- [ ] **Step 1: Freeze the baseline**
+- [x] **Step 1: Freeze the baseline**
 
 Run: `go test ./internal/pack/ -short -v 2>&1 | tee /tmp/helm-v3-baseline.txt`
 Expected: PASS. This output (and the golden files themselves) define "unchanged behavior" for the port.
 
-- [ ] **Step 2: Swap the SDK**
+- [x] **Step 2: Swap the SDK**
 
 ```bash
 go get helm.sh/helm/v4@latest
@@ -5410,12 +5410,12 @@ go mod tidy && grep -c 'helm.sh/helm/v3' go.mod
 
 Expected: `0`.
 
-- [ ] **Step 3: Re-run the acceptance suite**
+- [x] **Step 3: Re-run the acceptance suite**
 
 Run: `go test ./internal/pack/ ./internal/cnoe/ -short -v && go build ./...`
 Expected: PASS with the golden files untouched. If a golden diff appears, inspect it: rendering differences between v3 and v4 must be understood and accepted deliberately (update the golden with a comment naming the v4 change), never waved through.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A && git commit -m "refactor: helm wrapper on the v4 SDK (debt paydown)"
