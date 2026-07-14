@@ -84,10 +84,12 @@ func runDown(ctx context.Context, con *ui.Console, file string, keepCluster bool
 		// D6: revert the CoreDNS rewrite before tearing the rest down
 		// — the cluster (and CoreDNS with it) survives this path, so
 		// nothing else undoes it.
+		pr = con.Progress("dns", "reverting CoreDNS rewrite")
 		if err := trust.RemoveCoreDNSRewrite(ctx, a.Client(), 2*time.Minute); err != nil {
+			pr.Stop()
 			return err
 		}
-		con.Step("dns", "CoreDNS rewrite reverted")
+		pr.Done("CoreDNS rewrite reverted")
 		pr = con.Progress("cascade", "deleting inventory objects")
 		if err := a.DeleteAll(ctx, 5*time.Minute); err != nil {
 			pr.Stop()

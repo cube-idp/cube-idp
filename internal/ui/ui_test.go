@@ -156,7 +156,7 @@ func TestNewForDowngradeMatrix(t *testing.T) {
 	}{
 		{ModeStyled, ModePlain}, // auto-styled never reaches a non-terminal
 		{ModePlain, ModePlain},
-		{ModeJSON, ModePlain}, // plain IS the static machine contract in stage A
+		{ModeJSON, ModePlain},  // plain IS the static machine contract in stage A
 		{ModeLive, ModeStyled}, // the explicit-force bypass
 	}
 	for _, tc := range cases {

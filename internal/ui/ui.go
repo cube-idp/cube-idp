@@ -81,17 +81,17 @@ type Request struct {
 // single resolve, highest rung wins; codifies gh/buildx/terraform practice,
 // clig.dev, and no-color.org:
 //
-//	1. --progress=json  → ModeJSON
-//	2. --progress=plain → ModePlain
-//	3. --progress=live  → ModeLive (explicit force, works on a non-TTY)
-//	4. --plain          → ModePlain (permanent alias, never deprecated)
-//	5. CUBE_IDP_PROGRESS ∈ {plain,live,json} (CI images set policy once —
-//	   the BUILDKIT_PROGRESS precedent; auto/empty/unknown falls through)
-//	6. stdout not a TTY → ModePlain
-//	7. $CI set (non-empty) → ModePlain
-//	8. $NO_COLOR present (even empty) or TERM dumb/unset → ModePlain (the
-//	   strictest reading: plain, not merely uncolored)
-//	9. → ModeStyled (the rich-by-default decision)
+//  1. --progress=json  → ModeJSON
+//  2. --progress=plain → ModePlain
+//  3. --progress=live  → ModeLive (explicit force, works on a non-TTY)
+//  4. --plain          → ModePlain (permanent alias, never deprecated)
+//  5. CUBE_IDP_PROGRESS ∈ {plain,live,json} (CI images set policy once —
+//     the BUILDKIT_PROGRESS precedent; auto/empty/unknown falls through)
+//  6. stdout not a TTY → ModePlain
+//  7. $CI set (non-empty) → ModePlain
+//  8. $NO_COLOR present (even empty) or TERM dumb/unset → ModePlain (the
+//     strictest reading: plain, not merely uncolored)
+//  9. → ModeStyled (the rich-by-default decision)
 //
 // --progress beats --plain (more specific); documented, never an error.
 func Resolve(r Request) Mode {

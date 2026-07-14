@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"time"
 
 	"github.com/rafpe/cube-idp/internal/diag"
@@ -85,12 +86,17 @@ func RunPipeline(ctx context.Context, cmdName string, out io.Writer,
 	return <-errCh
 }
 
-// runLive runs the LiveRenderer. Placeholder until the Bubble Tea v2 inline
-// program lands (Task 14b step 4): projects plain so the pipeline stays
-// correct end-to-end in every mode meanwhile.
+// runLive runs the Bubble Tea v2 inline LiveRenderer on the calling
+// goroutine. Interactive input engages only when stdin is a real terminal
+// (nil disables it entirely — ModeLive-forced runs on pipes and tests stay
+// deterministic); ctrl+c maps to the run context's cancel func so the
+// producer unwinds through its normal error paths (§4.2 item 5).
 func runLive(out io.Writer, cancel context.CancelFunc, ch <-chan event.Event) {
-	_ = cancel
-	drain(ch, render.Plain(out))
+	var input io.Reader
+	if IsTerminal(os.Stdin) {
+		input = os.Stdin
+	}
+	render.Live(out, input, cancel, ch)
 }
 
 // drain is the plain/JSON receive loop: one projection per event until the
