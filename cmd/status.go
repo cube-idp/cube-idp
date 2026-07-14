@@ -3,9 +3,14 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/fluxcd/cli-utils/pkg/object"
 
 	"github.com/rafpe/cube-idp/internal/apply"
 	"github.com/rafpe/cube-idp/internal/cluster"
@@ -18,6 +23,7 @@ const statusClusterTimeout = 3 * time.Minute
 
 func newStatusCmd() *cobra.Command {
 	var file string
+	var details bool
 	c := &cobra.Command{
 		Use:   "status",
 		Short: "Report cluster connectivity, engine-reported component health, and inventory size",
@@ -70,6 +76,10 @@ func newStatusCmd() *cobra.Command {
 			}
 			fmt.Fprintf(out, "\n%d object(s) in inventory\n", len(inventory))
 
+			if details {
+				fmt.Fprintf(out, "\n%s", formatInventory(inventory))
+			}
+
 			if len(health) == 0 || !allReady {
 				return diag.New(diag.CodeEngineHealthTimeout, "one or more components are not ready",
 					"inspect the components listed above with kubectl; re-run `cube-idp up` if needed")
@@ -78,5 +88,37 @@ func newStatusCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
+	c.Flags().BoolVar(&details, "details", false, "show inventory objects")
 	return c
+}
+
+// formatInventory takes a slice of ObjMetadata and returns a tabwriter table
+// with header KIND\tNAMESPACE\tNAME, sorted by Kind, Namespace, then Name.
+// Cluster-scoped objects (empty Namespace) show "-" for namespace.
+func formatInventory(inv []object.ObjMetadata) string {
+	// Sort by Kind, then Namespace, then Name
+	sorted := make([]object.ObjMetadata, len(inv))
+	copy(sorted, inv)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].GroupKind.Kind != sorted[j].GroupKind.Kind {
+			return sorted[i].GroupKind.Kind < sorted[j].GroupKind.Kind
+		}
+		if sorted[i].Namespace != sorted[j].Namespace {
+			return sorted[i].Namespace < sorted[j].Namespace
+		}
+		return sorted[i].Name < sorted[j].Name
+	})
+
+	var buf strings.Builder
+	w := tabwriter.NewWriter(&buf, 0, 0, 1, ' ', 0)
+	fmt.Fprint(w, "KIND\tNAMESPACE\tNAME\n")
+	for _, obj := range sorted {
+		namespace := obj.Namespace
+		if namespace == "" {
+			namespace = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\n", obj.GroupKind.Kind, namespace, obj.Name)
+	}
+	w.Flush()
+	return buf.String()
 }
