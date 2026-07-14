@@ -260,8 +260,8 @@ tooling on the query path:
 
 ```console
 $ kubectl get packs
-NAME     VERSION   URL                                    AUTH-SECRET             READY
-gitea    0.1.0     https://gitea.cube-idp.localtest.me   gitea/gitea-admin-cube-idp   true
+NAME     VERSION   URL                                         AUTH-SECRET             READY
+gitea    0.1.0     https://gitea.cube-idp.localtest.me:8443   gitea/gitea-admin-cube-idp   true
 ```
 
 The columns come straight from the pack's own `pack.cue` **`expose:`**
@@ -274,6 +274,11 @@ expose: {
     impliedFields: {username: "gitea_admin"}         // merged under the secret's own keys
 }
 ```
+
+`${GATEWAY_HOST}` expands to `spec.gateway.host[:port]` — the port is
+appended unless it's 443 (HTTPS's default) — so the rendered link is
+clickable as-is, without an operator having to know or append the
+gateway's actual listening port (default 8443) by hand.
 
 `cube-idp get secrets` follows `expose.authSecretRef` to the referenced
 Secret and merges `impliedFields` underneath it (the secret's own keys win

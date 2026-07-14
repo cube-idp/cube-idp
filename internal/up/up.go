@@ -230,7 +230,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 	// use (internal/engine/flux/deliver.go, internal/engine/argocd/deliver.go).
 	packObjs := make([]*unstructured.Unstructured, 0, len(packs))
 	for _, p := range packs {
-		packObjs = append(packObjs, pack.PackObject(p, cube.Spec.Gateway.Host, healthByName["cube-idp-"+p.Name]))
+		packObjs = append(packObjs, pack.PackObject(p, cube.Spec.Gateway, healthByName["cube-idp-"+p.Name]))
 	}
 	if err := a.Apply(ctx, packObjs, false, applyTimeout); err != nil {
 		return err

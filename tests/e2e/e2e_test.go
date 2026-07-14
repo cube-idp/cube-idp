@@ -145,6 +145,13 @@ func TestUpStatusDown(t *testing.T) {
 			t.Fatalf("kubectl get packs missing %q (D11 printer columns):\n%s", want, packs)
 		}
 	}
+	// Task 15.1: the rendered URL must carry the gateway's actual port —
+	// the pre-fix ${GATEWAY_HOST} substitution injected only the host, so
+	// the printed link dialed the default HTTPS port (443) instead of
+	// wherever the gateway actually listens, and was dead.
+	if wantSuffix := ":" + strconv.Itoa(port); !strings.Contains(packs, wantSuffix) {
+		t.Fatalf("kubectl get packs URL column missing gateway port %q (Task 15.1):\n%s", wantSuffix, packs)
+	}
 
 	// Phase 2: cnoe-compat import round-trips
 	writeCnoeFixture(t, dir)
