@@ -5716,6 +5716,38 @@ git add -A && git commit -m "feat: e2e engine matrix, Phase 2 command coverage, 
 
 ---
 
+## Addendum: UX hardening wave (Tasks 15.1–15.3 — operator feedback, 2026-07-14)
+
+> Added after the Phase 2 final review, from the operator's first hands-on run. Same execution discipline as every task above (TDD, diag constants, review gate). Global invariant for ALL THREE tasks: **plain-mode output stays byte-identical** — every pre-existing test and e2e assertion passes unmodified; styled/animated output appears only on a TTY (the Task 13.8 `ui.Resolve` gate).
+
+### Task 15.1: Operator-clickable pack URLs — gateway port in `${GATEWAY_HOST}` substitution
+
+**Defect:** `expose:` URLs render as `https://gitea.cube-idp.localtest.me` but the gateway listens on `spec.gateway.port` (default 8443) — the D11 links are dead. Operator-friendly by DEFAULT, no flag (owner decision 2026-07-14).
+
+**Files:** modify `internal/pack/expose.go` (`PackObject` takes `gw config.GatewaySpec` instead of `gatewayHost string`; substitution value = `gw.Host` when `gw.Port == 443`, else `fmt.Sprintf("%s:%d", gw.Host, gw.Port)`), its call site in `internal/up`, `internal/pack/discovery_test.go` (port-8443 and port-443 cases), `tests/e2e/e2e_test.go` (the `kubectl get packs` assertion additionally greps `:<gatewayPort>` in the URL column), `README.md` D11 section (document the substitution semantics).
+
+- [ ] Failing tests: PackObject with Port 8443 → `spec.url == "https://gitea.cube-idp.localtest.me:8443"`; with Port 443 → no suffix. Run, fail.
+- [ ] Implement; run `go build ./... && go vet ./... && go test ./internal/pack/ ./internal/up/ ./cmd/ -short -count=1 && go test ./... -short`.
+- [ ] Commit: `fix: pack expose URLs carry the gateway port — kubectl get packs links are clickable (D11)`.
+
+### Task 15.2: `cube-idp status --details` — show the inventory objects
+
+**Files:** modify `cmd/status.go` (add `--details` flag; after the existing summary, print a tabwriter table `KIND\tNAMESPACE\tNAME` from `a.LoadInventory(ctx)`, sorted by kind, then namespace, then name; cluster-scoped rows show `-` for namespace); create the pure formatting helper `formatInventory(inv []object.ObjMetadata) string` so it unit-tests without a cluster.
+
+- [ ] Failing test in `cmd/status_test.go` (new or extend): `formatInventory` with a fixed 3-object slice → exact sorted table golden string. Run, fail.
+- [ ] Implement + wire the flag; without `--details` output is byte-identical to today. Run `go test ./cmd/ -count=1 && go test ./... -short`.
+- [ ] Commit: `feat: status --details lists inventory objects`.
+
+### Task 15.3: Progress feedback + one visual language across commands
+
+**Scope (deliberate):** (a) TTY-only spinner+elapsed line during `up`'s long waits (cluster Ensure, registry/engine installs, `waitHealthy`) — rendered via a new `ui.Progress(stage, message)` handle (`Start`/`Done`), erased and replaced by the final `▸` step line on completion; plain mode emits NOTHING extra. (b) Consistent styling: `status`, `diff`, `upgrade --plan`, `doctor`, `get secrets` adopt `ui` helpers for their section headers and severity glyphs (✔/✗/⚠) on TTY — table BODIES stay tabwriter. (c) `up` ends with a styled access summary (URLs from the delivered packs' expose data + `get secrets` hint) — plain mode keeps today's final line. NOT in scope: full-screen/Bubble Tea live view (spec §4.1 "a spinner is not a TUI" — a persistent TUI app needs an owner decision first; park in Phase 3).
+
+**Files:** modify `internal/ui/ui.go` (+`ui_test.go`: spinner emits zero bytes in plain mode; Section/glyph helpers render exact plain text unchanged), `internal/up/up.go` (wrap the three long waits; access summary), `cmd/{status,diff,upgrade,doctor,get}.go` (headers/glyphs via ui).
+
+- [ ] Failing ui tests first; implement; then the full gate: `go build ./... && go vet ./... && go test ./... -short && make test-apply` — every pre-existing output-dependent test unmodified.
+- [ ] Manual TTY smoke (run `./cube-idp up` against a scratch cluster if 8443-conflict-free, else `doctor`/`status` on the existing one) — record what it looks like in the report.
+- [ ] Commit: `feat: progress feedback during up and one visual language across commands`.
+
 ## Self-Review
 
 ### 1. Spec coverage — spec §6 Phase 2 items → tasks
