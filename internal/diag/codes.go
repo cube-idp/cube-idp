@@ -117,10 +117,10 @@ const (
 	CodePluginUntrusted Code = "CUBE-7104" // plugin refused: unknown or changed sha256, and no interactive confirmation
 )
 
-// 72xx: sync (Task 10)
+// 72xx: sync (Task 10, Task 11)
 const (
-	CodeSyncNoManifests   Code = "CUBE-7201" // sync dir has no pack.cue and no renderable *.yaml manifests
-	CodeSyncWatchNotBuilt Code = "CUBE-7202" // `sync --watch` stub — watch mode lands in Task 11
+	CodeSyncNoManifests    Code = "CUBE-7201" // sync dir has no pack.cue and no renderable *.yaml manifests
+	CodeSyncWatchSetupFail Code = "CUBE-7202" // `sync --watch` cannot start or attach the filesystem watcher
 )
 
 // 73xx: repo (Task 12)
