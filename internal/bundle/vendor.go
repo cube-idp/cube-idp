@@ -33,7 +33,9 @@ import (
 // D14 pack-declared runtime images) plus the GitOps engine's and the
 // in-cluster registry's own install images — as one per-image OCI-layout
 // tar apiece. platform selects which image variant is pulled ("os/arch";
-// "" defaults to the host platform, runtime.GOOS+"/"+runtime.GOARCH).
+// "" defaults to "linux/"+runtime.GOARCH — bundle consumers are Linux
+// cluster nodes, so the OS half is never the host's; only the arch follows
+// the host as a pragmatic default).
 //
 // A bundle is complete or an error: any pull failure aborts the whole run
 // with CUBE-7002 naming the artifact/image that failed — there is no
@@ -63,7 +65,12 @@ func Vendor(ctx context.Context, lockPath, outPath, platform string, progress io
 	}
 
 	if platform == "" {
-		platform = runtime.GOOS + "/" + runtime.GOARCH
+		// Bundle consumers are Linux cluster nodes and container images
+		// publish only linux manifests, so the OS half is always "linux"
+		// regardless of host — a darwin/windows default would always 404
+		// against the registry's manifest list. Only arch follows the host,
+		// as a pragmatic default for the common case.
+		platform = "linux/" + runtime.GOARCH
 	}
 	plat, err := parsePlatform(platform)
 	if err != nil {

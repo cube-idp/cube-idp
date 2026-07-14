@@ -22,6 +22,6 @@ func newVendorCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&lockPath, "lock", "cube.lock", "path to cube.lock")
 	c.Flags().StringVarP(&out, "output", "o", "cube-bundle.tar.gz", "bundle output path")
-	c.Flags().StringVar(&platform, "platform", "", "image platform os/arch (default: host platform)")
+	c.Flags().StringVar(&platform, "platform", "", "image platform os/arch (default: linux/<host-arch>)")
 	return c
 }
