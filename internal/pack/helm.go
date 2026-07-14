@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"helm.sh/helm/v4/pkg/action"
 	"helm.sh/helm/v4/pkg/chart/common"
@@ -156,6 +157,28 @@ func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) 
 			"this is likely a bug in the chart; try `helm template` manually")
 	}
 
+	// Helm returns hook manifests (templates carrying helm.sh/hook
+	// annotations) on rel.Hooks, NOT in rel.Manifest — `helm install` runs
+	// them out-of-band around the manifest apply, so like crds/ they were
+	// silently dropped from the rendered artifact. Our render is a static
+	// artifact for a GitOps engine, so install-time hooks (pre-install /
+	// post-install) must become plain resources in the stream: envoy's
+	// gateway-helm ships its certgen Job (which creates the TLS secret the
+	// controller mounts) as a pre-install hook, and without it the
+	// controller pod never starts. The helm.sh/hook* annotations are
+	// stripped so the engine applies them as ordinary objects; a hook Job
+	// applied as a plain resource runs once, and an unchanged SSA re-apply
+	// of the (immutable) Job is a no-op. Hooks whose events would not fire
+	// on a fresh install (test, delete/rollback-only, upgrade-only) are
+	// skipped. Pre-install hooks go before the manifest objects, post-install
+	// after, mirroring helm's own execution order.
+	preHooks, postHooks, err := hookObjects(rel.Hooks, ref.Chart)
+	if err != nil {
+		return nil, err
+	}
+	objs = append(preHooks, objs...)
+	objs = append(objs, postHooks...)
+
 	if ref.Namespace != "" && !hasNamespaceObject(objs, ref.Namespace) {
 		nsObj := &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1",
@@ -226,6 +249,74 @@ func chartCRDObjects(chrt any, chartName string) ([]*unstructured.Unstructured, 
 		out = append(out, objs...)
 	}
 	return out, nil
+}
+
+// hookObjects converts a release's install-time hooks into plain objects:
+// hooks firing on pre-install land in pre, on post-install in post (a hook
+// declaring both counts as pre — it must exist before the manifests need
+// it). Hooks that would not fire on a fresh install (test, delete- or
+// rollback- or upgrade-only) are skipped entirely. Hooks are processed in
+// helm's execution order (ascending helm.sh/hook-weight, stable within a
+// weight) and each object has its helm.sh/hook* annotations stripped so the
+// GitOps engine treats it as an ordinary resource.
+func hookObjects(hooks []*release.Hook, chartName string) (pre, post []*unstructured.Unstructured, err error) {
+	sorted := make([]*release.Hook, len(hooks))
+	copy(sorted, hooks)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Weight < sorted[j].Weight })
+	for _, h := range sorted {
+		var isPre, isPost bool
+		for _, e := range h.Events {
+			switch e {
+			case release.HookPreInstall:
+				isPre = true
+			case release.HookPostInstall:
+				isPost = true
+			}
+		}
+		if !isPre && !isPost {
+			continue
+		}
+		objs, err := apply.ParseMultiDoc([]byte(h.Manifest))
+		if err != nil {
+			return nil, nil, diag.Wrap(err, diag.CodePackChartErr,
+				fmt.Sprintf("helm chart %q rendered an invalid hook manifest %s", chartName, h.Path),
+				"this is likely a bug in the chart; try `helm template --no-hooks` manually")
+		}
+		for _, o := range objs {
+			stripHookAnnotations(o)
+		}
+		if isPre {
+			pre = append(pre, objs...)
+		} else {
+			post = append(post, objs...)
+		}
+	}
+	return pre, post, nil
+}
+
+// stripHookAnnotations removes the helm.sh/hook* annotations (hook event,
+// weight, delete policy, output-log policy) from o, leaving all other
+// annotations intact. Without this a GitOps engine (or anyone reading the
+// artifact) would see a resource that claims to be a helm hook while being
+// delivered as a plain object.
+func stripHookAnnotations(o *unstructured.Unstructured) {
+	ann := o.GetAnnotations()
+	if ann == nil {
+		return
+	}
+	for _, k := range []string{
+		release.HookAnnotation,          // helm.sh/hook
+		release.HookWeightAnnotation,    // helm.sh/hook-weight
+		release.HookDeleteAnnotation,    // helm.sh/hook-delete-policy
+		release.HookOutputLogAnnotation, // helm.sh/hook-output-log-policy
+	} {
+		delete(ann, k)
+	}
+	if len(ann) == 0 {
+		o.SetAnnotations(nil)
+		return
+	}
+	o.SetAnnotations(ann)
 }
 
 // dedupeCRDs returns the subset of crdObjs whose GroupVersionKind+namespace+

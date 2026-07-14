@@ -6,7 +6,10 @@ package tests
 
 import (
 	"context"
+	"strings"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/rafpe/cube-idp/internal/pack"
 )
@@ -68,16 +71,23 @@ func TestStarterPacksRender(t *testing.T) {
 		}
 
 		// The envoy-gateway pack's gateway-helm chart ships the Gateway API
-		// CRDs (and Envoy Gateway's own CRDs) under its crds/ directory.
-		// Helm's dry-run render drops crds/ objects, so before the
-		// CRDObjects() re-injection fix (internal/pack/helm.go) this render
-		// silently lacked them and `up` timed out waiting for the HTTPRoute
-		// CRD to establish. Assert they are back.
+		// CRDs (and Envoy Gateway's own CRDs) under its crds/ directory, and
+		// its certgen Job (which creates the TLS secret the controller
+		// mounts) as a pre-install helm hook. Helm's dry-run render drops
+		// both — crds/ objects from the manifest, hooks onto Release.Hooks —
+		// so before the re-injection fixes (internal/pack/helm.go) this
+		// render silently lacked them: `up` timed out waiting for the
+		// HTTPRoute CRD, and once that was fixed, the controller pod hung on
+		// FailedMount of the missing certs secret. Assert both are back.
 		if dir == "../packs/envoy-gateway" {
 			crds := map[string]bool{}
+			var certgenJob *unstructured.Unstructured
 			for _, o := range r.Objects {
 				if o.GetKind() == "CustomResourceDefinition" {
 					crds[o.GetName()] = true
+				}
+				if o.GetKind() == "Job" && strings.HasSuffix(o.GetName(), "-certgen") {
+					certgenJob = o
 				}
 			}
 			if len(crds) == 0 {
@@ -85,6 +95,11 @@ func TestStarterPacksRender(t *testing.T) {
 			}
 			if !crds["httproutes.gateway.networking.k8s.io"] {
 				t.Errorf("%s: rendered CRDs missing httproutes.gateway.networking.k8s.io (the Gateway API CRD `up` waits to establish); got %d CRDs", dir, len(crds))
+			}
+			if certgenJob == nil {
+				t.Errorf("%s: rendered no certgen Job — gateway-helm's pre-install hook was dropped from the render", dir)
+			} else if _, hook := certgenJob.GetAnnotations()["helm.sh/hook"]; hook {
+				t.Errorf("%s: certgen Job still carries the helm.sh/hook annotation: %v", dir, certgenJob.GetAnnotations())
 			}
 		}
 	}
