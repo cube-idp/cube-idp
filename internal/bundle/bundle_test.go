@@ -315,6 +315,22 @@ func TestNormalizeImageRef(t *testing.T) {
 		"localhost:5000/repo:tag": "localhost:5000/repo:tag",
 		"nginx@sha256:deadbeef00": "docker.io/library/nginx@sha256:deadbeef00",
 		"docker.io/library/redis": "docker.io/library/redis", // already fully-qualified, no tag
+
+		// CUBE-7002 regression: lock entries can already carry an explicit
+		// "docker.io/" host (as recorded from a manifest) with a bare,
+		// unnamespaced repo — Docker Hub's OFFICIAL images live under
+		// "library/", so "docker.io/traefik" 401s (no anonymous token is
+		// ever granted for a bare top-level name) unless "library/" is
+		// still injected even though the host looks already-qualified.
+		"docker.io/traefik:v3.7.6":       "docker.io/library/traefik:v3.7.6",
+		"docker.io/traefik":              "docker.io/library/traefik",
+		"docker.io/traefik@sha256:dead0": "docker.io/library/traefik@sha256:dead0",
+		// Namespaced repos under an explicit docker.io host must pass
+		// through untouched — they're not official images.
+		"docker.io/envoyproxy/envoy:v1.29": "docker.io/envoyproxy/envoy:v1.29",
+		// A non-docker.io registry must never be touched, explicit
+		// namespace or not.
+		"docker.gitea.com/gitea:1.21": "docker.gitea.com/gitea:1.21",
 	}
 	for in, want := range cases {
 		if got := normalizeImageRef(in); got != want {

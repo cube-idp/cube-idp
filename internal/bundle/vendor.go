@@ -300,7 +300,18 @@ func parsePlatform(platform string) (*ocispec.Platform, error) {
 // "docker.io/envoyproxy/envoy:v1.29") — oras-go's registry.ParseReference
 // requires an explicit host and does not perform this normalization itself.
 // A reference is left untouched if its first path segment already looks
-// like a host (contains '.' or ':', or is exactly "localhost").
+// like a host (contains '.' or ':', or is exactly "localhost") — EXCEPT
+// docker.io itself, which still needs its own "library/" namespace
+// injected for bare, unnamespaced repos: cube.lock entries are recorded
+// verbatim as they appear in manifests, so an already-host-qualified but
+// still-bare ref like "docker.io/traefik:v3.7.6" reaches here too (not
+// just the fully bare "traefik:v3.7.6" form). Docker Hub's OFFICIAL images
+// live under "library/" — a bare top-level repo name doesn't exist on the
+// registry and anonymous tokens are never granted for it, so pulling
+// "docker.io/traefik" 401s while "docker.io/library/traefik" succeeds.
+// oras-go's remote.NewRepository maps the "docker.io" host to the
+// registry-1.docker.io API endpoint on its own (registry.Reference.Host()),
+// so that aliasing is NOT this function's job — only the repository path.
 func normalizeImageRef(ref string) string {
 	name, suffix := ref, ""
 	if i := strings.IndexByte(ref, '@'); i != -1 {
@@ -308,9 +319,15 @@ func normalizeImageRef(ref string) string {
 	} else if i := strings.LastIndexByte(ref, ':'); i != -1 && !strings.Contains(ref[i:], "/") {
 		name, suffix = ref[:i], ref[i:]
 	}
-	first := name
+	first, rest := name, ""
 	if i := strings.IndexByte(name, '/'); i != -1 {
-		first = name[:i]
+		first, rest = name[:i], name[i+1:]
+	}
+	if first == "docker.io" {
+		if rest != "" && !strings.Contains(rest, "/") {
+			return "docker.io/library/" + rest + suffix
+		}
+		return ref
 	}
 	if strings.ContainsAny(first, ".:") || first == "localhost" {
 		return ref
