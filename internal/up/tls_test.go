@@ -96,7 +96,7 @@ spec:
 	var out bytes.Buffer
 	err := ui.RunPipeline(context.Background(), "up", &out,
 		func(ctx context.Context, con *ui.Console) error {
-			return Run(ctx, cfgPath, con)
+			return Run(ctx, Options{ConfigPath: cfgPath, Con: con})
 		})
 	if err == nil {
 		t.Fatal("want an error from the unreachable cluster context, got nil")

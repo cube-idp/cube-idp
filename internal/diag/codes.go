@@ -115,6 +115,7 @@ const (
 	CodeVendorPullFail      Code = "CUBE-7002" // vendor: pull of a pinned pack/image, or writing the bundle itself, failed (bundle is complete-or-error, never partial)
 	CodeVendorBundleCorrupt Code = "CUBE-7003" // vendor bundle is unreadable or corrupt (Open)
 	CodeVendorIncomplete    Code = "CUBE-7004" // vendor bundle is missing or has corrupt content for a locked pack or image (Verify)
+	CodeBundleNoImageLoader Code = "CUBE-7005" // `up --bundle` needs a provider that node-loads images (kind/k3d); `existing` cannot
 )
 
 // 71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)

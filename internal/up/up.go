@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/rafpe/cube-idp/internal/apply"
+	"github.com/rafpe/cube-idp/internal/bundle"
 	"github.com/rafpe/cube-idp/internal/cluster"
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
@@ -36,21 +37,55 @@ const (
 	healthPoll     = 5 * time.Second
 )
 
-// Run drives the full up sequence for the cube.yaml at cfgPath, emitting
-// progress events through con (Task 14b: cmd/up.go wraps Run in
+// Options configures a single Run. ConfigPath is the cube.yaml to install;
+// Con is the event sink cmd/up.go wires through ui.RunPipeline (Task 14b);
+// Bundle, when non-empty, switches Run to fully-offline mode: every pack
+// source is served from the bundle and every image is node-loaded from it,
+// with any attempt to leave those rails a typed error (Task 7).
+type Options struct {
+	ConfigPath string      // path to cube.yaml
+	Bundle     string      // path to a vendor bundle; "" = online mode
+	Con        *ui.Console // progress/event sink (never nil)
+}
+
+// Run drives the full up sequence for the cube.yaml at opts.ConfigPath,
+// emitting progress events through opts.Con (Task 14b: cmd/up.go wraps Run in
 // ui.RunPipeline, which owns the renderer for the resolved mode): load
 // config -> ensure the local CA (D12: before any cluster artifact
 // references the trust root) -> ensure cluster -> install registry ->
 // install engine -> ensure the gateway TLS secret -> port-forward the
 // registry -> fetch/render/push/deliver every pack (gateway first) -> wait
 // for engine-reported health -> emit a success summary.
-func Run(ctx context.Context, cfgPath string, con *ui.Console) error {
+//
+// When opts.Bundle is set, exactly three deviations make the install offline
+// (spec §4.1): the provider must satisfy cluster.ImageLoader or Run fails
+// fast before any cluster mutation (CUBE-7005); every bundled image is
+// node-loaded right after the cluster is ready and before anything installs;
+// and every pack ref is rewritten to its bundle-local source dir before the
+// pack loop, so no fetch ever touches the network.
+func Run(ctx context.Context, opts Options) error {
+	con := opts.Con
+	cfgPath := opts.ConfigPath
 	cube, err := config.Load(cfgPath)
 	if err != nil {
 		return err // no RunStarted: a failed load emits only RunDone+Diagnosis
 	}
 	con.Start("up", cube.Metadata.Name)
 	con.Step("config", "cube %q loaded and validated", cube.Metadata.Name)
+
+	// Offline mode (spec §4.1): open and verify the bundle up front so a
+	// corrupt or incomplete bundle fails before any cluster artifact exists.
+	var opened *bundle.Opened
+	if opts.Bundle != "" {
+		if opened, err = bundle.Open(opts.Bundle); err != nil {
+			return err
+		}
+		defer opened.Close()
+		if err := opened.Verify(); err != nil {
+			return err
+		}
+		con.Step("bundle", "verified %s (lock %s)", opts.Bundle, opened.Manifest.LockDigest)
+	}
 
 	// D12 ("cert material is generated before cluster creation"): ensure the
 	// local CA — adopting an existing mkcert root if present — before
@@ -71,6 +106,18 @@ func Run(ctx context.Context, cfgPath string, con *ui.Console) error {
 	if err != nil {
 		return err
 	}
+	// Deviation 1 (offline): refuse an un-loadable topology up front, before
+	// any cluster mutation. `existing` cannot node-load images, so a bundle
+	// install against it would silently fall back to registry pulls the
+	// air-gapped host cannot reach — reject it with an actionable CUBE-7005
+	// rather than fail deep in image-less pod startup later.
+	if opened != nil {
+		if _, ok := prov.(cluster.ImageLoader); !ok {
+			return diag.New(diag.CodeBundleNoImageLoader,
+				fmt.Sprintf("--bundle needs a provider that can load images into nodes; %q cannot", cube.Spec.Cluster.Provider),
+				"use provider: kind or k3d for air-gapped installs, or pre-load the images into a registry your existing cluster can reach and run `up` without --bundle")
+		}
+	}
 	// Task 15.3a: cluster creation can take minutes with zero prior output —
 	// pr.Stop() on error prints nothing (matching the phase-1 behavior of
 	// printing nothing when a step failed); pr.Done prints the same
@@ -84,6 +131,19 @@ func Run(ctx context.Context, cfgPath string, con *ui.Console) error {
 		return err
 	}
 	pr.Done("%s cluster ready (context %s)", cube.Spec.Cluster.Provider, conn.Context)
+
+	// Deviation 2 (offline): node-load every bundled image now — after the
+	// cluster exists, before anything installs — so the engine, zot, and
+	// every pack's pods start from node-local images with no registry pull.
+	// The ImageLoader assertion already succeeded in deviation 1.
+	if opened != nil {
+		lp := con.Progress("bundle", "loading images into cluster nodes")
+		if err := prov.(cluster.ImageLoader).LoadImages(ctx, cube.Metadata.Name, opened.ImageTars()); err != nil {
+			lp.Stop()
+			return err // LoadImages wraps with CUBE-7002 and names the failing image
+		}
+		lp.Done("%d image(s) loaded into cluster nodes", len(opened.ImageTars()))
+	}
 
 	a, err := apply.New(conn.REST, cube.Metadata.Name)
 	if err != nil {
@@ -162,6 +222,16 @@ func Run(ctx context.Context, cfgPath string, con *ui.Console) error {
 
 	// Gateway pack goes first — everything else depends on ingress existing.
 	refs := append([]config.PackRef{{Ref: cube.Spec.Gateway.PackRef()}}, cube.Spec.Packs...)
+	// Deviation 3 (offline): rewrite every ref to its bundle-local source dir
+	// before the loop's pack.Fetch runs, so fetching reads from disk and a
+	// ref absent from the bundle fails loudly (CUBE-7004) instead of falling
+	// through to a network pull the air-gapped host cannot make.
+	if opened != nil {
+		refs, err = resolveBundleRefs(refs, opened.Lock, opened.PackDirLookup())
+		if err != nil {
+			return err
+		}
+	}
 	var entries []lock.Entry
 	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
 	for _, pr := range refs {

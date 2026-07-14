@@ -81,6 +81,11 @@ patches:
         server.insecure: "true"
 EOF
 kubectl kustomize "$WORK" > "$WORK/rendered.yaml"
+# air-gap (Task 7): upstream pins imagePullPolicy: Always on most
+# control-plane containers, which makes a kubelet ignore images node-loaded
+# from a vendor bundle (`up --bundle`) — flip them so bundle installs work
+# offline (guarded by tests/packs_airgap_test.go):
+sed -i '' 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' "$WORK/rendered.yaml"
 # keep the explanatory header comment block from the current file:
 { sed -n '/^#/p;/^[^#]/q' packs/argocd/manifests/10-install.yaml; \
   cat "$WORK/rendered.yaml"; } > packs/argocd/manifests/10-install.yaml
@@ -88,10 +93,10 @@ kubectl kustomize "$WORK" > "$WORK/rendered.yaml"
 
 Then update the version references in this README and re-run the smoke
 test (which asserts every known-namespaced rendered object actually
-carries a namespace):
+carries a namespace) plus the air-gap pull-policy guard:
 
 ```bash
-go test ./tests/ -run TestStarterPacksRender -v
+go test ./tests/ -run 'TestStarterPacksRender|TestPackManifestsNoAlwaysPull' -v
 ```
 
 ## Verification method

@@ -3,6 +3,7 @@ package k3dp
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	k3dclient "github.com/k3d-io/k3d/v5/pkg/client"
 	k3dconfig "github.com/k3d-io/k3d/v5/pkg/config"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/yaml"
 
+	"github.com/rafpe/cube-idp/internal/bundle"
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/kube"
@@ -85,6 +87,34 @@ func (k *K3d) connect(ctx context.Context, name string) (*kube.Conn, error) {
 		return nil, diag.Wrap(err, diag.CodeK3dKubeconfigGet, "k3d kubeconfig is invalid", "delete the cluster with `cube-idp down` and retry")
 	}
 	return &kube.Conn{Kubeconfig: kc, Context: "k3d-" + name, REST: restCfg}, nil
+}
+
+// LoadImages implements cluster.ImageLoader: it imports every bundled
+// per-image OCI-layout tar into the named k3d cluster's nodes in a single
+// k3d call, so `up --bundle` pods start without any registry pull. Tar paths
+// are ordered by image ref (bundle.SortedImageLoads) for a deterministic,
+// reproducible import; ImageImportIntoClusterMulti loads a tar archive when
+// the "image" it is given is a filesystem path. On failure the whole load
+// wraps as CUBE-7002 (k3d imports all tars in one call, so the failing image
+// is not individually identifiable here — the tar list is named instead).
+func (k *K3d) LoadImages(ctx context.Context, name string, imageTars map[string]string) error {
+	loads := bundle.SortedImageLoads(imageTars)
+	if len(loads) == 0 {
+		return nil
+	}
+	tarPaths := make([]string, len(loads))
+	refs := make([]string, len(loads))
+	for i, l := range loads {
+		tarPaths[i] = l.Tar
+		refs[i] = l.Ref
+	}
+	if err := k3dclient.ImageImportIntoClusterMulti(ctx, runtimes.SelectedRuntime, tarPaths,
+		&k3dtypes.Cluster{Name: name}, k3dtypes.ImageImportOpts{}); err != nil {
+		return diag.Wrap(err, diag.CodeVendorPullFail,
+			fmt.Sprintf("cannot load images into cluster nodes (%s)", strings.Join(refs, ", ")),
+			"verify the bundle with `cube-idp vendor` on a connected machine and retry")
+	}
+	return nil
 }
 
 // Exists reports whether a k3d cluster with the given name exists.

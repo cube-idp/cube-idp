@@ -133,6 +133,23 @@ func (o *Opened) PackDir(name string) (string, error) {
 	return dir, nil
 }
 
+// PackDirLookup returns a resolver from pack name to the pack's source
+// directory within the extraction root, reporting presence via the bool. It
+// is the offline seam up.resolveBundleRefs rewrites cube pack refs through:
+// a name the bundle carries resolves to its packs/<name> dir; anything else
+// returns (_, false) so the caller fails loudly instead of hitting the
+// network. Presence is decided exactly as PackDir does — packs/<name>/pack.cue
+// must exist and be a regular file.
+func (o *Opened) PackDirLookup() func(name string) (string, bool) {
+	return func(name string) (string, bool) {
+		dir := filepath.Join(o.Dir, "packs", name)
+		if info, err := os.Stat(filepath.Join(dir, "pack.cue")); err != nil || info.IsDir() {
+			return "", false
+		}
+		return dir, true
+	}
+}
+
 // ImageTars returns every locked image's absolute tar path within the
 // extraction root, keyed by the original image reference (Manifest.Images).
 func (o *Opened) ImageTars() map[string]string {
