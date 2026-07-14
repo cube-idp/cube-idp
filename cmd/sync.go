@@ -10,29 +10,33 @@ import (
 	"github.com/rafpe/cube-idp/internal/apply"
 	"github.com/rafpe/cube-idp/internal/cluster"
 	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/diag"
 	enginefactory "github.com/rafpe/cube-idp/internal/engine/factory"
 	"github.com/rafpe/cube-idp/internal/syncer"
 )
 
-const syncClusterTimeout = 3 * time.Minute
+const (
+	syncClusterTimeout = 3 * time.Minute
+	syncWatchDebounce  = 300 * time.Millisecond
+)
 
 func newSyncCmd() *cobra.Command {
 	var file string
 	var watch bool
 	c := &cobra.Command{
 		Use:   "sync <dir>",
-		Short: "Render a directory as a pack and deliver it to the running cube, once (D7)",
-		Args:  cobra.ExactArgs(1),
+		Short: "Render a directory as a pack and deliver it to the running cube (D7)",
+		Long: `Render a directory as a pack and deliver it to the running cube (D7).
+
+Without --watch, sync runs once and exits. With --watch, sync runs once
+immediately and then re-syncs on every debounced filesystem change under
+dir until interrupted (Ctrl-C); a sync failure while watching is printed
+in full and does not stop the watch — fix the file and save again.
+
+sync pushes OCI artifacts directly to the cube's registry; it is not a
+git-push-based deployment flow. That flow is provided separately by the
+gitea pack ('cube-idp repo create').`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			// The flag surface ships now so scripts/docs written against it
-			// don't need to change when Task 11 implements it — only the
-			// behavior is stubbed.
-			if watch {
-				return diag.New(diag.CodeSyncWatchNotBuilt,
-					"watch mode lands in the next task of this plan",
-					"run without --watch")
-			}
 			cube, err := config.Load(file)
 			if err != nil {
 				return err
@@ -62,6 +66,15 @@ func newSyncCmd() *cobra.Command {
 				return err
 			}
 			deps := syncer.Deps{Applier: a, Engine: eng, REST: conn.REST, Out: c.OutOrStdout()}
+
+			if watch {
+				// Watch is the sanctioned long-running FOREGROUND mode, not
+				// a daemon: it blocks until c.Context() is cancelled
+				// (Ctrl-C, via main.go's signal.NotifyContext flowing
+				// through Execute(ctx)) and returns nil.
+				return syncer.Watch(c.Context(), deps, args[0], syncWatchDebounce)
+			}
+
 			result, err := syncer.SyncOnce(c.Context(), deps, args[0])
 			if err != nil {
 				return err
@@ -71,6 +84,6 @@ func newSyncCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
-	c.Flags().BoolVar(&watch, "watch", false, "watch dir and re-sync on change (lands in a later task)")
+	c.Flags().BoolVar(&watch, "watch", false, "watch dir and re-sync on every debounced change until Ctrl-C")
 	return c
 }

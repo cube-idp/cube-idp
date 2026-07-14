@@ -48,6 +48,11 @@ type Deps struct {
 	// inject a local registry address instead of port-forwarding to a real
 	// cluster. Production leaves it empty.
 	PushAddr string
+	// syncFn is Watch's injectable seam (Task 11): when set, Watch calls
+	// this instead of building a SyncOnce closure — the watch loop's tests
+	// exercise the debounce/error/cancellation machinery with a fake
+	// syncFn instead of a real cluster. Production leaves it nil.
+	syncFn func(context.Context) error
 }
 
 // SyncOnce is D7's one-shot iteration:
