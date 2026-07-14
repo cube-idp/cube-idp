@@ -57,7 +57,7 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			out := c.OutOrStdout()
-			p := ui.New(out, ui.PlainFlag)
+			p := ui.NewFor(out)
 			health, err := eng.Health(c.Context(), a)
 			if err != nil {
 				return err

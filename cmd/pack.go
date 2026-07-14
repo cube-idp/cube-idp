@@ -38,7 +38,7 @@ func newPackCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ui.New(c.OutOrStdout(), ui.PlainFlag).Step("pack", "pushed %s@%s", ref, digest)
+			ui.NewFor(c.OutOrStdout()).Step("pack", "pushed %s@%s", ref, digest)
 			return nil
 		},
 	}

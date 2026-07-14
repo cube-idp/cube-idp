@@ -25,12 +25,21 @@ func NewRootCmd() *cobra.Command {
 		Short:         "cube-idp stands up an internal developer platform on Kubernetes and gets out of the way",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Sets ui.PlainFlag once, before any subcommand's RunE, so every
-		// Printer built downstream (internal/up's step(), cmd/cnoe.go, ...)
-		// sees the resolved --plain choice without threading a bool through
-		// every orchestrator signature (Task 13.8).
+		// Resolves the output Mode once, before any subcommand's RunE, so
+		// every Printer/renderer built downstream sees the resolved choice
+		// without threading a bool through every orchestrator signature
+		// (Task 13.8, extended by Task 14b's §6 resolve ladder — the
+		// --progress flag rungs ship in stage B; ProgressFlag stays "").
 		PersistentPreRunE: func(*cobra.Command, []string) error {
-			ui.PlainFlag = plain
+			_, noColor := os.LookupEnv("NO_COLOR")
+			ui.SetMode(ui.Resolve(ui.Request{
+				PlainFlag:   plain,
+				EnvProgress: os.Getenv("CUBE_IDP_PROGRESS"),
+				IsTTY:       ui.IsTerminal(os.Stdout),
+				CIEnv:       os.Getenv("CI"),
+				NoColor:     noColor,
+				Term:        os.Getenv("TERM"),
+			}))
 			return nil
 		},
 	}

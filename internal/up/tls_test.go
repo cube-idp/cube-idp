@@ -13,6 +13,7 @@ import (
 
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/trust"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 func TestGatewayTLSSecretShape(t *testing.T) {
@@ -88,8 +89,15 @@ spec:
 		t.Fatal(err)
 	}
 
+	// Task 14b: Run takes a *ui.Console now; RunPipeline (with a
+	// bytes.Buffer, which always projects plain) is the seam that replaces
+	// the old `Run(ctx, cfgPath, &out)` call. The assertions below are
+	// byte-for-byte the pre-14b ones — only the call plumbing changed.
 	var out bytes.Buffer
-	err := Run(context.Background(), cfgPath, &out)
+	err := ui.RunPipeline(context.Background(), "up", &out,
+		func(ctx context.Context, con *ui.Console) error {
+			return Run(ctx, cfgPath, con)
+		})
 	if err == nil {
 		t.Fatal("want an error from the unreachable cluster context, got nil")
 	}

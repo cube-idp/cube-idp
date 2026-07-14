@@ -90,7 +90,7 @@ func newCnoeCmd() *cobra.Command {
 				if err := a.RecordInventory(c.Context(), deliverObjs); err != nil {
 					return err
 				}
-				ui.New(c.OutOrStdout(), ui.PlainFlag).Step("cnoe", "%s imported as %s@%s", app.Name, rendered.Name, rendered.Version)
+				ui.NewFor(c.OutOrStdout()).Step("cnoe", "%s imported as %s@%s", app.Name, rendered.Name, rendered.Version)
 			}
 			fmt.Fprintf(c.OutOrStdout(), "✔ %d application(s) imported — `cube-idp status` tracks their health\n", len(apps))
 			return nil
