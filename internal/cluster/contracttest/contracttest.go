@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/client-go/discovery"
+
 	"github.com/rafpe/cube-idp/internal/cluster"
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
@@ -40,6 +42,24 @@ func Run(t *testing.T, p cluster.Provider, spec config.ClusterSpec) {
 	t.Cleanup(func() { _ = p.Delete(context.Background(), name) }) // never leak clusters
 	if conn == nil || len(conn.Kubeconfig) == 0 || conn.REST == nil {
 		t.Fatalf("Ensure returned an unusable Conn: %+v", conn)
+	}
+
+	// The REST config must actually reach the API server — not merely be
+	// non-nil. A provider that hands back a structurally-valid but
+	// unreachable config (e.g. the k3d kubeconfig-port bug, which produced
+	// https://0.0.0.0 with no port) passed the nil-check above yet failed
+	// the very first live API call in `up`. Dial the API here so a dead REST
+	// config fails the contract instead of leaking to production.
+	{
+		rc := *conn.REST
+		rc.Timeout = 90 * time.Second
+		dc, err := discovery.NewDiscoveryClientForConfig(&rc)
+		if err != nil {
+			t.Fatalf("build discovery client from conn.REST: %v", err)
+		}
+		if _, err := dc.ServerVersion(); err != nil {
+			t.Fatalf("conn.REST cannot reach the API server (host %q): %v", conn.REST.Host, err)
+		}
 	}
 
 	// …and is idempotent.
