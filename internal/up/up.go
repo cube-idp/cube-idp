@@ -175,7 +175,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) error {
 			return err
 		}
 		packs = append(packs, pk)
-		rendered, err := pk.Render(pr.Values)
+		rendered, err := pk.RenderFor(pr.Values, cube.Spec.Gateway)
 		if err != nil {
 			return err
 		}

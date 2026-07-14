@@ -21,25 +21,48 @@ type Expose struct {
 	ImpliedFields map[string]string
 }
 
+// gatewayHostString renders gw as the ${GATEWAY_HOST} substitution value:
+// host[:port], with the port omitted whenever the gateway listens on 443
+// (HTTPS's default) so the resulting links are actually clickable instead
+// of dialing the bare host on 443 and failing (Task 15.1). Shared by
+// ExposeURLs and the D15 chart-value/manifest substitution below — one
+// definition of "the gateway's host string", used everywhere it's needed.
+func gatewayHostString(gw config.GatewaySpec) string {
+	if gw.Port != 443 {
+		return fmt.Sprintf("%s:%d", gw.Host, gw.Port)
+	}
+	return gw.Host
+}
+
+// substitute performs the D15 gateway substitution on s: ${GATEWAY_HOST}
+// expands to gw's host[:port] (gatewayHostString) and ${GATEWAY_FQDN}
+// expands to the bare gw.Host, for Gateway API `hostnames:` fields, which
+// cannot carry ports. A zero gw (Host == "") performs no substitution — the
+// literal tokens pass through untouched, which is what Render's
+// gateway-less default relies on.
+func substitute(s string, gw config.GatewaySpec) string {
+	if gw.Host == "" {
+		return s
+	}
+	s = strings.ReplaceAll(s, "${GATEWAY_HOST}", gatewayHostString(gw))
+	s = strings.ReplaceAll(s, "${GATEWAY_FQDN}", gw.Host)
+	return s
+}
+
 // ExposeURLs returns p's expose.urls with ${GATEWAY_HOST} substituted for
 // the cube's spec.gateway.host[:port] — the one substitution the D11
-// contract allows. The port is included whenever the gateway doesn't listen
-// on 443 (HTTPS's default), so the resulting links are actually clickable
-// instead of dialing the bare host on 443 and failing (Task 15.1). Returns
-// nil if p declares no expose block or no urls. Shared by PackObject (the
-// Pack record's spec.urls/spec.url) and up.Run's Task 15.3c access summary —
-// one substitution, used everywhere a pack's URLs are shown.
+// contract originally allowed, now one of two (see substitute) shared with
+// D15's chart-value/manifest substitution. Returns nil if p declares no
+// expose block or no urls. Shared by PackObject (the Pack record's
+// spec.urls/spec.url) and up.Run's Task 15.3c access summary — one
+// substitution, used everywhere a pack's URLs are shown.
 func ExposeURLs(p *Pack, gw config.GatewaySpec) []string {
 	if p.Expose == nil || len(p.Expose.URLs) == 0 {
 		return nil
 	}
-	host := gw.Host
-	if gw.Port != 443 {
-		host = fmt.Sprintf("%s:%d", gw.Host, gw.Port)
-	}
 	urls := make([]string, 0, len(p.Expose.URLs))
 	for _, u := range p.Expose.URLs {
-		urls = append(urls, strings.ReplaceAll(u, "${GATEWAY_HOST}", host))
+		urls = append(urls, substitute(u, gw))
 	}
 	return urls
 }

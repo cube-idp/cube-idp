@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/rafpe/cube-idp/internal/apply"
+	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
 )
 
@@ -61,15 +62,17 @@ type ChartRef struct {
 
 // RenderChart renders a chart reference exactly as a pack's chart.yaml would
 // be rendered. Exported for the cnoe-compat loader; helm.go remains the only
-// file importing the Helm SDK.
+// file importing the Helm SDK. cnoe-compat sources are out of D15's scope
+// (they carry no gw context), so this performs no gateway substitution — the
+// zero config.GatewaySpec{} is a no-op (see substitute in expose.go).
 func RenderChart(ref ChartRef, values map[string]any) ([]*unstructured.Unstructured, error) {
-	return renderChartRef(ref, values)
+	return renderChartRef(ref, values, config.GatewaySpec{})
 }
 
 // renderHelm reads chart.yaml in dir, pulls the pinned chart, and
 // template-renders it with values (chartRef.Values as the base, overridden
 // by the caller's values). Failures are reported as CUBE-4005.
-func renderHelm(dir string, values map[string]any) ([]*unstructured.Unstructured, error) {
+func renderHelm(dir string, values map[string]any, gw config.GatewaySpec) ([]*unstructured.Unstructured, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "chart.yaml"))
 	if err != nil {
 		return nil, diag.Wrap(err, diag.CodePackChartErr, "cannot read chart.yaml", "check file permissions")
@@ -78,13 +81,13 @@ func renderHelm(dir string, values map[string]any) ([]*unstructured.Unstructured
 	if err := yaml.Unmarshal(raw, &ref); err != nil {
 		return nil, diag.Wrap(err, diag.CodePackChartErr, "chart.yaml is not valid YAML", "fix the chart.yaml syntax")
 	}
-	return renderChartRef(ref, values)
+	return renderChartRef(ref, values, gw)
 }
 
 // renderChartRef pulls the chart referenced by ref and template-renders it
 // with values (ref.Values as the base, overridden by the caller's values).
 // Failures are reported as CUBE-4005.
-func renderChartRef(ref ChartRef, values map[string]any) ([]*unstructured.Unstructured, error) {
+func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) ([]*unstructured.Unstructured, error) {
 	if ref.Chart == "" {
 		return nil, diag.New(diag.CodePackChartErr, "chart.yaml is missing 'chart'", "add: chart: \"<chart-name>\"")
 	}
@@ -130,7 +133,12 @@ func renderChartRef(ref ChartRef, values map[string]any) ([]*unstructured.Unstru
 			"check chart repo/version in chart.yaml; try `helm template` manually")
 	}
 
-	relAny, err := install.Run(chrt, mergeValues(ref.Values, values))
+	// D15: substitute AFTER merging pack defaults (ref.Values) with the
+	// caller's values, so ${GATEWAY_HOST}/${GATEWAY_FQDN} tokens are
+	// resolved whichever side they came from before the chart template
+	// engine sees them.
+	merged := substituteValues(mergeValues(ref.Values, values), gw).(map[string]any)
+	relAny, err := install.Run(chrt, merged)
 	if err != nil {
 		return nil, diag.Wrap(err, diag.CodePackChartErr, fmt.Sprintf("helm render failed for pack chart %q", ref.Chart),
 			"check chart repo/version in chart.yaml; try `helm template` manually")
@@ -189,4 +197,34 @@ func mergeValues(base, override map[string]any) map[string]any {
 		out[k] = ov
 	}
 	return out
+}
+
+// substituteValues returns a copy of v with the D15 gateway substitution
+// (substitute, in expose.go) applied to every string leaf, recursing
+// through nested maps and slices — the shapes CUE/YAML/JSON decoding
+// produces for chart values. Non-string, non-container leaves (numbers,
+// bools, nil) pass through unchanged. A zero gw is a no-op (substitute
+// already short-circuits on it), so this is safe to call unconditionally.
+func substituteValues(v any, gw config.GatewaySpec) any {
+	if gw.Host == "" {
+		return v
+	}
+	switch t := v.(type) {
+	case string:
+		return substitute(t, gw)
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, vv := range t {
+			out[k] = substituteValues(vv, gw)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, vv := range t {
+			out[i] = substituteValues(vv, gw)
+		}
+		return out
+	default:
+		return v
+	}
 }

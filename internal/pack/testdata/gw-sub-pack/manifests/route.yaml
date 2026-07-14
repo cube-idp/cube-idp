@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gwsub-route
+data:
+  host: "${GATEWAY_HOST}"
+  fqdn: "${GATEWAY_FQDN}"
