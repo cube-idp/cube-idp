@@ -9,6 +9,7 @@ require (
 	github.com/fluxcd/cli-utils v1.2.2
 	github.com/fluxcd/pkg/ssa v0.77.0
 	github.com/go-git/go-git/v5 v5.19.1
+	github.com/google/go-containerregistry v0.21.7 // test-only: in-process OCI registry for push round-trip tests; production OCI code is pure oras-go v2
 	github.com/hashicorp/go-getter v0.0.0-00010101000000-000000000000
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/smallstep/truststore v0.13.0
