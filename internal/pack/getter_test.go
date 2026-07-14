@@ -42,6 +42,42 @@ func makeGitFixture(t *testing.T) string {
 	return dir
 }
 
+// TestSanitizeRefIsInjective covers (f): the old sanitizeRef mapped both
+// '/' and '_' to the same output '_', so "a/b" and "a_b" collided on the
+// same cache-dir segment. The fixed percent-encoding scheme must keep every
+// distinct ref distinct.
+func TestSanitizeRefIsInjective(t *testing.T) {
+	pairs := [][2]string{
+		{"a/b", "a_b"},
+		{"a/b/c", "a_b_c"},
+		{"pack%2Fname", "pack/name"}, // a literal '%' in the ref must not be mistaken for an escape
+		{"a:b", "a_b"},
+	}
+	for _, p := range pairs {
+		if sanitizeRef(p[0]) == sanitizeRef(p[1]) {
+			t.Fatalf("sanitizeRef(%q) == sanitizeRef(%q) == %q — distinct refs collided", p[0], p[1], sanitizeRef(p[0]))
+		}
+	}
+}
+
+// TestGitCacheKeyIsInjective covers (f) for fetchGitTree's own key, which
+// had the same class of bug: repoPath "org/a" + subdir "b/c" and repoPath
+// "org/a" + subdir "b_c" both built the key "org_a@sha_b_c".
+func TestGitCacheKeyIsInjective(t *testing.T) {
+	a := gitCacheKey("org/a", "sha", "b/c")
+	b := gitCacheKey("org/a", "sha", "b_c")
+	if a == b {
+		t.Fatalf("gitCacheKey collision: (repoPath=org/a, subdir=b/c) and (repoPath=org/a, subdir=b_c) both produced %q", a)
+	}
+	// A subdir-less ref must not collide with an equivalent single-segment
+	// subdir either.
+	c := gitCacheKey("org/a_b", "sha", "")
+	d := gitCacheKey("org/a", "sha", "b")
+	if c == d {
+		t.Fatalf("gitCacheKey collision: (repoPath=org/a_b, no subdir) and (repoPath=org/a, subdir=b) both produced %q", c)
+	}
+}
+
 func TestIsGitRef(t *testing.T) {
 	for ref, want := range map[string]bool{
 		"github.com/org/repo//packs/foo@v1": true,

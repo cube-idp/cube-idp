@@ -1,6 +1,11 @@
 // Package diff computes what a re-run of `up` would change, without mutating
 // anything: kernel objects via SSA dry-run, pack content via cube.lock
-// rendered hashes, orphans via the inventory.
+// rendered hashes, orphans via the inventory. Not modeled: the CoreDNS
+// Corefile rewrite (internal/trust.EnsureCoreDNSRewrite) that `up` applies
+// for the D6 canonical hostname — it lives in kube-system's coredns
+// ConfigMap/Deployment, outside every object this package's desiredState
+// assembles or diffs, so drift there (e.g. a manual CoreDNS edit, or a
+// host change since the last `up`) is invisible to `diff`.
 package diff
 
 import (
@@ -34,8 +39,10 @@ const ensureTimeout = 3 * time.Minute
 // creates a cluster), and reports what a real `cube-idp up` would change:
 // kernel objects (registry + engine install + pack delivery objects) via SSA
 // server-side dry-run, pack content drift via cube.lock rendered hashes, and
-// orphaned inventory entries. changed is true iff a re-run of `up` would do
-// anything at all.
+// orphaned inventory entries. changed is true iff any of THOSE would do
+// anything at all — it does not cover the CoreDNS rewrite (see the package
+// doc), so a re-run of `up` could still have DNS work to do even when Run
+// reports changed=false.
 func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	cube, err := config.Load(cfgPath)
 	if err != nil {

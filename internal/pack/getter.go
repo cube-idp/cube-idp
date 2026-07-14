@@ -42,16 +42,47 @@ func NeedsGitCLI(ref string) bool {
 	return isGitRef(ref) || strings.HasPrefix(ref, "git::")
 }
 
-// sanitizeRef turns a ref into a filesystem-safe cache-dir segment. Separate
-// from pullOCI's sanitizeRepoDigest, which keys the OCI pull cache.
+// refByteSafe is the set of bytes sanitizeRef passes through unescaped:
+// letters, digits, '.', '-'. Everything else — including '_' and '%'
+// themselves — is percent-encoded, so the mapping is injective: distinct
+// refs can never collide on the same cache-dir segment (unlike the old
+// single-char-to-'_' scheme, where e.g. "a/b" and "a_b" both sanitized to
+// "a_b").
+func refByteSafe(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-'
+}
+
+// sanitizeRef turns a ref into a filesystem-safe cache-dir segment via
+// %XX percent-encoding of every unsafe byte. Separate from pullOCI's
+// sanitizeRepoDigest, which keys the OCI pull cache.
 func sanitizeRef(ref string) string {
-	return strings.Map(func(r rune) rune {
-		switch r {
-		case '/', '\\', ':', '?', '&', '=':
-			return '_'
+	var b strings.Builder
+	for i := 0; i < len(ref); i++ {
+		c := ref[i]
+		if refByteSafe(c) {
+			b.WriteByte(c)
+		} else {
+			fmt.Fprintf(&b, "%%%02X", c)
 		}
-		return r
-	}, ref)
+	}
+	return b.String()
+}
+
+// gitCacheKey builds fetchGitTree's cache-dir key from the fetched repo
+// path, its resolved commit sha, and (if the ref carried one) a subdir.
+// repoPath and subdir are sanitized independently and joined with '~' — a
+// byte sanitizeRef never emits (it is neither refByteSafe nor a percent-hex
+// digit), so it can't appear inside either encoded segment and is safe as a
+// structural separator. This keeps refs into the same repo@sha but
+// different subdirs (common in cnoe imports) from colliding, and keeps
+// "org/a" + subdir "b/c" distinct from "org/a" + subdir "b_c" — the
+// collision the old "_"-joined, "_"-escaped key had.
+func gitCacheKey(repoPath, sha, subdir string) string {
+	key := sanitizeRef(repoPath) + "@" + sha
+	if subdir != "" {
+		key += "~" + sanitizeRef(subdir)
+	}
+	return key
 }
 
 // fetchGetter fetches a pack via go-getter and applies the extraction
@@ -165,11 +196,7 @@ func fetchGitTree(ctx context.Context, ref, cacheDir string) (dir, pin string, e
 	// into dst, so two refs into the same repo@sha but different subdirs
 	// (common in cnoe imports — many Applications, one repo) must not share
 	// a cache entry.
-	key := strings.ReplaceAll(repoPath, "/", "_") + "@" + sha
-	if subdir != "" {
-		key += "_" + strings.ReplaceAll(subdir, "/", "_")
-	}
-	dst := filepath.Join(cacheDir, "git", key)
+	dst := filepath.Join(cacheDir, "git", gitCacheKey(repoPath, sha, subdir))
 	if _, statErr := os.Stat(dst); statErr != nil {
 		src := fmt.Sprintf("git::%s?ref=%s", repoURL, sha)
 		if subdir != "" {

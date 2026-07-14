@@ -59,7 +59,7 @@ const (
 	CodeEngineManifestsInv  Code = "CUBE-3003" // embedded engine install manifests invalid
 	CodeEngineHealthTimeout Code = "CUBE-3004" // engine health check timed out or components not ready
 	CodeEngineUninstallFail Code = "CUBE-3005" // flux prune/uninstall timeout
-	CodeEngineArgocdRegFail Code = "CUBE-3006" // argocd OCI repo registration/capability failed (Phase 2)
+	CodeEngineArgocdRegFail Code = "CUBE-3006" // reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design
 )
 
 // 4xxx: pack

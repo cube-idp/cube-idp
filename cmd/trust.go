@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/trust"
 )
 
@@ -19,6 +20,7 @@ var (
 
 func newTrustCmd() *cobra.Command {
 	var yes, uninstall bool
+	var file string
 	c := &cobra.Command{
 		Use:   "trust",
 		Short: "Add (or remove, --uninstall) the cube-idp local CA to your OS trust stores — opt-in, fully reverted by `down` (D6)",
@@ -35,9 +37,19 @@ func newTrustCmd() *cobra.Command {
 				return nil
 			}
 			if !yes {
+				// Name the CONFIGURED gateway.host (same -f/--file
+				// convention every other command uses) rather than a
+				// hardcoded default that's wrong the moment a user sets a
+				// different host. No cube.yaml loadable yet (e.g. `trust`
+				// run before `init`) falls back to generic wording instead
+				// of asserting a host cube-idp can't back up.
+				subject := "your cube-idp gateway's HTTPS"
+				if cube, cerr := config.Load(file); cerr == nil {
+					subject = "https://*." + cube.Spec.Gateway.Host
+				}
 				fmt.Fprint(c.OutOrStdout(),
 					"This adds the cube-idp local CA to your OS trust stores so browsers accept\n"+
-						"https://*."+"cube-idp.localtest.me without warnings (mkcert mechanism).\n"+
+						subject+" without warnings (mkcert mechanism).\n"+
 						"It is fully removed by `cube-idp trust --uninstall` or `cube-idp down`.\nProceed? [y/N] ")
 				line, _ := bufio.NewReader(c.InOrStdin()).ReadString('\n')
 				if strings.ToLower(strings.TrimSpace(line)) != "y" {
@@ -54,5 +66,6 @@ func newTrustCmd() *cobra.Command {
 	}
 	c.Flags().BoolVar(&yes, "yes", false, "skip the consent prompt")
 	c.Flags().BoolVar(&uninstall, "uninstall", false, "remove the CA from the OS trust stores")
+	c.Flags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
 	return c
 }

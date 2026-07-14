@@ -29,11 +29,22 @@ func newConfigCmd() *cobra.Command {
 					fmt.Sprintf("render-cluster applies to provider: kind (got %q)", cube.Spec.Cluster.Provider),
 					"provider: existing creates no cluster, so there is no provider config to render")
 			}
-			// render-cluster stays pure and file-free: no certs.d staging here.
+			// render-cluster stays pure and file-free: no certs.d staging here
+			// (kindp.CertsD{} below is the zero value, so RenderConfig omits
+			// the containerd certs.d bind mount entirely). `up` stages the
+			// real certs.d directory and injects that mount at create-time
+			// (internal/cluster/kindp/kind.go's certsD, D6 canonical
+			// hostname) — this rendering is therefore not byte-identical to
+			// what `up` actually hands kind, and the gap is called out on
+			// stderr below rather than left as a silent difference: stdout
+			// stays pure YAML so `cube-idp config render-cluster --file
+			// cube.yaml | kind create cluster --config -` keeps working.
 			out, err := kindp.RenderConfig(cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, kindp.CertsD{})
 			if err != nil {
 				return err
 			}
+			fmt.Fprintln(c.ErrOrStderr(),
+				"note: `up` also injects a containerd certs.d bind mount for the local CA trust root (D6) — this rendering omits it")
 			fmt.Fprint(c.OutOrStdout(), string(out))
 			return nil
 		},
