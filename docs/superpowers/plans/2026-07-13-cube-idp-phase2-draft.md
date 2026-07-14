@@ -5744,9 +5744,9 @@ git add -A && git commit -m "feat: e2e engine matrix, Phase 2 command coverage, 
 
 **Files:** modify `internal/ui/ui.go` (+`ui_test.go`: spinner emits zero bytes in plain mode; Section/glyph helpers render exact plain text unchanged), `internal/up/up.go` (wrap the three long waits; access summary), `cmd/{status,diff,upgrade,doctor,get}.go` (headers/glyphs via ui).
 
-- [ ] Failing ui tests first; implement; then the full gate: `go build ./... && go vet ./... && go test ./... -short && make test-apply` — every pre-existing output-dependent test unmodified.
-- [ ] Manual TTY smoke (run `./cube-idp up` against a scratch cluster if 8443-conflict-free, else `doctor`/`status` on the existing one) — record what it looks like in the report.
-- [ ] Commit: `feat: progress feedback during up and one visual language across commands`.
+- [x] Failing ui tests first; implement; then the full gate: `go build ./... && go vet ./... && go test ./... -short && make test-apply` — every pre-existing output-dependent test unmodified.
+- [x] Manual TTY smoke (run `./cube-idp up` against a scratch cluster if 8443-conflict-free, else `doctor`/`status` on the existing one) — record what it looks like in the report.
+- [x] Commit: `feat: progress feedback during up and one visual language across commands`.
 
 ## Self-Review
 
