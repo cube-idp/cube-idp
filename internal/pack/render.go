@@ -27,13 +27,21 @@ func (p *Pack) Render(values map[string]any) (*Rendered, error) {
 	// behavior (walk manifests/*.yaml directly) is unchanged. chart.yaml
 	// helm rendering below is orthogonal and appended in both cases.
 	manifestsDir := filepath.Join(p.Dir, "manifests")
-	if _, statErr := os.Stat(filepath.Join(p.Dir, "kustomization.yaml")); statErr == nil {
+	_, statErr := os.Stat(filepath.Join(p.Dir, "kustomization.yaml"))
+	switch {
+	case statErr == nil:
 		objs, err := RenderDir(p.Dir)
 		if err != nil {
 			return nil, err
 		}
 		r.Objects = append(r.Objects, objs...)
-	} else {
+	case !os.IsNotExist(statErr):
+		// A missing kustomization.yaml simply means the pack doesn't use
+		// one; any OTHER stat error (e.g. permissions, a symlink loop) is
+		// real and must surface rather than silently falling through to the
+		// manifests/ walk below as if kustomization.yaml were just absent.
+		return nil, diag.Wrap(statErr, diag.CodePackManifestErr, "cannot check pack kustomization.yaml", "check directory permissions")
+	default:
 		// A missing manifests/ dir or chart.yaml simply means that optional
 		// part of the pack is absent; any OTHER error (e.g. permissions) is
 		// real and must surface rather than silently rendering a partial pack.

@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/rafpe/cube-idp/internal/trust"
 )
 
 // TestRevertTrustWarnsOnCorruptState covers CUBE-6006: a corrupt
@@ -57,5 +60,94 @@ func TestRevertTrustDirErrorWarns(t *testing.T) {
 	got := out.String()
 	if !strings.Contains(got, "warning") || !strings.Contains(got, "cube-idp trust --uninstall") {
 		t.Fatalf("expected warning + remediation, got:\n%s", got)
+	}
+}
+
+// TestRevertTrustUninstallsWhenInstalled covers the happy path: a state file
+// recording Installed:true must trigger trustUninstall and report the
+// revert (D6: `down` always undoes what `trust` did).
+func TestRevertTrustUninstallsWhenInstalled(t *testing.T) {
+	dir := t.TempDir()
+	if err := trust.SaveState(dir, &trust.State{Installed: true, CACert: "irrelevant"}); err != nil {
+		t.Fatal(err)
+	}
+
+	restoreDir := trustDir
+	trustDir = func() (string, error) { return dir, nil }
+	defer func() { trustDir = restoreDir }()
+
+	uninstalled := false
+	restoreUninstall := trustUninstall
+	trustUninstall = func(d string) error { uninstalled = true; return nil }
+	defer func() { trustUninstall = restoreUninstall }()
+
+	c := &cobra.Command{}
+	var out bytes.Buffer
+	c.SetOut(&out)
+
+	if err := revertTrust(c); err != nil {
+		t.Fatalf("revertTrust must not fail: %v", err)
+	}
+	if !uninstalled {
+		t.Fatal("revertTrust must call trustUninstall when the state says Installed:true")
+	}
+	if !strings.Contains(out.String(), "reverted") {
+		t.Fatalf("expected a reverted notice, got:\n%s", out.String())
+	}
+}
+
+// TestRevertTrustNoOpWhenNotInstalled covers the common case: `trust` was
+// never run, so `down` must not touch the OS trust store or print anything.
+func TestRevertTrustNoOpWhenNotInstalled(t *testing.T) {
+	dir := t.TempDir() // no trust-state.yaml written — LoadState defaults Installed:false
+
+	restoreDir := trustDir
+	trustDir = func() (string, error) { return dir, nil }
+	defer func() { trustDir = restoreDir }()
+
+	uninstalled := false
+	restoreUninstall := trustUninstall
+	trustUninstall = func(d string) error { uninstalled = true; return nil }
+	defer func() { trustUninstall = restoreUninstall }()
+
+	c := &cobra.Command{}
+	var out bytes.Buffer
+	c.SetOut(&out)
+
+	if err := revertTrust(c); err != nil {
+		t.Fatalf("revertTrust must not fail: %v", err)
+	}
+	if uninstalled {
+		t.Fatal("revertTrust must not call trustUninstall when nothing was ever installed")
+	}
+	if out.String() != "" {
+		t.Fatalf("expected no output for the no-op case, got:\n%s", out.String())
+	}
+}
+
+// TestRevertTrustPropagatesUninstallError covers CUBE-6003 propagating: once
+// the state says Installed:true, a failing trustUninstall must fail `down`
+// (unlike the corrupt-state/dir-error cases, which are recoverable-unknown
+// states, not a known, unreverted installation).
+func TestRevertTrustPropagatesUninstallError(t *testing.T) {
+	dir := t.TempDir()
+	if err := trust.SaveState(dir, &trust.State{Installed: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	restoreDir := trustDir
+	trustDir = func() (string, error) { return dir, nil }
+	defer func() { trustDir = restoreDir }()
+
+	restoreUninstall := trustUninstall
+	trustUninstall = func(d string) error { return errors.New("boom") }
+	defer func() { trustUninstall = restoreUninstall }()
+
+	c := &cobra.Command{}
+	var out bytes.Buffer
+	c.SetOut(&out)
+
+	if err := revertTrust(c); err == nil {
+		t.Fatal("expected trustUninstall's error to propagate")
 	}
 }

@@ -102,6 +102,29 @@ func TestRenderKustomizeOverlay(t *testing.T) {
 	}
 }
 
+// TestRenderKustomizationStatOtherErrorSurfaces covers (e): Render must
+// distinguish a genuinely missing kustomization.yaml (fs.ErrNotExist, fall
+// back to walking manifests/) from any OTHER stat error, which must surface
+// as a typed error rather than being silently treated as "absent". A
+// self-referential symlink at kustomization.yaml's path makes os.Stat fail
+// with ELOOP ("too many levels of symbolic links") — a real, non-not-exist
+// error, reproducible without platform-specific permission tricks.
+func TestRenderKustomizationStatOtherErrorSurfaces(t *testing.T) {
+	dir := writePack(t, `name: "x"
+version: "0.1.0"
+`)
+	loop := filepath.Join(dir, "kustomization.yaml")
+	if err := os.Symlink(loop, loop); err != nil {
+		t.Fatal(err)
+	}
+	p := &Pack{Name: "x", Version: "0.1.0", Dir: dir}
+	_, err := p.Render(nil)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodePackManifestErr {
+		t.Fatalf("want CodePackManifestErr surfaced for a real kustomization.yaml stat error, got %v", err)
+	}
+}
+
 func TestRenderKustomizeFailureIsTyped(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "pack.cue"), []byte("name: \"bad\"\nversion: \"0.1.0\"\n"), 0o644)

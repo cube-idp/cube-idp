@@ -27,12 +27,16 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
-// TestNoCubeLiteralsOutsideCatalog is the debt-paydown enforcement: every
-// CUBE code lives in codes.go and nowhere else in non-test Go code. Test
-// files MAY use literals (asserting user-visible strings is the point of a
-// golden test).
-func TestNoCubeLiteralsOutsideCatalog(t *testing.T) {
-	root := repoRoot(t)
+// canonicalCodesGo is the ONLY file exempt from the CUBE-code literal ban —
+// anchored to its exact repo-relative path, not just a basename match, so a
+// same-named codes.go anywhere else in the tree (a different package's own
+// "codes.go", say) is never accidentally exempted too.
+const canonicalCodesGo = "internal/diag/codes.go"
+
+// findCubeLiteralOffenders walks root and returns the repo-relative paths of
+// every non-test .go file (other than canonicalCodesGo) containing a
+// `"CUBE-` literal.
+func findCubeLiteralOffenders(root string) ([]string, error) {
 	var offenders []string
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -45,8 +49,11 @@ func TestNoCubeLiteralsOutsideCatalog(t *testing.T) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") ||
-			filepath.Base(path) == "codes.go" {
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		rel := strings.TrimPrefix(path, root+string(os.PathSeparator))
+		if filepath.ToSlash(rel) == canonicalCodesGo {
 			return nil
 		}
 		raw, err := os.ReadFile(path)
@@ -54,16 +61,63 @@ func TestNoCubeLiteralsOutsideCatalog(t *testing.T) {
 			return err
 		}
 		if strings.Contains(string(raw), `"CUBE-`) {
-			offenders = append(offenders, strings.TrimPrefix(path, root+string(os.PathSeparator)))
+			offenders = append(offenders, rel)
 		}
 		return nil
 	})
+	return offenders, err
+}
+
+// TestNoCubeLiteralsOutsideCatalog is the debt-paydown enforcement: every
+// CUBE code lives in codes.go and nowhere else in non-test Go code. Test
+// files MAY use literals (asserting user-visible strings is the point of a
+// golden test).
+func TestNoCubeLiteralsOutsideCatalog(t *testing.T) {
+	offenders, err := findCubeLiteralOffenders(repoRoot(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(offenders) > 0 {
 		t.Fatalf("CUBE-code literals outside internal/diag/codes.go — use the catalog constants:\n  %s",
 			strings.Join(offenders, "\n  "))
+	}
+}
+
+// TestCubeLiteralScanAnchorsToCanonicalPath is the (d) regression net: the
+// exemption must key off the exact "internal/diag/codes.go" path, not just
+// a basename match — a decoy codes.go elsewhere in the tree carrying a
+// "CUBE- literal must still be flagged.
+func TestCubeLiteralScanAnchorsToCanonicalPath(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "internal", "diag")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "codes.go"), []byte(`package diag
+
+const CodeFoo Code = "CUBE-0001"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	decoy := filepath.Join(root, "internal", "other")
+	if err := os.MkdirAll(decoy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(decoy, "codes.go"), []byte(`package other
+
+const oops = "CUBE-9999"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	offenders, err := findCubeLiteralOffenders(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join("internal", "other", "codes.go")
+	if len(offenders) != 1 || offenders[0] != want {
+		t.Fatalf("want exactly [%s] flagged (the canonical internal/diag/codes.go must stay exempt), got %v", want, offenders)
 	}
 }
 
