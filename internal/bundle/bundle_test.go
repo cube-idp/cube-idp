@@ -174,8 +174,8 @@ func TestVendorThenOpenRoundTrip(t *testing.T) {
 	if o.Manifest.FormatVersion != 1 {
 		t.Fatalf("formatVersion: got %d, want 1", o.Manifest.FormatVersion)
 	}
-	if o.Manifest.Platform != runtime.GOOS+"/"+runtime.GOARCH {
-		t.Fatalf("platform: got %q, want host platform", o.Manifest.Platform)
+	if o.Manifest.Platform != "linux/"+runtime.GOARCH {
+		t.Fatalf("platform: got %q, want linux/%s (default is always linux, host arch)", o.Manifest.Platform, runtime.GOARCH)
 	}
 	if o.Lock == nil || len(o.Lock.Packs) != 1 || o.Lock.Packs[0].Name != "demo" {
 		t.Fatalf("embedded lock not round-tripped: %+v", o.Lock)
@@ -229,7 +229,7 @@ func TestVerifyDetectsTampering(t *testing.T) {
 // TestVerifyDetectsMissingImageTar deletes a bundle's image tar after Open
 // and asserts Verify reports CUBE-7004 naming the missing image ref.
 func TestVerifyDetectsMissingImageTar(t *testing.T) {
-	lockPath, imgRef := writeLockFixtureWithImage(t, runtime.GOOS, runtime.GOARCH)
+	lockPath, imgRef := writeLockFixtureWithImage(t, "linux", runtime.GOARCH)
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
 	if err := Vendor(context.Background(), lockPath, out, "", os.Stderr); err != nil {
 		t.Fatal(err)
@@ -259,7 +259,7 @@ func TestVerifyDetectsMissingImageTar(t *testing.T) {
 // on the in-process registry, pinned in Entry.Images, ends up as its own
 // OCI-layout tar inside the bundle.
 func TestVendorBundlesImages(t *testing.T) {
-	lockPath, imgRef := writeLockFixtureWithImage(t, runtime.GOOS, runtime.GOARCH)
+	lockPath, imgRef := writeLockFixtureWithImage(t, "linux", runtime.GOARCH)
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
 	if err := Vendor(context.Background(), lockPath, out, "", os.Stderr); err != nil {
 		t.Fatal(err)
@@ -348,8 +348,8 @@ func TestVendorImagesIncludesEngineAndRegistry(t *testing.T) {
 
 	engImgRef := host + "/images/engine:v1"
 	regImgRef := host + "/images/registry:v1"
-	pushTestImage(t, engImgRef, runtime.GOOS, runtime.GOARCH)
-	pushTestImage(t, regImgRef, runtime.GOOS, runtime.GOARCH)
+	pushTestImage(t, engImgRef, "linux", runtime.GOARCH)
+	pushTestImage(t, regImgRef, "linux", runtime.GOARCH)
 
 	origEng, origReg := engineInstallImages, registryInstallImages
 	engineInstallImages = func(string) ([]string, error) { return []string{engImgRef}, nil }
