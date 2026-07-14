@@ -39,6 +39,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newGetCmd())
 	root.AddCommand(newInitCmd())
+	root.AddCommand(newPackCmd())
 	root.AddCommand(newTrustCmd())
 	root.AddCommand(newCnoeCmd())
 	return root

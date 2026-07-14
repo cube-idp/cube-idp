@@ -79,6 +79,7 @@ const (
 	CodePackOCIErr       Code = "CUBE-4012" // OCI pack pull/extract error (pullOCI failures)
 	CodePackCacheDirErr  Code = "CUBE-4013" // cache directory access/creation error
 	CodePackGuardTrip    Code = "CUBE-4014" // extraction guard tripped (path traversal/symlink) (Phase 2)
+	CodePackPushFail     Code = "CUBE-4015" // pack push (directory archive, OCI push, or tag) failed
 )
 
 // 5xxx: registry
