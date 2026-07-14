@@ -3,6 +3,7 @@ package k3dp
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	k3dclient "github.com/k3d-io/k3d/v5/pkg/client"
@@ -10,6 +11,7 @@ import (
 	v1alpha5 "github.com/k3d-io/k3d/v5/pkg/config/v1alpha5"
 	"github.com/k3d-io/k3d/v5/pkg/runtimes"
 	k3dtypes "github.com/k3d-io/k3d/v5/pkg/types"
+	k3dutil "github.com/k3d-io/k3d/v5/pkg/util"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/yaml"
 
@@ -54,6 +56,17 @@ func (k *K3d) Ensure(ctx context.Context, name string, spec config.ClusterSpec) 
 			return nil, diag.Wrap(err, diag.CodeK3dConfigInvalid, "rendered k3d SimpleConfig failed to parse",
 				"this is a cube-idp bug; run `cube-idp config render-cluster` and inspect the output")
 		}
+		// Pin the API-server host port BEFORE transform. k3d's own CLI does
+		// this in cmd/cluster/clusterCreate.go ("Set to random port if port
+		// is empty string"), but the reusable pkg/config transform we call
+		// does NOT — it leaves ExposeAPI.HostPort as "". An empty host port is
+		// baked into the server node's k3d.server.api.port label at creation,
+		// and KubeconfigGet reads that label verbatim: the resulting REST
+		// config is https://0.0.0.0 with NO port (dial 0.0.0.0:443 → refused),
+		// which is exactly the CUBE-2003 failure the Phase 3 e2e caught.
+		if err := ensureExposedAPIPort(&simpleCfg); err != nil {
+			return nil, err
+		}
 		clusterConfig, err := k3dconfig.TransformSimpleToClusterConfig(ctx, runtimes.SelectedRuntime, simpleCfg, "")
 		if err != nil {
 			return nil, diag.Wrap(err, diag.CodeK3dConfigInvalid, "k3d SimpleConfig could not be transformed into a cluster config",
@@ -69,6 +82,28 @@ func (k *K3d) Ensure(ctx context.Context, name string, spec config.ClusterSpec) 
 		}
 	}
 	return k.connect(ctx, name)
+}
+
+// ensureExposedAPIPort pins a concrete host port for the exposed Kubernetes
+// API when the user left it unset. k3d's CLI does this itself
+// (cmd/cluster/clusterCreate.go: "Set to random port if port is empty
+// string") but the pkg/config transform we drive directly does not — and an
+// empty ExposeAPI.HostPort silently produces a portless https://0.0.0.0
+// kubeconfig (see the call site in Ensure). Assigning a free port here makes
+// the serverlb publish that exact port AND records it in the server node's
+// k3d.server.api.port label, so the kubeconfig KubeconfigGet serializes
+// carries the real, reachable mapped port. A user-supplied port is preserved.
+func ensureExposedAPIPort(cfg *v1alpha5.SimpleConfig) error {
+	if cfg.ExposeAPI.HostPort != "" {
+		return nil
+	}
+	port, err := k3dutil.GetFreePort()
+	if err != nil || port == 0 {
+		return diag.Wrap(err, diag.CodeK3dCreateFailed, "could not allocate a free host port for the k3d API server",
+			"retry; if it persists, another process may be exhausting local ports")
+	}
+	cfg.ExposeAPI.HostPort = strconv.Itoa(port)
+	return nil
 }
 
 // connect fetches the kubeconfig for the named k3d cluster and builds a

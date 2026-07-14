@@ -98,13 +98,13 @@ func runDown(ctx context.Context, con *ui.Console, file string, keepCluster bool
 		pr.Done("inventory objects deleted")
 		return revertTrust(con)
 	}
-	// kind: deleting the cluster IS the cascade
-	pr := con.Progress("cluster", "deleting kind cluster")
+	// local providers (kind, k3d): deleting the cluster IS the cascade
+	pr := con.Progress("cluster", "deleting "+cube.Spec.Cluster.Provider+" cluster")
 	if err := prov.Delete(ctx, cube.Metadata.Name); err != nil {
 		pr.Stop()
 		return err
 	}
-	pr.Done("kind cluster deleted")
+	pr.Done("%s cluster deleted", cube.Spec.Cluster.Provider)
 	return revertTrust(con)
 }
 
