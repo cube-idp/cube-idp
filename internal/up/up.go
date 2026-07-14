@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/rafpe/cube-idp/internal/apply"
 	"github.com/rafpe/cube-idp/internal/bundle"
@@ -35,6 +37,17 @@ const (
 	applyTimeout   = 2 * time.Minute
 	healthTimeout  = 5 * time.Minute
 	healthPoll     = 5 * time.Second
+	// The gateway pack delivers the Gateway API CRDs asynchronously (the
+	// traefik pack ships them as static manifests, the envoy-gateway pack
+	// installs them via its Helm-charted controller), so the registry
+	// HTTPRoute apply must wait for them to be Established. Envoy's chart
+	// pull + controller startup + CRD install is the slow path, so this
+	// deadline is generous — but hard, per spec §4.5 (no infinite spinner).
+	gatewayCRDTimeout = 3 * time.Minute
+	gatewayCRDPoll    = 2 * time.Second
+	// httpRouteCRD is the Gateway API CRD every gateway pack must establish
+	// before the registry HTTPRoute (registry.GatewayRoute) can be applied.
+	httpRouteCRD = "httproutes.gateway.networking.k8s.io"
 )
 
 // Options configures a single Run. ConfigPath is the cube.yaml to install;
@@ -292,6 +305,19 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	con.Step("lock", "cube.lock written (%d packs)", len(entries))
 
+	// The registry HTTPRoute (registry.GatewayRoute below) is applied after
+	// the gateway pack is delivered, but pack delivery is asynchronous: the
+	// engine reconciles the Gateway API CRDs on its own schedule. With
+	// traefik the CRDs ship as static manifests and reconcile early enough to
+	// win the race; with envoy-gateway they arrive via a Helm-charted
+	// controller and lag behind, so a server-side apply of the HTTPRoute
+	// races ahead and dry-run fails with "no matches for kind HTTPRoute"
+	// (CUBE-2003). Provider-agnostically block until the CRD is Established
+	// first — a no-op wait when it already is (the traefik path).
+	if err := waitCRDEstablished(ctx, a, con, httpRouteCRD, gatewayCRDTimeout); err != nil {
+		return err
+	}
+
 	// D6 canonical hostname: route registry.<host> through the gateway (for
 	// host-side docker/oras push), then make *.<host> resolve in-cluster to
 	// the same gateway Service so pod-side clients use identical URLs.
@@ -451,6 +477,53 @@ func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, con *
 		case <-time.After(healthPoll):
 		}
 	}
+}
+
+// waitCRDEstablished blocks until the named CustomResourceDefinition reports
+// its Established condition true (the API server serves its kind) or timeout
+// elapses. It mirrors the 'Pack CRD established' wait (a.Apply(..., true))
+// and waitHealthy: a Console progress line spans the wait, and — per spec
+// §4.5, no infinite spinner — a hard deadline renders a typed CUBE-5005 with
+// remediation rather than hanging. It is provider- and pack-agnostic: when
+// the CRD is already Established (the traefik path, whose gateway pack ships
+// the CRDs as static manifests) the first poll returns immediately; the wait
+// only bites when the CRD lags behind, as with the envoy-gateway chart.
+func waitCRDEstablished(ctx context.Context, a *apply.Applier, con *ui.Console, crdName string, timeout time.Duration) error {
+	pr := con.Progress("gateway-crd", "waiting for the Gateway API HTTPRoute CRD")
+	deadline := time.Now().Add(timeout)
+	for {
+		var crd apiextensionsv1.CustomResourceDefinition
+		err := a.Client().Get(ctx, client.ObjectKey{Name: crdName}, &crd)
+		if err == nil && crdEstablished(&crd) {
+			pr.Done("Gateway API HTTPRoute CRD established")
+			return nil
+		}
+		if time.Now().After(deadline) {
+			pr.Stop()
+			return diag.New(diag.CodeRegistryRouteCRDTimeout,
+				fmt.Sprintf("timed out after %s waiting for the %s CRD to be Established before applying the registry HTTPRoute", timeout, crdName),
+				"the gateway pack installs the Gateway API CRDs — inspect the gateway pack's components with kubectl, then re-run `cube-idp up` (idempotent)")
+		}
+		select {
+		case <-ctx.Done():
+			pr.Stop()
+			return diag.Wrap(ctx.Err(), diag.CodeRegistryRouteCRDTimeout, "Gateway API CRD wait aborted before completion",
+				"re-run `cube-idp up` — it is idempotent and resumes where it left off")
+		case <-time.After(gatewayCRDPoll):
+		}
+	}
+}
+
+// crdEstablished reports whether the CRD's Established condition is true — the
+// signal that the API server has registered the kind and will serve (and
+// dry-run apply) its objects.
+func crdEstablished(crd *apiextensionsv1.CustomResourceDefinition) bool {
+	for _, c := range crd.Status.Conditions {
+		if c.Type == apiextensionsv1.Established {
+			return c.Status == apiextensionsv1.ConditionTrue
+		}
+	}
+	return false
 }
 
 func allReady(health []engine.ComponentHealth) bool {

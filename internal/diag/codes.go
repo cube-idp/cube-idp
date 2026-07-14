@@ -94,10 +94,11 @@ const (
 
 // 5xxx: registry
 const (
-	CodeZotManifestsInv   Code = "CUBE-5001" // embedded zot manifests invalid
-	CodePortForwardFail   Code = "CUBE-5002" // port-forward to registry failed
-	CodeOCIPushFail       Code = "CUBE-5003" // OCI push (artifact staging or push) failed
-	CodeDigestResolveFail Code = "CUBE-5004" // remote digest resolution failed (upgrade --plan) (Phase 2)
+	CodeZotManifestsInv         Code = "CUBE-5001" // embedded zot manifests invalid
+	CodePortForwardFail         Code = "CUBE-5002" // port-forward to registry failed
+	CodeOCIPushFail             Code = "CUBE-5003" // OCI push (artifact staging or push) failed
+	CodeDigestResolveFail       Code = "CUBE-5004" // remote digest resolution failed (upgrade --plan) (Phase 2)
+	CodeRegistryRouteCRDTimeout Code = "CUBE-5005" // Gateway API HTTPRoute CRD not Established before the registry HTTPRoute apply
 )
 
 // 6xxx: trust/hostname (Phase 2)
