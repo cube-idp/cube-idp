@@ -5444,7 +5444,7 @@ type Printer struct{ /* unexported */ }
 func (p *Printer) Step(name, format string, args ...any) // replaces the phase-1 step() body
 ```
 
-- [ ] **Step 1: Write the failing plain-format test**
+- [x] **Step 1: Write the failing plain-format test**
 
 `internal/ui/ui_test.go` — the plain format is pinned to the phase-1 `step` output byte-for-byte (`RECONCILE:` copy the real format string from checkpoint 0.13 into this test before running it):
 
@@ -5480,7 +5480,7 @@ func TestNonTTYWriterForcesPlain(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail, then implement**
+- [x] **Step 2: Run tests to verify they fail, then implement**
 
 Run: `go test ./internal/ui/ -v` — Expected: FAIL (package missing).
 
@@ -5490,18 +5490,18 @@ go get github.com/charmbracelet/lipgloss@latest github.com/charmbracelet/huh@lat
 
 `internal/ui/ui.go`: `New` detects TTY (`term.IsTerminal` on the writer's Fd when it is an `*os.File`; any other writer → plain) and `os.Getenv("CI")`; plain mode reproduces the phase-1 `step` format verbatim; styled mode renders the same content with a lipgloss-styled name badge and dim message — content identical, only presentation differs. No Bubble Tea, no spinner loop: "a spinner is not a TUI" (spec §4.1).
 
-- [ ] **Step 3: Thread it through**
+- [x] **Step 3: Thread it through**
 
 `cmd/root.go`: add `--plain` as a persistent flag; construct the `*ui.Printer` once and hand it to every orchestrator (RECONCILE: mirror how phase-1 threads `out io.Writer` — the Printer replaces the writer+`step` pair, or wraps the writer if orchestrators keep `io.Writer` signatures; choose whichever touches fewer signatures and note the choice here). Delete the phase-1 `step` helper; all orchestrators call `p.Step`.
 
 `cmd/init.go`: when stdin+stdout are TTYs and neither `--name` nor `--engine` was passed, run a huh form (name input; engine select flux/argocd; "include gitea?" confirm — the D9 default profile pre-checked). Flags always win; non-TTY always skips the wizard (CI-safe). RECONCILE: huh's form API at the pinned version; keep the wizard to ONE form, three fields.
 
-- [ ] **Step 4: Run everything**
+- [x] **Step 4: Run everything**
 
 Run: `go test ./internal/ui/ ./cmd/ -v && go build ./... && go test ./... -short`
 Expected: PASS — and specifically, every pre-existing cmd/e2e output assertion still passes untouched (the design rule above is the guarantee; if one breaks, the plain format drifted — fix ui.go, not the assertion).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "feat: terminal UX pass — lipgloss status output, huh init wizard, --plain for CI"
