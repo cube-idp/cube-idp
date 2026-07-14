@@ -68,6 +68,9 @@ func TestPushRenderedKeepsFluxMediaTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if ref.Digest == "" || ref.Digest != desc.Digest.String() {
+		t.Fatalf("ArtifactRef.Digest: got %q, want the pushed manifest digest %q", ref.Digest, desc.Digest.String())
+	}
 	manifest := fetchManifest(t, store, desc)
 
 	if manifest.Config.MediaType != fluxConfigMediaType {

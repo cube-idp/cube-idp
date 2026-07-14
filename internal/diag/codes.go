@@ -116,3 +116,9 @@ const (
 	CodePluginExecFail  Code = "CUBE-7103" // plugin process failed to start/run (not the plugin's own reported exit code)
 	CodePluginUntrusted Code = "CUBE-7104" // plugin refused: unknown or changed sha256, and no interactive confirmation
 )
+
+// 72xx: sync (Task 10)
+const (
+	CodeSyncNoManifests   Code = "CUBE-7201" // sync dir has no pack.cue and no renderable *.yaml manifests
+	CodeSyncWatchNotBuilt Code = "CUBE-7202" // `sync --watch` stub — watch mode lands in Task 11
+)
