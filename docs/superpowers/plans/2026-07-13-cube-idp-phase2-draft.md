@@ -4787,7 +4787,7 @@ Translation rules (spec §4.4: "ingests existing CNOE/idpbuilder Argo `Applicati
 6. Rendered objects that are namespaced and have no namespace get `destination.namespace` (matching Argo's `CreateNamespace` behavior a Namespace object is prepended when `destination.namespace` is set). Cluster-scoped kinds (Namespace, ClusterRole, ClusterRoleBinding, CustomResourceDefinition, StorageClass, PriorityClass, IngressClass, GatewayClass, ValidatingWebhookConfiguration, MutatingWebhookConfiguration, PersistentVolume) are left untouched.
 7. The artifact tag is a content hash (first 12 hex of `lock.RenderedHash`), so re-importing changed sources produces a new tag and the engine reconciles the change.
 
-- [ ] **Step 1: Create fixtures**
+- [x] **Step 1: Create fixtures**
 
 `internal/cnoe/testdata/app.yaml`:
 
@@ -4854,7 +4854,7 @@ spec:
         path: "."
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `internal/cnoe/loader_test.go`:
 
@@ -4966,12 +4966,12 @@ spec:
 }
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `go test ./internal/cnoe/ -v`
 Expected: FAIL (package does not exist)
 
-- [ ] **Step 4: Export the chart renderer, implement the loader**
+- [x] **Step 4: Export the chart renderer, implement the loader**
 
 In `internal/pack/helm.go`: rename the private `chartRef` to exported `ChartRef` (fields `Chart, Repo, Version, ReleaseName, Namespace string; Values map[string]any` — RECONCILE: keep exactly the phase-1 field set from checkpoint 0.8, adding nothing) and add:
 
@@ -5273,7 +5273,7 @@ func substituteAny(v any, vars map[string]any) any {
 
 (`osStat` = `os.Stat` — import `os` in translate.go and call it directly; the alias in the snippet exists only to keep the import list obvious.)
 
-- [ ] **Step 5: Implement the command**
+- [x] **Step 5: Implement the command**
 
 `cmd/cnoe.go`:
 
@@ -5368,12 +5368,12 @@ func newCnoeCmd() *cobra.Command {
 
 (import `github.com/rafpe/cube-idp/internal/pack`.) Register `newCnoeCmd()` in `cmd/root.go`.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `go test ./internal/cnoe/ ./internal/pack/ -short -v && go build ./...`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A && git commit -m "feat: cnoe-compat loader — Application/ApplicationSet ingestion, cnoe:// to OCI pushes"
