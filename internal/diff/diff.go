@@ -207,7 +207,7 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		rendered, err := p.Render(pr.Values)
+		rendered, err := p.RenderFor(pr.Values, cube.Spec.Gateway)
 		if err != nil {
 			return nil, nil, nil, err
 		}

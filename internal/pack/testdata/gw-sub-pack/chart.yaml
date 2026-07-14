@@ -1,0 +1,5 @@
+chart: "testdata/gw-sub-chart"
+releaseName: gwsub
+namespace: gwsub
+values:
+  baseUrl: "https://${GATEWAY_HOST}"

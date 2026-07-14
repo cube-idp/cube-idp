@@ -6,14 +6,30 @@ import (
 	"sort"
 
 	"github.com/rafpe/cube-idp/internal/apply"
+	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
 )
 
 // Render validates values against the pack's #Values schema (if any), then
 // produces the pack's final manifests: raw YAML under manifests/ (in sorted
 // filename order, for deterministic output) plus a client-side helm render
-// of chart.yaml, if present.
+// of chart.yaml, if present. It is RenderFor with a zero
+// config.GatewaySpec{}, which performs no ${GATEWAY_HOST}/${GATEWAY_FQDN}
+// substitution — existing callers/tests see byte-identical output to
+// before D15.
 func (p *Pack) Render(values map[string]any) (*Rendered, error) {
+	return p.RenderFor(values, config.GatewaySpec{})
+}
+
+// RenderFor is Render plus the D15 gateway substitution (spec D15, Owner
+// Decisions #11): every string leaf in the chart values (pack defaults from
+// chart.yaml merged with the caller's values, override winning) and every
+// manifests/*.yaml file's raw bytes get ${GATEWAY_HOST} -> gw's host[:port]
+// and ${GATEWAY_FQDN} -> gw's bare host (see substitute in expose.go — the
+// same two replacements ExposeURLs already applies to expose.urls). A zero
+// gw (Host == "") performs no substitution, so Render(values) — which calls
+// this with config.GatewaySpec{} — is unaffected.
+func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendered, error) {
 	vals, err := p.validateValues(values)
 	if err != nil {
 		return nil, err
@@ -58,7 +74,11 @@ func (p *Pack) Render(values map[string]any) (*Rendered, error) {
 			if err != nil {
 				return nil, diag.Wrap(err, diag.CodePackManifestErr, "cannot read pack manifest "+e.Name(), "check file permissions")
 			}
-			objs, err := apply.ParseMultiDoc(raw)
+			// D15: substitute before parsing, on the raw bytes — a plain
+			// text replacement over the manifest source, same as
+			// ExposeURLs does for expose.urls, rather than a structural
+			// walk over the parsed objects.
+			objs, err := apply.ParseMultiDoc([]byte(substitute(string(raw), gw)))
 			if err != nil {
 				return nil, diag.Wrap(err, diag.CodePackManifestErr, p.Name+"/"+e.Name()+" is not valid YAML", "fix the manifest")
 			}
@@ -67,7 +87,7 @@ func (p *Pack) Render(values map[string]any) (*Rendered, error) {
 	}
 
 	if _, err := os.Stat(filepath.Join(p.Dir, "chart.yaml")); err == nil {
-		objs, err := renderHelm(p.Dir, vals)
+		objs, err := renderHelm(p.Dir, vals, gw)
 		if err != nil {
 			return nil, err
 		}

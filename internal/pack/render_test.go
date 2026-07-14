@@ -1,0 +1,80 @@
+package pack
+
+import (
+	"context"
+	"testing"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/rafpe/cube-idp/internal/config"
+)
+
+// TestRenderForSubstitutesGatewayHost pins D15 (spec D15, Owner Decisions
+// #11): RenderFor extends the ${GATEWAY_HOST} expansion ExposeURLs already
+// does over expose.urls to (a) chart.yaml's values: (string leaves, after
+// merging pack defaults with the caller's values) and (b) manifests/*.yaml
+// raw bytes, so URL-bearing packs (backstage, Task 4) can derive their
+// baseUrl/hostnames from the configured gateway instead of hardcoding it.
+func TestRenderForSubstitutesGatewayHost(t *testing.T) {
+	p, err := Fetch(context.Background(), "testdata/gw-sub-pack", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw := config.GatewaySpec{Host: "cube-idp.localtest.me", Port: 8443}
+	r, err := p.RenderFor(nil, gw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var cm, route *unstructured.Unstructured
+	for _, o := range r.Objects {
+		switch o.GetName() {
+		case "gwsub-cm":
+			cm = o
+		case "gwsub-route":
+			route = o
+		}
+	}
+	if cm == nil || route == nil {
+		t.Fatalf("expected both gwsub-cm and gwsub-route objects, got %+v", r.Objects)
+	}
+
+	if got, _, _ := unstructured.NestedString(cm.Object, "data", "baseUrl"); got != "https://cube-idp.localtest.me:8443" {
+		t.Fatalf("chart.yaml values substitution: got %q", got)
+	}
+	if got, _, _ := unstructured.NestedString(route.Object, "data", "host"); got != "cube-idp.localtest.me:8443" {
+		t.Fatalf("manifest ${GATEWAY_HOST} substitution: got %q", got)
+	}
+	if got, _, _ := unstructured.NestedString(route.Object, "data", "fqdn"); got != "cube-idp.localtest.me" {
+		t.Fatalf("manifest ${GATEWAY_FQDN} substitution: got %q", got)
+	}
+}
+
+// TestRenderLeavesLiteralUntouched pins that Render (no gateway) is exactly
+// RenderFor with a zero config.GatewaySpec{} — packs with no
+// ${GATEWAY_HOST}/${GATEWAY_FQDN} tokens render byte-identically to before
+// D15, and packs that DO have the tokens but are rendered via the
+// gateway-less Render entry point see the literal text untouched rather
+// than silently expanding to ":0" or similar.
+func TestRenderLeavesLiteralUntouched(t *testing.T) {
+	p, err := Fetch(context.Background(), "testdata/gw-sub-pack", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := p.Render(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var route *unstructured.Unstructured
+	for _, o := range r.Objects {
+		if o.GetName() == "gwsub-route" {
+			route = o
+		}
+	}
+	if route == nil {
+		t.Fatalf("expected gwsub-route object, got %+v", r.Objects)
+	}
+	if got, _, _ := unstructured.NestedString(route.Object, "data", "host"); got != "${GATEWAY_HOST}" {
+		t.Fatalf("Render(nil) must leave the literal token untouched, got %q", got)
+	}
+}
