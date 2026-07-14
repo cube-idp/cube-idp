@@ -1,6 +1,7 @@
 # cube-idp Phase 3 Implementation Plan
 
-> **STATUS: RECONCILED — Task 0 EXECUTED 2026-07-14 against the live tree.** Ground-truth items 0.1–0.11 verified (drift found and fixed in task bodies: render-cluster's non-creating-provider error already exists as CUBE-0004 `CodeProviderMiss` — the CUBE-1002 allocation is dropped; `requireClusterExists` guards only `"kind"` and must learn `"k3d"` in Task 2; `cmd.Execute(ctx)` receives its signal context from `main.go`; argocd's install.yaml carries `imagePullPolicy: Always` on most containers — Task 7 must flip it; `isLocalRegistryHost` is unexported in `internal/pack`). All Owner Decisions applied to task bodies: Tasks 3/6/7 rewritten onto oras-go v2 with per-image tar bundles + `vendor --platform` (#2), pack `images:` supplement (#3), Task 10a engine-surface merge (#4), `CUBE_IDP_CA` (#5), turnkey envoy-gateway (#7), Task 3.5 = D15 substitution (#11), `pack push --also-tag latest` (#13), inventory merge-vs-replace pre-answered (#14, it MERGES), UX Tasks 14a–14c appended (#15), ghcr namespace swept to `ghcr.io/rafpe/cube-idp` (#1). Remaining `RECONCILE:` markers depend only on dependencies not yet in `go.mod` (k3d v5 API surface, envoy-gateway chart CRD schema) or on future-task outputs.
+> **STATUS: EXECUTED 2026-07-14 — ALL TASKS COMPLETE AND MERGED TO MAIN.** Every task (0, 0.5, 1, 2, 3, 3.5, 4, 5, 6, 7, 8, 9, 10a, 10, 11, 12, 13, 14a, 14b, 14c) implemented via subagent-driven development with per-task spec+quality review gates (fix loops where findings arose), merged with per-merge suite verification; ledger of record: `.superpowers/sdd/progress.md`. All checkboxes below are ticked as executed. **Post-plan e2e fix wave** (bugs only real clusters could find): vendor default platform darwin→linux/<arch>; docker.io `library/` normalization; k3d ExposeAPI.HostPort bound at creation (+ contract suite now dials the API); provider-accurate down message; e2e node-load assertion wording; registry-route waits for HTTPRoute CRD Established (CUBE-5005); helm render `crds/` inclusion (in flight at time of writing — see ledger). **E2E arbiter verdicts:** containerd ACCEPTS per-image OCI-layout tars (bundle offline PASS ×2, 360s); k3d up/down PASS; repo create --deploy PASS (179s); sync one-shot PASS (168s); envoy turnkey pending the crds/ fix. Original reconciliation note follows.
+> Previous status note (kept for history): **RECONCILED — Task 0 EXECUTED 2026-07-14 against the live tree.** Ground-truth items 0.1–0.11 verified (drift found and fixed in task bodies: render-cluster's non-creating-provider error already exists as CUBE-0004 `CodeProviderMiss` — the CUBE-1002 allocation is dropped; `requireClusterExists` guards only `"kind"` and must learn `"k3d"` in Task 2; `cmd.Execute(ctx)` receives its signal context from `main.go`; argocd's install.yaml carries `imagePullPolicy: Always` on most containers — Task 7 must flip it; `isLocalRegistryHost` is unexported in `internal/pack`). All Owner Decisions applied to task bodies: Tasks 3/6/7 rewritten onto oras-go v2 with per-image tar bundles + `vendor --platform` (#2), pack `images:` supplement (#3), Task 10a engine-surface merge (#4), `CUBE_IDP_CA` (#5), turnkey envoy-gateway (#7), Task 3.5 = D15 substitution (#11), `pack push --also-tag latest` (#13), inventory merge-vs-replace pre-answered (#14, it MERGES), UX Tasks 14a–14c appended (#15), ghcr namespace swept to `ghcr.io/rafpe/cube-idp` (#1). Remaining `RECONCILE:` markers depend only on dependencies not yet in `go.mod` (k3d v5 API surface, envoy-gateway chart CRD schema) or on future-task outputs.
 > Previous status note (kept for history): **DRAFT — PARTIALLY RECONCILED 2026-07-14 against the EXECUTED Phase 2** (commits `0522799..ccd8785`, all Phase 2 tasks complete incl. the UX addendum; execution record `.superpowers/sdd/progress.md`). This reconciliation pass fixed the CUBE-code collisions (3006→**3007**, 4011→**4015**, 1002 confirmed free), corrected the dependency posture (fluxcd/pkg/oci is GONE), pinned the gateway node port to **30443**, and added the "Phase 2 Ground Truth" section after Task 0 pre-answering checkpoints 0.1–0.11 plus a new **Task 0.5 (Phase 2 debt paydown)**. Task 0 remains blocking at execution start — it verifies the ground-truth section against the then-current tree and applies the recorded body rewrites (Task 6's lock-schema swap, Task 3's oras rewrite) before any task runs.
 > **MANDATORY GATE — RECONCILE AFTER PHASE 2:** This draft was written before Phases 1 and 2 were implemented (Phase 2 exists only as its own pre-implementation draft, `2026-07-13-cube-idp-phase2-draft.md`, which will itself change during its reconciliation). Phase 3 builds on BOTH. Before executing ANY task, the consuming agent MUST complete the **"Task 0: Reconciliation Gate"** below and update this plan to match the actual post-Phase-2 codebase (including the final Phase 2 plan, which is itself a draft that will change during reconciliation). Executing a task whose reconcile checkpoint has not been verified is a plan violation.
 >
@@ -190,7 +191,7 @@ package contracttest
 func Run(t *testing.T, p cluster.Provider, spec config.ClusterSpec)
 ```
 
-- [ ] **Step 1: Write the suite (it IS the test — there is no implementation to fail against first; TDD here means the suite must fail against a deliberately broken fake before trusting it)**
+- [x] **Step 1: Write the suite (it IS the test — there is no implementation to fail against first; TDD here means the suite must fail against a deliberately broken fake before trusting it)**
 
 `internal/cluster/contracttest/contracttest.go`:
 
@@ -274,11 +275,11 @@ func Run(t *testing.T, p cluster.Provider, spec config.ClusterSpec) {
 
 RESOLVED 2026-07-14: `diag.SeverityError Severity = "error"` exists (`internal/diag/diag.go`) — the snippet above already compares against the constant.
 
-- [ ] **Step 2: Verify the suite catches a broken provider**
+- [x] **Step 2: Verify the suite catches a broken provider**
 
 Temporarily (in a scratch `_test.go`, not committed) run `Run` against a stub whose `Ensure` returns `(&kube.Conn{}, nil)` and whose `Exists` always returns false, with `CUBE_IDP_PROVIDER_E2E=1`: the suite must FAIL at "unusable Conn". Delete the scratch file after confirming.
 
-- [ ] **Step 3: Wire kind as the first consumer**
+- [x] **Step 3: Wire kind as the first consumer**
 
 `internal/cluster/kindp/contract_test.go`:
 
@@ -301,12 +302,12 @@ func TestKindProviderContract(t *testing.T) {
 
 RESOLVED 2026-07-14: `kindp.New(gw config.GatewaySpec) *Kind` confirmed; `KubernetesVersion` default is `"v1.33.1"` (filled by `config.Load` for cluster-creating providers — see `internal/config/schema.cue` comment).
 
-- [ ] **Step 4: Run**
+- [x] **Step 4: Run**
 
 Run: `go test ./internal/cluster/... -short -v` — contract test SKIPs (gate unset), everything else PASSes.
 Then locally once: `CUBE_IDP_PROVIDER_E2E=1 go test ./internal/cluster/kindp/ -run TestKindProviderContract -v -timeout 15m` — PASS against a real runtime.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "test: shared ClusterProvider contract suite; kind is the first consumer"
@@ -352,7 +353,7 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, z
 //             traefik -> CUBE-1301; unreadable/invalid providerConfig -> CUBE-1302
 ```
 
-- [ ] **Step 1: Extend the config schema with a failing test**
+- [x] **Step 1: Extend the config schema with a failing test**
 
 Add to `internal/config/load_test.go` (helpers verified 2026-07-14: `codeOf(t, err) diag.Code` exists and is the file's convention):
 
@@ -382,7 +383,7 @@ spec:
 
 Run: `go test ./internal/config/ -run TestLoadAcceptsK3dProvider -v` — FAIL (CUE rejects `k3d`).
 
-- [ ] **Step 2: Widen the schema and factory**
+- [x] **Step 2: Widen the schema and factory**
 
 In `internal/config/schema.cue`: `provider: *"kind" | "existing"` → `provider: *"kind" | "existing" | "k3d"`. RESOLVED 2026-07-14: the current disjunction is exactly `provider: *"kind" | "existing"` (schema.cue line 9), and `crossValidate` (`internal/config/load.go`) rejects node fields ONLY for `provider == "existing"` (CUBE-1003 `CodeClusterSetupFailed`) — k3d gets node fields for free, no crossValidate change needed. Also update `crossValidate`'s remediation text "switch to provider: kind" → "switch to provider: kind or k3d".
 
@@ -397,7 +398,7 @@ In `internal/cluster/provider.go` factory, add the case and fix the `CUBE-1001` 
 
 Run: `go test ./internal/config/ ./internal/cluster/ -short -v` — config PASSes; cluster fails to build until k3dp exists (that is the next failing state, expected).
 
-- [ ] **Step 3: Write the failing merge tests**
+- [x] **Step 3: Write the failing merge tests**
 
 `internal/cluster/k3dp/merge_test.go` — same golden-file pattern as kindp (Phase 1 Task 5):
 
@@ -506,7 +507,7 @@ Golden fixtures: same protocol as kindp — generate on first run with a tempora
 
 Run: `go test ./internal/cluster/k3dp/ -v` — FAIL (package does not exist).
 
-- [ ] **Step 4: Implement merge.go**
+- [x] **Step 4: Implement merge.go**
 
 ```bash
 go get github.com/k3d-io/k3d/v5@latest
@@ -708,7 +709,7 @@ const GatewayNodePort = 30443 // RESOLVED 2026-07-14: traefik websecure HTTPS No
 
 and change `kindp` + `k3dp` to reference `cluster.GatewayNodePort` (delete the local constants). Run kindp's tests to prove the refactor is behavior-neutral.
 
-- [ ] **Step 5: Implement k3d.go (provider around the merge)**
+- [x] **Step 5: Implement k3d.go (provider around the merge)**
 
 `internal/cluster/k3dp/k3d.go` — mirrors `kindp/kind.go` exactly in shape (kindp method set verified 2026-07-14: `New/Ensure/Exists/Delete/Kubeconfig/Diagnose` + the private `certsD()` injection helper — k3dp's equivalent builds the `ZotMirror`; note `trust.EnsureCA` must have run, which `up.Run` guarantees before `Ensure`, same as kindp). Contract, with the k3d library specifics spelled out:
 
@@ -753,7 +754,7 @@ package k3dp
 
 Write the real implementation (~120 lines) following that contract. It must satisfy `var _ cluster.Provider = (*K3d)(nil)` — add that compile-time assertion at the top of the file.
 
-- [ ] **Step 6: render-cluster for k3d + the k3d guard in requireClusterExists**
+- [x] **Step 6: render-cluster for k3d + the k3d guard in requireClusterExists**
 
 In `cmd/config.go`, replace the kind-only guard with a provider switch (current body verified 2026-07-14: it returns `diag.CodeProviderMiss` for non-kind and calls `kindp.RenderConfig(..., kindp.CertsD{})` — keep BOTH conventions):
 
@@ -772,14 +773,14 @@ In `cmd/config.go`, replace the kind-only guard with a provider switch (current 
 
 Also in this step (drift found by Task 0): `cmd/root.go`'s `requireClusterExists` guards side-effect-free commands with `if provider != "kind" { return nil }` — k3d's `Ensure` also CREATES missing clusters, so change the guard to cover both cluster-creating providers (`provider != "kind" && provider != "k3d"`), keeping the CUBE-1004 error text generic ("%s cluster %q does not exist").
 
-- [ ] **Step 7: Contract test + full run**
+- [x] **Step 7: Contract test + full run**
 
 `internal/cluster/k3dp/contract_test.go` — identical shape to Task 1 Step 3 with `k3dp.New(gw)` and `Provider: "k3d"`.
 
 Run: `go test ./internal/... ./cmd/ -short -v && go build ./...` — PASS.
 Then locally once: `CUBE_IDP_PROVIDER_E2E=1 go test ./internal/cluster/k3dp/ -run TestK3dProviderContract -v -timeout 15m` — PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A && git commit -m "feat: k3d cluster provider with D10 two-layer merge and render-cluster support"
@@ -816,7 +817,7 @@ func PushPackDir(ctx context.Context, dir, ociRef string, alsoTags ...string) (d
 
 CLI: `cube-idp pack push <dir> <oci-ref> [--also-tag <tag>]` — prints the pushed digest. Tag defaulting: if `<oci-ref>` has no `:tag`, use the pack's `version` from `pack.cue` (RESOLVED 2026-07-14: `pack.Fetch(ctx, dir, cacheDir)` on a local dir returns `*pack.Pack{Name, Version, Dir, Pinned}` and ignores `cacheDir` for local paths — reuse it rather than re-parsing CUE).
 
-- [ ] **Step 1: Write the failing round-trip test**
+- [x] **Step 1: Write the failing round-trip test**
 
 `internal/oci/pushdir_test.go`:
 
@@ -899,12 +900,12 @@ func TestPushPackDirRoundTripsThroughFetch(t *testing.T) {
 
 (`httptest` registries serve plain HTTP on `127.0.0.1` — this exercises the same insecure-transport path the zot tunnel uses. RESOLVED 2026-07-14: `pack`'s `isLocalRegistryHost` strips the port before comparing, so `127.0.0.1:<randomport>` already matches; `PushPackDir` gets an identical helper in `internal/oci`.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/oci/ -run TestPushPackDirRoundTrips -v`
 Expected: FAIL (`PushPackDir` undefined)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```bash
 go get github.com/google/go-containerregistry@latest
@@ -1010,12 +1011,12 @@ func newPackCmd() *cobra.Command {
 
 Register `root.AddCommand(newPackCmd())` in `cmd/root.go`'s `NewRootCmd` (pattern verified 2026-07-14). RESOLVED 2026-07-14: `pack.Fetch` ignores `cacheDir` for local directory paths (the `default:` branch in `source.go` never touches it) — empty string is fine.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `go test ./internal/oci/ ./cmd/ -short -v && go build ./...`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "feat: pack push command — publish pack directories as OCI artifacts"
@@ -1049,10 +1050,10 @@ package pack
 func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendered, error)
 ```
 
-- [ ] **Step 1: Failing test** — a fixture pack whose `chart.yaml` values and one manifest both contain `${GATEWAY_HOST}`; `RenderFor(nil, gw{Host: "cube-idp.localtest.me", Port: 8443})` must render `cube-idp.localtest.me:8443` in both places; `Render(nil)` must leave the literal untouched. Run — FAIL.
-- [ ] **Step 2: Implement** — extract the host-string + substitute helpers from `ExposeURLs` (behavior-neutral refactor, expose tests prove it), apply in the render path (values walk for string leaves; manifest bytes before YAML parse). Wire `up.Run` (which already has `cube.Spec.Gateway`) to call `RenderFor`. Run — PASS.
-- [ ] **Step 3: Run full tests** — `go build ./... && go test ./... -short` (existing packs contain no `${GATEWAY_HOST}` in values/manifests except gitea's expose block, which is untouched — byte-stable outputs survive).
-- [ ] **Step 4: Commit**
+- [x] **Step 1: Failing test** — a fixture pack whose `chart.yaml` values and one manifest both contain `${GATEWAY_HOST}`; `RenderFor(nil, gw{Host: "cube-idp.localtest.me", Port: 8443})` must render `cube-idp.localtest.me:8443` in both places; `Render(nil)` must leave the literal untouched. Run — FAIL.
+- [x] **Step 2: Implement** — extract the host-string + substitute helpers from `ExposeURLs` (behavior-neutral refactor, expose tests prove it), apply in the render path (values walk for string leaves; manifest bytes before YAML parse). Wire `up.Run` (which already has `cube.Spec.Gateway`) to call `RenderFor`. Run — PASS.
+- [x] **Step 3: Run full tests** — `go build ./... && go test ./... -short` (existing packs contain no `${GATEWAY_HOST}` in values/manifests except gitea's expose block, which is untouched — byte-stable outputs survive).
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A && git commit -m "feat: D15 — \${GATEWAY_HOST} substitution over chart values and manifests"
@@ -1208,7 +1209,7 @@ spec:
 
 (`${GATEWAY_FQDN}` — bare host, no port — because Gateway API hostnames cannot carry ports; `${GATEWAY_HOST}` keeps its host[:port] semantics for URLs, matching the gitea `expose:` block. Both defined in Task 3.5. Also add an `expose:` block to `packs/backstage/pack.cue`: `urls: ["https://backstage.${GATEWAY_HOST}"]`.)
 
-- [ ] **Step 1: Extend the render smoke test (failing first)**
+- [x] **Step 1: Extend the render smoke test (failing first)**
 
 In `tests/packs_render_test.go`, extend the pack-dir list:
 
@@ -1222,12 +1223,12 @@ In `tests/packs_render_test.go`, extend the pack-dir list:
 
 Run: `go test ./tests/ -run TestStarterPacksRender -v` — FAIL (dirs missing).
 
-- [ ] **Step 2: Create the four pack directories exactly as above; run the test**
+- [x] **Step 2: Create the four pack directories exactly as above; run the test**
 
 Run: `go test ./tests/ -run TestStarterPacksRender -v` (network required for helm pulls)
 Expected: PASS — every pack renders ≥1 object. While here, eyeball each render for a sane namespace and (where routed) an HTTPRoute.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A && git commit -m "feat: catalog packs — backstage, cert-manager, external-secrets, envoy-gateway"
@@ -1246,7 +1247,7 @@ Phase 1 Task 13 noted: `init` writes `oci://ghcr.io/cube-idp/packs/...` refs tha
 - Modify: `internal/config/types.go` (`Default` — only if the ghcr namespace decision changes the refs), `README.md` (published-pack refs section)
 - Test: `internal/config/load_test.go` (`TestDefaultProfileIncludesGitea` pins the exact ref — update it in lockstep with `Default`)
 
-- [ ] **Step 1: Workflow**
+- [x] **Step 1: Workflow**
 
 `.github/workflows/release-packs.yaml`:
 
@@ -1287,20 +1288,20 @@ jobs:
 
 (The sed/version-extraction double-push from the original draft is DELETED per Owner Decisions #13 — `pack push --also-tag latest` applies both tags to one pushed manifest.)
 
-- [ ] **Step 2: Align `config.Default` with the published refs**
+- [x] **Step 2: Align `config.Default` with the published refs**
 
 Phase 1's `Default` emits `oci://ghcr.io/cube-idp/packs/{gitea,argocd}:0.1.0` (verified 2026-07-14, `internal/config/types.go` ~lines 125–126). Change both refs to `oci://ghcr.io/rafpe/cube-idp/packs/{gitea,argocd}:0.1.0` (pack.cue versions verified `0.1.0` — refs resolve once the workflow's first run publishes). Update `TestDefaultProfileIncludesGitea` alongside.
 
 Keep `init --local` (it stays valuable for offline dev and hermetic e2e) but change its help text: `"use repo-local pack paths instead of published OCI refs"`.
 
-- [ ] **Step 3: Verify end-to-end once, manually**
+- [x] **Step 3: Verify end-to-end once, manually**
 
 After the workflow's first green run on `main` (or a `workflow_dispatch`):
 
 Run: `go run . init --name pubtest && go run . up` in a scratch dir (docker required)
 Expected: `up` fetches gitea/argocd packs from ghcr (watch for the fetch step lines) and completes. Then `go run . down`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A && git commit -m "feat: CI publishes catalog packs to ghcr; init default refs resolve for real"
@@ -1371,7 +1372,7 @@ func (o *Opened) Verify() error                         // every lock pack + ima
 func (o *Opened) Close()                                // removes the temp dir
 ```
 
-- [ ] **Step 0 (preparatory commit — Owner Decisions #3, spec D14): pack-declared runtime `images:` merged into the lock**
+- [x] **Step 0 (preparatory commit — Owner Decisions #3, spec D14): pack-declared runtime `images:` merged into the lock**
 
 The air-gap blind spot: operator-style packs (envoy-gateway's proxy, others later) pull images that never appear in rendered manifests, so `lock.ImagesFrom(rendered.Objects)` misses them. Fix at the source, in three small pieces, each TDD'd:
 
@@ -1381,7 +1382,7 @@ The air-gap blind spot: operator-style packs (envoy-gateway's proxy, others late
 
 Commit: `git commit -m "feat: D14 — pack-declared runtime images merged into cube.lock entries"`. Task 4's envoy-gateway pack declares its proxy image; this task's vendor consumes `Entry.Images` unchanged.
 
-- [ ] **Step 1: Write the failing tests (round-trip on a synthetic lock, no network)**
+- [x] **Step 1: Write the failing tests (round-trip on a synthetic lock, no network)**
 
 `internal/bundle/bundle_test.go`:
 
@@ -1466,7 +1467,7 @@ func TestVerifyDetectsTampering(t *testing.T) {
 
 Run: `go test ./internal/bundle/ -v` — FAIL (package does not exist).
 
-- [ ] **Step 2: Implement bundle.go + vendor.go**
+- [x] **Step 2: Implement bundle.go + vendor.go**
 
 `internal/bundle/vendor.go` core (pure oras-go v2 — go-containerregistry appears ONLY in `_test.go`, Owner Decisions #2):
 
@@ -1574,11 +1575,11 @@ Helpers to write fully in `bundle.go` (each is standard-library or oras mechanic
 
 (RESOLVED 2026-07-14: `pack.Fetch` already accepts `oci://host/repo@sha256:…` — `pullOCI` passes `repo.Reference.Reference` (tag OR digest) to `oras.Copy`. No source.go change needed.)
 
-- [ ] **Step 3: Image-path test with the local registry**
+- [x] **Step 3: Image-path test with the local registry**
 
 Add to `bundle_test.go` a case where the lock's entry lists one image hosted on the in-process test registry (push a tiny image from the `_test.go` side with go-containerregistry — `crane.Push(random.Image(64, 1), …)` — test-only dependency per Owner Decisions #2), vendor it, open the bundle, and assert `ImageTars()` maps the original ref to an existing `.tar` whose contents include an `index.json` (it is an OCI layout tar). Add a second case pinning `--platform`: vendor with an explicit `platform` matching the pushed image's config and assert success (the mismatch path is covered by oras's own error → CUBE-7002 wrap, asserted with a bogus platform string).
 
-- [ ] **Step 4: Command**
+- [x] **Step 4: Command**
 
 `cmd/vendor.go`:
 
@@ -1609,12 +1610,12 @@ func newVendorCmd() *cobra.Command {
 
 Register in `cmd/root.go`.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `go test ./internal/bundle/ -v && go build ./...`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "feat: vendor command — cube.lock-driven air-gap bundle (packs + images, verified)"
@@ -1660,7 +1661,7 @@ func Run(ctx context.Context, opts Options) error
 // updating the existing callers (cmd/up.go, e2e-exercised paths).
 ```
 
-- [ ] **Step 1: Failing test for bundle-mode ref resolution (pure)**
+- [x] **Step 1: Failing test for bundle-mode ref resolution (pure)**
 
 The core offline rule is a pure function: given the cube's pack refs and an opened bundle, every `oci://`/git ref must resolve to a bundle dir or fail loudly. Factor it as `up.resolveBundleRefs`:
 
@@ -1703,7 +1704,7 @@ Pack-name extraction: RESOLVED 2026-07-14 — the real lock stores name↔ref pa
 
 Run: `go test ./internal/up/ -run TestResolveBundleRefs -v` — FAIL.
 
-- [ ] **Step 2: Implement bundle mode in up.Run**
+- [x] **Step 2: Implement bundle mode in up.Run**
 
 Wire into the existing orchestration (spec §4.3 sequence), adding exactly three deviations when `opts.Bundle != ""`:
 
@@ -1758,7 +1759,7 @@ Deviation 3 — before the pack loop, rewrite refs through the bundle:
 
 Everything downstream is unchanged: local-dir fetch → render → push to zot (the zot push is in-cluster delivery, not internet) → Deliver. The engine + zot images were loaded in deviation 2, so their pods start without pulling. RESOLVED 2026-07-14 (drift found): flux's `install.yaml` is `IfNotPresent` and zot's manifest pins `v2.1.2` with no explicit policy (default `IfNotPresent`) — fine; but **argocd's `install.yaml` says `imagePullPolicy: Always` on most containers**, which would ignore node-loaded images. Fix in THIS task by flipping them in `hack/gen-argocd-manifests.sh` (the script must inject the change so regeneration keeps it — coordinate with Task 0.5(a)'s reproducibility guard), regenerate, and diff-verify.
 
-- [ ] **Step 3: Implement LoadImages for kindp and k3dp**
+- [x] **Step 3: Implement LoadImages for kindp and k3dp**
 
 The bundle already stores per-image tars (Task 6, Owner Decisions #2), and both loaders consume tars directly — the layout→archive conversion step from the original draft is GONE, and `internal/bundle/load.go` shrinks to iterating `imageTars` in sorted-ref order (deterministic progress output) and handing each path to the provider:
 
@@ -1784,16 +1785,16 @@ The bundle already stores per-image tars (Task 6, Owner Decisions #2), and both 
 
 Write both implementations fully per those recipes; add `var _ cluster.ImageLoader = (*Kind)(nil)` / `(*K3d)(nil)` assertions.
 
-- [ ] **Step 4: Flag wiring**
+- [x] **Step 4: Flag wiring**
 
 `cmd/up.go`: add `c.Flags().StringVar(&bundlePath, "bundle", "", "install fully offline from a cube-idp vendor bundle")` and pass `up.Options{ConfigPath: file, Bundle: bundlePath, Out: c.OutOrStdout()}`.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `go test ./internal/up/ ./internal/bundle/ -short -v && go build ./...`
 Expected: PASS (full offline proof lands in Task 13's e2e).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "feat: up --bundle — offline install from a vendor bundle (image node-loading, ref pinning)"
@@ -1840,7 +1841,7 @@ func EnsureTrusted(name, path string, interactive bool) error
 func Trust(name, path string) error // records the current sha256 unconditionally (used by `plugin trust` and Task 9's verified installs)
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `internal/plugin/plugin_test.go`:
 
@@ -1933,7 +1934,7 @@ func TestTrustDetectsChangedBinary(t *testing.T) {
 
 Run: `go test ./internal/plugin/ -v` — FAIL (package does not exist).
 
-- [ ] **Step 2: Implement discover.go / trust.go / exec.go**
+- [x] **Step 2: Implement discover.go / trust.go / exec.go**
 
 `discover.go` — `Lookup` walks `$PATH` entries + `InstallDir()` with `exec.LookPath` semantics (must be executable); `List` globs both for the `cube-idp-*` prefix. `trust.go` — trust file at `os.UserConfigDir()/cube-idp/trust.json`; `sha256File(path)`; `EnsureTrusted` per the contract above, with the interactive prompt written to stderr:
 
@@ -1978,7 +1979,7 @@ func Exec(ctx context.Context, path string, args []string, env Env) error {
 }
 ```
 
-- [ ] **Step 3: Root-command fallthrough + env assembly**
+- [x] **Step 3: Root-command fallthrough + env assembly**
 
 In `cmd/root.go`'s `Execute` (real shape verified 2026-07-14 — signal wiring stays in `main.go`, which passes the SIGINT/SIGTERM-cancelable ctx in):
 
@@ -2003,12 +2004,12 @@ func Execute(ctx context.Context) error {
 
 `cmd/plugin.go` — `plugin list` (table: NAME / PATH / TRUSTED via `plugin.List()`) and `plugin trust <name>` (`Lookup` → `Trust`, printing the recorded sha256; `CUBE-7101` if not found). Register in root.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `go test ./internal/plugin/ ./cmd/ -short -v && go build ./...`
 Expected: PASS. Manual check: `go build -o /tmp/cube-idp . && PATH=/tmp/fakeplug:$PATH /tmp/cube-idp hello` prompts for trust, runs, and `cube-idp nosuch` renders CUBE-7101.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "feat: exec-plugin discovery, env contract, and first-run trust store (spec 4.4 tier 2)"
@@ -2060,7 +2061,7 @@ type Platform struct {
 func Install(ctx context.Context, indexURL, name string) error
 ```
 
-- [ ] **Step 1: Write the failing tests (local git repo + httptest server — no network)**
+- [x] **Step 1: Write the failing tests (local git repo + httptest server — no network)**
 
 `internal/plugin/index_test.go`:
 
@@ -2179,7 +2180,7 @@ func TestInstallUnknownPlugin(t *testing.T) {
 
 Run: `go test ./internal/plugin/ -run TestInstall -v` — FAIL (`Install` undefined).
 
-- [ ] **Step 2: Implement index.go**
+- [x] **Step 2: Implement index.go**
 
 Mechanics (write in full; every failure path shown gets the stated code):
 
@@ -2190,7 +2191,7 @@ Mechanics (write in full; every failure path shown gets the stated code):
 5. Extract only the `Bin` entry from the tar.gz (path-traversal guard: reject `..` and absolute names), write to `InstallDir()/cube-idp-<name>` with `0o755` via temp-file + rename (atomic; never leave a half-written executable).
 6. `Trust(name, installedPath)`.
 
-- [ ] **Step 3: `plugin install` command**
+- [x] **Step 3: `plugin install` command**
 
 In `cmd/plugin.go`:
 
@@ -2213,12 +2214,12 @@ In `cmd/plugin.go`:
 
 (RESOLVED 2026-07-14, Owner Decisions #8: no default index repo yet — the empty-check ships as drafted; create the real index repo when the first real plugin exists, then revisit with a plan amendment.)
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `go test ./internal/plugin/ -v && go build ./...`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "feat: plugin install from sha256-pinned git index with auto-trust on verified installs"
@@ -2263,7 +2264,7 @@ Engine interface {
 }
 ```
 
-- [ ] **Step 1: Failing shape tests — Poke (both engines)**
+- [x] **Step 1: Failing shape tests — Poke (both engines)**
 
 Flux (`internal/engine/flux/…_test.go` — place next to the existing Deliver tests):
 
@@ -2282,7 +2283,7 @@ func TestPokePatchesOCIRepositoryAnnotation(t *testing.T) {
 
 Argo CD equivalent asserts `argocd.argoproj.io/refresh: "normal"` on the pack's Application (name `cube-idp-demo`, ns `argocd` — verified naming). Run — FAIL (methods undefined).
 
-- [ ] **Step 2: Failing shape tests — DeliverGit (both engines)**
+- [x] **Step 2: Failing shape tests — DeliverGit (both engines)**
 
 Flux shape test (next to the Deliver tests):
 
@@ -2304,22 +2305,22 @@ func TestDeliverGitShapesFluxObjects(t *testing.T) {
 
 Argo CD: one `Application` named `cube-idp-<name>` in ns `argocd` with `spec.source.repoURL/targetRevision/path` and the verified Deliver scaffolding otherwise unchanged. Run — FAIL.
 
-- [ ] **Step 3: Implement (both engines)**
+- [x] **Step 3: Implement (both engines)**
 
 Flux `Poke` (~20 lines): `a.Client().Get` the OCIRepository `cube-idp-<packName>` in `flux-system` (naming verified — `"cube-idp-" + r.Name`), set annotation `reconcile.fluxcd.io/requestedAt: time.Now().Format(time.RFC3339Nano)`, `a.Client().Update`; if the OCIRepository is NotFound, try the GitRepository of the same name (git deliveries); both NotFound → `diag.New("CUBE-3007", fmt.Sprintf("pack %q has no delivery source to poke", packName), "run `cube-idp sync <dir>` or `cube-idp up` first — Poke only refreshes an existing delivery")`. Argo CD mirrors this on the Application with its refresh annotation (one shape covers both delivery kinds).
 
 Flux `DeliverGit` mirrors `Deliver` with a `source.toolkit.fluxcd.io/v1` `GitRepository` (`spec.url`, `spec.ref.branch`, `interval: 30s`) + a `Kustomization` whose `sourceRef.kind` is `GitRepository` and `spec.path` is `src.Path`. Argo CD: copy the verified Application scaffolding from `deliver.go`, changing only the source block to `repoURL/targetRevision/path`.
 
-- [ ] **Step 4: Contract-suite cases (both engines, same commit series)**
+- [x] **Step 4: Contract-suite cases (both engines, same commit series)**
 
 In `internal/engine/contract/contract.go` add: a `deliver_git_returns_addressable_objects` case (both engines produce applyable, kind/name/namespace-complete objects for the same `GitSource`, referencing the URL and branch) and a `poke_is_idempotent` envtest case (Deliver a fake pack, apply, `Poke` twice — no error both times; a `Poke` of an undelivered pack is CUBE-3007). Both engines' existing `contract_test.go` registrations pick the cases up automatically.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `go test ./internal/engine/... -short -v && go build ./... && make test-engines` (envtest legs)
 Expected: PASS for BOTH engines.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "feat: engine surface — Poke and DeliverGit across both engines with contract coverage"
@@ -2368,7 +2369,7 @@ type Deps struct { // assembled by cmd/sync.go from cube.yaml, injected for test
 }
 ```
 
-- [ ] **Step 1: Failing test — pack synthesis for bare manifest dirs**
+- [x] **Step 1: Failing test — pack synthesis for bare manifest dirs**
 
 `internal/syncer/syncer_test.go`:
 
@@ -2414,11 +2415,11 @@ RESOLVED 2026-07-14: `pack.Pack`'s fields ARE exported (`Name, Version, Dir, Pin
 
 Run: `go test ./internal/syncer/ -v` — FAIL.
 
-- [ ] **Step 2: Implement kube.PortForward + the registry delegate**
+- [x] **Step 2: Implement kube.PortForward + the registry delegate**
 
 `internal/kube/portforward.go`: move Phase 1's `registry.PortForward` body, parameterizing `ns`, `selector` (label selector string), `podPort`; `internal/registry/portforward.go` becomes a two-line delegate (`kube.PortForward(ctx, cfg, "cube-idp-system", "app=zot", 5000)`) wrapped with the existing `CUBE-5002` diag. Run the registry package's tests to prove neutrality.
 
-- [ ] **Step 3: Implement SyncOnce (consuming Task 10a's Poke) + the PushRendered digest return**
+- [x] **Step 3: Implement SyncOnce (consuming Task 10a's Poke) + the PushRendered digest return**
 
 `internal/syncer/syncer.go`:
 
@@ -2446,12 +2447,12 @@ Write it in full (~60 lines) following that sequence; every step's error is alre
 
 `cmd/sync.go` — assembles `Deps` exactly like `status`/`down` connect (config → provider Ensure → Applier → engine factory), takes `<dir>` as `cobra.ExactArgs(1)`, prints `✔ synced <name>@<version> — engine reconciling`. The `--watch` flag lands in Task 11; declare it now, and until Task 11 make `--watch` return `diag.New("CUBE-7202", "watch mode lands in the next task of this plan", "run without --watch")` so the flag surface is stable — remove that stub in Task 11.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `go test ./internal/syncer/ ./internal/oci/ ./internal/kube/ ./internal/registry/ -short -v && go build ./...`
 Expected: PASS (Task 10a already proved the engine surface; this task's tests cover synthesis, port-forward neutrality, and the digest return).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "feat: generic port-forward and one-shot sync command (D7 groundwork)"
@@ -2482,7 +2483,7 @@ package syncer
 func Watch(ctx context.Context, deps Deps, dir string, debounce time.Duration) error
 ```
 
-- [ ] **Step 1: Write the failing test (fake sync fn — the loop is what's under test)**
+- [x] **Step 1: Write the failing test (fake sync fn — the loop is what's under test)**
 
 Refactor seam: `Watch` calls an injectable `syncFn func(context.Context) error` field on `Deps` (defaulting to a `SyncOnce` closure) so the loop is testable without a cluster.
 
@@ -2565,7 +2566,7 @@ func waitFor(t *testing.T, cond func() bool, what string) {
 
 Run: `go test ./internal/syncer/ -run TestWatch -v` — FAIL.
 
-- [ ] **Step 2: Implement watch.go**
+- [x] **Step 2: Implement watch.go**
 
 ```bash
 go get github.com/fsnotify/fsnotify@latest
@@ -2666,16 +2667,16 @@ func ignored(path string) bool {
 
 Digest-skip: inside the real `SyncOnce` closure path, keep the last pushed digest in `Deps` (small mutable field set by `SyncOnce`'s caller loop) and print `▸ [sync] no manifest changes — skipped push` when the new digest equals the last (uses `ArtifactRef.Digest`, the extension Task 10 Step 3 lands — RESOLVED, the extension stays).
 
-- [ ] **Step 3: Activate `--watch` in cmd/sync.go**
+- [x] **Step 3: Activate `--watch` in cmd/sync.go**
 
 Replace the Task 10 stub: `--watch` calls `syncer.Watch(c.Context(), deps, dir, 300*time.Millisecond)`. The command's help text documents D7's boundary: "Git-push-based deployment flows are provided by the gitea pack (`cube-idp repo create`), not by sync — sync pushes OCI artifacts directly."
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `go test ./internal/syncer/ -v && go build ./...`
 Expected: PASS. Manual smoke (cluster required): `cube-idp up`, `cube-idp sync ./somepack --watch`, edit a manifest, watch the engine pick it up in seconds (Poke) rather than minutes (interval).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "feat: sync --watch — debounced fsnotify loop with loud non-fatal failures (D7)"
@@ -2709,7 +2710,7 @@ func (c *Client) EnsureRepo(ctx context.Context, name string) (*Repo, error)
 type Repo struct{ Owner, Name, CloneURL, DefaultBranch string }
 ```
 
-- [ ] **Step 1: Failing tests — gitea client against httptest**
+- [x] **Step 1: Failing tests — gitea client against httptest**
 
 `internal/gitea/client_test.go`:
 
@@ -2795,11 +2796,11 @@ func TestEnsureRepoBadCredentials(t *testing.T) {
 
 Run: `go test ./internal/gitea/ -v` — FAIL.
 
-- [ ] **Step 2: Implement the gitea client**
+- [x] **Step 2: Implement the gitea client**
 
 `internal/gitea/client.go` (~90 lines): `EnsureRepo` POSTs `/api/v1/user/repos` with `{"name": name, "auto_init": true, "private": false, "default_branch": "main"}` and basic auth, 10 s request timeout (deadline rule); `201` → decode; `409` → GET `/api/v1/repos/<user>/<name>`; anything else (incl. 401) → `diag.New("CUBE-7302", fmt.Sprintf("Gitea API returned %s for %s", resp.Status, r.URL.Path), "check the gitea pod (`kubectl -n gitea get pods`) and credentials (`cube-idp get secrets -p gitea`)")`.
 
-- [ ] **Step 3: The command**
+- [x] **Step 3: The command**
 
 `cmd/repo.go`:
 
@@ -2844,12 +2845,12 @@ package cmd
 
 Write it in full following that sequence; register in root.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `go test ./internal/gitea/ ./cmd/ -short -v && go build ./...`
 Expected: PASS (the engine surface was proven in Task 10a).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "feat: repo create — Gitea repo plus engine git source in one command"
@@ -2865,7 +2866,7 @@ git add -A && git commit -m "feat: repo create — Gitea repo plus engine git so
 - Create: `tests/e2e/phase3_test.go`
 - Modify: `.github/workflows/ci.yaml`, `README.md`
 
-- [ ] **Step 1: E2E additions (gated by CUBE_IDP_E2E=1, reusing the Phase 1 harness helpers)**
+- [x] **Step 1: E2E additions (gated by CUBE_IDP_E2E=1, reusing the Phase 1 harness helpers)**
 
 `tests/e2e/phase3_test.go` — five scenarios (write them fully; helper signatures resolved above — `build(t)`, `run(t, dir, bin, args...)`):
 
@@ -2902,7 +2903,7 @@ git add -A && git commit -m "feat: repo create — Gitea repo plus engine git so
 //    the turnkey Gateway + NodePort-30443 parity wiring from Task 4.
 ```
 
-- [ ] **Step 2: CI matrix + plugin/vendor units in CI**
+- [x] **Step 2: CI matrix + plugin/vendor units in CI**
 
 `.github/workflows/ci.yaml` e2e job gains the provider dimension MERGED into the existing engine matrix (verified 2026-07-14: the shipped job already has `matrix.engine: [flux, argocd]` and passes `CUBE_IDP_E2E_ENGINE` — extend, do not overwrite):
 
@@ -2924,11 +2925,11 @@ git add -A && git commit -m "feat: repo create — Gitea repo plus engine git so
 
 …and the e2e harness reads `CUBE_IDP_E2E_PROVIDER` to pick the provider it writes into cube.yaml (default kind). Unit job: no change needed — the new packages all run under `go test ./... -short` (registry/git/httptest fakes, no network).
 
-- [ ] **Step 3: README**
+- [x] **Step 3: README**
 
 Add sections (each a short paragraph + one example block): k3d provider (`provider: k3d`, render-cluster works for it), air-gap (`vendor [--platform]` → carry the tarball → `up --bundle`), plugins (naming convention, env contract table incl. `CUBE_IDP_CA`, trust model, `plugin install --index`; note that zot is also reachable from the host at `https://registry.<gateway.host>` with `CUBE_IDP_CA` as the trust anchor — Owner Decisions #5), `sync --watch` (D7, with the "git flows live in the gitea pack" boundary), `repo create` quickstart, published pack refs (`ghcr.io/rafpe/cube-idp/packs/...`), and the `mounts:`-based node-image cache recipe (Owner Decisions #9 / Task 0.5j — if 0.5j already wrote it, just cross-link).
 
-- [ ] **Step 4: Full verification + commit**
+- [x] **Step 4: Full verification + commit**
 
 Run: `go vet ./... && go test ./... -short && make test-apply && CUBE_IDP_E2E=1 go test ./tests/e2e/ -v -timeout 35m` (locally, docker required; then confirm both matrix legs green in CI).
 
@@ -2955,8 +2956,8 @@ The doc translates research §3 ("one event stream, three renderers") + §4 Prop
 - **Charm v2 policy**: `github.com/charmbracelet/*` v1 → `charm.land/*` v2 lands in the SAME PR as the first live view — no separate mechanical migration.
 - **Staging**: stage A (Task 14b) vs stage B (Task 14c) scope split, including the one deliberate plain-output change (Access summary becomes a JSON data event + stable plain access lines — one test update, called out by name).
 
-- [ ] **Step 1: Write the doc** per the bullets above; cross-link research §2 exemplars where they justify a choice (BuildKit progress knob, Terraform machine-readable UI, gh TTY discipline).
-- [ ] **Step 2: Commit**
+- [x] **Step 1: Write the doc** per the bullets above; cross-link research §2 exemplars where they justify a choice (BuildKit progress knob, Terraform machine-readable UI, gh TTY discipline).
+- [x] **Step 2: Commit**
 
 ```bash
 git add -A && git commit -m "docs: cube-idp UX design — one event stream, three renderers (proposal B, staged)"
@@ -2973,12 +2974,12 @@ git add -A && git commit -m "docs: cube-idp UX design — one event stream, thre
 - Modify: `internal/ui/ui.go` (Printer becomes a facade that constructs events), `cmd/root.go` (renderer resolve), `internal/up` call sites only if the facade cannot absorb them (goal: barely change)
 - Test: golden-file renderer tests (recorded event slice → each renderer), existing `ui_test.go` + all plain-output e2e assertions UNTOUCHED and green
 
-- [ ] **Step 1: Event types + PlainRenderer with failing goldens** — encode today's exact plain bytes as the plain projection of a recorded event stream; the existing pinned tests are the proof the facade is byte-neutral. TDD per event type.
-- [ ] **Step 2: Printer facade** — `Printer.Step(...)` emits `StepDone`; plain mode output goes through PlainRenderer. Run the FULL test suite: zero output diffs allowed.
-- [ ] **Step 3: JSONRenderer** — `--progress=json` skeleton behind the (not-yet-public) knob; JSON-lines `"v":1` events incl. `diagnosis`; goldens.
-- [ ] **Step 4: LiveRenderer for `up`/`down`** — Bubble Tea v2 inline step-tree + health table per the design doc, Charm v2 migration in the same commits; diagnosis-last rule enforced by a test that feeds a failing event stream and asserts the CUBE panel renders after program exit.
-- [ ] **Step 5: Run everything** — `go build ./... && go vet ./... && go test ./... -short`; manual: `up` on a TTY shows the live tree, `up | cat` is byte-identical to pre-task output, Ctrl-C leaves a clean terminal.
-- [ ] **Step 6: Commit**
+- [x] **Step 1: Event types + PlainRenderer with failing goldens** — encode today's exact plain bytes as the plain projection of a recorded event stream; the existing pinned tests are the proof the facade is byte-neutral. TDD per event type.
+- [x] **Step 2: Printer facade** — `Printer.Step(...)` emits `StepDone`; plain mode output goes through PlainRenderer. Run the FULL test suite: zero output diffs allowed.
+- [x] **Step 3: JSONRenderer** — `--progress=json` skeleton behind the (not-yet-public) knob; JSON-lines `"v":1` events incl. `diagnosis`; goldens.
+- [x] **Step 4: LiveRenderer for `up`/`down`** — Bubble Tea v2 inline step-tree + health table per the design doc, Charm v2 migration in the same commits; diagnosis-last rule enforced by a test that feeds a failing event stream and asserts the CUBE panel renders after program exit.
+- [x] **Step 5: Run everything** — `go build ./... && go vet ./... && go test ./... -short`; manual: `up` on a TTY shows the live tree, `up | cat` is byte-identical to pre-task output, Ctrl-C leaves a clean terminal.
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "feat: UX stage A — typed event stream, plain/json renderers, live up/down (charm v2)"
@@ -2994,11 +2995,11 @@ git add -A && git commit -m "feat: UX stage A — typed event stream, plain/json
 - Modify: `cmd/status.go`, `cmd/doctor.go`, `cmd/get.go` (rich static renders + `--output json` documents), `cmd/init.go` (full huh v2 wizard), `cmd/root.go` (`--progress=auto|plain|live|json` knob; `--plain` becomes a permanent alias for `--progress=plain`; `CUBE_IDP_PROGRESS` env), `internal/ui` (Resolve hardening)
 - Test: renderer goldens per command; flag-resolution table test (the full precedence chain from the design doc)
 
-- [ ] **Step 1: `--progress` knob + Resolve hardening** — table-driven precedence test (json > plain/alias/env > non-TTY > CI > NO_COLOR/TERM=dumb > live), then implement; `--plain` alias keeps every existing invocation working.
-- [ ] **Step 2: Rich static `status`/`doctor`** — lipgloss-styled TTY renders; plain projections byte-stable; `--output json` DOCUMENT mode (gh-style final object — distinct from the event stream) for `status`/`doctor`/`get secrets`.
-- [ ] **Step 3: `init` wizard** — full huh v2 form (provider, engine, gateway host/port, packs) writing the same cube.yaml `init` writes today; non-TTY/`--plain` falls back to current flag behavior unchanged.
-- [ ] **Step 4: Access summary event** — the ONE deliberate plain-output change: Access summary becomes a JSON data event and plain mode gains stable access lines; update the single affected test deliberately and call it out in the commit message.
-- [ ] **Step 5: Run everything + commit**
+- [x] **Step 1: `--progress` knob + Resolve hardening** — table-driven precedence test (json > plain/alias/env > non-TTY > CI > NO_COLOR/TERM=dumb > live), then implement; `--plain` alias keeps every existing invocation working.
+- [x] **Step 2: Rich static `status`/`doctor`** — lipgloss-styled TTY renders; plain projections byte-stable; `--output json` DOCUMENT mode (gh-style final object — distinct from the event stream) for `status`/`doctor`/`get secrets`.
+- [x] **Step 3: `init` wizard** — full huh v2 form (provider, engine, gateway host/port, packs) writing the same cube.yaml `init` writes today; non-TTY/`--plain` falls back to current flag behavior unchanged.
+- [x] **Step 4: Access summary event** — the ONE deliberate plain-output change: Access summary becomes a JSON data event and plain mode gains stable access lines; update the single affected test deliberately and call it out in the commit message.
+- [x] **Step 5: Run everything + commit**
 
 ```bash
 git add -A && git commit -m "feat: UX stage B — progress knob, rich status/doctor, init wizard, JSON documents"
