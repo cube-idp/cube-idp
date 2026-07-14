@@ -1,6 +1,6 @@
 # Vendored from argoproj/argo-cd v3.4.5 manifests/install.yaml, transformed
 # for cube-idp. DO NOT EDIT BY HAND — regenerate as documented in this
-# pack's README.md ("Re-vendoring" section). Two transformations are
+# pack's README.md ("Re-vendoring" section). Three transformations are
 # applied over the pristine upstream file:
 #
 #   1. namespace: argocd stamped on every namespaced object (kustomize
@@ -16,6 +16,11 @@
 #      argocd-server serves plain HTTP behind the cube-idp gateway (no TLS
 #      in Phase 1, D6). The vendored argocd-server Deployment wires env
 #      ARGOCD_SERVER_INSECURE from this exact ConfigMap key.
+#   3. imagePullPolicy: Always -> IfNotPresent on every container (Task 7,
+#      air-gap): a kubelet ignores images node-loaded from a vendor bundle
+#      (`up --bundle`) when the pod pins Always, causing ImagePullBackOff
+#      on hosts with no registry egress. Guarded by
+#      tests/packs_airgap_test.go (TestPackManifestsNoAlwaysPull).
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -31807,7 +31812,7 @@ spec:
               name: argocd-cmd-params-cm
               optional: true
         image: quay.io/argoproj/argocd:v3.4.5
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: argocd-applicationset-controller
         ports:
         - containerPort: 7000
@@ -31937,7 +31942,7 @@ spec:
               name: argocd-cmd-params-cm
               optional: true
         image: ghcr.io/dexidp/dex:v2.45.0
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: dex
         ports:
         - containerPort: 5556
@@ -31967,7 +31972,7 @@ spec:
         - /usr/local/bin/argocd
         - /shared/argocd-dex
         image: quay.io/argoproj/argocd:v3.4.5
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: copyutil
         securityContext:
           allowPrivilegeEscalation: false
@@ -32070,7 +32075,7 @@ spec:
               name: argocd-cmd-params-cm
               optional: true
         image: quay.io/argoproj/argocd:v3.4.5
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         livenessProbe:
           tcpSocket:
             port: 9001
@@ -32157,7 +32162,7 @@ spec:
               key: auth
               name: argocd-redis
         image: public.ecr.aws/docker/library/redis:8.2.3-alpine
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: redis
         ports:
         - containerPort: 6379
@@ -32483,7 +32488,7 @@ spec:
         - name: HELM_DATA_HOME
           value: /helm-working-dir
         image: quay.io/argoproj/argocd:v3.4.5
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
           httpGet:
@@ -32964,7 +32969,7 @@ spec:
               name: argocd-cmd-params-cm
               optional: true
         image: quay.io/argoproj/argocd:v3.4.5
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
             path: /healthz?full=true
@@ -33397,7 +33402,7 @@ spec:
         - name: KUBECACHEDIR
           value: /tmp/kubecache
         image: quay.io/argoproj/argocd:v3.4.5
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: argocd-application-controller
         ports:
         - containerPort: 8082
