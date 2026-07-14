@@ -20,6 +20,7 @@ import (
 
 func NewRootCmd() *cobra.Command {
 	var plain bool
+	var progress string
 	root := &cobra.Command{
 		Use:           "cube-idp",
 		Short:         "cube-idp stands up an internal developer platform on Kubernetes and gets out of the way",
@@ -28,23 +29,32 @@ func NewRootCmd() *cobra.Command {
 		// Resolves the output Mode once, before any subcommand's RunE, so
 		// every Printer/renderer built downstream sees the resolved choice
 		// without threading a bool through every orchestrator signature
-		// (Task 13.8, extended by Task 14b's §6 resolve ladder — the
-		// --progress flag rungs ship in stage B; ProgressFlag stays "").
+		// (Task 13.8, extended by Task 14b's §6 resolve ladder). Stage B
+		// (Task 14c) activates the --progress flag: rungs 1–3 of the ladder go
+		// live, --plain stays a permanent alias (rung 4).
 		PersistentPreRunE: func(*cobra.Command, []string) error {
+			// Resolve the mode first — an unrecognized --progress value already
+			// falls through the ladder (Resolve matches only json/plain/live),
+			// so SetMode still reflects the real environment (TTY/CI/NO_COLOR).
+			// The bad-value error then renders in the right mode (plain when
+			// piped or in CI), instead of a styled panel on a machine pipe.
 			_, noColor := os.LookupEnv("NO_COLOR")
 			ui.SetMode(ui.Resolve(ui.Request{
-				PlainFlag:   plain,
-				EnvProgress: os.Getenv("CUBE_IDP_PROGRESS"),
-				IsTTY:       ui.IsTerminal(os.Stdout),
-				CIEnv:       os.Getenv("CI"),
-				NoColor:     noColor,
-				Term:        os.Getenv("TERM"),
+				ProgressFlag: progress,
+				PlainFlag:    plain,
+				EnvProgress:  os.Getenv("CUBE_IDP_PROGRESS"),
+				IsTTY:        ui.IsTerminal(os.Stdout),
+				CIEnv:        os.Getenv("CI"),
+				NoColor:      noColor,
+				Term:         os.Getenv("TERM"),
 			}))
-			return nil
+			return validateProgressFlag(progress)
 		},
 	}
 	root.PersistentFlags().BoolVar(&plain, "plain", false,
-		"force plain, non-styled output (always on when $CI is set or stdout isn't a terminal)")
+		"force plain, non-styled output (permanent alias for --progress=plain)")
+	root.PersistentFlags().StringVar(&progress, "progress", "auto",
+		"output style: auto|plain|live|json (json is EXPERIMENTAL until the config v1 freeze)")
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newUpCmd())

@@ -5,14 +5,18 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 
 	huh "charm.land/huh/v2"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/yaml"
 
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/rafpe/cube-idp/internal/doctor"
 	"github.com/rafpe/cube-idp/internal/ui"
 )
 
@@ -20,6 +24,12 @@ import (
 // the wizard validates interactively against the same rule Load() enforces,
 // so a name accepted by the wizard is never rejected later by `up`.
 var cubeNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,30}$`)
+
+// optionalPacks is the catalog the wizard's pack multi-select offers. A pack
+// ref (OCI or --local path) is matched to its catalog name by substring, the
+// same convention withoutGiteaPack uses; a ref matching none of these is
+// treated as non-optional and always kept.
+var optionalPacks = []string{"gitea", "argocd"}
 
 func newInitCmd() *cobra.Command {
 	var name string
@@ -34,11 +44,20 @@ func newInitCmd() *cobra.Command {
 					"remove or rename the existing cube.yaml, or edit it directly and re-run `cube-idp up`")
 			}
 
-			includeGitea := true
+			// Wizard answers default to the D9 profile so a run that only
+			// touches some fields still writes a coherent cube.yaml.
+			wiz := initWizardResult{
+				Provider:    "kind",
+				GatewayHost: "cube-idp.localtest.me",
+				GatewayPort: 8443,
+				Packs:       append([]string(nil), optionalPacks...),
+			}
+			wizardRan := false
 			if wizardApplicable(c) {
-				if err := runInitWizard(c, &name, &engineType, &includeGitea); err != nil {
+				if err := runInitWizard(c, &name, &engineType, &wiz); err != nil {
 					return err
 				}
+				wizardRan = true
 			}
 
 			cube := config.Default(name)
@@ -66,13 +85,11 @@ func newInitCmd() *cobra.Command {
 					cube.Spec.Packs = append(cube.Spec.Packs, config.PackRef{Ref: filepath.Join(abs, "packs", "argocd")})
 				}
 			}
-			// includeGitea only ever turns false via the wizard's confirm
-			// field (there is no --include-gitea flag, so non-interactive
-			// runs — every existing flag-driven test, the e2e suite, CI —
-			// keep today's D9 default profile unchanged); applied last so it
-			// strips the gitea pack regardless of --local/--engine shape.
-			if !includeGitea {
-				cube.Spec.Packs = withoutGiteaPack(cube.Spec.Packs)
+			// The wizard's provider/context/gateway/pack answers apply last —
+			// only ever set on an interactive run, so every flag-driven test,
+			// the e2e suite, and CI keep today's D9 default profile unchanged.
+			if wizardRan {
+				applyWizardToCube(cube, wiz)
 			}
 			out, err := yaml.Marshal(cube)
 			if err != nil {
@@ -91,17 +108,71 @@ func newInitCmd() *cobra.Command {
 	return c
 }
 
-// withoutGiteaPack drops the gitea pack ref (OCI or --local path — both
-// contain "gitea" as their pack directory/image name) from packs.
-func withoutGiteaPack(packs []config.PackRef) []config.PackRef {
+// initWizardResult holds the multi-group wizard's non-scalar answers (name and
+// engine stay in their existing flag-backed vars). It is applied to the cube
+// after config.Default + engine/local resolution by applyWizardToCube.
+type initWizardResult struct {
+	Provider    string   // "kind" | "existing"
+	Context     string   // kubeconfig context, when Provider == "existing"
+	GatewayHost string
+	GatewayPort int
+	Packs       []string // selected optional-pack catalog names
+}
+
+// applyWizardToCube overlays the wizard answers onto cube, keeping the written
+// cube.yaml loadable by config.Load: an "existing" provider clears the
+// kind-only ClusterSpec fields (config.Load rejects kubernetesVersion on an
+// existing provider), and the pack list is narrowed to the selected optional
+// packs. Pure and side-effect-free so it is unit-testable without a TTY.
+func applyWizardToCube(cube *config.Cube, r initWizardResult) {
+	if r.Provider == "existing" {
+		cube.Spec.Cluster = config.ClusterSpec{Provider: "existing", Context: r.Context}
+	} else {
+		cube.Spec.Cluster.Provider = "kind"
+	}
+	if r.GatewayHost != "" {
+		cube.Spec.Gateway.Host = r.GatewayHost
+	}
+	if r.GatewayPort != 0 {
+		cube.Spec.Gateway.Port = r.GatewayPort
+	}
+	cube.Spec.Packs = filterSelectedPacks(cube.Spec.Packs, r.Packs)
+}
+
+// filterSelectedPacks keeps every pack whose catalog name (gitea/argocd, by
+// substring) is in selected; a pack matching no catalog name is non-optional
+// and always kept.
+func filterSelectedPacks(packs []config.PackRef, selected []string) []config.PackRef {
+	sel := map[string]bool{}
+	for _, s := range selected {
+		sel[s] = true
+	}
 	kept := make([]config.PackRef, 0, len(packs))
 	for _, p := range packs {
-		if strings.Contains(p.Ref, "gitea") {
-			continue
+		name := packCatalogName(p.Ref)
+		if name == "" || sel[name] {
+			kept = append(kept, p)
 		}
-		kept = append(kept, p)
 	}
 	return kept
+}
+
+// packCatalogName maps a pack ref to its optionalPacks catalog name, or "" if
+// it is not an optional pack.
+func packCatalogName(ref string) string {
+	for _, n := range optionalPacks {
+		if strings.Contains(ref, n) {
+			return n
+		}
+	}
+	return ""
+}
+
+// withoutGiteaPack drops the gitea pack ref (OCI or --local path — both
+// contain "gitea" as their pack directory/image name) from packs. Retained for
+// the pre-14c call sites and tests; filterSelectedPacks generalizes it.
+func withoutGiteaPack(packs []config.PackRef) []config.PackRef {
+	return filterSelectedPacks(packs, []string{"argocd"})
 }
 
 // wizardApplicable reports whether it is safe and appropriate to prompt
@@ -116,11 +187,35 @@ func wizardApplicable(c *cobra.Command) bool {
 	return ui.IsTerminal(c.InOrStdin()) && ui.IsTerminal(c.OutOrStdout())
 }
 
-// runInitWizard runs a single huh form — three fields (name, engine,
-// include-gitea) — prefilled with the current (D9 default profile) values,
-// and writes the answers back into *name/*engineType/*includeGitea.
-func runInitWizard(c *cobra.Command, name, engineType *string, includeGitea *bool) error {
-	form := huh.NewForm(
+// kubeContextNames returns the sorted kubeconfig context names (honoring
+// $KUBECONFIG) for the wizard's existing-provider picker, or nil when the
+// kubeconfig is missing/unreadable — the wizard then falls back to a free-text
+// context entry.
+func kubeContextNames() []string {
+	cfg, err := clientcmd.NewDefaultClientConfigLoadingRules().Load()
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(cfg.Contexts))
+	for n := range cfg.Contexts {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// runInitWizard runs the multi-group huh v2 wizard (design doc §10): cube name
+// (validated by cubeNameRe, the schema.cue mirror), provider (kind | existing,
+// with a kubeconfig context picker for existing), engine (flux | argocd),
+// gateway host/port with a port-conflict pre-check via doctor.CheckPortFree,
+// and an optional-pack multi-select. Answers are written back into
+// *name/*engineType and *res. Accessible (screen-reader) mode engages when
+// $ACCESSIBLE is set — the gh screen-reader-prompter precedent.
+func runInitWizard(c *cobra.Command, name, engineType *string, res *initWizardResult) error {
+	accessible := os.Getenv("ACCESSIBLE") != ""
+	portStr := strconv.Itoa(res.GatewayPort)
+
+	main := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Cube name").
@@ -132,18 +227,86 @@ func runInitWizard(c *cobra.Command, name, engineType *string, includeGitea *boo
 					return nil
 				}),
 			huh.NewSelect[string]().
+				Title("Cluster provider").
+				Options(
+					huh.NewOption("kind (create a local cluster)", "kind"),
+					huh.NewOption("existing (use a kubeconfig context)", "existing"),
+				).
+				Value(&res.Provider),
+			huh.NewSelect[string]().
 				Title("GitOps engine").
 				Options(
 					huh.NewOption("flux", "flux"),
 					huh.NewOption("argocd", "argocd"),
 				).
 				Value(engineType),
-			huh.NewConfirm().
-				Title("Include the gitea pack?").
-				Affirmative("yes").
-				Negative("no").
-				Value(includeGitea),
 		),
-	).WithOutput(c.OutOrStdout()).WithInput(c.InOrStdin())
-	return form.Run()
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Gateway host").
+				Value(&res.GatewayHost),
+			huh.NewInput().
+				Title("Gateway port").
+				Value(&portStr).
+				Validate(validateGatewayPort),
+			huh.NewMultiSelect[string]().
+				Title("Optional packs").
+				Options(
+					huh.NewOption("gitea (in-cluster git server)", "gitea"),
+					huh.NewOption("argocd (delivery UI)", "argocd"),
+				).
+				Value(&res.Packs),
+		),
+	).WithOutput(c.OutOrStdout()).WithInput(c.InOrStdin()).WithAccessible(accessible)
+	if err := main.Run(); err != nil {
+		return err
+	}
+	res.GatewayPort, _ = strconv.Atoi(portStr) // already validated as a port
+
+	// Second form: pick the kubeconfig context only when the user chose the
+	// existing provider (huh v2 in this build has no field-level hide, so a
+	// conditional follow-up form is cleaner than a hidden group). With no
+	// contexts discoverable, fall back to free-text entry.
+	if res.Provider == "existing" {
+		if ctxs := kubeContextNames(); len(ctxs) > 0 {
+			if res.Context == "" {
+				res.Context = ctxs[0]
+			}
+			opts := make([]huh.Option[string], 0, len(ctxs))
+			for _, n := range ctxs {
+				opts = append(opts, huh.NewOption(n, n))
+			}
+			pick := huh.NewForm(huh.NewGroup(
+				huh.NewSelect[string]().Title("Kubeconfig context").Options(opts...).Value(&res.Context),
+			)).WithOutput(c.OutOrStdout()).WithInput(c.InOrStdin()).WithAccessible(accessible)
+			return pick.Run()
+		}
+		entry := huh.NewForm(huh.NewGroup(
+			huh.NewInput().Title("Kubeconfig context").Value(&res.Context).
+				Validate(func(v string) error {
+					if strings.TrimSpace(v) == "" {
+						return fmt.Errorf("a context name is required for the existing provider")
+					}
+					return nil
+				}),
+		)).WithOutput(c.OutOrStdout()).WithInput(c.InOrStdin()).WithAccessible(accessible)
+		return entry.Run()
+	}
+	return nil
+}
+
+// validateGatewayPort parses a gateway port and runs doctor's CheckPortFree
+// pre-check (design doc §10): a syntactically bad port or one already bound by
+// a non-cube process (an error-severity finding) is rejected inline so the
+// wizard never writes a cube.yaml whose `up` would immediately fail the same
+// port check. clusterExists=false: init runs before any cube exists.
+func validateGatewayPort(v string) error {
+	port, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("must be a port number 1-65535")
+	}
+	if f := doctor.CheckPortFree(port, false); f != nil && f.Severity == diag.SeverityError {
+		return fmt.Errorf("%s", f.Message)
+	}
+	return nil
 }

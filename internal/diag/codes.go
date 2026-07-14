@@ -9,6 +9,7 @@ const (
 	CodeProviderMiss  Code = "CUBE-0004" // cluster provider config mismatch (e.g., render-cluster for non-kind)
 	CodeArgoPackRedun Code = "CUBE-0005" // argocd pack listed while engine.type: argocd (Phase 2)
 	CodeInitExists    Code = "CUBE-0006" // cube.yaml already exists; refusing overwrite
+	CodeBadFlagValue  Code = "CUBE-0007" // an enum flag (--progress, --output) got an unrecognized value
 )
 
 // 01xx: doctor preflight checks (Phase 2)

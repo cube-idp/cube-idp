@@ -159,10 +159,15 @@ func newGetCmd() *cobra.Command {
 	get.PersistentFlags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
 
 	var pack string
+	var output string
 	secrets := &cobra.Command{
 		Use:   "secrets",
 		Short: "List credentials packs exposed for CLI consumption (cube-idp.dev/cli-secret=true)",
 		RunE: func(c *cobra.Command, _ []string) error {
+			jsonDoc, err := wantJSONDoc(output)
+			if err != nil {
+				return err
+			}
 			cube, err := config.Load(file)
 			if err != nil {
 				return err
@@ -193,6 +198,9 @@ func newGetCmd() *cobra.Command {
 				return err
 			}
 			out := c.OutOrStdout()
+			if jsonDoc {
+				return writeSecretsJSON(out, rows, notes)
+			}
 			p := ui.NewFor(out)
 			for _, n := range notes {
 				// ModePlain: exactly fmt.Fprintln(out, n), unchanged from
@@ -205,8 +213,36 @@ func newGetCmd() *cobra.Command {
 		},
 	}
 	secrets.Flags().StringVarP(&pack, "pack", "p", "", "only show secrets for this pack")
+	addOutputFlag(secrets, &output)
 	get.AddCommand(secrets)
 	return get
+}
+
+// secretsDoc is the gh-style `get secrets` document (design doc §10): the
+// secret rows with their flattened fields, plus any legacy-label deprecation
+// notes surfaced as data rather than warning lines.
+type secretsDoc struct {
+	jsonDocHead
+	Secrets []secretDocRow `json:"secrets"`
+	Notes   []string       `json:"notes,omitempty"`
+}
+
+type secretDocRow struct {
+	Pack        string            `json:"pack"`
+	Namespace   string            `json:"namespace"`
+	Name        string            `json:"name"`
+	Fields      map[string]string `json:"fields,omitempty"`
+	Placeholder string            `json:"placeholder,omitempty"`
+}
+
+func writeSecretsJSON(out io.Writer, rows []secretRow, notes []string) error {
+	doc := secretsDoc{jsonDocHead: jsonDocHead{V: docSchemaVersion}, Secrets: make([]secretDocRow, 0, len(rows)), Notes: notes}
+	for _, r := range rows {
+		doc.Secrets = append(doc.Secrets, secretDocRow{
+			Pack: r.Pack, Namespace: r.Namespace, Name: r.Name, Fields: r.Fields, Placeholder: r.Placeholder,
+		})
+	}
+	return writeJSONDoc(out, doc)
 }
 
 // cellEscaper keeps secret values from corrupting the tabwriter table:

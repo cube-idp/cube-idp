@@ -10,7 +10,10 @@ import (
 	"io"
 	"net"
 	"os/exec"
+	"strings"
 	"time"
+
+	lipgloss "charm.land/lipgloss/v2"
 
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/pack"
@@ -86,14 +89,24 @@ func CheckGitCLI(refs []string) *diag.Finding {
 // share one visual language (Task 15.3b) — in ModePlain (every existing
 // test, since none writes to a real terminal) Glyph returns the same bare
 // character this function printed inline before, so the literal output is
-// unchanged.
+// byte-frozen (design doc §8 item 4). ModeStyled (a real terminal only)
+// gets the stage-B severity-grouped render (§10).
 func Render(out io.Writer, findings []diag.Finding) bool {
 	p := ui.NewFor(out)
 	hasErrors := false
 	for _, f := range findings {
+		if f.Severity == diag.SeverityError {
+			hasErrors = true
+		}
+	}
+	if p.Styled() {
+		renderStyled(p, findings, hasErrors)
+		return hasErrors
+	}
+	for _, f := range findings {
 		icon := ui.GlyphWarn
 		if f.Severity == diag.SeverityError {
-			icon, hasErrors = ui.GlyphErr, true
+			icon = ui.GlyphErr
 		}
 		fmt.Fprintf(out, "%s %s  %s\n    fix: %s\n", p.Glyph(icon), f.Code, f.Message, f.Remediation)
 	}
@@ -101,6 +114,60 @@ func Render(out io.Writer, findings []diag.Finding) bool {
 		fmt.Fprintf(out, "%s no problems found\n", p.Glyph(ui.GlyphOK))
 	}
 	return hasErrors
+}
+
+var (
+	doctorSectionStyle = lipgloss.NewStyle().Bold(true)
+	doctorFixStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	doctorPanelStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+)
+
+// renderStyled is the stage-B rich static doctor (design doc §10): findings
+// grouped by severity into bordered sections, each finding a glyph-led line
+// with its CUBE code and message, remediation kept in copy-paste-safe plain
+// text (only dimmed, never restyled inside the string), and a final one-line
+// verdict. Transient static output — no live view.
+func renderStyled(p *ui.Printer, findings []diag.Finding, hasErrors bool) {
+	out := p.Out()
+	if len(findings) == 0 {
+		fmt.Fprintf(out, "%s %s\n", p.Glyph(ui.GlyphOK), doctorSectionStyle.Render("no problems found"))
+		return
+	}
+	groups := []struct {
+		title    string
+		severity diag.Severity
+		glyph    string
+	}{
+		{"Errors", diag.SeverityError, ui.GlyphErr},
+		{"Warnings", diag.SeverityWarning, ui.GlyphWarn},
+		{"Notes", diag.SeverityInfo, ui.GlyphOK},
+	}
+	for _, g := range groups {
+		var body strings.Builder
+		n := 0
+		for _, f := range findings {
+			if f.Severity != g.severity {
+				continue
+			}
+			if n > 0 {
+				body.WriteString("\n")
+			}
+			n++
+			fmt.Fprintf(&body, "%s %s  %s\n    %s %s",
+				p.Glyph(g.glyph), f.Code, f.Message, doctorFixStyle.Render("fix:"), f.Remediation)
+		}
+		if n == 0 {
+			continue
+		}
+		fmt.Fprintln(out, doctorSectionStyle.Render(g.title))
+		fmt.Fprintln(out, doctorPanelStyle.Render(body.String()))
+	}
+	verdict := "no errors — you are good to go"
+	glyph := ui.GlyphOK
+	if hasErrors {
+		verdict, glyph = "errors found — resolve the items above before `cube-idp up`", ui.GlyphErr
+	}
+	fmt.Fprintf(out, "%s %s\n", p.Glyph(glyph), doctorSectionStyle.Render(verdict))
 }
 
 // ClusterProbeTimeout bounds the cluster-side portion of doctor (provider

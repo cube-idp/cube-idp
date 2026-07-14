@@ -345,6 +345,15 @@ churn across releases. `cube-idp init` runs a short interactive wizard
 (huh) when no flags are given on a TTY; any flag short-circuits the wizard
 for scripted/CI use.
 
+The output style is one knob: `--progress=auto|plain|live|json` (or the
+`CUBE_IDP_PROGRESS` env var; `--plain` is a permanent alias for
+`--progress=plain`). `--progress=json` turns long-running commands
+(`up`, `down`) into a JSON-lines event stream, and `status`, `doctor`, and
+`get secrets` also accept `--output json` for a single gh-style JSON
+document. Both schemas are **experimental** until the config v1 freeze —
+see [docs/machine-readable-output.md](docs/machine-readable-output.md) for
+the full event and document reference.
+
 ## Migrating from idpbuilder
 
 `cube-idp cnoe import ./your-idpbuilder-packages` ingests idpbuilder-style
