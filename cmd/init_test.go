@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"bytes"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"sigs.k8s.io/yaml"
@@ -113,6 +115,79 @@ func TestInitRefusesToOverwrite(t *testing.T) {
 	root.SetArgs([]string{"init"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("want error when cube.yaml already exists, got nil")
+	}
+}
+
+// TestFilterSelectedPacks pins the wizard's pack multi-select projection:
+// deselecting a catalog pack drops it (OCI or local ref), a non-catalog ref is
+// always kept, and the pre-existing withoutGiteaPack keeps its meaning.
+func TestFilterSelectedPacks(t *testing.T) {
+	packs := []config.PackRef{
+		{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"},
+		{Ref: "oci://ghcr.io/cube-idp/packs/argocd:0.1.0"},
+		{Ref: "oci://ghcr.io/cube-idp/packs/backstage:0.1.0"}, // non-catalog: always kept
+	}
+	got := filterSelectedPacks(packs, []string{"argocd"})
+	if len(got) != 2 || got[0].Ref != packs[1].Ref || got[1].Ref != packs[2].Ref {
+		t.Fatalf("deselecting gitea must drop only gitea, keep argocd + non-catalog: %+v", got)
+	}
+	if kept := withoutGiteaPack(packs); len(kept) != 2 || packCatalogName(kept[0].Ref) != "argocd" {
+		t.Fatalf("withoutGiteaPack must still strip gitea: %+v", kept)
+	}
+}
+
+// TestApplyWizardExistingProviderLoads is the CUE-parity guard (design doc
+// §10: "the wizard must never accept what Load() rejects"): a wizard that
+// selects the existing provider must produce a cube.yaml that config.Load
+// accepts — i.e. the kind-only kubernetesVersion is cleared.
+func TestApplyWizardExistingProviderLoads(t *testing.T) {
+	cube := config.Default("dev")
+	applyWizardToCube(cube, initWizardResult{
+		Provider: "existing", Context: "kind-dev",
+		GatewayHost: "cube.example", GatewayPort: 9443,
+		Packs: []string{"gitea"}, // drop argocd
+	})
+	if cube.Spec.Cluster.Provider != "existing" || cube.Spec.Cluster.Context != "kind-dev" {
+		t.Fatalf("provider/context not applied: %+v", cube.Spec.Cluster)
+	}
+	if cube.Spec.Cluster.KubernetesVersion != "" {
+		t.Fatalf("existing provider must clear kubernetesVersion, got %q", cube.Spec.Cluster.KubernetesVersion)
+	}
+	if cube.Spec.Gateway.Host != "cube.example" || cube.Spec.Gateway.Port != 9443 {
+		t.Fatalf("gateway not applied: %+v", cube.Spec.Gateway)
+	}
+	if len(cube.Spec.Packs) != 1 || packCatalogName(cube.Spec.Packs[0].Ref) != "gitea" {
+		t.Fatalf("pack selection not applied: %+v", cube.Spec.Packs)
+	}
+
+	dir := t.TempDir()
+	raw, err := yaml.Marshal(cube)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "cube.yaml")
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.Load(path); err != nil {
+		t.Fatalf("wizard-produced cube.yaml must load (CUE parity): %v\n%s", err, raw)
+	}
+}
+
+// TestValidateGatewayPortRejectsGarbage covers the wizard's inline port
+// validation: non-numeric and out-of-range values are rejected; a free port
+// passes.
+func TestValidateGatewayPortRejectsGarbage(t *testing.T) {
+	for _, bad := range []string{"", "abc", "0", "70000", "-1"} {
+		if validateGatewayPort(bad) == nil {
+			t.Fatalf("validateGatewayPort(%q) must fail", bad)
+		}
+	}
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	if err := validateGatewayPort(strconv.Itoa(port)); err != nil {
+		t.Fatalf("a free port must pass: %v", err)
 	}
 }
 
