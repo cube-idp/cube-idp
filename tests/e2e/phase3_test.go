@@ -310,7 +310,9 @@ func TestK3dUpDown(t *testing.T) {
 // source (stepFetchSource, added by the Task 13 review — an online run
 // demonstrably prints the network/checkout ref there, pinned by
 // TestStepFetchSourcePlainOutput in internal/up): the output MUST contain the
-// "loading images into cluster nodes" step (the node-load path ran); EVERY
+// "image(s) loaded into cluster nodes" step (the node-load path ran — the
+// shipped Task 7 wording is "▸ [bundle] N image(s) loaded into cluster
+// nodes", which the plan draft paraphrased); EVERY
 // "fetching" line's source must point into the bundle's cube-idp-bundle-*
 // staging dir (positive: each pack was read from the bundle, not the network
 // or the checkout — this would fail on any online run, whose sources are
@@ -354,7 +356,7 @@ func TestVendorBundleOffline(t *testing.T) {
 	guardDeleteCluster(t, provider, name)
 
 	out := run(t, dir, bin, "up", "--bundle", bundlePath)
-	if !strings.Contains(out, "loading images into cluster nodes") {
+	if !strings.Contains(out, "image(s) loaded into cluster nodes") {
 		t.Fatalf("bundle up did not node-load images (missing offline load step):\n%s", out)
 	}
 	assertFetchSourcesFromBundle(t, out)
