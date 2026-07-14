@@ -66,6 +66,16 @@ func TestLoadGatewayRefDefaultsEmpty(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsK3dProvider(t *testing.T) {
+	c, err := Load("testdata/k3d.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Spec.Cluster.Provider != "k3d" {
+		t.Fatalf("provider: %q", c.Spec.Cluster.Provider)
+	}
+}
+
 func TestLoadRejectsBadProvider(t *testing.T) {
 	_, err := Load("testdata/bad-provider.yaml")
 	if codeOf(t, err) != "CUBE-0002" {

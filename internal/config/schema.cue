@@ -6,7 +6,7 @@ package config
 	metadata: name: =~"^[a-z0-9][a-z0-9-]{0,30}$"
 	spec: {
 		cluster: {
-			provider: *"kind" | "existing"
+			provider: *"kind" | "existing" | "k3d"
 			context?: string
 			// No CUE default: for provider "existing" an explicit version is a
 			// node-creation field and must be rejected (CUBE-1003, spec §4.1);

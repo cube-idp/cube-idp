@@ -44,7 +44,12 @@ func findCubeLiteralOffenders(root string) ([]string, error) {
 		}
 		if d.IsDir() {
 			name := d.Name()
-			if name == ".git" || name == "testdata" || name == "vendor" {
+			// Skip dot-directories entirely: .git, and .claude/ where agent
+			// worktrees (full repo checkouts) would otherwise be scanned.
+			if strings.HasPrefix(name, ".") && path != root {
+				return filepath.SkipDir
+			}
+			if name == "testdata" || name == "vendor" {
 				return filepath.SkipDir
 			}
 			return nil

@@ -6,11 +6,20 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rafpe/cube-idp/internal/cluster/k3dp"
 	"github.com/rafpe/cube-idp/internal/cluster/kindp"
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/kube"
 )
+
+// GatewayNodePort is the node port every cluster-creating provider must map
+// the host gateway port onto; the traefik pack's service pins the same value.
+// Aliased from config.GatewayNodePort (not redefined here): kindp and k3dp
+// cannot import this package without an import cycle (this package's New
+// factory imports both of them), so the single source of truth lives in
+// internal/config, which every party already imports.
+const GatewayNodePort = config.GatewayNodePort
 
 // Provider seam defines the interface for all cluster implementations.
 type Provider interface {
@@ -27,12 +36,14 @@ func New(spec config.ClusterSpec, gw config.GatewaySpec) (Provider, error) {
 	switch spec.Provider {
 	case "kind":
 		return newKind(gw), nil
+	case "k3d":
+		return k3dp.New(gw), nil
 	case "existing":
 		return &existing{}, nil
 	default:
 		return nil, diag.New(diag.CodeClusterTypeUnknown,
 			fmt.Sprintf("unknown cluster provider %q", spec.Provider),
-			"use provider: kind or provider: existing")
+			"use provider: kind, k3d, or existing")
 	}
 }
 
