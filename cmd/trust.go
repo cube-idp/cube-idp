@@ -14,6 +14,7 @@ import (
 var (
 	trustInstall   = trust.InstallOS
 	trustUninstall = trust.UninstallOS
+	trustDir       = trust.Dir
 )
 
 func newTrustCmd() *cobra.Command {

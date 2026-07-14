@@ -87,13 +87,25 @@ func newDownCmd() *cobra.Command {
 // revertTrust reverts `cube-idp trust`'s OS trust-store install (D6 contract:
 // `down` always undoes it, on both the kind-delete and keep-cluster paths).
 // No-op if `trust` was never run.
+//
+// Deletion has already succeeded by the time this runs, so a broken trust
+// dir/state (e.g. a corrupt trust-state.yaml, CUBE-6006) must not fail
+// `down` — that would strand the user with a torn-down cluster and a
+// non-zero exit. Instead we warn loudly with remediation and return nil.
 func revertTrust(c *cobra.Command) error {
-	dir, derr := trust.Dir()
+	dir, derr := trustDir()
 	if derr != nil {
+		fmt.Fprintf(c.OutOrStdout(),
+			"warning: could not check cube-idp trust state (%v); run `cube-idp trust --uninstall` manually if the cube-idp CA was trusted\n", derr)
 		return nil
 	}
 	st, serr := trust.LoadState(dir)
-	if serr != nil || !st.Installed {
+	if serr != nil {
+		fmt.Fprintf(c.OutOrStdout(),
+			"warning: could not read cube-idp trust state (%v); run `cube-idp trust --uninstall` manually if the cube-idp CA was trusted\n", serr)
+		return nil
+	}
+	if !st.Installed {
 		return nil
 	}
 	if err := trustUninstall(dir); err != nil {
