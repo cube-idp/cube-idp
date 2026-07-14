@@ -1,7 +1,12 @@
 name:    "backstage"
 version: "0.1.0"
 #Values: {
-	replicas: int & >0 | *1
+	// nested under "backstage" to match the chart's actual values key
+	// (templates/backstage-deployment.yaml reads .Values.backstage.replicas;
+	// the root schema has no additionalProperties: false, so a top-level
+	// "replicas" would silently no-op — same nesting convention and pitfall
+	// as packs/traefik, verified against backstage/backstage 2.4.0).
+	backstage: replicas: int & >0 | *1
 }
 
 // D11: no credential — backstage has no default admin login in this
