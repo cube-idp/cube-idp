@@ -162,6 +162,25 @@ func TestExecuteUnknownCommandNoPluginReportsCUBE7101(t *testing.T) {
 	}
 }
 
+// TestPluginInstallWithoutIndexReportsCUBE7102 covers OWNER DECISION #8:
+// there is no default index, so `plugin install <name>` without --index
+// must fail fast with CUBE-7102 rather than reaching for a repo that does
+// not exist.
+func TestPluginInstallWithoutIndexReportsCUBE7102(t *testing.T) {
+	isolatePluginEnv(t)
+
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"plugin", "install", "hello"})
+	err := root.Execute()
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodePluginTrustIO {
+		t.Fatalf("want CUBE-7102, got %v", err)
+	}
+}
+
 // TestExecuteBuiltinCommandsStillDispatch guards against the fallthrough
 // swallowing real built-in commands (e.g. because Find's error handling
 // changed) — a known command must still run through cobra normally.

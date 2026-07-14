@@ -13,10 +13,11 @@ import (
 
 // newPluginCmd groups the exec-plugin discovery commands (spec §4.4 tier
 // 2): `plugin list` shows every cube-idp-<name> binary found on $PATH or in
-// plugin.InstallDir(), and `plugin trust <name>` records the current
-// sha256 of a discovered plugin so it runs without an interactive prompt.
-// Running an unknown top-level command (`cube-idp <name>`) itself is
-// handled by Execute's fallthrough in root.go, not here.
+// plugin.InstallDir(), `plugin trust <name>` records the current sha256 of
+// a discovered plugin so it runs without an interactive prompt, and
+// `plugin install <name>` fetches one from a sha256-pinned git index
+// (Task 9). Running an unknown top-level command (`cube-idp <name>`)
+// itself is handled by Execute's fallthrough in root.go, not here.
 func newPluginCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "plugin",
@@ -24,6 +25,7 @@ func newPluginCmd() *cobra.Command {
 	}
 	root.AddCommand(newPluginListCmd())
 	root.AddCommand(newPluginTrustCmd())
+	root.AddCommand(newPluginInstallCmd())
 	return root
 }
 
@@ -74,4 +76,32 @@ func newPluginTrustCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// newPluginInstallCmd installs a plugin from a sha256-pinned git index
+// (Task 9, spec §4.4). There is deliberately no default index (RESOLVED
+// 2026-07-14, Owner Decisions #8): --index is required until a first real
+// index repo exists.
+func newPluginInstallCmd() *cobra.Command {
+	var index string
+	install := &cobra.Command{
+		Use:   "install <name>",
+		Short: "Install a plugin from a sha256-pinned git index",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(c *cobra.Command, args []string) error {
+			if index == "" {
+				return diag.New(diag.CodePluginTrustIO, "no plugin index configured",
+					"pass --index <git-url>[@commit]; a default public index is planned but not yet published")
+			}
+			name := args[0]
+			if err := plugin.Install(c.Context(), index, name); err != nil {
+				return err
+			}
+			p := ui.New(c.OutOrStdout(), ui.PlainFlag)
+			fmt.Fprintf(c.OutOrStdout(), "%s plugin %q installed and trusted\n", p.Glyph(ui.GlyphOK), name)
+			return nil
+		},
+	}
+	install.Flags().StringVar(&index, "index", "", "git URL of the plugin index (optionally @commit-pinned)")
+	return install
 }
