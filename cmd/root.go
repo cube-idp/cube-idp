@@ -50,12 +50,12 @@ func NewRootCmd() *cobra.Command {
 func Execute(ctx context.Context) error { return NewRootCmd().ExecuteContext(ctx) }
 
 // requireClusterExists guards read-only commands (status, get, down
-// --keep-cluster) against side-effect cluster creation: the kind provider's
-// Ensure CREATES a missing cluster, so any command that must never mutate
-// calls this before Ensure. For provider "existing" Ensure was always
-// read-only, so nothing is checked.
+// --keep-cluster) against side-effect cluster creation: both cluster-creating
+// providers' (kind, k3d) Ensure CREATE a missing cluster, so any command that
+// must never mutate calls this before Ensure. For provider "existing" Ensure
+// was always read-only, so nothing is checked.
 func requireClusterExists(ctx context.Context, prov cluster.Provider, provider, name string) error {
-	if provider != "kind" {
+	if provider != "kind" && provider != "k3d" {
 		return nil
 	}
 	exists, err := prov.Exists(ctx, name)
@@ -64,7 +64,7 @@ func requireClusterExists(ctx context.Context, prov cluster.Provider, provider, 
 	}
 	if !exists {
 		return diag.New(diag.CodeClusterNotExists,
-			fmt.Sprintf("kind cluster %q does not exist", name),
+			fmt.Sprintf("%s cluster %q does not exist", provider, name),
 			"run `cube-idp up` first")
 	}
 	return nil

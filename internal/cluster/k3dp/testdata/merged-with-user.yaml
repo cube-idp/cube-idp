@@ -1,0 +1,27 @@
+apiVersion: k3d.io/v1alpha5
+image: rancher/k3s:v1.33.1-k3s1
+kind: Simple
+kubeAPI: {}
+metadata:
+  name: dev
+options:
+  k3d:
+    disableImageVolume: false
+    disableLoadbalancer: false
+    disableRollback: false
+    loadbalancer: {}
+    wait: true
+  k3s:
+    extraArgs:
+    - arg: --disable=traefik
+      nodeFilters:
+      - server:0
+  kubeconfig: {}
+  runtime:
+    HostPidMode: false
+ports:
+- nodeFilters:
+  - server:0
+  port: 8443:30443
+registries: {}
+servers: 1

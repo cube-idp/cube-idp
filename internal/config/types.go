@@ -75,6 +75,16 @@ type EngineSpec struct {
 	Type string `yaml:"type" json:"type"` // "flux" | "argocd"
 }
 
+// GatewayNodePort is the node port every cluster-creating provider (kindp,
+// k3dp) must map the host gateway port onto; the traefik starter pack's
+// service pins the same value (packs/traefik/chart.yaml
+// ports.websecure.nodePort, HTTPS, Phase 2 Task 9). Defined here rather than
+// in internal/cluster: cluster's provider factory imports kindp/k3dp, so
+// kindp/k3dp importing internal/cluster back for this constant would be an
+// import cycle; internal/config has no such cycle and every party already
+// imports it.
+const GatewayNodePort = 30443
+
 // GatewaySpec configures the ingress/gateway pack.
 type GatewaySpec struct {
 	Pack string `yaml:"pack" json:"pack"`

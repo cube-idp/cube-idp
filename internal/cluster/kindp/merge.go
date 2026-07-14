@@ -18,13 +18,16 @@ import (
 )
 
 // gatewayContainerPort is the kind node port the gateway hostPort maps to.
-// It pins to the traefik starter pack's fixed websecure NodePort (30443,
-// chart values ports.websecure.nodePort / service.spec.type: NodePort)
-// rather than 443: Phase 2 terminates TLS at Traefik with a cube-idp
-// CA-issued cert (spec D6/D12, internal/up/tls.go), and a NodePort Service
-// is simpler than wiring a hostPort/LoadBalancer controller into a kind
-// node. See packs/traefik/README.md for the full host->node->pod chain.
-const gatewayContainerPort = 30443 // Traefik websecure NodePort (HTTPS, Phase 2)
+// It pins to the traefik starter pack's fixed websecure NodePort
+// (config.GatewayNodePort, chart values ports.websecure.nodePort /
+// service.spec.type: NodePort) rather than 443: Phase 2 terminates TLS at
+// Traefik with a cube-idp CA-issued cert (spec D6/D12, internal/up/tls.go),
+// and a NodePort Service is simpler than wiring a hostPort/LoadBalancer
+// controller into a kind node. See packs/traefik/README.md for the full
+// host->node->pod chain. Shared with k3dp via config.GatewayNodePort (not
+// internal/cluster: that package's factory imports kindp/k3dp, so importing
+// it back here would cycle).
+const gatewayContainerPort = config.GatewayNodePort
 
 // CertsD requests a containerd certs.d bind mount on every kind node so
 // image refs on Host resolve through the hosts.toml/ca.crt staged in HostDir

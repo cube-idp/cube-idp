@@ -54,8 +54,9 @@ func Load(path string) (*Cube, error) {
 	}
 	// kubernetesVersion has no CUE default (an explicit version with
 	// provider "existing" must be rejected above, D10/spec §4.1), so the
-	// documented default for kind clusters is applied here instead.
-	if c.Spec.Cluster.Provider == "kind" && c.Spec.Cluster.KubernetesVersion == "" {
+	// documented default for cluster-creating providers is applied here
+	// instead. k3d shares kind's default (both are local dev clusters).
+	if (c.Spec.Cluster.Provider == "kind" || c.Spec.Cluster.Provider == "k3d") && c.Spec.Cluster.KubernetesVersion == "" {
 		c.Spec.Cluster.KubernetesVersion = "v1.33.1"
 	}
 	return &c, nil
@@ -97,7 +98,7 @@ func crossValidate(c *Cube) error {
 		if len(cl.ExtraPorts) > 0 || len(cl.Mounts) > 0 || cl.ProviderConfig != "" || cl.KubernetesVersion != "" {
 			return diag.New(diag.CodeClusterSetupFailed,
 				"cluster.extraPorts/mounts/providerConfig/kubernetesVersion imply node creation and are not valid with provider: existing",
-				"remove those fields, or switch to provider: kind")
+				"remove those fields, or switch to provider: kind or k3d")
 		}
 	}
 	if c.Spec.Engine.Type == "argocd" {

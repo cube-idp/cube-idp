@@ -42,6 +42,15 @@ const (
 	CodeKindDeleteFailed  Code = "CUBE-1205" // kind cluster deletion failed
 )
 
+// 13xx: k3d provider
+const (
+	CodeK3dConfigMerge   Code = "CUBE-1301" // k3d providerConfig merge failed
+	CodeK3dConfigInvalid Code = "CUBE-1302" // k3d providerConfig structure invalid
+	CodeK3dCreateFailed  Code = "CUBE-1303" // k3d cluster creation failed / runtime unreachable
+	CodeK3dKubeconfigGet Code = "CUBE-1304" // cannot get kubeconfig from k3d
+	CodeK3dDeleteFailed  Code = "CUBE-1305" // k3d cluster deletion failed
+)
+
 // 2xxx: apply
 const (
 	CodeApplyWaitTimeout Code = "CUBE-2001" // timed out waiting for resources to become ready
