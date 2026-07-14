@@ -23,6 +23,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/pack"
 	"github.com/rafpe/cube-idp/internal/registry"
 	"github.com/rafpe/cube-idp/internal/trust"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 const dnsTimeout = 2 * time.Minute
@@ -315,7 +316,12 @@ func unreadySummary(health []engine.ComponentHealth) string {
 	return strings.Join(msgs, "; ")
 }
 
-// step prints one line of user-facing progress.
+// step prints one line of user-facing progress. It delegates to
+// internal/ui, which reproduces this exact phase-1 format
+// ("▸ [%s] %s\n") in plain mode and only ever renders styled output on a
+// real terminal (never in tests, e2e, or CI — see ui.Resolve). ui.PlainFlag
+// mirrors the --plain persistent flag set once by cmd/root.go's
+// PersistentPreRunE, before any orchestrator runs.
 func step(w io.Writer, stage, format string, args ...any) {
-	fmt.Fprintf(w, "▸ [%s] %s\n", stage, fmt.Sprintf(format, args...))
+	ui.New(w, ui.PlainFlag).Step(stage, format, args...)
 }

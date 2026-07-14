@@ -8,15 +8,27 @@ import (
 
 	"github.com/rafpe/cube-idp/internal/cluster"
 	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 func NewRootCmd() *cobra.Command {
+	var plain bool
 	root := &cobra.Command{
 		Use:           "cube-idp",
 		Short:         "cube-idp stands up an internal developer platform on Kubernetes and gets out of the way",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Sets ui.PlainFlag once, before any subcommand's RunE, so every
+		// Printer built downstream (internal/up's step(), cmd/cnoe.go, ...)
+		// sees the resolved --plain choice without threading a bool through
+		// every orchestrator signature (Task 13.8).
+		PersistentPreRunE: func(*cobra.Command, []string) error {
+			ui.PlainFlag = plain
+			return nil
+		},
 	}
+	root.PersistentFlags().BoolVar(&plain, "plain", false,
+		"force plain, non-styled output (always on when $CI is set or stdout isn't a terminal)")
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newUpCmd())

@@ -15,6 +15,7 @@ import (
 	"github.com/rafpe/cube-idp/internal/oci"
 	"github.com/rafpe/cube-idp/internal/pack"
 	"github.com/rafpe/cube-idp/internal/registry"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 const cnoeClusterTimeout = 3 * time.Minute
@@ -89,7 +90,7 @@ func newCnoeCmd() *cobra.Command {
 				if err := a.RecordInventory(c.Context(), deliverObjs); err != nil {
 					return err
 				}
-				fmt.Fprintf(c.OutOrStdout(), "▸ [cnoe] %s imported as %s@%s\n", app.Name, rendered.Name, rendered.Version)
+				ui.New(c.OutOrStdout(), ui.PlainFlag).Step("cnoe", "%s imported as %s@%s", app.Name, rendered.Name, rendered.Version)
 			}
 			fmt.Fprintf(c.OutOrStdout(), "✔ %d application(s) imported — `cube-idp status` tracks their health\n", len(apps))
 			return nil
