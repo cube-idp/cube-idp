@@ -27,6 +27,7 @@ import (
 	"helm.sh/helm/v4/pkg/action"
 	"helm.sh/helm/v4/pkg/chart/common"
 	"helm.sh/helm/v4/pkg/chart/loader"
+	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
 	"helm.sh/helm/v4/pkg/cli"
 	"helm.sh/helm/v4/pkg/registry"
 	release "helm.sh/helm/v4/pkg/release/v1"
@@ -163,6 +164,28 @@ func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) 
 		}}
 		objs = append([]*unstructured.Unstructured{nsObj}, objs...)
 	}
+
+	// Helm's dry-run render (rel.Manifest) deliberately OMITS the objects a
+	// chart ships in its crds/ directory — `helm install` applies those
+	// out-of-band, before the templated manifest, and `helm template`
+	// likewise drops them unless --include-crds is passed. The Install SDK
+	// action exposes no such flag, so charts delivering the Gateway API CRDs
+	// (envoy gateway-helm) or any other crds/-shipped CRDs would silently
+	// lose them from the rendered artifact. Recover them from the loaded
+	// chart via CRDObjects() (which also walks subcharts) and prepend them,
+	// CRDs first — ahead of the injected Namespace and any custom resources
+	// the same chart templates — so the definitions that establish their
+	// kinds always land before their instances. (The applier stages by kind,
+	// CRDs ahead of everything, so this ordering is belt-and-suspenders, not
+	// load-bearing, but it keeps the rendered stream sane for callers that
+	// consume it directly.)
+	crdObjs, err := chartCRDObjects(chrt, ref.Chart)
+	if err != nil {
+		return nil, err
+	}
+	if len(crdObjs) > 0 {
+		objs = append(dedupeCRDs(crdObjs, objs), objs...)
+	}
 	return objs, nil
 }
 
@@ -173,6 +196,66 @@ func hasNamespaceObject(objs []*unstructured.Unstructured, name string) bool {
 		}
 	}
 	return false
+}
+
+// chartCRDObjects parses the CRD manifests a chart ships in its crds/
+// directory into unstructured objects. loader.Load returns chart.Charter
+// (an alias for any); Helm's crds/ machinery — CRDObjects(), which also
+// recurses into subcharts — lives on the concrete apiVersion v1/v2 chart
+// type (*chartv2.Chart). apiVersion v3 charts are still experimental and
+// their loader type lives in an internal Helm package we cannot import, so
+// a non-v2 chart simply yields no CRDs here (its templated CRDs, if any,
+// still render via the manifest). A crds/ file may itself be a multi-doc
+// YAML stream, so each is parsed with ParseMultiDoc.
+func chartCRDObjects(chrt any, chartName string) ([]*unstructured.Unstructured, error) {
+	c, ok := chrt.(*chartv2.Chart)
+	if !ok {
+		return nil, nil
+	}
+	var out []*unstructured.Unstructured
+	for _, crd := range c.CRDObjects() {
+		if crd.File == nil || len(crd.File.Data) == 0 {
+			continue
+		}
+		objs, err := apply.ParseMultiDoc(crd.File.Data)
+		if err != nil {
+			return nil, diag.Wrap(err, diag.CodePackChartErr,
+				fmt.Sprintf("helm chart %q ships an invalid CRD manifest %s", chartName, crd.Name),
+				"this is likely a bug in the chart; inspect the chart's crds/ directory")
+		}
+		out = append(out, objs...)
+	}
+	return out, nil
+}
+
+// dedupeCRDs returns the subset of crdObjs whose GroupVersionKind+namespace+
+// name is not already present in existing. A chart that both templates a CRD
+// (so it lands in the rendered manifest) and ships the same CRD under crds/
+// is pathological, but SSA on two identical objects is not idempotent enough
+// to rely on — the second apply of the same GVK/name is a conflict — so we
+// drop the crds/ copy defensively and let the templated one win.
+func dedupeCRDs(crdObjs, existing []*unstructured.Unstructured) []*unstructured.Unstructured {
+	if len(existing) == 0 {
+		return crdObjs
+	}
+	seen := make(map[string]struct{}, len(existing))
+	for _, o := range existing {
+		seen[objKey(o)] = struct{}{}
+	}
+	out := crdObjs[:0:0]
+	for _, o := range crdObjs {
+		if _, dup := seen[objKey(o)]; dup {
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
+// objKey identifies an object by apiVersion, kind, namespace and name — the
+// tuple that makes a server-side-apply target unique.
+func objKey(o *unstructured.Unstructured) string {
+	return o.GetAPIVersion() + "|" + o.GetKind() + "|" + o.GetNamespace() + "|" + o.GetName()
 }
 
 // mergeValues deep-merges override on top of base (chart.yaml's default

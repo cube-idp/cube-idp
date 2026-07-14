@@ -66,5 +66,26 @@ func TestStarterPacksRender(t *testing.T) {
 					dir, o.GetKind(), o.GetName())
 			}
 		}
+
+		// The envoy-gateway pack's gateway-helm chart ships the Gateway API
+		// CRDs (and Envoy Gateway's own CRDs) under its crds/ directory.
+		// Helm's dry-run render drops crds/ objects, so before the
+		// CRDObjects() re-injection fix (internal/pack/helm.go) this render
+		// silently lacked them and `up` timed out waiting for the HTTPRoute
+		// CRD to establish. Assert they are back.
+		if dir == "../packs/envoy-gateway" {
+			crds := map[string]bool{}
+			for _, o := range r.Objects {
+				if o.GetKind() == "CustomResourceDefinition" {
+					crds[o.GetName()] = true
+				}
+			}
+			if len(crds) == 0 {
+				t.Errorf("%s: rendered no CustomResourceDefinition objects — gateway-helm's crds/ were dropped from the render", dir)
+			}
+			if !crds["httproutes.gateway.networking.k8s.io"] {
+				t.Errorf("%s: rendered CRDs missing httproutes.gateway.networking.k8s.io (the Gateway API CRD `up` waits to establish); got %d CRDs", dir, len(crds))
+			}
+		}
 	}
 }

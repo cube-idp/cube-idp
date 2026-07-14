@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"sigs.k8s.io/yaml"
+
+	"github.com/rafpe/cube-idp/internal/config"
 )
 
 // TestChartRefDecode pins ChartRef's struct tags: sigs.k8s.io/yaml converts
@@ -41,6 +43,51 @@ values:
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ChartRef decode mismatch:\n got: %+v\nwant: %+v", got, want)
+	}
+}
+
+// TestRenderChartRefIncludesCRDs pins the crds/ recovery: Helm's dry-run
+// render (rel.Manifest) omits objects a chart ships under crds/, so
+// renderChartRef must re-inject them from chrt.CRDObjects(). The local
+// testdata/crds-chart fixture ships two CRDs under crds/ plus one templated
+// ConfigMap; without the fix only the ConfigMap would render. Network-free:
+// the chart is a local directory LocateChart resolves without a pull.
+func TestRenderChartRefIncludesCRDs(t *testing.T) {
+	ref := ChartRef{
+		Chart:       "testdata/crds-chart",
+		ReleaseName: "crds",
+		Namespace:   "crds",
+	}
+	objs, err := renderChartRef(ref, nil, config.GatewaySpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var haveCM bool
+	crds := map[string]bool{}
+	for _, o := range objs {
+		switch o.GetKind() {
+		case "ConfigMap":
+			if o.GetName() == "crds-chart-cm" {
+				haveCM = true
+			}
+		case "CustomResourceDefinition":
+			crds[o.GetName()] = true
+		}
+	}
+	if !haveCM {
+		t.Fatalf("expected the templated ConfigMap crds-chart-cm to render, got %d objects", len(objs))
+	}
+	for _, want := range []string{"widgets.example.cube-idp.io", "gadgets.example.cube-idp.io"} {
+		if !crds[want] {
+			t.Fatalf("crds/ CRD %q missing from rendered objects (Helm dropped it and the fix did not re-inject it); got CRDs %v", want, crds)
+		}
+	}
+
+	// CRDs must sort ahead of the namespace and the templated ConfigMap so a
+	// consumer reading the stream directly sees definitions before instances.
+	if objs[0].GetKind() != "CustomResourceDefinition" {
+		t.Fatalf("expected a CustomResourceDefinition first, got %s/%s", objs[0].GetKind(), objs[0].GetName())
 	}
 }
 
