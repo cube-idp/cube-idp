@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -164,6 +166,33 @@ func TestSecretsForDisplayDanglingAuthSecretRef(t *testing.T) {
 	printSecretRows(&buf, rows)
 	if !strings.Contains(buf.String(), "<secret argocd/argocd-initial-admin-secret not found>") {
 		t.Fatalf("rendered table must show the marker in DATA: %s", buf.String())
+	}
+}
+
+// TestWriteSecretsJSON pins the gh-style get-secrets document (design doc
+// §10): secret rows with their fields, deprecation notes carried as data, and
+// a dangling authSecretRef surfaced via placeholder instead of fields.
+func TestWriteSecretsJSON(t *testing.T) {
+	rows := []secretRow{
+		{Pack: "gitea", Namespace: "gitea", Name: "gitea-admin", Fields: map[string]string{"password": "s3cr3t"}},
+		{Pack: "argocd", Namespace: "argocd", Name: "argocd-initial-admin-secret", Placeholder: "<secret argocd/argocd-initial-admin-secret not found>"},
+	}
+	var b bytes.Buffer
+	if err := writeSecretsJSON(&b, rows, []string{"note: legacy"}); err != nil {
+		t.Fatal(err)
+	}
+	var doc secretsDoc
+	if err := json.Unmarshal(b.Bytes(), &doc); err != nil {
+		t.Fatalf("document is not valid JSON: %v\n%s", err, b.String())
+	}
+	if doc.V != 1 || len(doc.Secrets) != 2 || len(doc.Notes) != 1 {
+		t.Fatalf("doc shape: %+v", doc)
+	}
+	if doc.Secrets[0].Fields["password"] != "s3cr3t" {
+		t.Fatalf("fields not carried: %+v", doc.Secrets[0])
+	}
+	if doc.Secrets[1].Placeholder == "" || doc.Secrets[1].Fields != nil {
+		t.Fatalf("dangling row must carry placeholder and no fields: %+v", doc.Secrets[1])
 	}
 }
 

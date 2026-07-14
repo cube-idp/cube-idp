@@ -178,6 +178,18 @@ func NewFor(out io.Writer) *Printer {
 	return &Printer{out: out, mode: m}
 }
 
+// Styled reports whether this Printer renders the rich (lipgloss) surface.
+// Request/response commands (status, doctor) consult it to choose between
+// their byte-frozen plain projection and the stage-B rich static render —
+// NewFor has already applied the per-writer downgrade, so a non-terminal
+// writer (every test buffer, every pipe) reports false and stays plain.
+func (p *Printer) Styled() bool { return p.mode == ModeStyled }
+
+// Out returns the writer this Printer was built for, so a command that needs
+// to interleave its own rich lipgloss layout with Printer calls can target the
+// same destination without threading the writer separately.
+func (p *Printer) Out() io.Writer { return p.out }
+
 var (
 	stepBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
 	stepMsgStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))

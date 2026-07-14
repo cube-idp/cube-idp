@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -18,10 +19,15 @@ import (
 
 func newDoctorCmd() *cobra.Command {
 	var file string
+	var output string
 	c := &cobra.Command{
 		Use:   "doctor",
 		Short: "Diagnose the host and (if reachable) the cluster; exit 1 on errors",
 		RunE: func(c *cobra.Command, _ []string) error {
+			jsonDoc, err := wantJSONDoc(output)
+			if err != nil {
+				return err
+			}
 			out := c.OutOrStdout()
 			var findings []diag.Finding
 
@@ -103,6 +109,12 @@ func newDoctorCmd() *cobra.Command {
 				}
 			}
 
+			if jsonDoc {
+				if writeDoctorJSON(out, findings) {
+					os.Exit(1)
+				}
+				return nil
+			}
 			if doctor.Render(out, findings) {
 				os.Exit(1)
 			}
@@ -110,5 +122,40 @@ func newDoctorCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
+	addOutputFlag(c, &output)
 	return c
+}
+
+// doctorDoc is the gh-style doctor document (design doc §10): the findings
+// array with codes and severities — CI-annotation gold — plus the overall
+// errors verdict that drives the exit code.
+type doctorDoc struct {
+	jsonDocHead
+	Findings []doctorFinding `json:"findings"`
+	Errors   bool            `json:"errors"`
+}
+
+type doctorFinding struct {
+	Code        string `json:"code"`
+	Severity    string `json:"severity"`
+	Message     string `json:"message"`
+	Remediation string `json:"remediation"`
+}
+
+// writeDoctorJSON emits the doctor document and reports whether any finding is
+// an error (so cmd keeps the os.Exit(1) semantics unchanged across all modes).
+func writeDoctorJSON(out io.Writer, findings []diag.Finding) bool {
+	doc := doctorDoc{jsonDocHead: jsonDocHead{V: docSchemaVersion}, Findings: make([]doctorFinding, 0, len(findings))}
+	for _, f := range findings {
+		if f.Severity == diag.SeverityError {
+			doc.Errors = true
+		}
+		doc.Findings = append(doc.Findings, doctorFinding{
+			Code: string(f.Code), Severity: string(f.Severity), Message: f.Message, Remediation: f.Remediation,
+		})
+	}
+	// A JSON document must still be emitted even on marshal failure paths; the
+	// error is a programming error here (all fields are plain strings).
+	_ = writeJSONDoc(out, doc)
+	return doc.Errors
 }

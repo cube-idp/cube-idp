@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 func TestPortSquatIsDetected(t *testing.T) {
@@ -57,6 +58,48 @@ func TestLowDiskIsAWarning(t *testing.T) {
 	}
 	if f := CheckDiskSpace(t.TempDir(), 1); f != nil {
 		t.Fatalf("1 byte of free disk must pass, got %+v", f)
+	}
+}
+
+// TestRenderPlainByteStable pins doctor's byte-frozen plain projection (design
+// doc §8 item 4) — the exact "%s %s  %s\n    fix: %s\n" format, glyph as the
+// bare character — survives stage B unchanged.
+func TestRenderPlainByteStable(t *testing.T) {
+	defer ui.SetMode(ui.ModeStyled)
+	ui.SetMode(ui.ModePlain)
+	var b strings.Builder
+	Render(&b, []diag.Finding{
+		{Code: "CUBE-0101", Severity: diag.SeverityError, Message: "no runtime", Remediation: "install docker"},
+	})
+	const want = "✗ CUBE-0101  no runtime\n    fix: install docker\n"
+	if got := b.String(); got != want {
+		t.Fatalf("doctor plain drifted:\ngot:  %q\nwant: %q", got, want)
+	}
+	if strings.Contains(b.String(), "\x1b[") {
+		t.Fatal("plain doctor must emit zero ANSI escapes")
+	}
+}
+
+// TestRenderStyledGroupsBySeverity checks the stage-B rich render (design doc
+// §10): ModeLive forces styled even on a bytes.Buffer (the NewFor escape
+// hatch), and the output groups findings under severity section headers and
+// prints a verdict. hasErrors must still be reported correctly in styled mode.
+func TestRenderStyledGroupsBySeverity(t *testing.T) {
+	defer ui.SetMode(ui.ModeStyled)
+	ui.SetMode(ui.ModeLive) // NewFor maps ModeLive -> styled regardless of writer
+	var b strings.Builder
+	hasErrors := Render(&b, []diag.Finding{
+		{Code: "CUBE-0103", Severity: diag.SeverityWarning, Message: "low disk", Remediation: "free space"},
+		{Code: "CUBE-0101", Severity: diag.SeverityError, Message: "no runtime", Remediation: "install docker"},
+	})
+	if !hasErrors {
+		t.Fatal("styled render must still report errors")
+	}
+	got := b.String()
+	for _, want := range []string{"Errors", "Warnings", "CUBE-0101", "CUBE-0103", "fix:"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("styled doctor missing %q:\n%s", want, got)
+		}
 	}
 }
 
