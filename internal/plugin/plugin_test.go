@@ -67,6 +67,44 @@ func TestExecRunsTrustedPluginAndPropagatesExit(t *testing.T) {
 	}
 }
 
+// TestExecScrubsStaleContractEnvWhenFieldsOmitted covers the review's
+// IMPORTANT finding: "omitted" contract fields must mean the plugin does
+// not see the key AT ALL — a stale CUBE_IDP_* variable sitting in the
+// operator's shell must not leak through os.Environ() into the child. The
+// fake plugin exits 9 if any contract key other than the one deliberately
+// set (CUBE_IDP_CUBE_NAME) is present in its environment; the `+x`
+// expansion detects set-but-empty too.
+func TestExecScrubsStaleContractEnvWhenFieldsOmitted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("plugin exec tests are unix-only")
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube-idp-scrub")
+	script := `#!/bin/sh
+[ -n "${CUBE_IDP_KUBECONFIG+x}" ] && exit 9
+[ -n "${CUBE_IDP_REGISTRY+x}" ] && exit 9
+[ -n "${CUBE_IDP_CA+x}" ] && exit 9
+[ "$CUBE_IDP_CUBE_NAME" = "dev" ] || exit 8
+exit 0
+`
+	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
+	// Stale contract vars in the parent environment, as if exported by the
+	// operator's shell or a previous tool run.
+	t.Setenv("CUBE_IDP_KUBECONFIG", "/stale/kubeconfig")
+	t.Setenv("CUBE_IDP_REGISTRY", "stale.example:5000")
+	t.Setenv("CUBE_IDP_CA", "/stale/ca.crt")
+	if err := Trust("scrub", p); err != nil {
+		t.Fatal(err)
+	}
+	if err := Exec(context.Background(), p, nil, Env{CubeName: "dev"}); err != nil {
+		t.Fatalf("stale CUBE_IDP_* env leaked into the plugin (exit 9) or the set field was lost (exit 8): %v", err)
+	}
+}
+
 func TestTrustDetectsChangedBinary(t *testing.T) {
 	dir := t.TempDir()
 	p := fakePlugin(t, dir, "mutant", 0)

@@ -32,15 +32,27 @@ func Exec(ctx context.Context, path string, args []string, env Env) error {
 		return err
 	}
 
-	cmd := exec.CommandContext(ctx, path, args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Env = os.Environ()
-	for k, v := range map[string]string{
+	contract := map[string]string{
 		"CUBE_IDP_KUBECONFIG": env.Kubeconfig,
 		"CUBE_IDP_CUBE_NAME":  env.CubeName,
 		"CUBE_IDP_REGISTRY":   env.Registry,
 		"CUBE_IDP_CA":         env.CA,
-	} {
+	}
+
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	// Inherit the parent environment MINUS every contract key: an omitted
+	// field must mean the plugin does not see the key at all, so a stale
+	// CUBE_IDP_* exported in the operator's shell (or by a previous tool
+	// run) can never leak through as if cube-idp had set it.
+	for _, kv := range os.Environ() {
+		name, _, _ := strings.Cut(kv, "=")
+		if _, isContract := contract[name]; isContract {
+			continue
+		}
+		cmd.Env = append(cmd.Env, kv)
+	}
+	for k, v := range contract {
 		if v != "" {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
