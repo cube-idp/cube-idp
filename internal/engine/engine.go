@@ -15,8 +15,10 @@ import (
 )
 
 // ArtifactRef identifies a pushed OCI artifact by repository and tag, e.g.
-// {"packs/gitea", "0.1.0"}.
-type ArtifactRef struct{ Repo, Tag string }
+// {"packs/gitea", "0.1.0"}. Digest is the manifest digest PushRendered
+// resolved for that push (Task 10) — both engines' Deliver ignore it today;
+// Task 11's change-skip logic is the first consumer.
+type ArtifactRef struct{ Repo, Tag, Digest string }
 
 // ComponentHealth is the readiness of a single engine-managed component
 // (e.g. a Flux Kustomization) for a cube.

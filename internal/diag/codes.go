@@ -98,3 +98,9 @@ const (
 	CodeTrustCertIssueFail Code = "CUBE-6005" // server certificate issuance failed (Phase 2)
 	CodeTrustStateFail     Code = "CUBE-6006" // trust state file corrupt (Phase 2)
 )
+
+// 7xxx: sync (Task 10)
+const (
+	CodeSyncNoManifests   Code = "CUBE-7201" // sync dir has no pack.cue and no renderable *.yaml manifests
+	CodeSyncWatchNotBuilt Code = "CUBE-7202" // `sync --watch` stub — watch mode lands in Task 11
+)

@@ -119,7 +119,7 @@ func pushRenderedTo(ctx context.Context, r *pack.Rendered, store oras.Target) (e
 			"re-run `cube-idp up`; check that the zot pod is running")
 	}
 
-	ref := engine.ArtifactRef{Repo: "packs/" + r.Name, Tag: r.Version}
+	ref := engine.ArtifactRef{Repo: "packs/" + r.Name, Tag: r.Version, Digest: manifestDesc.Digest.String()}
 	if err := store.Tag(ctx, manifestDesc, ref.Tag); err != nil {
 		return engine.ArtifactRef{}, diag.Wrap(err, diag.CodeOCIPushFail,
 			fmt.Sprintf("failed to tag pack %q %s in the in-cluster registry", r.Name, ref.Tag),
