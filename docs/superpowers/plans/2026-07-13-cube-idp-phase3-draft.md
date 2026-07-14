@@ -30,7 +30,7 @@ All open questions in this plan's Self-Review, plus the review findings, were de
 8. **Plugin index: `--index` required, no default repo yet** (resolves Self-Review Q5). Ship the mechanism fully tested against local fixtures; create the real index repo when the first real plugin exists. Task 9's `DefaultIndex` constant is dropped in favor of the CUBE-7102 empty-check as drafted.
 9. **`up` <60s (Task 0.5j) → re-scoped honestly**: spec §3 now reads "<60s warm"; warm-up is the tracked CI metric; document the `mounts:`-based node-image cache recipe. No pre-pull engineering in this phase.
 10. **Interactive UX (Task 0.5k) → spec amendment D13, new workstream**: rich Bubble Tea-class experience is the DEFAULT for human/TTY runs; CI/non-TTY/`--plain` keeps byte-stable plain output (existing invariant and tests survive) plus a JSON event-stream option. **Gated on a dedicated research spike (`docs/superpowers/research/2026-07-14-cube-idp-ux-research.md`, in progress) → owner picks a proposal → design doc → implementation.** No UX implementation task may start before the owner's proposal choice.
-11. **`${GATEWAY_HOST}` substitution extends to chart values and manifests (spec D15)**: small contained change in `internal/pack`, done before/with Task 4 so backstage's baseUrl derives from the configured gateway instead of hardcoding.
+11. **`${GATEWAY_HOST}` substitution extends to chart values and manifests (spec D15)**: small contained change in `internal/pack`, done before/with Task 4 so backstage's baseUrl derives from the configured gateway instead of hardcoding. *(Task 0 reconciliation added a second variable, `${GATEWAY_FQDN}` — bare host, no port — because Gateway API `hostnames:` fields cannot carry ports; technically required for D15 to work in HTTPRoutes. PENDING OWNER RATIFICATION as an expansion of this decision's text; flagged in the controller's next checkpoint summary.)*
 12. **Execution mode: parallel streams** after Task 0/0.5 — A: providers (Tasks 1→2); B: catalog (3→3.5→4→5); C: air-gap (6→7, needs B's helpers + A for k3d image-load); D: plugins (8→9, independent); E: engine surface (Task 10a, merged Poke+DeliverGit per decision 4) then sync (10→11) ∥ repo create (12); F: UX (14a design doc → 14b stage A → 14c stage B). Task 13 closes. Streams A/B/D/E-surface/F-design can start concurrently.
 13. **Task 5 double-push resolved** (recommended, unobjected): `pack push` gains `--also-tag latest` (one push, two tags); the sed/version-extraction re-push in the workflow is deleted.
 14. **Sync inventory semantics — new reconcile checkpoint for the sync task**: verify whether `Applier.RecordInventory` merges or replaces the cube's inventory before shipping `SyncOnce`; if it replaces, sync would orphan `up`-applied entries and `down` would leak them. Must be merge (or made so) — named check, not an assumption.
@@ -1338,6 +1338,14 @@ package bundle
 //                       annotation. containerd consumes OCI-layout tars
 //                       natively, which is what kind (LoadImageArchive) and
 //                       k3d (ImageImportIntoClusterMulti) hand it.
+//                       NOT YET PROVEN LIVE (Task 0 review finding): that
+//                       acceptance is plausible-but-unverified until Task
+//                       13's bundle e2e exercises it. FALLBACK if either
+//                       importer rejects the OCI-layout tar: convert to
+//                       docker-archive at load time inside internal/bundle
+//                       (oras-go content walk + archive/tar — NOT by
+//                       promoting go-containerregistry out of test-only;
+//                       if that proves impractical, it is a plan change).
 type Manifest struct {
 	FormatVersion int               `json:"formatVersion"`
 	Platform      string            `json:"platform"`  // GOOS/GOARCH the images were pulled for
@@ -1758,8 +1766,11 @@ The bundle already stores per-image tars (Task 6, Owner Decisions #2), and both 
 // kindp.LoadImages: for each tar, stream it into every cluster node:
 // nodes, _ := provider.ListNodes(name); for each node, open the tar and
 // nodeutils.LoadImageArchive(node, reader) (verified present in the pinned
-// sigs.k8s.io/kind v0.32.0; containerd import accepts OCI-layout tars —
-// `kind load image-archive` is the reference consumer).
+// sigs.k8s.io/kind v0.32.0; containerd import is EXPECTED to accept
+// OCI-layout tars — `kind load image-archive` is the reference consumer, but
+// this is unproven until Task 13's bundle e2e; on rejection apply the
+// docker-archive load-time conversion fallback recorded in Task 6's layout
+// contract).
 //
 // k3dp.LoadImages: k3dclient.ImageImportIntoClusterMulti(ctx,
 // runtimes.SelectedRuntime, tarPaths, &types.Cluster{Name: name},
