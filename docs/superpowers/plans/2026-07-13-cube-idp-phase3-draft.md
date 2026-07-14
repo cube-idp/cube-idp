@@ -152,8 +152,8 @@ git commit -m "docs: reconcile phase 3 plan against post-phase-2 codebase"
 
 **Files:** as named per item. Each item = failing test (where testable) → fix → `go build ./... && go vet ./... && go test ./... -short` → one commit per coherent group.
 
-- [ ] **(a) Guard the argocd manifest regen:** `hack/gen-argocd-manifests.sh` must itself inject the `reposerver.oci.layer.media.types` cmd-params-cm key and the Namespace prepend it currently relies on hand-edits for — regenerate and diff-verify the committed install.yaml is reproducible; add a CI-runnable check (`hack/gen-argocd-manifests.sh --check` or a test comparing script output to the committed file).
-- [ ] **(b) `internal/diff` desiredState unit test:** table test pinning the desired-set assembly + identity-stub list against `up`'s applied set (the false-orphan regression net; today only the e2e covers it).
+- [x] **(a) Guard the argocd manifest regen:** `hack/gen-argocd-manifests.sh` must itself inject the `reposerver.oci.layer.media.types` cmd-params-cm key and the Namespace prepend it currently relies on hand-edits for — regenerate and diff-verify the committed install.yaml is reproducible; add a CI-runnable check (`hack/gen-argocd-manifests.sh --check` or a test comparing script output to the committed file).
+- [x] **(b) `internal/diff` desiredState unit test:** table test pinning the desired-set assembly + identity-stub list against `up`'s applied set (the false-orphan regression net; today only the e2e covers it).
 - [ ] **(c) trust command coverage:** tests for `trust --uninstall`, `--yes`, and down's revert path (seams exist: `trustInstall`/`trustUninstall`/`trustDir`).
 - [ ] **(d) ban-test scope:** `internal/diag/codes_test.go` exempts any file NAMED codes.go — anchor the exemption to the exact path `internal/diag/codes.go`.
 - [ ] **(e) kustomization stat granularity:** `internal/pack/render.go` treats any `os.Stat(kustomization.yaml)` error as absent — distinguish `fs.ErrNotExist`; surface other errors.

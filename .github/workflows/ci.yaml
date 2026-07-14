@@ -13,6 +13,10 @@ jobs:
         with: {go-version-file: go.mod}
       - run: go vet ./...
       - run: go test ./... -short
+      # Guards against a hand-edit to install.yaml drifting from what the
+      # generator would produce (Task 0.5(a) — the vendored Argo CD
+      # manifest must stay reproducible from hack/gen-argocd-manifests.sh).
+      - run: hack/gen-argocd-manifests.sh --check
       - run: make test-apply
       - run: make test-engines   # contract suite incl. envtest subtests, both engines
   e2e:

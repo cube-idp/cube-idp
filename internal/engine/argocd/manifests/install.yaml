@@ -31288,8 +31288,8 @@ metadata:
 # (see argocd.go's package doc), applied as one field on the SAME ConfigMap
 # object already in this file (not a second partial-object apply of the
 # same name/namespace/kind), so there is no SSA field-manager/pruning risk.
-# If hack/gen-argocd-manifests.sh is re-run, this data: block must be
-# reapplied by hand (the script re-curls the file from upstream).
+# hack/gen-argocd-manifests.sh injects this data: block itself on every
+# regen (see hack/inject-argocd-cmd-params.awk) — no hand-edit required.
 apiVersion: v1
 kind: ConfigMap
 metadata:

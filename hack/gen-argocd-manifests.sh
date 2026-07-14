@@ -15,12 +15,40 @@
 # before bumping across a minor version boundary (field semantics have
 # changed there before, e.g. insecureOCIForceHttp's interaction with Helm
 # v4 in the 3.4->3.5 upgrade notes).
+#
+# --check: regenerates into a temp file and diffs it against the committed
+# $OUT instead of overwriting it; exits non-zero (and prints the diff) if
+# the committed manifest has drifted from what a fresh regen would produce.
+# CI-runnable: needs only curl/awk and network egress to raw.githubusercontent.com.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ARGOCD_VERSION="${ARGOCD_VERSION:-v3.4.5}"
 OUT=internal/engine/argocd/manifests/install.yaml
-{
-  printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: argocd\n---\n'
-  curl -fsSL "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
-} > "$OUT"
+AWK_SCRIPT="$(dirname "$0")/inject-argocd-cmd-params.awk"
+
+generate() {
+  # The Namespace object argocd's install.yaml doesn't ship (it assumes the
+  # namespace already exists) is prepended here; the reposerver.oci.layer
+  # .media.types data key on argocd-cmd-params-cm (a cube-idp addition, see
+  # inject-argocd-cmd-params.awk for the full rationale) is injected by the
+  # awk filter so no hand-edit is needed after a regen.
+  {
+    printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: argocd\n---\n'
+    curl -fsSL "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
+  } | awk -f "$AWK_SCRIPT"
+}
+
+if [[ "${1:-}" == "--check" ]]; then
+  tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' EXIT
+  generate > "$tmp"
+  if diff -u "$OUT" "$tmp"; then
+    echo "$OUT is up to date with argo-cd ${ARGOCD_VERSION}"
+    exit 0
+  fi
+  echo "$OUT is stale — run hack/gen-argocd-manifests.sh to regenerate" >&2
+  exit 1
+fi
+
+generate > "$OUT"
 echo "wrote $OUT (argo-cd ${ARGOCD_VERSION})"
