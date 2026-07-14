@@ -28,12 +28,20 @@ type EngineLock struct {
 
 // Entry is the reproducibility record for one delivered pack.
 type Entry struct {
-	Ref          string   `yaml:"ref" json:"ref"`
-	Name         string   `yaml:"name" json:"name"`
-	Version      string   `yaml:"version" json:"version"`
-	Resolved     string   `yaml:"resolved" json:"resolved"`
-	RenderedHash string   `yaml:"renderedHash" json:"renderedHash"`
-	Images       []string `yaml:"images" json:"images"`
+	Ref          string `yaml:"ref" json:"ref"`
+	Name         string `yaml:"name" json:"name"`
+	Version      string `yaml:"version" json:"version"`
+	Resolved     string `yaml:"resolved" json:"resolved"`
+	RenderedHash string `yaml:"renderedHash" json:"renderedHash"`
+	// Images is the sorted union of every container image this pack pulls:
+	// images found by walking the rendered manifests (lock.ImagesFrom) PLUS
+	// any images the pack declares itself via pack.cue's optional images:
+	// list (spec D14) — operator-style packs (e.g. envoy-gateway) provision
+	// images that never appear in their own rendered objects, so the
+	// declared list closes that air-gap blind spot. `up`'s lock assembly
+	// computes the merge; `cube-idp vendor` (Phase 3) consumes it unchanged
+	// to bundle every pinned image for air-gapped installs.
+	Images []string `yaml:"images" json:"images"`
 }
 
 // PathFor returns the cube.lock path that sits next to cfgPath (cube.yaml).

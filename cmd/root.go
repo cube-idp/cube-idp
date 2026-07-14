@@ -61,6 +61,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newPluginCmd())
 	root.AddCommand(newSyncCmd())
 	root.AddCommand(newRepoCmd())
+	root.AddCommand(newVendorCmd())
 	return root
 }
 

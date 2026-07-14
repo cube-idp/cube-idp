@@ -109,6 +109,14 @@ const (
 	CodeTrustStateFail     Code = "CUBE-6006" // trust state file corrupt (Phase 2)
 )
 
+// 70xx: vendor / air-gap bundle (spec §4.1, Phase 3)
+const (
+	CodeVendorLockMissing   Code = "CUBE-7001" // cube.lock missing, unreadable, or corrupt (vendor)
+	CodeVendorPullFail      Code = "CUBE-7002" // vendor: pull of a pinned pack/image, or writing the bundle itself, failed (bundle is complete-or-error, never partial)
+	CodeVendorBundleCorrupt Code = "CUBE-7003" // vendor bundle is unreadable or corrupt (Open)
+	CodeVendorIncomplete    Code = "CUBE-7004" // vendor bundle is missing or has corrupt content for a locked pack or image (Verify)
+)
+
 // 71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)
 const (
 	CodePluginNotFound  Code = "CUBE-7101" // unknown command and no cube-idp-<name> plugin found on PATH

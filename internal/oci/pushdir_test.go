@@ -2,53 +2,19 @@ package oci
 
 import (
 	"context"
-	"io"
-	"log"
-	"net/http/httptest"
-	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/google/go-containerregistry/pkg/registry"
-
+	"github.com/rafpe/cube-idp/internal/oci/ocitest"
 	"github.com/rafpe/cube-idp/internal/pack"
 )
 
-// localRegistry starts an in-process OCI registry (go-containerregistry's
-// test registry — a TEST-ONLY dependency; production stays pure oras-go v2)
-// and returns its host:port. httptest servers listen on 127.0.0.1 over plain
-// HTTP, which exercises the same insecure-transport gate
-// (isLocalRegistryHost -> PlainHTTP) the zot port-forward tunnel uses.
-func localRegistry(t *testing.T) string {
-	t.Helper()
-	srv := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
-	t.Cleanup(srv.Close)
-	u, err := url.Parse(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return u.Host
-}
-
-func writeDemoPack(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	must := func(p, content string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	must(filepath.Join(dir, "pack.cue"), "name: \"demo\"\nversion: \"0.9.9\"\n")
-	must(filepath.Join(dir, "manifests", "cm.yaml"),
-		"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: demo\n  namespace: default\n")
-	return dir
-}
+// localRegistry and writeDemoPack delegate to the shared ocitest package
+// (Task 6): both this file and internal/bundle's vendor tests need the same
+// in-process-registry-plus-demo-pack fixture, so it lives in one place
+// rather than being copy-pasted per package.
+func localRegistry(t *testing.T) string { return ocitest.LocalRegistry(t) }
+func writeDemoPack(t *testing.T) string { return ocitest.WriteDemoPack(t) }
 
 // TestPushPackDirRoundTripsThroughFetch is the whole contract of Task 3:
 // PushPackDir must produce an artifact pack.Fetch's pullOCI can consume —
