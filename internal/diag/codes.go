@@ -99,3 +99,11 @@ const (
 	CodeTrustCertIssueFail Code = "CUBE-6005" // server certificate issuance failed (Phase 2)
 	CodeTrustStateFail     Code = "CUBE-6006" // trust state file corrupt (Phase 2)
 )
+
+// 71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)
+const (
+	CodePluginNotFound  Code = "CUBE-7101" // unknown command and no cube-idp-<name> plugin found on PATH
+	CodePluginTrustIO   Code = "CUBE-7102" // plugin trust store (~/.config/cube-idp/trust.json) read/write/hash error
+	CodePluginExecFail  Code = "CUBE-7103" // plugin process failed to start/run (not the plugin's own reported exit code)
+	CodePluginUntrusted Code = "CUBE-7104" // plugin refused: unknown or changed sha256, and no interactive confirmation
+)
