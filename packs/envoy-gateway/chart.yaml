@@ -1,0 +1,18 @@
+# envoy-gateway: alternative, fully turnkey cube-idp gateway implementation
+# (Owner Decisions #7) — exercises the oci:// chart path in the helm
+# wrapper. TURNKEY CONSTRAINTS (verified 2026-07-14 against the shipped
+# trust/CoreDNS wiring): `up` issues the TLS secret cube-idp-gateway-tls
+# into namespace gw.Pack (= envoy-gateway) and CoreDNS rewrites *.<host> to
+# the Service <gw.Pack>.<gw.Pack>.svc.cluster.local
+# (= envoy-gateway.envoy-gateway.svc), so this pack's namespace MUST be
+# envoy-gateway (not the upstream default envoy-gateway-system) and the
+# data-plane Service must be pinned to that name + NodePorts 30443/30080
+# (see manifests/10-gatewayclass.yaml's EnvoyProxy).
+# OCI charts carry the full oci:// reference in `chart:` — there is no
+# separate `repo:` field for this path (verified against
+# internal/pack/testdata/demo-helm/chart.yaml, the existing OCI example;
+# renderChartRef's registry.IsOCI branch only inspects ref.Chart).
+chart: oci://docker.io/envoyproxy/gateway-helm
+version: "1.3.0"           # pin; bump deliberately
+releaseName: envoy-gateway
+namespace: envoy-gateway

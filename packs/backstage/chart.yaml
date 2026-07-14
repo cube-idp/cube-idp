@@ -1,0 +1,16 @@
+# Backstage: cube-idp's default developer portal.
+chart: backstage
+repo: https://backstage.github.io/charts
+version: "2.4.0"           # pin; bump deliberately
+releaseName: backstage
+namespace: backstage
+values:
+  backstage:
+    extraEnvVars:
+      # ${GATEWAY_HOST} expands via D15 (Task 3.5, RenderFor) to host[:port]
+      # — https is the canonical scheme (websecure listener, Phase 2
+      # D6/D12). Hostnames follow spec.gateway.host automatically.
+      - name: APP_CONFIG_app_baseUrl
+        value: "https://backstage.${GATEWAY_HOST}"
+      - name: APP_CONFIG_backend_baseUrl
+        value: "https://backstage.${GATEWAY_HOST}"

@@ -44,7 +44,11 @@ func TestStarterPacksRender(t *testing.T) {
 	if testing.Short() {
 		t.Skip("helm renders hit the network")
 	}
-	for _, dir := range []string{"../packs/traefik", "../packs/gitea", "../packs/argocd"} {
+	for _, dir := range []string{
+		"../packs/traefik", "../packs/gitea", "../packs/argocd",
+		"../packs/backstage", "../packs/cert-manager",
+		"../packs/external-secrets", "../packs/envoy-gateway",
+	} {
 		p, err := pack.Fetch(context.Background(), dir, t.TempDir())
 		if err != nil {
 			t.Fatalf("%s: %v", dir, err)
