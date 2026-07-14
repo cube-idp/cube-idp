@@ -31,6 +31,13 @@ BEGIN {
     doc = ""
     next
 }
+# cube-idp air-gap deviation (Task 7): upstream argo-cd pins most control-plane
+# containers to imagePullPolicy: Always, which makes a kubelet ignore images
+# node-loaded from a vendor bundle (`up --bundle`) and reach for a registry the
+# air-gapped host cannot see. Rewrite every such policy to IfNotPresent here so
+# the generator itself carries the change and `--check`/regen stay consistent —
+# no hand-edit survives a regeneration.
+/^[[:space:]]*imagePullPolicy: Always[[:space:]]*$/ { sub(/Always/, "IfNotPresent") }
 {
     if (doc == "") { doc = $0 } else { doc = doc "\n" $0 }
 }

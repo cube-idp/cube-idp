@@ -30,6 +30,30 @@ type Provider interface {
 	Diagnose(ctx context.Context, name string) []diag.Finding
 }
 
+// ImageLoader is an optional capability of cluster-creating providers: load
+// per-image tar archives (Task 6's bundle format — single-image OCI-layout
+// tars) directly into the cluster nodes' container runtime, so pods start
+// from node-local images with no registry pull. `up --bundle` requires it;
+// kindp and k3dp implement it, `existing` does not (CUBE-7005) — up.Run
+// type-asserts the provider to *cluster.ImageLoader and fails fast before any
+// cluster mutation when the assertion misses.
+//
+// The assertions live in this package (not in kindp/k3dp) for the same reason
+// the Provider conformance check does: internal/cluster's New factory imports
+// both provider packages, so a reverse import for a `var _` in kindp/k3dp
+// would be a cycle.
+type ImageLoader interface {
+	// LoadImages loads every image in imageTars (original ref -> bundle tar
+	// path, from bundle.Opened.ImageTars) into the named cluster's nodes.
+	// Failures wrap as CUBE-7002 naming the offending image.
+	LoadImages(ctx context.Context, name string, imageTars map[string]string) error
+}
+
+var (
+	_ ImageLoader = (*kindp.Kind)(nil)
+	_ ImageLoader = (*k3dp.K3d)(nil)
+)
+
 // New factory returns a Provider for the given cluster spec.
 // It returns CUBE-1001 if the provider is unknown.
 func New(spec config.ClusterSpec, gw config.GatewaySpec) (Provider, error) {

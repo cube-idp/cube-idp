@@ -11,6 +11,7 @@ import (
 
 func newUpCmd() *cobra.Command {
 	var file string
+	var bundlePath string
 	c := &cobra.Command{
 		Use:   "up",
 		Short: "Create/ensure the cluster, install the engine, deliver all packs, exit",
@@ -20,10 +21,11 @@ func newUpCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			return ui.RunPipeline(c.Context(), "up", c.OutOrStdout(),
 				func(ctx context.Context, con *ui.Console) error {
-					return up.Run(ctx, file, con)
+					return up.Run(ctx, up.Options{ConfigPath: file, Bundle: bundlePath, Con: con})
 				})
 		},
 	}
 	c.Flags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
+	c.Flags().StringVar(&bundlePath, "bundle", "", "install fully offline from a cube-idp vendor bundle")
 	return c
 }
