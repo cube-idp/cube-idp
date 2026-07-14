@@ -5734,9 +5734,9 @@ git add -A && git commit -m "feat: e2e engine matrix, Phase 2 command coverage, 
 
 **Files:** modify `cmd/status.go` (add `--details` flag; after the existing summary, print a tabwriter table `KIND\tNAMESPACE\tNAME` from `a.LoadInventory(ctx)`, sorted by kind, then namespace, then name; cluster-scoped rows show `-` for namespace); create the pure formatting helper `formatInventory(inv []object.ObjMetadata) string` so it unit-tests without a cluster.
 
-- [ ] Failing test in `cmd/status_test.go` (new or extend): `formatInventory` with a fixed 3-object slice → exact sorted table golden string. Run, fail.
-- [ ] Implement + wire the flag; without `--details` output is byte-identical to today. Run `go test ./cmd/ -count=1 && go test ./... -short`.
-- [ ] Commit: `feat: status --details lists inventory objects`.
+- [x] Failing test in `cmd/status_test.go` (new or extend): `formatInventory` with a fixed 3-object slice → exact sorted table golden string. Run, fail.
+- [x] Implement + wire the flag; without `--details` output is byte-identical to today. Run `go test ./cmd/ -count=1 && go test ./... -short`.
+- [x] Commit: `feat: status --details lists inventory objects`.
 
 ### Task 15.3: Progress feedback + one visual language across commands
 
