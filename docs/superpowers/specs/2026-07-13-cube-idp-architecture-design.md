@@ -39,11 +39,14 @@ no remote clusters #74, no upgrade story #566, weak teardown #351/#458/#489).
 | D10 | Operator cluster customization | **Two-layer model** (2026-07-13). Layer 1: typed `spec.cluster` fields for the common operator needs — extra port mappings, registry mirrors (incl. insecure), node image/version, host mounts. Layer 2: a provider-native escape hatch (`spec.cluster.providerConfig` — inline document or file path, e.g. a full kind config) for everything else. Merge semantics are explicit: cube-idp injects only what it *requires* into the operator's config (gateway port mapping, containerd `certs.d`, CoreDNS wiring), fails with a typed `CUBE-xxxx` error on genuine conflicts instead of silently overriding, and `cube-idp config render-cluster` prints the final merged provider config for inspection before anything is created |
 | D11 | Pack discoverability CRD | **One inert `Pack` CRD, no controller** (2026-07-13, Phase 2). Amends the "no CRDs" non-goal: idpbuilder's baggage was CRDs *reconciled by a laptop-resident controller*; an unreconciled record type carries none of that cost. `packs.cube-idp.dev/v1alpha1` is cluster-scoped, written by `up` and removed by `down` (inventory-tracked like everything else); nobody watches it. `additionalPrinterColumns` make `kubectl get packs` render NAME / VERSION / URL / AUTH-SECRET / READY. Source of the data: a new optional `expose:` block in `pack.cue` (URLs, `authSecretRef` {namespace, name}, `impliedFields` such as ArgoCD's implicit `username: admin`). `cube-idp get secrets` pivots to Pack → authSecretRef → Secret (the label convention remains honored for one release, then deprecated). This becomes the standard delivery contract: a pack that exposes an endpoint or credential declares it in data, never in Go |
 | D12 | TLS from first boot | **Cert material is generated before cluster creation** (2026-07-13, Phase 2; refines D6). `up` ensures a local CA (generated once via crypto/x509, stored under the user's XDG data dir; the mkcert *mechanism* as a library — smallstep/truststore — not the mkcert binary) and issues a wildcard cert for `*.<gateway.host>`. Because this precedes cluster creation, the D10 required injections can mount the CA into containerd `certs.d`, the gateway pack receives a TLS secret and serves real HTTPS from minute one, and packs (ArgoCD, Gitea) reference the same trust root. The OS trust store is still touched ONLY by the explicit, consented `cube-idp trust` (D6 unchanged) — until then browsers warn but TLS is real. Compat touch: if a mkcert CA is already installed and trusted, detect and reuse it so those users get green locks with zero prompts |
+| D13 | CLI output & interactivity | **Rich-by-default, machine-guarded** (2026-07-14, Phase 3; amends this spec's original "no full Bubble Tea app" stance in §4.1). Human runs (TTY, no CI guard) get a full-fidelity live terminal experience — Bubble Tea-class progress views, huh-driven prompts — designed to make CUBE-xxxx diagnoses *more* readable, never buried. Non-TTY / `CI` / `--plain` runs keep the byte-stable plain output (existing invariant and tests survive), plus a structured JSON event-stream option for automation. Research spike complete and proposal chosen same day: **Proposal B "One console", staged A→B** (`docs/superpowers/research/2026-07-14-cube-idp-ux-research.md`) — one typed event stream, three renderers (plain/live/JSON), Bubble Tea v2 inline mode, `--progress=auto\|plain\|live\|json` knob with `--plain` as permanent alias; design doc precedes implementation. Still no daemon, nothing persistent: the rich view is transient and exits cleanly |
+| D14 | Air-gap image completeness | **Packs declare runtime images** (2026-07-14, Phase 3). Optional `images:` list in `pack.cue` supplements manifest-derived image extraction for images that operators pull at runtime and that appear in no rendered manifest (e.g. envoy-gateway's dynamically-spawned proxy pods). Merged into `cube.lock`'s per-pack image list so `vendor` bundles stay honest |
+| D15 | Gateway host in pack data | **`${GATEWAY_HOST}` expands in chart values and manifests** (2026-07-14, Phase 3; extends D11's expose-block substitution). URL-bearing packs (backstage's baseUrl et al.) stay correct when `spec.gateway.host`/`port` change, instead of silently breaking on customized hosts |
 
 ## 3. Goals and non-goals
 
 **Goals**
-- `cube-idp up` → working platform (cluster + GitOps engine + gateway) in <60s on a laptop, with only a container runtime installed.
+- `cube-idp up` → working platform (cluster + GitOps engine + gateway) in <60s **warm** (images cached) on a laptop, with only a container runtime installed; first run is image-pull-bound and network-dependent (re-scoped honestly 2026-07-14 — measured cold ~2m10s). Warm-up time is the tracked CI metric; a documented node-image cache recipe (`spec.cluster.mounts:`) covers repeat cold starts.
 - Same command, same config, targets an existing remote cluster: `cube-idp up --context my-eks`.
 - Everything beyond the kernel is a versioned, shareable, OCI-distributed pack.
 - Honest day-2: `diff`, `upgrade --plan`, idempotent `up`, cascading `down`, air-gapped `vendor`/`--bundle`.
@@ -154,8 +157,11 @@ diff/prune/down, and prune-preview with an opt-out annotation
 **Pack engine** (`internal/pack`) — fetch, validate, render:
 - Sources: local dir, `github.com/org/repo//path@vX` (commit-pinned via
   go-getter-style resolution), `oci://ghcr.io/org/pack:v1` (oras-go v2).
-- A pack is **data only**: `pack.cue` (name, semver, deps, `#Values` schema)
-  + manifests / chart references / kustomize overlays.
+- A pack is **data only**: `pack.cue` (name, semver, deps, `#Values` schema,
+  optional `expose:` block per D11, optional `images:` runtime-image
+  supplement per D14) + manifests / chart references / kustomize overlays.
+  `${GATEWAY_HOST}` substitution applies to `expose:` URLs, chart values,
+  and manifests (D15).
 - Rendering in-process: Helm v4 SDK (`helm.sh/helm/v4` action pkg, wrapped
   behind an internal interface — it is young), `sigs.k8s.io/kustomize/api`,
   `cuelang.org/go` for schema validation. `cube-idp add <pack>` validates
@@ -176,8 +182,12 @@ providers' and engines' `Diagnose`/`Health` plus preflights (runtime present,
 ports free, disk space, inotify limits).
 
 **CLI** (`cmd/`) — cobra v1.10; `huh` for the `cube-idp init` wizard and
-missing-value prompts; `lipgloss` status lines. No full Bubble Tea app in the
-kernel — a spinner is not a TUI.
+missing-value prompts; `lipgloss` status lines. Per D13 (2026-07-14, which
+amends the original "a spinner is not a TUI" stance): interactive human runs
+get a rich transient Bubble Tea-class live experience; non-TTY / `CI` /
+`--plain` runs keep byte-stable plain output, with a JSON event-stream option
+for automation. No persistent or daemon-like UI — the rich view exits cleanly
+with the command. Design gated on the D13 research spike + design doc.
 
 ### 4.2 Configuration
 
@@ -216,9 +226,10 @@ spec:
     host: cube-idp.localtest.me
     port: 8443
   packs:
-    - ref: oci://ghcr.io/cube-idp/packs/gitea:1.x     # D9: in default profile —
+    - ref: oci://ghcr.io/rafpe/cube-idp/packs/gitea:1.x   # D9: in default profile —
       # git server for your app repos; delete or swap this line if unwanted
-    - ref: oci://ghcr.io/cube-idp/packs/argocd:1.x    # UI, optional
+      # (namespace decision 2026-07-14: rafpe now; org migration is a one-line change)
+    - ref: oci://ghcr.io/rafpe/cube-idp/packs/argocd:1.x  # UI, optional
     - ref: ./platform/backstage                      # local dir
       values:
         replicas: 1
@@ -302,11 +313,14 @@ reverts any `cube-idp trust` changes.
   fluxcd/pkg/oci), port the helm wrapper to the v4 SDK, central CUBE-code
   sentinel catalog in `internal/diag` with a literal-ban test; terminal UX
   pass (lipgloss step/status output, huh init wizard, `--plain` for CI).
-- **Phase 3:** k3d provider; `vendor` / `up --bundle` air-gap; exec-plugin
-  discovery + index; pack catalog buildout (backstage, cert-manager,
-  external-secrets, envoy-gateway); `sync --watch`; `cube-idp repo create
-  <name> [--deploy]` convenience (creates a Gitea repo and registers an
-  engine source pointing at it — one command from empty repo to deployed).
+- **Phase 3:** k3d provider; `vendor` / `up --bundle` air-gap (with D14
+  pack-declared runtime images); exec-plugin discovery + index; pack catalog
+  buildout (backstage, cert-manager, external-secrets, envoy-gateway — the
+  latter fully turnkey as `spec.gateway.pack: envoy-gateway`); `sync --watch`;
+  `cube-idp repo create <name> [--deploy]` convenience (creates a Gitea repo
+  and registers an engine source pointing at it — one command from empty repo
+  to deployed); `${GATEWAY_HOST}` values substitution (D15); interactive UX
+  overhaul (D13): research spike → approved design doc → implementation.
 - **Phase 4 (post-1.0, evidence-driven):** Talos/vcluster providers if
   demanded; Extism hooks if Helm 4's plugin system (HIP-0026) matures;
   optional in-cluster cube-idp-operator for self-healing the engine install.
