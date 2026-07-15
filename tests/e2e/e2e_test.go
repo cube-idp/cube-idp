@@ -272,6 +272,19 @@ func assertNodeCanPullFromRegistry(t *testing.T, ref string) {
 // assertGatewayTLS dials the gateway and verifies the served cert chains to
 // the cube-idp local CA and covers the wildcard host — the D6 story minus
 // the OS trust store (never touched in CI).
+//
+// It POLLS (5s interval, gatewayTLSTimeout deadline, pollStatusReady's
+// shape) rather than dialing once: `up` returns when the ENGINE reports the
+// gateway pack Ready, but with envoy-gateway the pack's Ready component is
+// the controller — the Envoy data-plane Deployment is created by that
+// controller asynchronously afterwards (proxy image pull + xDS sync +
+// listener programming), so a single immediate dial raced it and reset
+// (found on the Task 13 envoy leg, 2026-07-15, after the pack's xDS
+// Service-name collision was fixed). Kept as the one shared helper (same
+// signature) instead of an envoy-only wrapper: the traefik path's gateway
+// is already serving when `up` returns, so its first dial succeeds and
+// polling costs nothing there, while any future engine/pack timing shift
+// gets the same de-flake for free.
 func assertGatewayTLS(t *testing.T, addr string) {
 	t.Helper()
 	caPath := filepath.Join(mustUserConfigDir(t), "cube-idp", "ca.crt")
@@ -283,12 +296,24 @@ func assertGatewayTLS(t *testing.T, addr string) {
 	if !pool.AppendCertsFromPEM(caPEM) {
 		t.Fatal("cannot parse cube-idp CA")
 	}
-	conn, err := tls.Dial("tcp", addr, &tls.Config{RootCAs: pool, ServerName: "gitea.cube-idp.localtest.me"})
-	if err != nil {
-		t.Fatalf("TLS handshake with the gateway failed: %v", err)
+	deadline := time.Now().Add(gatewayTLSTimeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		conn, err := tls.Dial("tcp", addr, &tls.Config{RootCAs: pool, ServerName: "gitea.cube-idp.localtest.me"})
+		if err == nil {
+			conn.Close()
+			return
+		}
+		lastErr = err
+		time.Sleep(5 * time.Second)
 	}
-	conn.Close()
+	t.Fatalf("TLS handshake with the gateway never succeeded within %s; last error: %v", gatewayTLSTimeout, lastErr)
 }
+
+// gatewayTLSTimeout bounds assertGatewayTLS's poll. Sized for the envoy
+// data-plane's worst case on a fresh kind node (proxy image pull dominates);
+// a hard deadline per spec §4.5 — no infinite spinner.
+const gatewayTLSTimeout = 3 * time.Minute
 
 func writeCnoeFixture(t *testing.T, dir string) {
 	t.Helper()
