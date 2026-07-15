@@ -125,10 +125,11 @@ const (
 
 // 71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)
 const (
-	CodePluginNotFound  Code = "CUBE-7101" // unknown command and no cube-idp-<name> plugin found on PATH
-	CodePluginTrustIO   Code = "CUBE-7102" // plugin trust store (~/.config/cube-idp/trust.json) read/write/hash error
-	CodePluginExecFail  Code = "CUBE-7103" // plugin process failed to start/run (not the plugin's own reported exit code)
-	CodePluginUntrusted Code = "CUBE-7104" // plugin refused: unknown or changed sha256, and no interactive confirmation
+	CodePluginNotFound    Code = "CUBE-7101" // unknown command and no cube-idp-<name> plugin found on PATH
+	CodePluginTrustIO     Code = "CUBE-7102" // plugin trust store (~/.config/cube-idp/trust.json) read/write/hash error
+	CodePluginExecFail    Code = "CUBE-7103" // plugin process failed to start/run (not the plugin's own reported exit code)
+	CodePluginUntrusted   Code = "CUBE-7104" // plugin refused: unknown or changed sha256, and no interactive confirmation
+	CodePluginNameInvalid Code = "CUBE-7105" // plugin name fails the ^[a-z0-9][a-z0-9-]*$ charset guard on `plugin install`/`plugin trust`
 )
 
 // 72xx: sync (Task 10, Task 11)

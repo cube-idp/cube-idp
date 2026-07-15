@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -279,6 +280,41 @@ func TestPluginInstallNotePlainByteStable(t *testing.T) {
 	const want = "✔ plugin \"hello\" installed and trusted\n"
 	if got := buf.String(); got != want {
 		t.Fatalf("plain output drifted:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+// TestPluginNameCharsetGuard: option- or path-shaped names are refused with
+// CUBE-7105 before any lookup/clone/exec — closes the `../`-shaped-name
+// path escape (self-inflicted only, still worth closing).
+func TestPluginNameCharsetGuard(t *testing.T) {
+	for _, bad := range []string{"../evil", "-flag", "UPPER", "sp ace", "dot.dot", ""} {
+		var subs [][]string
+		if strings.HasPrefix(bad, "-") {
+			// option-shaped names can only reach the guard past cobra's flag
+			// parsing via the -- terminator; bare `-flag` is already refused by
+			// pflag itself (unknown shorthand) — both layers refuse, the guard
+			// is what we pin here.
+			subs = [][]string{
+				{"plugin", "trust", "--", bad},
+				{"plugin", "install", "--index", "https://example.invalid/repo.git", "--", bad},
+			}
+		} else {
+			subs = [][]string{
+				{"plugin", "trust", bad},
+				{"plugin", "install", bad, "--index", "https://example.invalid/repo.git"},
+			}
+		}
+		for _, sub := range subs {
+			root := NewRootCmd()
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+			root.SetArgs(sub)
+			err := root.Execute()
+			var de *diag.Error
+			if !errors.As(err, &de) || de.Code != "CUBE-7105" {
+				t.Fatalf("%v: want CUBE-7105, got %v", sub, err)
+			}
+		}
 	}
 }
 

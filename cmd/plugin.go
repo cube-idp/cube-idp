@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"text/tabwriter"
 
@@ -13,6 +14,26 @@ import (
 	"github.com/rafpe/cube-idp/internal/plugin"
 	"github.com/rafpe/cube-idp/internal/ui"
 )
+
+// pluginNameRe is the charset every plugin name must satisfy on `plugin
+// trust`/`plugin install`: lowercase letters, digits, and hyphens, matching
+// the cube-idp-<name> binary naming convention. Guards against
+// option-shaped ("-flag") or path-shaped ("../evil") names reaching
+// plugin.Lookup/Trust/Install.
+var pluginNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// validatePluginName refuses any name outside pluginNameRe before it is
+// ever handed to a lookup, a trust-store write, or an index clone/exec —
+// closing the `../`-shaped-name path-escape (self-inflicted only, still
+// worth closing).
+func validatePluginName(name string) error {
+	if !pluginNameRe.MatchString(name) {
+		return diag.New(diag.CodePluginNameInvalid,
+			fmt.Sprintf("invalid plugin name %q", name),
+			"plugin names are lowercase letters, digits, and hyphens (cube-idp-<name> binaries)")
+	}
+	return nil
+}
 
 // newPluginCmd groups the exec-plugin discovery commands (spec §4.4 tier
 // 2): `plugin list` shows every cube-idp-<name> binary found on $PATH or in
@@ -77,6 +98,9 @@ func newPluginTrustCmd() *cobra.Command {
 				func(_ context.Context, con *ui.Console) error {
 					con.Start("plugin", "")
 					name := args[0]
+					if err := validatePluginName(name); err != nil {
+						return err
+					}
 					path, ok := plugin.Lookup(name)
 					if !ok {
 						return diag.New(diag.CodePluginNotFound,
@@ -107,11 +131,14 @@ func newPluginInstallCmd() *cobra.Command {
 			return ui.RunPipelineStatic(c.Context(), "plugin", c.OutOrStdout(),
 				func(ctx context.Context, con *ui.Console) error {
 					con.Start("plugin", "")
+					name := args[0]
+					if err := validatePluginName(name); err != nil {
+						return err
+					}
 					if index == "" {
 						return diag.New(diag.CodePluginTrustIO, "no plugin index configured",
 							"pass --index <git-url>[@commit]; a default public index is planned but not yet published")
 					}
-					name := args[0]
 					if err := plugin.Install(ctx, index, name); err != nil {
 						return err
 					}
