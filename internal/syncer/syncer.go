@@ -44,7 +44,9 @@ type Result struct{ Pack, Version, Digest string }
 // signatures), so the one-shot path (wrapped in ui.RunPipelineStatic,
 // cmd/sync.go) and the watch path (still a raw ui.Printer, out of scope for
 // Task R3 — spec §5.3) share SyncOnce without an adapter.
-type Stepper interface{ Step(stage, format string, args ...any) }
+type Stepper interface {
+	Step(stage, format string, args ...any)
+}
 
 // Deps is SyncOnce's dependency bag, assembled by cmd/sync.go exactly like
 // status/down connect (config -> provider Ensure -> Applier -> engine
