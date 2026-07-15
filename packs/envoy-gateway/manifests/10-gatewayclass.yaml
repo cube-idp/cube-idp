@@ -17,17 +17,38 @@ spec:
 ---
 # Pins the generated Envoy data-plane Service to NodePort 30443/30080 (the
 # same host-port mapping packs/traefik relies on, see
-# internal/cluster/kindp/merge.go) and to a stable name so CoreDNS's
-# *.<host> rewrite (envoy-gateway.envoy-gateway.svc.cluster.local) resolves.
+# internal/cluster/kindp/merge.go).
+#
+# envoyService.name is deliberately UNSET (root cause found live on the
+# first envoy e2e leg, 2026-07-15, cluster fix-envoy-dbg): an earlier
+# revision named the proxy Service "envoy-gateway" — the exact name of the
+# CONTROLLER's own Service, which every proxy's static bootstrap dials for
+# xDS (envoy-gateway.envoy-gateway.svc:18000, hardcoded in EG v1.3.0). The
+# generated proxy Service hijacked that Service's selector onto the proxy
+# pods, the proxy's xDS dial landed on itself (connection refused), no
+# listener was ever programmed, and every host connection to the NodePort
+# reset — while the control plane reported Programmed=True and
+# attachedRoutes=3. Left unset, EG generates a unique per-Gateway proxy
+# Service name (envoy-<ns>-<gateway>-<hash>). KNOWN GAP: cube-idp's
+# CoreDNS *.<host> rewrite targets <pack>.<pack>.svc (internal/up
+# gatewayServiceFQDN), which for this pack is the CONTROLLER Service, so
+# in-cluster clients of *.<host> URLs are not served by the data plane;
+# the host-side NodePort path (the supported local flow) is unaffected.
+#
+# externalTrafficPolicy is pinned to Cluster: the EnvoyProxy CRD schema
+# DEFAULTS it to Local (verified against the live 1.3.0 CRD), and Local
+# breaks kind's docker-proxy -> NodePort delivery unless kube-proxy keeps
+# the (already-NATed) client on a pod-bearing node. Cluster trades away
+# client source-IP preservation, which cube-idp does not need locally.
 #
 # Verified against the pinned chart's CRD (gateway-helm 1.3.0,
 # crds/generated/gateway.envoyproxy.io_envoyproxies.yaml): envoyService is
-# a first-class home for `name` and `type: NodePort` but has NO `ports`
-# property — the structural schema would silently prune one, leaving
-# Kubernetes to auto-assign random NodePorts. Exact port numbers therefore
-# go through the schema's `patch` field: a StrategicMerge over the
-# generated Service (applied via strategicpatch.StrategicMergePatch in EG
-# v1.3.0's api/v1alpha1/kubernetes_helpers.go), keyed on ServicePort's
+# a first-class home for `type: NodePort`/`externalTrafficPolicy` but has
+# NO `ports` property — the structural schema would silently prune one,
+# leaving Kubernetes to auto-assign random NodePorts. Exact port numbers
+# therefore go through the schema's `patch` field: a StrategicMerge over
+# the generated Service (applied via strategicpatch.StrategicMergePatch in
+# EG v1.3.0's api/v1alpha1/kubernetes_helpers.go), keyed on ServicePort's
 # `port` merge key — and the generated Service's port numbers equal the
 # Gateway's listener ports (8000/8443, per Service() in EG v1.3.0's
 # internal/infrastructure/kubernetes/proxy/resource_provider.go), so these
@@ -44,7 +65,7 @@ spec:
     kubernetes:
       envoyService:
         type: NodePort
-        name: envoy-gateway
+        externalTrafficPolicy: Cluster
         patch:
           type: StrategicMerge
           value:

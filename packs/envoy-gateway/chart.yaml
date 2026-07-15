@@ -2,12 +2,17 @@
 # (Owner Decisions #7) — exercises the oci:// chart path in the helm
 # wrapper. TURNKEY CONSTRAINTS (verified 2026-07-14 against the shipped
 # trust/CoreDNS wiring): `up` issues the TLS secret cube-idp-gateway-tls
-# into namespace gw.Pack (= envoy-gateway) and CoreDNS rewrites *.<host> to
-# the Service <gw.Pack>.<gw.Pack>.svc.cluster.local
-# (= envoy-gateway.envoy-gateway.svc), so this pack's namespace MUST be
-# envoy-gateway (not the upstream default envoy-gateway-system) and the
-# data-plane Service must be pinned to that name + NodePorts 30443/30080
-# (see manifests/10-gatewayclass.yaml's EnvoyProxy).
+# into namespace gw.Pack (= envoy-gateway), so this pack's namespace MUST
+# be envoy-gateway (not the upstream default envoy-gateway-system). The
+# data-plane Service keeps EG's generated name and only pins NodePorts
+# 30443/30080 (see manifests/10-gatewayclass.yaml's EnvoyProxy) — it MUST
+# NOT be renamed to "envoy-gateway": that is the controller's own xDS
+# Service name and renaming hijacks its selector, leaving the proxy
+# configless and resetting every host connection (found live 2026-07-15).
+# KNOWN GAP: CoreDNS's *.<host> rewrite targets <gw.Pack>.<gw.Pack>.svc,
+# which here is the controller Service, so in-cluster *.<host> clients are
+# not served by the data plane on this pack; the host NodePort path is
+# unaffected.
 # OCI charts carry the full oci:// reference in `chart:` — there is no
 # separate `repo:` field for this path (verified against
 # internal/pack/testdata/demo-helm/chart.yaml, the existing OCI example;

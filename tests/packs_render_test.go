@@ -6,11 +6,13 @@ package tests
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/rafpe/cube-idp/internal/apply"
 	"github.com/rafpe/cube-idp/internal/pack"
 )
 
@@ -102,5 +104,83 @@ func TestStarterPacksRender(t *testing.T) {
 				t.Errorf("%s: certgen Job still carries the helm.sh/hook annotation: %v", dir, certgenJob.GetAnnotations())
 			}
 		}
+	}
+}
+
+// TestEnvoyGatewayPackProxyService pins the F9-follow-up root cause found
+// live on the first envoy leg (2026-07-15, fix-envoy-dbg): the pack's
+// EnvoyProxy set envoyService.name to "envoy-gateway" — the exact name of
+// the Envoy Gateway CONTROLLER's own Service, which every proxy's static
+// bootstrap dials for xDS (envoy-gateway.envoy-gateway.svc:18000,
+// hardcoded in EG v1.3.0). The generated proxy Service then overwrote that
+// Service's selector to the proxy pods, the proxy's xDS dial landed on
+// itself (connection refused), no listener was ever programmed, and every
+// host connection to the NodePort reset — while the CONTROL plane happily
+// reported Programmed=True and attachedRoutes=3. This test parses the raw
+// manifest (no helm, no network) and pins three load-bearing facts:
+//  1. envoyService must NOT be named "envoy-gateway" (the controller's xDS
+//     Service name) — leave `name` unset so EG generates its own unique
+//     proxy Service name.
+//  2. externalTrafficPolicy is explicitly "Cluster": the CRD schema
+//     DEFAULTS it to Local (verified against the live 1.3.0 CRD), and
+//     Local drops kind's docker-proxy -> NodePort traffic unless kube-proxy
+//     happens to keep the client on a pod-bearing node. Cluster trades away
+//     client source-IP preservation, which cube-idp does not need locally.
+//  3. The StrategicMerge patch still pins the cube-idp NodePorts
+//     (30443/30080) the kind host-port mapping relies on.
+func TestEnvoyGatewayPackProxyService(t *testing.T) {
+	raw, err := os.ReadFile("../packs/envoy-gateway/manifests/10-gatewayclass.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	objs, err := apply.ParseMultiDoc(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ep *unstructured.Unstructured
+	for _, o := range objs {
+		if o.GetKind() == "EnvoyProxy" {
+			ep = o
+		}
+	}
+	if ep == nil {
+		t.Fatal("no EnvoyProxy object in 10-gatewayclass.yaml")
+	}
+	svc, ok, err := unstructured.NestedMap(ep.Object, "spec", "provider", "kubernetes", "envoyService")
+	if err != nil || !ok {
+		t.Fatalf("spec.provider.kubernetes.envoyService missing: %v", err)
+	}
+	if name, ok := svc["name"].(string); ok && name == "envoy-gateway" {
+		t.Fatal("envoyService.name must not be \"envoy-gateway\": that is the controller's xDS Service name — the generated proxy Service hijacks its selector and the proxy can never fetch config (host connections reset)")
+	}
+	if etp, _ := svc["externalTrafficPolicy"].(string); etp != "Cluster" {
+		t.Fatalf("envoyService.externalTrafficPolicy must be explicitly \"Cluster\" (the CRD defaults to Local, which breaks kind's docker-proxy NodePort path), got %q", etp)
+	}
+	ports, ok, _ := unstructured.NestedSlice(ep.Object, "spec", "provider", "kubernetes", "envoyService", "patch", "value", "spec", "ports")
+	if !ok {
+		t.Fatal("envoyService.patch must pin the cube-idp NodePorts")
+	}
+	asInt := func(v any) int64 {
+		switch n := v.(type) {
+		case int64:
+			return n
+		case float64:
+			return int64(n)
+		default:
+			t.Fatalf("unexpected numeric type %T", v)
+			return 0
+		}
+	}
+	want := map[int64]int64{8443: 30443, 8000: 30080}
+	for _, p := range ports {
+		m := p.(map[string]any)
+		port, nodePort := asInt(m["port"]), asInt(m["nodePort"])
+		if want[port] != nodePort {
+			t.Fatalf("port %d pinned to nodePort %d, want %d", port, nodePort, want[port])
+		}
+		delete(want, port)
+	}
+	if len(want) != 0 {
+		t.Fatalf("ports missing from the NodePort patch: %v", want)
 	}
 }
