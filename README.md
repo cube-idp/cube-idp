@@ -98,6 +98,11 @@ spec:
 | `spec.gateway.ref` | string | — | overrides the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); falls back to `packs/<pack>` when unset, which only resolves from a checkout — `cube-idp init --local` fills this in |
 | `spec.packs` | `[{ref, values}]` | gitea + argocd (D9) | additional packs delivered after the gateway; `ref` is `oci://` or a local dir (git `github.com/...` refs ship in Phase 2); `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
 
+**Precedence:** when both `spec.gateway.ref` and `spec.gateway.pack` are
+set, the REF decides what is fetched; `up` verifies the ref'd pack.cue name
+equals `gateway.pack` and fails with CUBE-0008 on mismatch. `cube-idp init`
+always writes the two coherently (`--gateway-pack`).
+
 Run `cube-idp config render-cluster` to preview the final merged kind
 provider config (D10 layer 2) before `up` creates anything.
 

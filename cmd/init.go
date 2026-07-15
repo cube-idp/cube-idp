@@ -31,10 +31,30 @@ var cubeNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,30}$`)
 // treated as non-optional and always kept.
 var optionalPacks = []string{"gitea", "argocd"}
 
+// gatewayPacks is the catalog --gateway-pack and the wizard's "Gateway pack"
+// Select accept — the two shipped gateway implementations (R7a). An unknown
+// value is a CUBE-0007 preflight error, the existing enum-flag pattern.
+var gatewayPacks = []string{"traefik", "envoy-gateway"}
+
+// validateGatewayPackFlag rejects an unrecognized --gateway-pack value with
+// the same CUBE-0007 code addOutputFlag/validateProgressFlag use for other
+// enum flags.
+func validateGatewayPackFlag(v string) error {
+	for _, p := range gatewayPacks {
+		if v == p {
+			return nil
+		}
+	}
+	return diag.New(diag.CodeBadFlagValue,
+		fmt.Sprintf("unknown --gateway-pack value %q", v),
+		"use one of: traefik, envoy-gateway")
+}
+
 func newInitCmd() *cobra.Command {
 	var name string
 	var local string
 	var engineType string
+	var gatewayPack string
 	c := &cobra.Command{
 		Use:   "init",
 		Short: "Write the default cube.yaml (kind + flux + traefik + gitea + argocd, D9)",
@@ -43,6 +63,9 @@ func newInitCmd() *cobra.Command {
 				return diag.New(diag.CodeInitExists, "cube.yaml already exists — refusing to overwrite",
 					"remove or rename the existing cube.yaml, or edit it directly and re-run `cube-idp up`")
 			}
+			if err := validateGatewayPackFlag(gatewayPack); err != nil {
+				return err
+			}
 
 			// Wizard answers default to the D9 profile so a run that only
 			// touches some fields still writes a coherent cube.yaml.
@@ -50,6 +73,7 @@ func newInitCmd() *cobra.Command {
 				Provider:    "kind",
 				GatewayHost: "cube-idp.localtest.me",
 				GatewayPort: 8443,
+				GatewayPack: gatewayPack,
 				Packs:       append([]string(nil), optionalPacks...),
 			}
 			wizardRan := false
@@ -69,15 +93,13 @@ func newInitCmd() *cobra.Command {
 					{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0"},
 				}
 			}
+			var localAbs string
 			if local != "" {
 				abs, err := filepath.Abs(local)
 				if err != nil {
 					return fmt.Errorf("resolving --local %q: %w", local, err)
 				}
-				// Point at the checkout's own packs/ dir instead of the
-				// released OCI refs, so `up` works against uncommitted or
-				// unpublished pack changes.
-				cube.Spec.Gateway.Ref = filepath.Join(abs, "packs", "traefik")
+				localAbs = abs
 				cube.Spec.Packs = []config.PackRef{
 					{Ref: filepath.Join(abs, "packs", "gitea")},
 				}
@@ -90,6 +112,15 @@ func newInitCmd() *cobra.Command {
 			// the e2e suite, and CI keep today's D9 default profile unchanged.
 			if wizardRan {
 				applyWizardToCube(cube, wiz)
+			} else {
+				cube.Spec.Gateway.Pack = gatewayPack
+			}
+			// Coherence rule (spec §5.7a): the gateway.ref, when written, is
+			// ALWAYS derived from the final chosen pack (flag or wizard),
+			// never from a --local assignment made before the wizard ran —
+			// that ordering is exactly the F11 trap (ref traefik, pack envoy).
+			if localAbs != "" {
+				cube.Spec.Gateway.Ref = filepath.Join(localAbs, "packs", cube.Spec.Gateway.Pack)
 			}
 			out, err := yaml.Marshal(cube)
 			if err != nil {
@@ -105,6 +136,7 @@ func newInitCmd() *cobra.Command {
 	c.Flags().StringVar(&name, "name", "dev", "cube name")
 	c.Flags().StringVar(&local, "local", "", "use repo-local pack paths instead of published OCI refs")
 	c.Flags().StringVar(&engineType, "engine", "flux", "gitops engine: flux | argocd")
+	c.Flags().StringVar(&gatewayPack, "gateway-pack", "traefik", "gateway implementation pack: traefik | envoy-gateway")
 	return c
 }
 
@@ -116,6 +148,7 @@ type initWizardResult struct {
 	Context     string   // kubeconfig context, when Provider == "existing"
 	GatewayHost string
 	GatewayPort int
+	GatewayPack string   // "traefik" | "envoy-gateway" (R7a)
 	Packs       []string // selected optional-pack catalog names
 }
 
@@ -135,6 +168,9 @@ func applyWizardToCube(cube *config.Cube, r initWizardResult) {
 	}
 	if r.GatewayPort != 0 {
 		cube.Spec.Gateway.Port = r.GatewayPort
+	}
+	if r.GatewayPack != "" {
+		cube.Spec.Gateway.Pack = r.GatewayPack
 	}
 	cube.Spec.Packs = filterSelectedPacks(cube.Spec.Packs, r.Packs)
 }
@@ -178,10 +214,10 @@ func withoutGiteaPack(packs []config.PackRef) []config.PackRef {
 // wizardApplicable reports whether it is safe and appropriate to prompt
 // interactively: both stdin and stdout must be real terminals (never true
 // in CI, in `go test`, or when init's output is piped — the e2e suite pipes
-// this command, so it must never block), and neither --name nor --engine
-// was explicitly passed (flags always win over the wizard).
+// this command, so it must never block), and none of --name/--engine/
+// --gateway-pack was explicitly passed (flags always win over the wizard).
 func wizardApplicable(c *cobra.Command) bool {
-	if c.Flags().Changed("name") || c.Flags().Changed("engine") {
+	if c.Flags().Changed("name") || c.Flags().Changed("engine") || c.Flags().Changed("gateway-pack") {
 		return false
 	}
 	return ui.IsTerminal(c.InOrStdin()) && ui.IsTerminal(c.OutOrStdout())
@@ -207,10 +243,11 @@ func kubeContextNames() []string {
 // runInitWizard runs the multi-group huh v2 wizard (design doc §10): cube name
 // (validated by cubeNameRe, the schema.cue mirror), provider (kind | existing,
 // with a kubeconfig context picker for existing), engine (flux | argocd),
-// gateway host/port with a port-conflict pre-check via doctor.CheckPortFree,
-// and an optional-pack multi-select. Answers are written back into
-// *name/*engineType and *res. Accessible (screen-reader) mode engages when
-// $ACCESSIBLE is set — the gh screen-reader-prompter precedent.
+// gateway host/port with a port-conflict pre-check via doctor.CheckPortFree, a
+// gateway pack Select (traefik | envoy-gateway, R7a), and an optional-pack
+// multi-select. Answers are written back into *name/*engineType and *res.
+// Accessible (screen-reader) mode engages when $ACCESSIBLE is set — the gh
+// screen-reader-prompter precedent.
 func runInitWizard(c *cobra.Command, name, engineType *string, res *initWizardResult) error {
 	accessible := os.Getenv("ACCESSIBLE") != ""
 	portStr := strconv.Itoa(res.GatewayPort)
@@ -249,6 +286,13 @@ func runInitWizard(c *cobra.Command, name, engineType *string, res *initWizardRe
 				Title("Gateway port").
 				Value(&portStr).
 				Validate(validateGatewayPort),
+			huh.NewSelect[string]().
+				Title("Gateway pack").
+				Options(
+					huh.NewOption("traefik", "traefik"),
+					huh.NewOption("envoy-gateway", "envoy-gateway"),
+				).
+				Value(&res.GatewayPack),
 			huh.NewMultiSelect[string]().
 				Title("Optional packs").
 				Options(

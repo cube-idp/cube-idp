@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/rafpe/cube-idp/internal/config"
+	"github.com/rafpe/cube-idp/internal/diag"
 )
 
 func TestInitWritesDefaultOCIRefs(t *testing.T) {
@@ -188,6 +191,59 @@ func TestValidateGatewayPortRejectsGarbage(t *testing.T) {
 	l.Close()
 	if err := validateGatewayPort(strconv.Itoa(port)); err != nil {
 		t.Fatalf("a free port must pass: %v", err)
+	}
+}
+
+// TestInitLocalGatewayRefFollowsPack: init --local + --gateway-pack
+// envoy-gateway writes ref packs/envoy-gateway AND pack envoy-gateway —
+// the F11 trap (ref traefik, pack envoy) can no longer be authored by init.
+func TestInitLocalGatewayRefFollowsPack(t *testing.T) {
+	t.Chdir(t.TempDir())
+	root := NewRootCmd()
+	root.SetOut(io.Discard)
+	root.SetArgs([]string{"init", "--name", "dev", "--local", "/repo", "--gateway-pack", "envoy-gateway"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	cube, err := config.Load("cube.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cube.Spec.Gateway.Pack != "envoy-gateway" || cube.Spec.Gateway.Ref != filepath.Join("/repo", "packs", "envoy-gateway") {
+		t.Fatalf("gateway source incoherent: pack=%q ref=%q", cube.Spec.Gateway.Pack, cube.Spec.Gateway.Ref)
+	}
+}
+
+// TestInitPublishedGatewayPackOnly: without --local, choosing a gateway pack
+// sets pack only — ref stays empty (published mode writes ONE source).
+func TestInitPublishedGatewayPackOnly(t *testing.T) {
+	t.Chdir(t.TempDir())
+	root := NewRootCmd()
+	root.SetOut(io.Discard)
+	root.SetArgs([]string{"init", "--name", "dev", "--gateway-pack", "envoy-gateway"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	cube, err := config.Load("cube.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cube.Spec.Gateway.Pack != "envoy-gateway" || cube.Spec.Gateway.Ref != "" {
+		t.Fatalf("published mode must write pack only: pack=%q ref=%q", cube.Spec.Gateway.Pack, cube.Spec.Gateway.Ref)
+	}
+}
+
+// TestInitRejectsUnknownGatewayPack: an unrecognized --gateway-pack value
+// is a CUBE-0007 preflight error, same enum-flag pattern as --progress.
+func TestInitRejectsUnknownGatewayPack(t *testing.T) {
+	t.Chdir(t.TempDir())
+	root := NewRootCmd()
+	root.SetOut(io.Discard)
+	root.SetArgs([]string{"init", "--name", "dev", "--gateway-pack", "nginx"})
+	err := root.Execute()
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != "CUBE-0007" {
+		t.Fatalf("want CUBE-0007, got %v", err)
 	}
 }
 
