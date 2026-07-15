@@ -92,7 +92,7 @@ spec:
 | `spec.cluster.mounts` | `[{hostPath, nodePath}]` | — | D10 layer 1: host paths mounted into the node |
 | `spec.cluster.providerConfig` | string | — | D10 layer 2 escape hatch: a file path or inline provider-native config (e.g. a full kind config). cube-idp merges in only what it *requires* and fails with a typed error on real conflicts; inspect the merged result with `cube-idp config render-cluster` |
 | `spec.engine.type` | `flux` \| `argocd` | `flux` | GitOps reconciler; `argocd` ships in Phase 2 (D2) |
-| `spec.gateway.pack` | `traefik` \| `envoy-gateway` | `traefik` | Gateway API implementation; `cube-idp init --gateway-pack` writes this and `spec.gateway.ref` coherently |
+| `spec.gateway.pack` | `traefik` \| `envoy-gateway` (any pack name is accepted when paired with `spec.gateway.ref`) | `traefik` | Gateway API implementation; `cube-idp init --gateway-pack` writes this and `spec.gateway.ref` coherently |
 | `spec.gateway.host` | string | `cube-idp.localtest.me` | routable hostname for delivered packs |
 | `spec.gateway.port` | int | `8443` | host port mapped to the gateway's `websecure` (HTTPS) listener — see the note below |
 | `spec.gateway.ref` | string | — | overrides the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); falls back to `packs/<pack>` when unset, which only resolves from a checkout — `cube-idp init --local` fills this in |
@@ -416,6 +416,8 @@ fails **loudly** (CUBE-7004) on any ref missing from the bundle rather than
 silently falling through to a network fetch. It requires an image-loading
 provider (`kind` or `k3d`); `provider: existing` cannot node-load images
 and is rejected up front (CUBE-7005).
+Bundle extraction is capped (4 GiB per tar entry, 16 GiB total per bundle);
+exceeding either limit fails extraction with CUBE-7003.
 
 ## Plugins
 

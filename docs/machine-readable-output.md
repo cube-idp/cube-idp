@@ -12,7 +12,7 @@ cube-idp has two machine-readable surfaces, selected independently:
 
 | Surface | Commands | How to select | Shape |
 |---|---|---|---|
-| **Event stream** | long-running commands: `up`, `down`, `vendor`; short static commands: `sync` (one-shot), `repo create`, `plugin list`\|`trust`\|`install`, `pack push` | `--progress=json` or `CUBE_IDP_PROGRESS=json` | JSON lines: one event per line, streamed (or emitted in one batch, for the short commands) as the run progresses |
+| **Event stream** | long-running commands: `up`, `down`, `vendor`; short static commands: `sync` (one-shot), `repo create`, `plugin list`\|`trust`\|`install`, `pack push` | `--progress=json` or `CUBE_IDP_PROGRESS=json` | JSON lines: one event per line, written to the same channel as it's produced — the short commands just produce very few lines in quick succession, not a separate batching behavior |
 | **Documents** | request/response commands: `status`, `doctor`, `get secrets` | `--output json` (or `-o json`); `--progress=json` selects the same document on these commands | one pretty-printed JSON object per invocation, emitted once at the end |
 
 Everything else about a run is unchanged in both modes: exit codes, the

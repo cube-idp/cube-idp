@@ -18,6 +18,14 @@ func stripANSI(s string) string { return ansiRE.ReplaceAllString(s, "") }
 // and Plain and asserts the styled projection, with ANSI stripped, equals
 // the plain projection byte-for-byte — presentation only, per the ui.go
 // Printer rule ("content identical, presentation only").
+//
+// Scope: this identity claim only covers the event types canonicalUpRun()
+// exercises (RunStarted, StepDone, StepStarted, Note, Access, HealthTick,
+// RunDone) — it does NOT exercise event.Warn, which is not part of that
+// fixture. Warn is a deliberate exception to the content-identical rule:
+// Styled renders "⚠ msg" (glyph prefix) while Plain renders the bare "msg"
+// (see styled.go's and plain.go's Warn cases) — by design, not a drift bug.
+// Do not add Warn to canonicalUpRun() to "complete" this test's coverage.
 func TestStyledContentIdenticalToPlain(t *testing.T) {
 	evs := canonicalUpRun()
 

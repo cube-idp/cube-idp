@@ -114,7 +114,7 @@ func TestVendorJSONStreamEmitsExpectedEventTypes(t *testing.T) {
 		}
 	}
 	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
-	if lines[0] != "" && !strings.Contains(lines[0], `"type":"run_started"`) {
+	if !strings.Contains(lines[0], `"type":"run_started"`) {
 		t.Fatalf("run_started must be the first line, got:\n%s", lines[0])
 	}
 	if last := lines[len(lines)-1]; !strings.Contains(last, `"type":"run_done"`) {

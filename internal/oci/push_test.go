@@ -80,3 +80,32 @@ func TestPushRenderedKeepsFluxMediaTypes(t *testing.T) {
 		t.Fatalf("layers: %+v", manifest.Layers)
 	}
 }
+
+// TestPushRenderedIsContentAddressed mirrors pushdir_test.go's
+// TestPushPackDirIsContentAddressed: pushing the identical rendered pack
+// twice must produce the identical manifest digest. A fixed epoch
+// annotation (not wall-clock time.Now) is what makes a republish of
+// unchanged content a true no-op (Phase 4 R8) — unlike the PushPackDir
+// version of this test, no time.Sleep across a wall-clock second boundary
+// is needed here: the annotation is now a fixed constant, not time-based,
+// so there is nothing for a fast in-process double-push to race against.
+func TestPushRenderedIsContentAddressed(t *testing.T) {
+	r := &pack.Rendered{
+		Name:    "demo",
+		Version: "0.1.0",
+		Objects: []*unstructured.Unstructured{cmObj("demo", "default")},
+	}
+	store := memory.New()
+
+	ref1, err := pushRenderedTo(context.Background(), r, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref2, err := pushRenderedTo(context.Background(), r, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref1.Digest != ref2.Digest {
+		t.Fatalf("republish of identical content changed digest: %q != %q", ref1.Digest, ref2.Digest)
+	}
+}
