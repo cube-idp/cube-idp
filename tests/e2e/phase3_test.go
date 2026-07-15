@@ -37,6 +37,7 @@ import (
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/yaml"
@@ -553,5 +554,124 @@ func TestEnvoyGatewaySmoke(t *testing.T) {
 	// The envoy data plane must serve the gateway on the pinned NodePort.
 	assertGatewayTLS(t, "gitea.cube-idp.localtest.me:"+strconv.Itoa(port))
 
+	// In-cluster *.<host> must be served by the DATA PLANE via the CoreDNS
+	// rewrite (the F9/KNOWN-GAP flow): run a one-shot curl pod against
+	// https://gitea.<host>:8443 and require success. Pre-R7b this resolved
+	// to the envoy CONTROLLER Service and could never answer. Port 8443, not
+	// 443: the Gateway's websecure listener (packs/{traefik,envoy-gateway}
+	// manifests) and its Service both listen on 8443 — the host-side
+	// NodePort mapping (18443 -> 30443 -> 8443, the port var used above) is
+	// a host-only concern that doesn't exist for an in-cluster client
+	// talking to the Service directly.
+	assertInClusterHTTP(t, provider, name, dir, "https://gitea.cube-idp.localtest.me:8443")
+
 	run(t, dir, bin, "down")
+}
+
+// assertInClusterHTTP creates a curlimages/curl pod in the default namespace
+// running `curl -fskS -o /dev/null <url>` (-k: the pod does not trust the
+// cube CA; DNS + data-plane reachability is what's under test), polls its
+// phase to Succeeded within 3 minutes (curlimages/curl is not pre-pulled, so
+// the budget includes the first-ever image pull), and dumps a status summary
+// plus logs on failure. The pod is deleted in t.Cleanup. provider/clusterName
+// select which cube.yaml's cluster this dials (clusterClientset's Load ->
+// cluster.New -> Ensure pattern); they are only used for the t.Fatalf message
+// context here since the clientset itself is built from dir/cube.yaml exactly
+// like clusterClientset.
+func assertInClusterHTTP(t *testing.T, provider, clusterName, dir, url string) {
+	t.Helper()
+	cs := clusterClientset(t, dir)
+
+	const ns = "default"
+	podName := "e2e-inclusterhttp-probe"
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: ns},
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyNever,
+			Containers: []corev1.Container{
+				{
+					Name:    "curl",
+					Image:   "curlimages/curl:8.10.1",
+					Command: []string{"curl", "-fskS", "-o", "/dev/null", url},
+				},
+			},
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// Best-effort delete of a stale pod from a previous failed run before
+	// creating: Create fails AlreadyExists otherwise.
+	_ = cs.CoreV1().Pods(ns).Delete(ctx, podName, metav1.DeleteOptions{})
+
+	createCtx, createCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer createCancel()
+	if _, err := cs.CoreV1().Pods(ns).Create(createCtx, pod, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("creating in-cluster HTTP probe pod (provider=%s cluster=%s): %v", provider, clusterName, err)
+	}
+	t.Cleanup(func() {
+		delCtx, delCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer delCancel()
+		_ = cs.CoreV1().Pods(ns).Delete(delCtx, podName, metav1.DeleteOptions{})
+	})
+
+	// 3 minutes: curlimages/curl is not pre-pulled/mirrored on the kind node
+	// (unlike the pack images `up` loads ahead of time), so the first-ever
+	// pull from Docker Hub is part of the budget, not just the curl itself.
+	var last *corev1.Pod
+	deadline := time.Now().Add(3 * time.Minute)
+	for time.Now().Before(deadline) {
+		getCtx, getCancel := context.WithTimeout(context.Background(), 20*time.Second)
+		got, err := cs.CoreV1().Pods(ns).Get(getCtx, podName, metav1.GetOptions{})
+		getCancel()
+		if err != nil {
+			t.Fatalf("polling in-cluster HTTP probe pod: %v", err)
+		}
+		last = got
+		switch got.Status.Phase {
+		case corev1.PodSucceeded:
+			return
+		case corev1.PodFailed:
+			t.Fatalf("in-cluster HTTP probe of %s failed (pod %s/%s Failed):\n%s\n%s", url, ns, podName, podStatusSummary(last), podLogs(t, cs, ns, podName))
+		}
+		time.Sleep(3 * time.Second)
+	}
+	t.Fatalf("in-cluster HTTP probe of %s never reached Succeeded within 3m:\n%s\n%s", url, podStatusSummary(last), podLogs(t, cs, ns, podName))
+}
+
+// podStatusSummary renders p's phase and each container's waiting/running/
+// terminated reason — the detail that distinguishes "still pulling the
+// image" from "crash-looping" from "actually can't resolve/reach the URL",
+// none of which podLogs alone (empty pre-start) can tell apart.
+func podStatusSummary(p *corev1.Pod) string {
+	if p == nil {
+		return "(no pod status observed)"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "phase=%s", p.Status.Phase)
+	for _, cs := range p.Status.ContainerStatuses {
+		switch {
+		case cs.State.Waiting != nil:
+			fmt.Fprintf(&b, " container=%s waiting=%s(%s)", cs.Name, cs.State.Waiting.Reason, cs.State.Waiting.Message)
+		case cs.State.Running != nil:
+			fmt.Fprintf(&b, " container=%s running", cs.Name)
+		case cs.State.Terminated != nil:
+			fmt.Fprintf(&b, " container=%s terminated=%s(%s) exitCode=%d", cs.Name, cs.State.Terminated.Reason, cs.State.Terminated.Message, cs.State.Terminated.ExitCode)
+		}
+	}
+	return b.String()
+}
+
+// podLogs best-effort fetches ns/name's container logs for a probe-pod
+// failure message — logged, not fataled, since this only runs while already
+// building a t.Fatalf message.
+func podLogs(t *testing.T, cs *kubernetes.Clientset, ns, name string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	raw, err := cs.CoreV1().Pods(ns).GetLogs(name, &corev1.PodLogOptions{}).DoRaw(ctx)
+	if err != nil {
+		return fmt.Sprintf("(failed to fetch logs: %v)", err)
+	}
+	return string(raw)
 }
