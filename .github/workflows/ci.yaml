@@ -58,7 +58,16 @@ jobs:
         with:
           version: "~> v2"
           args: release --snapshot --clean
-      # RECONCILE: dist subdirectory names carry a GOAMD64/GOARM suffix
-      # (confirmed locally: cube-idp_linux_amd64_v1/, cube-idp_darwin_arm64_v8.0/)
-      # — find is the robust form instead of hardcoding it.
-      - run: find dist -name cube-idp -type f | head -1 | xargs -I{} {} version   # smoke: stamped, runs
+      # dist subdirectory names carry a GOAMD64/GOARM suffix (confirmed
+      # locally: cube-idp_linux_amd64_v1/, cube-idp_darwin_arm64_v8.0/), so
+      # `find` is needed instead of a hardcoded path — but on its own `find
+      # -name cube-idp | head -1` is unsafe: goreleaser's snapshot build
+      # produces binaries for multiple GOOS/GOARCH, readdir order is
+      # unspecified, and an empty match would make `xargs -I{}` silently run
+      # nothing (step exits 0 with no smoke performed at all). Pin the glob
+      # to the runner's own platform, fail if nothing matched, and assert the
+      # printed version is actually stamped (not the unstamped "dev" build).
+      - run: |
+          bin="$(find dist -path '*linux_amd64*' -name cube-idp -type f | head -1)"
+          test -n "$bin"
+          "$bin" version | tee /dev/stderr | grep -q 'snapshot'
