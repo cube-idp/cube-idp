@@ -1,6 +1,6 @@
 # cube-idp Phase 4 Implementation Plan — First Release (v0.1.0)
 
-> **STATUS: DRAFT — READY FOR EXECUTION AFTER TASK 0.** Written 2026-07-15 against main @ `07d6471` with every seam verified against the live tree at authoring time (the Ground Truth section below records exactly what was found, file:line). Task 0 re-verifies that section against the then-current tree before any task runs — cheap, because the answers are pre-recorded; it only has to confirm or adjust.
+> **STATUS: EXECUTED — v0.1.0 RELEASED 2026-07-15 (tag on `e1ee9e2`; F12 closed via docs caveat, real fix queued for Phase 5).** Written 2026-07-15 against main @ `07d6471` with every seam verified against the live tree at authoring time (the Ground Truth section below records exactly what was found, file:line). Task 0 re-verifies that section against the then-current tree before any task runs — cheap, because the answers are pre-recorded; it only has to confirm or adjust.
 >
 > Throughout this document, `RECONCILE: …` marks a statement that depends on something not verifiable from the tree at authoring time and says exactly what to verify. That is the only allowed deferral form in this plan — there are no TBDs.
 
@@ -189,7 +189,7 @@ var (
 //   cube-idp version <Version> (commit <Commit>, built <Date>)
 ```
 
-- [ ] **Step 1: Failing test — version output carries commit and date**
+- [x] **Step 1: Failing test — version output carries commit and date**
 
 Append to `cmd/version_test.go`:
 
@@ -213,7 +213,7 @@ func TestVersionPrintsCommitAndDate(t *testing.T) {
 
 Run: `go test ./cmd/ -run TestVersionPrintsCommitAndDate -v` — FAIL (got `cube-idp version dev\n`).
 
-- [ ] **Step 2: Implement the version surface**
+- [x] **Step 2: Implement the version surface**
 
 Replace `cmd/version.go`'s var + print with the Interfaces block above:
 
@@ -244,7 +244,7 @@ git add -A && git commit -m "feat: version surface stamps commit and build date
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 3: goreleaser config (full content — this IS the file)**
+- [x] **Step 3: goreleaser config (full content — this IS the file)**
 
 `.goreleaser.yaml`:
 
@@ -314,7 +314,7 @@ release:
 
 Add `dist/` to `.gitignore`.
 
-- [ ] **Step 4: Local acceptance (the spec §5.1 acceptance criterion)**
+- [x] **Step 4: Local acceptance (the spec §5.1 acceptance criterion)**
 
 ```bash
 goreleaser check   # or: go run github.com/goreleaser/goreleaser/v2@latest check
@@ -331,7 +331,7 @@ git add -A && git commit -m "build: goreleaser config — 4-platform static buil
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 5: Snapshot job in normal CI**
+- [x] **Step 5: Snapshot job in normal CI**
 
 Append to `.github/workflows/ci.yaml` `jobs:` (alongside `unit`/`e2e`, same style — `go-version-file: go.mod`, never a hardcoded Go version):
 
@@ -352,7 +352,7 @@ Append to `.github/workflows/ci.yaml` `jobs:` (alongside `unit`/`e2e`, same styl
 
 `RECONCILE:` the exact dist subdirectory name (`_v1` GOAMD64 suffix) — confirm against Step 4's local `dist/` layout and adjust the smoke path (a `find dist -name cube-idp -type f | head -1` invocation is an acceptable robust alternative).
 
-- [ ] **Step 6: Tag-triggered release workflow**
+- [x] **Step 6: Tag-triggered release workflow**
 
 `.github/workflows/release.yaml`:
 
@@ -387,7 +387,7 @@ git add -A && git commit -m "ci: snapshot build on every push; tag-triggered rel
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 7: CHANGELOG seed + install docs**
+- [x] **Step 7: CHANGELOG seed + install docs**
 
 `CHANGELOG.md` — curated headline features per phase (NOT raw commits; goreleaser appends generated notes to future releases, this file is the human record):
 
@@ -458,7 +458,7 @@ git add -A && git commit -m "docs: CHANGELOG v0.1.0 seed and private-release ins
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 8: Ledger** — append one line to `.superpowers/sdd/progress.md` (`Task R1: complete (…)`) and include it in the last commit or a follow-up `chore:` commit.
+- [x] **Step 8: Ledger** — append one line to `.superpowers/sdd/progress.md` (`Task R1: complete (…)`) and include it in the last commit or a follow-up `chore:` commit.
 
 ---
 
@@ -498,7 +498,7 @@ var (
 )
 ```
 
-- [ ] **Step 1: Failing tests — the four new guarantees**
+- [x] **Step 1: Failing tests — the four new guarantees**
 
 Append to `internal/bundle/bundle_test.go` (fixtures per G5; literals allowed in tests):
 
@@ -593,7 +593,7 @@ Test helpers (same file): `flipOneByte(t, path)` reads the file, XORs the last b
 
 Run: `go test ./internal/bundle/ -run 'TestOpenRejectsV1|TestVerifyDetects.*Swap|TestExtractCaps' -v` — FAIL (v1 is currently the ACCEPTED version; swaps pass Verify; no caps).
 
-- [ ] **Step 2: Implement Manifest v2 + Verify + caps**
+- [x] **Step 2: Implement Manifest v2 + Verify + caps**
 
 `internal/bundle/bundle.go`:
 1. Manifest gains `PackHashes`/`ImageHashes` per the Interfaces block; `currentFormatVersion = 2`.
@@ -670,11 +670,11 @@ if total > maxBundleTotalBytes {
 `internal/up/up.go:100`:
 8. Restore the strong claim now the code earns it: `con.Step("bundle", "bundle verified — content hashes OK, %d packs / %d images present", …)`. Grep + update any test pinning the old line in the same commit (deliberate plain-output change, named here).
 
-- [ ] **Step 3: Run**
+- [x] **Step 3: Run**
 
 `go test ./internal/bundle/ -v` — all new tests PASS; `TestVendorThenOpenRoundTrip` and both pre-existing tamper tests still PASS (truncation now fails the CONTENT check — still 7004). Full suite: `go build ./... && go vet ./... && go test ./... -short -count=1`.
 
-- [ ] **Step 4: Commit + ledger**
+- [x] **Step 4: Commit + ledger**
 
 ```bash
 git add -A && git commit -m "feat: bundle manifest v2 — content-hash verification and extraction caps
@@ -730,9 +730,9 @@ type Stepper interface{ Step(stage, format string, args ...any) }
 // Deps.Steps Stepper — nil defaults to ui.NewFor(Out) (watch path unchanged).
 ```
 
-- [ ] **Step 0: Inventory the byte pins.** `grep -rn "delivered — engine reconciling\|pushed packs/\|is now trusted\|installed and trusted\|repo .*created\|bundle written\|pushed .*@sha256\|no plugins found" --include="*_test.go" .` — list every test asserting the G7 lines in the task ledger note. **Task 0 pre-run found:** `cmd/plugin_test.go:79` pins "no plugins found"; `cmd/plugin_test.go:96` pins only the weak substring "trusted"; `cmd/repo_test.go:91` pins the full repo created/clone/push block; `cmd/pack_test.go:118` pins `▸ [pack] pushed <ref>@sha256:` (add that pattern to the grep); NO `cmd/vendor_test.go` or `cmd/sync_test.go` exist. Re-run the grep at execution to confirm. These tests are the byte-identity arbiters: they must stay GREEN THROUGH the migration with only call-plumbing edits (e.g. `bundle.Vendor`'s new signature), never assertion edits — except the two failure-path deltas named in Step 3.
+- [x] **Step 0: Inventory the byte pins.** `grep -rn "delivered — engine reconciling\|pushed packs/\|is now trusted\|installed and trusted\|repo .*created\|bundle written\|pushed .*@sha256\|no plugins found" --include="*_test.go" .` — list every test asserting the G7 lines in the task ledger note. **Task 0 pre-run found:** `cmd/plugin_test.go:79` pins "no plugins found"; `cmd/plugin_test.go:96` pins only the weak substring "trusted"; `cmd/repo_test.go:91` pins the full repo created/clone/push block; `cmd/pack_test.go:118` pins `▸ [pack] pushed <ref>@sha256:` (add that pattern to the grep); NO `cmd/vendor_test.go` or `cmd/sync_test.go` exist. Re-run the grep at execution to confirm. These tests are the byte-identity arbiters: they must stay GREEN THROUGH the migration with only call-plumbing edits (e.g. `bundle.Vendor`'s new signature), never assertion edits — except the two failure-path deltas named in Step 3.
 
-- [ ] **Step 1: `RunPipelineStatic` + `render.Styled` (TDD)**
+- [x] **Step 1: `RunPipelineStatic` + `render.Styled` (TDD)**
 
 Failing test first, `internal/ui/pipeline_test.go` (mirror the existing RunPipeline tests' recorded-slice pattern):
 
@@ -762,7 +762,7 @@ func TestRunPipelineStaticNeverGoesLive(t *testing.T) {
 
 `render/styled_test.go`: feed a recorded slice (StepDone, Note, Warn, Access, plus the zero-byte set) into `Styled(&buf)` and assert content equals the Plain projection modulo ANSI (strip escapes, compare) — content identical, presentation only (the ui.go Printer rule). Implement `Styled` as a thin switch delegating to a `ui`-styled printer; NOTE the import direction: `render` must not import `ui` (ui imports render) — so `Styled` REIMPLEMENTS the three style calls with the same lipgloss styles (copy the badge/dim/warn style definitions; they are five lines) rather than importing Printer. Implement `RunPipelineStatic` by factoring RunPipeline's producer/lifecycle body into an unexported `runPipeline(ctx, out, fn, pickRenderer)` helper — the two exported functions differ ONLY in the renderer switch (`ModeStyled && IsTerminal(out)` → `render.Styled(out)` instead of `runLive`). Run; commit `feat: RunPipelineStatic — event stream for static commands without a live view`.
 
-- [ ] **Step 2: Migrate `vendor` (the one live-gaining command)**
+- [x] **Step 2: Migrate `vendor` (the one live-gaining command)**
 
 1. Golden test first (`internal/bundle/vendor_test.go` addition or new file): run `Vendor` against `writeLockFixture` THROUGH `ui.RunPipeline` with `ModePlain` forced and assert stdout bytes are exactly today's three-line sequence (pack line, image lines if any, `bundle written:` line) — write the expected literal from G7. RED is produced by the signature change compiling against the old tests; adapt all existing `bundle.Vendor(ctx, lock, out, "", os.Stderr)` call sites (bundle_test.go, load-path tests) to construct a Console via a small test helper `testConsole(t, w io.Writer) *ui.Console` — `RECONCILE:` if ui exports no test constructor for Console, add one to internal/ui (`NewConsoleForTest(ch chan<- event.Event)`) or route the tests through `ui.RunPipeline` with ModePlain; prefer the latter (no new API).
 2. `internal/bundle/vendor.go`: `p *ui.Printer` → `con *ui.Console`; per-pack and per-image lines become Progress/Done pairs so the live tree gets spinners:
@@ -775,14 +775,14 @@ func TestRunPipelineStaticNeverGoesLive(t *testing.T) {
 5. `docs/machine-readable-output.md`: extend the §1 command table with `vendor` (stages: `vendor`) — SAME commit.
 6. Full suite green (byte pins from Step 0 untouched). Commit `feat(vendor): typed event stream — live step-tree, --progress=json`.
 
-- [ ] **Step 3: Migrate `sync` one-shot**
+- [x] **Step 3: Migrate `sync` one-shot**
 
 1. `internal/syncer/syncer.go`: add `Stepper` (Interfaces block) + `Deps.Steps Stepper`; `SyncOnce` uses `steps := deps.Steps; if steps == nil { steps = ui.NewFor(deps.Out) }` and replaces its three `printer.Step("sync", …)` calls with `steps.Step("sync", …)`. `*ui.Console.Step` and `*ui.Printer.Step` both satisfy Stepper as-is (G6 — identical signatures); compile-time asserts: `var _ Stepper = (*ui.Console)(nil)` etc. in a test.
 2. `cmd/sync.go`: the non-watch branch wraps everything AFTER config.Load…requireClusterExists? NO — wrap the WHOLE RunE body in `ui.RunPipelineStatic(c.Context(), "sync", c.OutOrStdout(), fn)`: inside fn, `config.Load` failure returns before `con.Start` (the RunStarted-skip rule, G6); after Load succeeds `con.Start("sync", cube.Metadata.Name)`; `deps.Steps = con`. The `--watch` branch stays OUTSIDE the pipeline — an early `if watch { …current body… }` before the RunPipelineStatic call, byte-identical (its Printer routing was fixed in `949dca6` and is out of scope, spec §5.3).
 3. Golden tests: plain projection of a recorded sync event slice byte-equal to today's three lines; a JSON-mode unit through the syncer's fake seams (`Deps.PushAddr` + `syncFn` seams exist, G7) if a full fake sync is cheap — otherwise golden on the recorded slice only (14b precedent: renderer goldens run on recorded slices, not live clusters).
 4. Docs table: add `sync` (one-shot; note `--watch` keeps plain). Same commit: `feat(sync): one-shot on the event stream — --progress=json`.
 
-- [ ] **Step 4: Migrate `repo create`**
+- [x] **Step 4: Migrate `repo create`**
 
 1. `cmd/repo.go`: wrap RunE in `RunPipelineStatic("repo", …)`; `con.Start("repo", cube.Metadata.Name)` after Load. `printRepoAccess(out, p, …)` becomes `emitRepoAccess(con, gw, repoInfo, deploy)`:
 
@@ -802,7 +802,7 @@ Byte proof: each old Fprintf ended `\n`; Note's projection adds exactly one — 
 2. Golden: recorded slice → plain projection equals today's four lines exactly (write the literal block).
 3. Docs table: add `repo create`. Commit `feat(repo): repo create on the event stream — --progress=json`.
 
-- [ ] **Step 5: Migrate `plugin list|trust|install` and `pack push`**
+- [x] **Step 5: Migrate `plugin list|trust|install` and `pack push`**
 
 1. `cmd/plugin.go`: each RunE wraps in `RunPipelineStatic("plugin", …)` with `con.Start("plugin", "")`:
    - list: empty → `con.Warn("no plugins found — install a cube-idp-<name> binary on PATH")`; table → render the tabwriter into a `bytes.Buffer` first, then `con.Note("%s", strings.TrimRight(buf.String(), "\n"))` (one Note, embedded newlines — sanctioned by the Note contract, G6).
@@ -812,7 +812,7 @@ Byte proof: each old Fprintf ended `\n`; Note's projection adds exactly one — 
 3. Goldens per command (recorded slices, plain byte-pins + JSON one-per-line).
 4. Docs: add `plugin list|trust|install`, `pack push` rows; update the "Commands with no meaningful JSON form" paragraph (it can no longer name these). Commit `feat(plugin,pack): remaining commands on the event stream — --progress=json everywhere`.
 
-- [ ] **Step 6: Whole-surface proof**
+- [x] **Step 6: Whole-surface proof**
 
 `go build ./... && go vet ./... && go test ./... -short -count=1` green; manual spot-checks: `./cube-idp plugin list --progress=json | jq -c type` (valid JSON lines), `./cube-idp vendor --progress=json` against a scratch lock, `./cube-idp vendor` on a TTY shows the live tree. Ledger line `Task R3: complete (…)`.
 
@@ -836,15 +836,15 @@ CodePokeIOFail Code = "CUBE-3008" // Poke found the delivery source but could no
 CodeBundleImageLoadFail Code = "CUBE-7006" // bundled image load into cluster nodes failed (kind/k3d LoadImages, consume side)
 ```
 
-- [ ] **Step 1: CUBE-1003 re-scope.** Rename `CodeClusterSetupFailed` → `CodeClusterFieldsConflict` (constant + comment per Interfaces; drop the stale `(RECONCILE: Task 0 use unclear)`), update the single call site `internal/config/load.go:99` and any test referencing the identifier (`grep -rn CodeClusterSetupFailed`). No output changes (value identical) — no test assertion moves. Run suite. Commit `chore(diag): re-scope CUBE-1003 to its real (config cross-validation) use`.
+- [x] **Step 1: CUBE-1003 re-scope.** Rename `CodeClusterSetupFailed` → `CodeClusterFieldsConflict` (constant + comment per Interfaces; drop the stale `(RECONCILE: Task 0 use unclear)`), update the single call site `internal/config/load.go:99` and any test referencing the identifier (`grep -rn CodeClusterSetupFailed`). No output changes (value identical) — no test assertion moves. Run suite. Commit `chore(diag): re-scope CUBE-1003 to its real (config cross-validation) use`.
 
-- [ ] **Step 2: CUBE-7006 load-side code (RED first).** Extend the existing LoadImages retry tests (kindp/k3dp have fake-seam tests per G10's F10 work — `grep -rn loadWithRetry\|importWithRetry --include="*_test.go" internal/cluster`) with assertions that a permanently-failing load surfaces `CUBE-7006`; RED against the current 7002. Then: add the constant; switch kind.go:128/:134 and k3d.go:161 wraps to `diag.CodeBundleImageLoadFail`, keeping summaries and the transient-aware remediation VERBATIM. Grep for tests asserting `CUBE-7002` on load paths and update. Also update `CodeVendorPullFail`'s comment to say "produce side (vendor); the consume-side load is CUBE-7006". Commit `feat(diag): CUBE-7006 — dedicated code for bundle image load failures`.
+- [x] **Step 2: CUBE-7006 load-side code (RED first).** Extend the existing LoadImages retry tests (kindp/k3dp have fake-seam tests per G10's F10 work — `grep -rn loadWithRetry\|importWithRetry --include="*_test.go" internal/cluster`) with assertions that a permanently-failing load surfaces `CUBE-7006`; RED against the current 7002. Then: add the constant; switch kind.go:128/:134 and k3d.go:161 wraps to `diag.CodeBundleImageLoadFail`, keeping summaries and the transient-aware remediation VERBATIM. Grep for tests asserting `CUBE-7002` on load paths and update. Also update `CodeVendorPullFail`'s comment to say "produce side (vendor); the consume-side load is CUBE-7006". Commit `feat(diag): CUBE-7006 — dedicated code for bundle image load failures`.
 
-- [ ] **Step 3: CUBE-3008 Poke IO code (RED first).** In flux/argocd poke tests (envtest-gated; run via `make test-engines`), assert a non-NotFound Get/Update failure is `CUBE-3008` — the cheap RED without envtest: a unit asserting the WRAPPED code via the fake client if one exists, else extend `internal/engine/contract/contract.go` with a subtest that Pokes through a client rigged to fail Update (`RECONCILE:` check what fake/interceptor machinery contract.go already uses; `sigs.k8s.io/controller-runtime/pkg/client/interceptor` is available via controller-runtime if none). Implement: add the constant; flip flux poke.go:45/:56 and argocd poke.go:40/:51 to `diag.CodePokeIOFail`; the target-missing paths (flux :62, argocd :35) and contract.go:160's 3007 assertion stay untouched. Contract suite must pass for BOTH engines (D2): `make test-engines`. Commit `feat(diag): CUBE-3008 — Poke transient-IO failures un-overload CUBE-3007`.
+- [x] **Step 3: CUBE-3008 Poke IO code (RED first).** In flux/argocd poke tests (envtest-gated; run via `make test-engines`), assert a non-NotFound Get/Update failure is `CUBE-3008` — the cheap RED without envtest: a unit asserting the WRAPPED code via the fake client if one exists, else extend `internal/engine/contract/contract.go` with a subtest that Pokes through a client rigged to fail Update (`RECONCILE:` check what fake/interceptor machinery contract.go already uses; `sigs.k8s.io/controller-runtime/pkg/client/interceptor` is available via controller-runtime if none). Implement: add the constant; flip flux poke.go:45/:56 and argocd poke.go:40/:51 to `diag.CodePokeIOFail`; the target-missing paths (flux :62, argocd :35) and contract.go:160's 3007 assertion stay untouched. Contract suite must pass for BOTH engines (D2): `make test-engines`. Commit `feat(diag): CUBE-3008 — Poke transient-IO failures un-overload CUBE-3007`.
 
-- [ ] **Step 4: Header range list.** `internal/diag/diag.go` package doc: `… 4xxx pack, 5xxx registry, 6xxx trust/hostname, 7xxx plugins/sync/vendor-bundle/repo, 8xxx release/bundle-integrity (reserved, unallocated)`. Commit with Step 5.
+- [x] **Step 4: Header range list.** `internal/diag/diag.go` package doc: `… 4xxx pack, 5xxx registry, 6xxx trust/hostname, 7xxx plugins/sync/vendor-bundle/repo, 8xxx release/bundle-integrity (reserved, unallocated)`. Commit with Step 5.
 
-- [ ] **Step 5: Backtick ban-test hole (RED first).** Add to codes_test.go:
+- [x] **Step 5: Backtick ban-test hole (RED first).** Add to codes_test.go:
 
 ```go
 // TestBanCatchesBacktickLiterals: raw-string CUBE literals must be flagged
@@ -876,7 +876,7 @@ if cubeLiteralRe.MatchString(string(raw)) {
 
 Run the REAL tree scan too: if any production file now trips (a backtick literal existed), fix it by using the catalog constant in the same commit. Commit `test(diag): ban-test catches backtick CUBE literals; header range list extended`.
 
-- [ ] **Step 6: Exhaustiveness test (used⊆defined ∧ defined⊆(used∪reserved)).** New test in codes_test.go:
+- [x] **Step 6: Exhaustiveness test (used⊆defined ∧ defined⊆(used∪reserved)).** New test in codes_test.go:
 
 ```go
 // TestCatalogExhaustive: every Code constant defined in codes.go is either
@@ -896,7 +896,7 @@ func TestCatalogExhaustive(t *testing.T) {
 
 Write it fully (the comment names the exact algorithm; ~60 lines with go/parser's ast.GenDecl walk). Expected initial run: it must PASS after Steps 1–3 — if it flags anything real (e.g. a constant orphaned by an earlier phase), fix the flag in this commit by adding the `// reserved:` annotation or migrating the caller, and record which in the ledger. Commit `test(diag): catalog exhaustiveness — used⊆defined ∧ defined⊆(used∪reserved)`.
 
-- [ ] **Step 7: Run + ledger.** Full suite + `make test-engines` green. Ledger `Task R4: complete (…)`.
+- [x] **Step 7: Run + ledger.** Full suite + `make test-engines` green. Ledger `Task R4: complete (…)`.
 
 ---
 
@@ -907,7 +907,7 @@ Write it fully (the comment names the exact algorithm; ~60 lines with go/parser'
 **Files:**
 - Modify: `internal/plugin/trust.go` (+ plugin_test.go), `internal/plugin/index.go` (+ index_test.go), `cmd/plugin.go` (+ cmd tests), `internal/diag/codes.go` (CUBE-7105), `README.md` (plugin section note).
 
-- [ ] **Step 1: Canonical trust-store keys (RED first).** Test in `internal/plugin/plugin_test.go`:
+- [x] **Step 1: Canonical trust-store keys (RED first).** Test in `internal/plugin/plugin_test.go`:
 
 ```go
 // TestTrustKeyCanonicalization: recording trust through a symlinked or
@@ -958,9 +958,9 @@ func canonicalPath(path string) string {
 
 Apply in `Trust` (`m[canonicalPath(path)] = sum`), `isTrusted`, and `EnsureTrusted` (lookup AND the post-consent store write). Existing raw-key entries in a user's trust.json simply re-prompt once (fail-safe, documented in the commit message). GREEN; commit `fix(plugin): canonical trust-store keys — Abs+EvalSymlinks on record and lookup`.
 
-- [ ] **Step 2: HTTP timeout for archive downloads.** `internal/plugin/index.go`: replace `http.DefaultClient` with a package-level `var indexHTTPClient = &http.Client{Timeout: 60 * time.Second}` (var, so index_test.go can shrink it if a timeout test is added — optional; the mandatory change is the client). Test: assert `fetchArchive` against an httptest server that sleeps past a test-shrunk timeout returns CUBE-7102 (index_test.go already spins httptest servers per G11 — mirror its pattern). Commit `fix(plugin): 60s HTTP timeout on index archive downloads`.
+- [x] **Step 2: HTTP timeout for archive downloads.** `internal/plugin/index.go`: replace `http.DefaultClient` with a package-level `var indexHTTPClient = &http.Client{Timeout: 60 * time.Second}` (var, so index_test.go can shrink it if a timeout test is added — optional; the mandatory change is the client). Test: assert `fetchArchive` against an httptest server that sleeps past a test-shrunk timeout returns CUBE-7102 (index_test.go already spins httptest servers per G11 — mirror its pattern). Commit `fix(plugin): 60s HTTP timeout on index archive downloads`.
 
-- [ ] **Step 3: Name charset guard (RED first).** cmd-level test (cmd/plugin_test.go or wherever plugin cmd tests live — `grep -rn "plugin trust" --include="*_test.go" cmd/`):
+- [x] **Step 3: Name charset guard (RED first).** cmd-level test (cmd/plugin_test.go or wherever plugin cmd tests live — `grep -rn "plugin trust" --include="*_test.go" cmd/`):
 
 ```go
 // TestPluginNameCharsetGuard: option- or path-shaped names are refused with
@@ -1001,7 +1001,7 @@ func validatePluginName(name string) error {
 
 GREEN; commit `feat(plugin): CUBE-7105 name charset guard on trust/install`.
 
-- [ ] **Step 4: Document the flag-before-name limitation.** README plugin section (~line 368): add the two-liner — "Global flags go AFTER the plugin name: `cube-idp myplugin --plain` dispatches to the plugin, but `cube-idp --plain myplugin` does not (the plugin fallthrough inspects only the first argument)." Commit `docs(plugin): flag-before-plugin-name dispatch limitation`; ledger `Task R5: complete (…)`.
+- [x] **Step 4: Document the flag-before-name limitation.** README plugin section (~line 368): add the two-liner — "Global flags go AFTER the plugin name: `cube-idp myplugin --plain` dispatches to the plugin, but `cube-idp --plain myplugin` does not (the plugin fallthrough inspects only the first argument)." Commit `docs(plugin): flag-before-plugin-name dispatch limitation`; ledger `Task R5: complete (…)`.
 
 ---
 
@@ -1028,7 +1028,7 @@ func RenderDirFor(dir string, gw config.GatewaySpec) ([]*unstructured.Unstructur
 func RenderDir(dir string) ([]*unstructured.Unstructured, error)
 ```
 
-- [ ] **Step 1: Failing test (mirrors `TestRenderForSubstitutesGatewayHost` on a kustomize fixture).**
+- [x] **Step 1: Failing test (mirrors `TestRenderForSubstitutesGatewayHost` on a kustomize fixture).**
 
 Fixture `internal/pack/testdata/gw-sub-kustomize/`: `pack.cue` (`name: "gw-sub-kustomize"\nversion: "0.0.1"`), `cm.yaml` (a ConfigMap `gwsub-kz` with `data: {host: "${GATEWAY_HOST}", fqdn: "${GATEWAY_FQDN}", ns: "${GATEWAY_PACK}"}`), `kustomization.yaml` (`resources: [cm.yaml]`). Test:
 
@@ -1066,9 +1066,9 @@ func TestRenderForSubstitutesGatewayHostKustomize(t *testing.T) {
 
 RED (tokens pass through under gw too).
 
-- [ ] **Step 2: Implement.** kustomize.go: rename the body into `RenderDirFor(dir, gw)`; between `resMap.AsYaml()` and `ParseMultiDoc` insert `y = []byte(substitute(string(y), gw))`; add the two-line `RenderDir` wrapper. render.go:50: `RenderDir(p.Dir)` → `RenderDirFor(p.Dir, gw)`. cnoe loader untouched (calls `RenderDir`). Run the FULL pack test package: existing kustomize tests (token-free packs) stay green untouched — the zero-gw and no-token paths are byte-identical (substitute is a no-op on both).
+- [x] **Step 2: Implement.** kustomize.go: rename the body into `RenderDirFor(dir, gw)`; between `resMap.AsYaml()` and `ParseMultiDoc` insert `y = []byte(substitute(string(y), gw))`; add the two-line `RenderDir` wrapper. render.go:50: `RenderDir(p.Dir)` → `RenderDirFor(p.Dir, gw)`. cnoe loader untouched (calls `RenderDir`). Run the FULL pack test package: existing kustomize tests (token-free packs) stay green untouched — the zero-gw and no-token paths are byte-identical (substitute is a no-op on both).
 
-- [ ] **Step 3: Commit + ledger.**
+- [x] **Step 3: Commit + ledger.**
 
 ```bash
 git add -A && git commit -m "feat(pack): D15 gateway substitution on the kustomize render path
@@ -1107,7 +1107,7 @@ Two halves, committed separately: **(a)** de-fang the pack/ref trap at its sourc
 // (up's verifyGatewayPackRef) remains the backstop.
 ```
 
-- [ ] **Step 1: Failing tests.**
+- [x] **Step 1: Failing tests.**
 
 ```go
 // TestInitLocalGatewayRefFollowsPack: init --local + --gateway-pack
@@ -1152,7 +1152,7 @@ func TestInitPublishedGatewayPackOnly(t *testing.T) {
 
 (NOTE: `--local /repo` — the flag path need not exist; init only joins paths. **RESOLVED (Task 0): init never stats the --local path — only `filepath.Abs` — so the literal `/repo` is fine.**) RED: the flag doesn't exist.
 
-- [ ] **Step 2: Implement.** cmd/init.go:
+- [x] **Step 2: Implement.** cmd/init.go:
   1. `var gatewayPack string` + `c.Flags().StringVar(&gatewayPack, "gateway-pack", "traefik", "gateway implementation pack: traefik | envoy-gateway")`; validate against the two known packs (unknown → `CUBE-0007` `CodeBadFlagValue`, the existing enum-flag code).
   2. `initWizardResult` gains `GatewayPack string` (default `"traefik"`); the wizard's second group gains `huh.NewSelect[string]().Title("Gateway pack").Options(huh.NewOption("traefik", "traefik"), huh.NewOption("envoy-gateway", "envoy-gateway")).Value(&res.GatewayPack)`; `wizardApplicable` additionally returns false when `--gateway-pack` was Changed (flags win — same rule as name/engine).
   3. Ordering fix: move the `--local` ref assignment AFTER the wizard overlay and derive from the final choice:
@@ -1167,8 +1167,8 @@ if local != "" {
 ```
 
   4. GREEN; existing init tests (default profile) byte-identical — default is traefik, ref logic for traefik unchanged.
-- [ ] **Step 3: README precedence paragraph** (gateway table area, ~line 82): "Precedence: when both `spec.gateway.ref` and `spec.gateway.pack` are set, the REF decides what is fetched; `up` verifies the ref'd pack.cue name equals `gateway.pack` and fails with CUBE-0008 on mismatch. `cube-idp init` always writes the two coherently (`--gateway-pack`)."
-- [ ] **Step 4: Commit.**
+- [x] **Step 3: README precedence paragraph** (gateway table area, ~line 82): "Precedence: when both `spec.gateway.ref` and `spec.gateway.pack` are set, the REF decides what is fetched; `up` verifies the ref'd pack.cue name equals `gateway.pack` and fails with CUBE-0008 on mismatch. `cube-idp init` always writes the two coherently (`--gateway-pack`)."
+- [x] **Step 4: Commit.**
 
 ```bash
 git add -A && git commit -m "feat(init): --gateway-pack — one coherent gateway source in both modes
@@ -1204,7 +1204,7 @@ type GatewayService struct{ Name, Namespace string }
 func gatewayServiceFQDN(gw config.GatewaySpec, gwPack *pack.Pack) string
 ```
 
-- [ ] **Step 1: Parsing (RED first).** internal/pack tests:
+- [x] **Step 1: Parsing (RED first).** internal/pack tests:
 
 ```go
 func TestGatewayServiceParsing(t *testing.T) {
@@ -1267,7 +1267,7 @@ if gv := v.LookupPath(cue.ParsePath("gatewayService")); gv.Exists() {
 
 Commit `feat(pack): optional gatewayService data contract (D11-style)`.
 
-- [ ] **Step 2: Derivation in `up` (RED first).** Unit test in internal/up (no cluster needed — pure function):
+- [x] **Step 2: Derivation in `up` (RED first).** Unit test in internal/up (no cluster needed — pure function):
 
 ```go
 func TestGatewayServiceFQDNDerivation(t *testing.T) {
@@ -1300,7 +1300,7 @@ func gatewayServiceFQDN(gw config.GatewaySpec, gwPack *pack.Pack) string {
 
 Call site (up.go:341): `trust.EnsureCoreDNSRewrite(ctx, a.Client(), cube.Spec.Gateway.Host, gatewayServiceFQDN(cube.Spec.Gateway, packs[0]), dnsTimeout)` — `packs[0]` is the gateway pack (prepended at :238; guard `len(packs) > 0`, which always holds there — assert with a comment, not a branch, unless the compiler disagrees). Update the function's doc comment (it currently claims the traefik hardcode). Commit `feat(up): CoreDNS rewrite target honors the pack's declared gatewayService`.
 
-- [ ] **Step 3: envoy pack changes + collision check.**
+- [x] **Step 3: envoy pack changes + collision check.**
 
 `packs/envoy-gateway/manifests/10-gatewayclass.yaml` EnvoyProxy: ADD `name: cube-idp-gateway` under `envoyService` (alongside type/externalTrafficPolicy/patch) and REWRITE the long "deliberately UNSET" comment to the new truth: the F9 hijack was the COLLIDING name `envoy-gateway` (the controller's own xDS Service); `cube-idp-gateway` is stable and non-colliding; the StrategicMerge NodePort patch is name-agnostic. `packs/envoy-gateway/pack.cue`: append
 
@@ -1315,7 +1315,7 @@ gatewayService: {name: "cube-idp-gateway", namespace: "envoy-gateway"}
 
 **Collision check (spec §7 risk):** extend the existing network-gated envoy render test (the F8 one that pins CRDs+certgen in the rendered stream — find via `grep -rn "envoy" internal/pack/*_test.go internal/up/*_test.go`) with: no rendered object is a `v1 Service` named `cube-idp-gateway` in namespace `envoy-gateway` (the name must be free for EG's generated Service), and the pack's parsed `GatewayService` matches the EnvoyProxy's `envoyService.name` (read the manifest object). **RESOLVED (Task 0): the network-gated render test is `TestStarterPacksRender` at `tests/packs_render_test.go:48`, gated by `testing.Short()` (skip message "helm renders hit the network") — extend it there under the same gate.** Commit `feat(packs/envoy-gateway): stable cube-idp-gateway data-plane service + gatewayService declaration`.
 
-- [ ] **Step 4: e2e proof — the in-cluster CoreDNS assertion (the exact flow broken today).**
+- [x] **Step 4: e2e proof — the in-cluster CoreDNS assertion (the exact flow broken today).**
 
 Extend `TestEnvoyGatewaySmoke` (phase3_test.go:521) between `assertGatewayTLS` and `down`:
 
@@ -1357,7 +1357,7 @@ Also run the traefik non-regression arbiter (`TestSyncOneShot`) once — the Cor
 CUBE_IDP_E2E=1 CUBE_IDP_E2E_GATEWAY_PORT=18443 go test ./tests/e2e/ -run TestSyncOneShot -v -timeout 30m
 ```
 
-- [ ] **Step 5: Commit + ledger.**
+- [x] **Step 5: Commit + ledger.**
 
 ```bash
 git add -A && git commit -m "test(e2e): envoy smoke proves in-cluster *.<host> reaches the data plane
@@ -1375,7 +1375,7 @@ Ledger `Task R7: complete (…)` recording both live-leg results.
 
 Each item: failing test where testable → fix → suite → one commit per coherent group (three commits below).
 
-- [ ] **Step 1 (group 1: helper consolidation + determinism).**
+- [x] **Step 1 (group 1: helper consolidation + determinism).**
   1. **`IsLocalRegistryHost` — one home.** Export from `internal/pack/source.go` (rename `isLocalRegistryHost` → `IsLocalRegistryHost`, docstring: "reports whether host (optionally host:port) is a loopback registry — the only case where plain HTTP is acceptable; the ONE shared definition (Phase 4 R8)"); table test in source_test.go:
 
 ```go
@@ -1396,7 +1396,7 @@ func TestIsLocalRegistryHost(t *testing.T) {
   2. **Content-derived created annotation (RED first).** Test in pushdir_test.go: push the same demo pack twice to the in-process registry and assert the two returned digests are EQUAL (extend/duplicate `TestPushPackDirRoundTripsThroughFetch`'s arrangement). RED (time.Now differs). Fix pushdir.go:118: `ocispec.AnnotationCreated: "1970-01-01T00:00:00Z"` with the comment "fixed epoch, NOT wall time: identical content must republish to an identical digest so the CI pack republish is a true no-op (Phase 4 R8; annotation consumers only need a valid RFC3339 value)". GREEN.
   3. Commit `fix(oci,pack,bundle): one IsLocalRegistryHost; deterministic pack-push digests`.
 
-- [ ] **Step 2 (group 2: leaks + duplication + shadowing).**
+- [x] **Step 2 (group 2: leaks + duplication + shadowing).**
   1. **Syncer temp-dir cleanup.** `loadOrSynthesize` returns `(*pack.Pack, func(), error)` — cleanup is `func(){}` for the real-pack path, `func(){ os.RemoveAll(tmp) }` for the synthesized path; `SyncOnce` does `p, cleanup, err := loadOrSynthesize(dir); if err != nil { return Result{}, err }; defer cleanup()` (after Render is when the dir stops being needed, but deferring to SyncOnce-exit is equivalent and simpler — the render happens within the call). Test: run `SyncOnce` far enough to render (use the existing syncer test fakes — `grep -rn loadOrSynthesize --include="*_test.go" internal/syncer`) or unit-test `loadOrSynthesize` directly: synthesize, call cleanup, assert the dir is gone.
   2. **`deployRepo` wrap dedup** (cmd/repo.go):
 
@@ -1418,14 +1418,14 @@ func deployRepo(ctx context.Context, a *apply.Applier, eng engine.Engine, name s
   3. **`pr` loop-var rename** (up.go:251): `for i, pr := range refs` → `for i, pref := range refs` (+ the three body uses `pref.Ref`/`pref.Values`); delete the now-moot half of the `pk` comment if it references the shadow.
   4. Commit `fix: syncer temp-dir cleanup, deployRepo wrap dedup, up loop-var shadowing`.
 
-- [ ] **Step 3 (group 3: test hardening + notes).**
+- [x] **Step 3 (group 3: test hardening + notes).**
   1. **Trust-consent positive assertion** (cmd/trust_test.go:97): after the existing negative check, add `if !strings.Contains(out.String(), "your cube-idp gateway's HTTPS") { t.Fatalf("generic fallback wording missing:\n%s", out.String()) }`.
   2. **Flux uninstall test label scoping** (uninstall_test.go:117): add the cube label selector to the List — `a.Client().List(ctx, list, client.InNamespace(fluxNS), client.MatchingLabels{"cube-idp.dev/cube": <the test's cube name>})`; `RECONCILE:` read the test to get the exact cube name the Applier was built with and the exact label key constant (grep `cube-idp.dev/cube` — it is the Phase 1 cube label; use the Go constant if one is exported). Then remove whatever `t.Cleanup` cross-test papering Task 10a added for this coupling (grep poke_test.go:59's note) IF the scoping makes it redundant; keep it if it guards something else — record which in the commit.
   3. **e2e lint items** (e2e_test.go deleteLingeringCluster): replace the manual loop with `if slices.Contains(strings.Fields(string(out)), cubeName) { … }` (imports `slices`); apply `strings.FieldsSeq` where the linter names it. `RECONCILE:` run `go vet ./tests/...` + the repo's linter to enumerate the exact 329-area findings and fix precisely those.
   4. **awk header note** (hack/inject-argocd-cmd-params.awk, top of file): add `# FRAGILITY NOTE: this script matches the argocd-cmd-params-cm document positionally/textually; an argo-cd version bump can reorder or reformat install.yaml and silently break the injection — hack/gen-argocd-manifests.sh --check (CI) is the tripwire; re-verify this script on every bump.`
   5. Commit `test: consent-wording positive assertion, label-scoped flux uninstall list, e2e lint, awk fragility note`.
 
-- [ ] **Step 4: Run + ledger.** Full suite + `make test-apply` (syncer/up/flux tests are envtest-gated there) green. Ledger `Task R8: complete (…)`.
+- [x] **Step 4: Run + ledger.** Full suite + `make test-apply` (syncer/up/flux tests are envtest-gated there) green. Ledger `Task R8: complete (…)`.
 
 ---
 
@@ -1435,10 +1435,10 @@ func deployRepo(ctx context.Context, a *apply.Applier, eng engine.Engine, name s
 
 **Files:** `README.md`, `docs/machine-readable-output.md`, `CHANGELOG.md`.
 
-- [ ] **Step 1: Verify the actual missing-docs set against `--help`.** Build (`go build -o /tmp/cube-idp .`) and diff every command/flag against README: `/tmp/cube-idp --help`, and `--help` for each of the 17 commands (G16's registration list). Authoring-time gaps to confirm: `config schema` (document under the cube.yaml reference: "print the CUE schema cube.yaml validates against — every CUBE-0002 remediation points here"), `down --keep-cluster` (Day 2 section: "delete cube-idp resources but keep the cluster"), `vendor --lock` (Air-gapped section: non-default lock path). Add whatever else the sweep finds; prune stale claims (anything --help contradicts).
-- [ ] **Step 2: `machine-readable-output.md` completeness.** Add the `encode_error` event type (envelope-level: `{"v":1,"type":"encode_error","error":"…"}` — note it carries NO `ts`, per json.go:31's literal, and document why it exists: a marshal failure must surface on-stream, never drop an event silently. `RECONCILE:` re-read json.go:31 post-R3 and document the EXACT emitted shape). Re-verify every field table against the post-R3 code (the doc's accuracy-because-written-against-code property is the point): each event struct in event.go ↔ its table; the per-command coverage table added by R3 is present and complete (up, down, vendor, sync, repo create, plugin ×3, pack push).
-- [ ] **Step 3: Gateway/envoy sweep.** Confirm R7a's precedence paragraph reads correctly in context; `grep -in "envoy" README.md` and remove any remaining in-cluster caveat (per G16's RECONCILE — possibly none existed in README; the chart.yaml/manifest comments were removed in R7b). Confirm the R1 install section renders (backtick nesting) and CHANGELOG.md's v0.1.0 header is still accurate after R2–R8 (amend the Phase 4 bullet list if scope shifted).
-- [ ] **Step 4: Commit + ledger.**
+- [x] **Step 1: Verify the actual missing-docs set against `--help`.** Build (`go build -o /tmp/cube-idp .`) and diff every command/flag against README: `/tmp/cube-idp --help`, and `--help` for each of the 17 commands (G16's registration list). Authoring-time gaps to confirm: `config schema` (document under the cube.yaml reference: "print the CUE schema cube.yaml validates against — every CUBE-0002 remediation points here"), `down --keep-cluster` (Day 2 section: "delete cube-idp resources but keep the cluster"), `vendor --lock` (Air-gapped section: non-default lock path). Add whatever else the sweep finds; prune stale claims (anything --help contradicts).
+- [x] **Step 2: `machine-readable-output.md` completeness.** Add the `encode_error` event type (envelope-level: `{"v":1,"type":"encode_error","error":"…"}` — note it carries NO `ts`, per json.go:31's literal, and document why it exists: a marshal failure must surface on-stream, never drop an event silently. `RECONCILE:` re-read json.go:31 post-R3 and document the EXACT emitted shape). Re-verify every field table against the post-R3 code (the doc's accuracy-because-written-against-code property is the point): each event struct in event.go ↔ its table; the per-command coverage table added by R3 is present and complete (up, down, vendor, sync, repo create, plugin ×3, pack push).
+- [x] **Step 3: Gateway/envoy sweep.** Confirm R7a's precedence paragraph reads correctly in context; `grep -in "envoy" README.md` and remove any remaining in-cluster caveat (per G16's RECONCILE — possibly none existed in README; the chart.yaml/manifest comments were removed in R7b). Confirm the R1 install section renders (backtick nesting) and CHANGELOG.md's v0.1.0 header is still accurate after R2–R8 (amend the Phase 4 bullet list if scope shifted).
+- [x] **Step 4: Commit + ledger.**
 
 ```bash
 git add -A && git commit -m "docs: v0.1.0 documentation pass — command coverage, event-schema completeness, gateway precedence
@@ -1454,8 +1454,8 @@ Ledger `Task R9: complete (…)`.
 
 **Reconcile checkpoint:** everything above merged to main; 0.12 (release workflow present); 0.13 (arbiters).
 
-- [ ] **Step 1: Full suite at HEAD.** `go build ./... && go vet ./... && go test ./... -short -count=1 && make test-apply && make test-engines` — ALL green.
-- [ ] **Step 2: Full local e2e sweep — the five Phase 3 arbiters** (deferred-commands convention: run serially, real Docker, port 18443, protected-cluster rules absolute):
+- [x] **Step 1: Full suite at HEAD.** `go build ./... && go vet ./... && go test ./... -short -count=1 && make test-apply && make test-engines` — ALL green.
+- [x] **Step 2: Full local e2e sweep — the five Phase 3 arbiters** (deferred-commands convention: run serially, real Docker, port 18443, protected-cluster rules absolute):
 
 ```bash
 CUBE_IDP_E2E=1 CUBE_IDP_E2E_GATEWAY_PORT=18443 go test ./tests/e2e/ -run TestK3dUpDown -v -timeout 30m
@@ -1467,8 +1467,8 @@ CUBE_IDP_E2E=1 CUBE_IDP_E2E_GATEWAY_PORT=18443 go test ./tests/e2e/ -run TestEnv
 
 All five PASS, no leaked clusters (`kind get clusters` / `k3d cluster list` show only pre-existing protected ones). Record durations in the ledger.
 
-- [ ] **Step 3: ⛔ STOP — OWNER GO-AHEAD REQUIRED.** **Do NOT tag. Do NOT push.** Tagging and pushing `v0.1.0` is this phase's only push and requires the owner's explicit confirmation AT THIS MOMENT, with the Step 1+2 evidence presented. The executing agent halts here and asks; "the plan said so" is not consent — only the owner's live answer is. If the owner declines or amends, record the decision in the ledger and stop the task.
-- [ ] **Step 4 (after explicit owner go-ahead): tag + push.**
+- [x] **Step 3: ⛔ STOP — OWNER GO-AHEAD REQUIRED.** **Do NOT tag. Do NOT push.** Tagging and pushing `v0.1.0` is this phase's only push and requires the owner's explicit confirmation AT THIS MOMENT, with the Step 1+2 evidence presented. The executing agent halts here and asks; "the plan said so" is not consent — only the owner's live answer is. If the owner declines or amends, record the decision in the ledger and stop the task.
+- [x] **Step 4 (after explicit owner go-ahead): tag + push.**
 
 ```bash
 git tag -a v0.1.0 -m "cube-idp v0.1.0 — first (private) release"
@@ -1477,7 +1477,7 @@ git push origin main --follow-tags
 
 Watch the `release` workflow (`gh run watch`); it must produce the GitHub Release with four `.tar.gz` assets + `checksums.txt`.
 
-- [ ] **Step 5: Release smoke FROM THE ARTIFACT (not a local build).** In a clean temp dir:
+- [x] **Step 5: Release smoke FROM THE ARTIFACT (not a local build).** In a clean temp dir:
 
 ```bash
 cd "$(mktemp -d)"
@@ -1490,7 +1490,7 @@ tar xzf cube-idp_*_darwin_arm64.tar.gz
 
 (the smoke cube uses default port 8443 only if free — on the dev machine EDIT cube.yaml's `gateway.port: 18443` after init, per the standing constraint; name the cluster `smoke`, which is neither protected nor leak-prone, and verify `down` removed it.)
 
-- [ ] **Step 6: Close out.** If the smoke found anything: open a findings register section in this plan (F-prefixed, Phase 3 convention), fix-wave loop (TDD, review, merge), re-run the smoke — the release may be re-cut as v0.1.1 ONLY with a fresh owner go-ahead. Then: tick every checkbox in this plan, update the STATUS banner to EXECUTED, final ledger lines (`Task R10: complete (…)`, `PHASE 4 CLOSED — v0.1.0 released`), commit:
+- [x] **Step 6: Close out.** If the smoke found anything: open a findings register section in this plan (F-prefixed, Phase 3 convention), fix-wave loop (TDD, review, merge), re-run the smoke — the release may be re-cut as v0.1.1 ONLY with a fresh owner go-ahead. Then: tick every checkbox in this plan, update the STATUS banner to EXECUTED, final ledger lines (`Task R10: complete (…)`, `PHASE 4 CLOSED — v0.1.0 released`), commit:
 
 ```bash
 git add -A && git commit -m "docs: phase 4 closed — v0.1.0 released, plan and ledger finalized
@@ -1501,6 +1501,10 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 (Pushing THAT commit is again owner-gated — ask.)
 
 ---
+
+## Findings Register (R10 Step 5 artifact smoke)
+
+- **F12 — CLOSED for v0.1.0 via docs caveat (owner decision 2026-07-15); real fix (publish gateway packs as OCI refs + out-of-repo default) queued for Phase 5:** the downloaded-artifact smoke's out-of-repo `init --name smoke && up` fails at the gateway pack with `CUBE-4001: pack path "packs/traefik" is not a directory`. Root cause: `config.Default` leaves `Gateway.Ref` empty and `GatewaySpec.PackRef()` falls back to the repo-relative `packs/<pack>`, which only resolves inside a checkout run from the repo root. The README Quickstart (build-from-checkout) works; R1's Install flow (binary anywhere) does not reach a working `up` with the default profile. gitea/argocd default to published OCI refs; the gateway pack does not. Not caught earlier because every e2e runs `initCube` from a harness dir wired to the checkout. Cluster leak during the smoke was the harness's own `&&` chaining (cleaned up; not a product bug). Resolution: owner decision — docs caveat on v0.1.0 vs fix-wave + v0.1.1 re-cut (fresh go-ahead required per Step 6).
 
 ## Self-Review
 

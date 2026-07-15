@@ -32,6 +32,13 @@ cube-idp version
 private unless you set `GOPRIVATE=github.com/rafpe/cube-idp` and have git
 auth to the repo; prefer `gh release download`.
 
+> **Known limitation (v0.1.0, F12):** the default profile resolves the gateway
+> pack from the repo-relative path `packs/traefik`, so `cube-idp init && cube-idp up`
+> must currently run from a cube-idp checkout (clone the repo, run the binary at
+> its root). Outside a checkout, point `spec.gateway.ref` at a gateway pack
+> directory you provide. A future release publishes the gateway packs as
+> `oci://` refs so the downloaded binary works standalone.
+
 ## Quickstart
 
 Requires a container runtime (docker or podman) for the `kind` cluster
