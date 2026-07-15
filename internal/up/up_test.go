@@ -65,6 +65,27 @@ func TestVerifyGatewayPackRef(t *testing.T) {
 	}
 }
 
+// TestGatewayServiceFQDNDerivation pins R7b: the CoreDNS rewrite target is
+// the RESOLVED gateway pack's declared gatewayService when present (closing
+// the envoy CoreDNS in-cluster gap), else the <pack>.<pack>.svc convention —
+// including when gwPack itself is nil, so a caller that hasn't fetched the
+// pack yet still gets today's default rather than a nil-deref.
+func TestGatewayServiceFQDNDerivation(t *testing.T) {
+	gw := config.GatewaySpec{Pack: "envoy-gateway"}
+	declared := &pack.Pack{Name: "envoy-gateway",
+		GatewayService: &pack.GatewayService{Name: "cube-idp-gateway", Namespace: "envoy-gateway"}}
+	if got := gatewayServiceFQDN(gw, declared); got != "cube-idp-gateway.envoy-gateway.svc.cluster.local" {
+		t.Fatalf("declared: %q", got)
+	}
+	plain := &pack.Pack{Name: "traefik"}
+	if got := gatewayServiceFQDN(config.GatewaySpec{Pack: "traefik"}, plain); got != "traefik.traefik.svc.cluster.local" {
+		t.Fatalf("default: %q", got)
+	}
+	if got := gatewayServiceFQDN(config.GatewaySpec{Pack: "traefik"}, nil); got != "traefik.traefik.svc.cluster.local" {
+		t.Fatalf("nil pack must fall back to the default: %q", got)
+	}
+}
+
 // TestMergeImagesUnion pins spec D14's lock-assembly merge: the sorted,
 // deduplicated union of rendered-manifest images and a pack's declared
 // (pack.cue images:) images — the pure step Run's pack loop calls per

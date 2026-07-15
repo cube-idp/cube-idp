@@ -338,8 +338,11 @@ func Run(ctx context.Context, opts Options) error {
 	if err := a.RecordInventory(ctx, []*unstructured.Unstructured{route}); err != nil {
 		return err
 	}
+	// packs[0] is always the gateway pack (prepended before the loop above),
+	// and the loop always runs at least once (refs has at least the gateway
+	// entry), so packs is never empty here.
 	if err := trust.EnsureCoreDNSRewrite(ctx, a.Client(), cube.Spec.Gateway.Host,
-		gatewayServiceFQDN(cube.Spec.Gateway), dnsTimeout); err != nil {
+		gatewayServiceFQDN(cube.Spec.Gateway, packs[0]), dnsTimeout); err != nil {
 		return err
 	}
 	con.Step("dns", "*.%s resolves to the gateway in-cluster", cube.Spec.Gateway.Host)
@@ -435,13 +438,20 @@ func mergeImages(rendered, declared []string) []string {
 }
 
 // gatewayServiceFQDN returns the in-cluster DNS name of the gateway pack's
-// Service, the CoreDNS rewrite target for *.<gw.Host> (D6). Hardcoded to the
-// traefik chart's fullname convention (packs/traefik/chart.yaml: releaseName
-// "traefik" == chart name "traefik" -> fullname "traefik"), so the Service
-// lands at traefik.traefik.svc.cluster.local — verified against the phase-1
-// chart values (checkpoint 0.14). gw.Pack doubles as both name and
-// namespace, matching that chart's install (namespace: traefik).
-func gatewayServiceFQDN(gw config.GatewaySpec) string {
+// data-plane Service, the CoreDNS rewrite target for *.<gw.Host> (D6, R7b
+// spec §5.7b). When the RESOLVED gateway pack (gwPack) declares a
+// gatewayService: block, that is authoritative — this is how envoy-gateway
+// closes the CoreDNS-targets-the-controller gap (the pre-R7b KNOWN GAP):
+// its controller Service and its data-plane Service are different Services,
+// and only gatewayService: names the latter. Otherwise (gwPack nil, or no
+// declaration — every pack before R7b, including traefik) falls back to the
+// <pack>.<pack>.svc.cluster.local convention: traefik's chart installs
+// releaseName "traefik" into namespace "traefik" (packs/traefik/chart.yaml),
+// so gw.Pack doubles as both name and namespace there — zero migration.
+func gatewayServiceFQDN(gw config.GatewaySpec, gwPack *pack.Pack) string {
+	if gwPack != nil && gwPack.GatewayService != nil {
+		return fmt.Sprintf("%s.%s.svc.cluster.local", gwPack.GatewayService.Name, gwPack.GatewayService.Namespace)
+	}
 	return fmt.Sprintf("%s.%s.svc.cluster.local", gw.Pack, gw.Pack)
 }
 
