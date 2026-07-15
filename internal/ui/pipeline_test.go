@@ -144,6 +144,50 @@ func TestRunPipelineContextCancelUnwinds(t *testing.T) {
 	}
 }
 
+// TestRunPipelineStaticNeverGoesLive: under ModeStyled with a non-TTY writer
+// the projection is plain (byte-identical to render.Plain for the same
+// events); under ModeJSON it is the JSON stream. (A true-TTY styled
+// assertion is render/styled_test.go's job — pipeline_test can only prove
+// the non-TTY and JSON legs plus that no live program ever starts.)
+func TestRunPipelineStaticNeverGoesLive(t *testing.T) {
+	defer SetMode(CurrentMode())
+	SetMode(ModeStyled)
+	var buf bytes.Buffer
+	err := RunPipelineStatic(context.Background(), "pack", &buf,
+		func(ctx context.Context, con *Console) error {
+			con.Step("pack", "pushed oci://x/y:1@sha256:abc")
+			return nil
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); got != "▸ [pack] pushed oci://x/y:1@sha256:abc\n" {
+		t.Fatalf("plain projection: %q", got)
+	}
+}
+
+// TestRunPipelineStaticJSONMode proves the JSON leg behaves exactly like
+// RunPipeline: one event per line, terminal ordering intact.
+func TestRunPipelineStaticJSONMode(t *testing.T) {
+	defer SetMode(CurrentMode())
+	SetMode(ModeJSON)
+	var buf bytes.Buffer
+	err := RunPipelineStatic(context.Background(), "pack", &buf,
+		func(ctx context.Context, con *Console) error {
+			con.Start("pack", "")
+			con.Step("pack", "pushed oci://x/y:1@sha256:abc")
+			return nil
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := buf.String()
+	if !strings.Contains(got, `"type":"run_started"`) || !strings.Contains(got, `"type":"step_done"`) ||
+		!strings.Contains(got, `"type":"run_done"`) {
+		t.Fatalf("JSON projection missing expected event types:\n%s", got)
+	}
+}
+
 // TestConsoleHealthChangeFilter pins the HealthTick contract: first poll
 // always emits; identical subsequent polls emit nothing; any change emits.
 func TestConsoleHealthChangeFilter(t *testing.T) {

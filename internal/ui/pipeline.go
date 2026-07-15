@@ -43,6 +43,60 @@ const eventBuffer = 256
 // never via os.Exit.
 func RunPipeline(ctx context.Context, cmdName string, out io.Writer,
 	fn func(ctx context.Context, con *Console) error) error {
+	return runPipeline(ctx, cmdName, out, fn, pickRenderer)
+}
+
+// RunPipelineStatic is RunPipeline for short, static commands (plugin, pack
+// push, repo create, sync one-shot): identical lifecycle and terminal-event
+// ordering, but a TTY under ModeStyled gets the Styled projection instead of
+// the Live renderer — the live step-tree is reserved for long-running
+// commands (vendor, up, down; UX spec §5.2 + Phase 4 spec §5.3).
+// ModeLive (explicit user force) still runs the LiveRenderer; ModeJSON and
+// plain behave exactly as RunPipeline.
+func RunPipelineStatic(ctx context.Context, cmdName string, out io.Writer,
+	fn func(ctx context.Context, con *Console) error) error {
+	return runPipeline(ctx, cmdName, out, fn, pickRendererStatic)
+}
+
+// rendererPicker chooses how a resolved mode projects events for a given
+// writer — the only difference between RunPipeline and RunPipelineStatic.
+type rendererPicker func(mode Mode, out io.Writer, cancel context.CancelFunc, ch <-chan event.Event)
+
+// pickRenderer is RunPipeline's renderer switch (§4.2): ModeJSON → JSON;
+// ModeLive or (ModeStyled on a real TTY) → the LiveRenderer; else → Plain.
+func pickRenderer(mode Mode, out io.Writer, cancel context.CancelFunc, ch <-chan event.Event) {
+	switch {
+	case mode == ModeJSON:
+		drain(ch, render.JSON(out))
+	case mode == ModeLive || (mode == ModeStyled && IsTerminal(out)):
+		runLive(out, cancel, ch)
+	default: // ModePlain, or auto-styled downgraded per-writer
+		drain(ch, render.Plain(out))
+	}
+}
+
+// pickRendererStatic is RunPipelineStatic's renderer switch: identical to
+// pickRenderer except ModeStyled on a real TTY gets the Styled projection
+// instead of the LiveRenderer — short static commands never pop a live
+// step-tree. ModeLive is still an explicit force and still goes live.
+func pickRendererStatic(mode Mode, out io.Writer, cancel context.CancelFunc, ch <-chan event.Event) {
+	switch {
+	case mode == ModeJSON:
+		drain(ch, render.JSON(out))
+	case mode == ModeLive:
+		runLive(out, cancel, ch)
+	case mode == ModeStyled && IsTerminal(out):
+		drain(ch, render.Styled(out))
+	default: // ModePlain, or auto-styled downgraded per-writer
+		drain(ch, render.Plain(out))
+	}
+}
+
+// runPipeline is RunPipeline/RunPipelineStatic's shared producer/lifecycle
+// body — the two exported functions differ only in which rendererPicker
+// they pass.
+func runPipeline(ctx context.Context, cmdName string, out io.Writer,
+	fn func(ctx context.Context, con *Console) error, pick rendererPicker) error {
 	_ = cmdName // producers self-identify via Console.Start; kept for §4.2's normative signature
 
 	mode := CurrentMode()
@@ -71,18 +125,11 @@ func RunPipeline(ctx context.Context, cmdName string, out io.Writer,
 		errCh <- err
 	}()
 
-	switch {
-	case mode == ModeJSON:
-		drain(ch, render.JSON(out))
-	case mode == ModeLive || (mode == ModeStyled && IsTerminal(out)):
-		runLive(out, cancel, ch)
-	default: // ModePlain, or auto-styled downgraded per-writer
-		drain(ch, render.Plain(out))
-	}
+	pick(mode, out, cancel, ch)
 
 	// The renderer saw the channel close, so the producer goroutine has
 	// already sent its error; this join is immediate and guarantees no
-	// goroutine survives RunPipeline.
+	// goroutine survives RunPipeline/RunPipelineStatic.
 	return <-errCh
 }
 

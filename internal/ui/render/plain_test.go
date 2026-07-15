@@ -121,11 +121,12 @@ func TestPlainGoldenFailedRun(t *testing.T) {
 	}
 }
 
-// TestPlainSilentEvents restates the pinned Progress invariants as the
-// renderer contract: every event that printed nothing before Task 14b
-// still projects to zero bytes.
-func TestPlainSilentEvents(t *testing.T) {
-	silent := []event.Event{
+// silentEventsFixture is the recorded slice of events that print zero bytes
+// in both Plain and Styled (RunStarted/StepStarted/StepFailed/HealthTick/
+// Diagnosis/RunDone) — shared by TestPlainSilentEvents and
+// TestStyledSilentEventsAreZeroBytes (styled_test.go).
+func silentEventsFixture() []event.Event {
+	return []event.Event{
 		event.RunStarted{Cmd: "up", Cube: "dev"},
 		event.StepStarted{Stage: "cluster", Msg: "creating kind cluster"},
 		event.StepFailed{Stage: "cluster"},
@@ -133,7 +134,13 @@ func TestPlainSilentEvents(t *testing.T) {
 		event.Diagnosis{Raw: "boom"},
 		event.RunDone{OK: false, Dur: time.Second},
 	}
-	for _, ev := range silent {
+}
+
+// TestPlainSilentEvents restates the pinned Progress invariants as the
+// renderer contract: every event that printed nothing before Task 14b
+// still projects to zero bytes.
+func TestPlainSilentEvents(t *testing.T) {
+	for _, ev := range silentEventsFixture() {
 		var b bytes.Buffer
 		Plain(&b)(ev)
 		if b.Len() != 0 {
