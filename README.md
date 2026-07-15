@@ -417,6 +417,10 @@ and re-prompts.
 from a sha256-pinned git index and records its trust in one step. `--index`
 is required (Owner Decisions #8) — there is no implicit default index.
 
+Global flags go AFTER the plugin name: `cube-idp myplugin --plain` dispatches
+to the plugin, but `cube-idp --plain myplugin` does not (the plugin
+fallthrough inspects only the first argument).
+
 ## Pack sources
 
 A pack ref (`spec.gateway.ref` / `spec.packs[].ref`) accepts:
