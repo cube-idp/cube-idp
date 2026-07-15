@@ -982,6 +982,8 @@ func TestPluginNameCharsetGuard(t *testing.T) {
 }
 ```
 
+**DIVERGENCE (execution, R5 Step 3):** the `"-flag"` sub-case cannot reach the RunE guard as written — cobra/pflag rejects a bare `-flag` during flag parsing (unknown shorthand) before RunE runs, verified experimentally with no sanctioned bypass. Resolution: the test delivers `-flag` through the `--` terminator (`plugin trust -- -flag`; install keeps `--index` before the terminator), which genuinely exercises the guard; bare `-flag` stays refused by pflag itself. Both layers refuse; the assertion (CUBE-7105 via errors.As) is unweakened.
+
 Implement: `CodePluginNameInvalid Code = "CUBE-7105"` in codes.go (71xx section); in cmd/plugin.go a shared guard called first in trust's and install's RunE:
 
 ```go
