@@ -7,6 +7,18 @@ import (
 	"testing"
 
 	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/rafpe/cube-idp/internal/ui"
+)
+
+// Compile-time proof that both *ui.Console and *ui.Printer satisfy Stepper
+// (G6: identical Step signatures) — Deps.Steps accepts either without any
+// adapter, and SyncOnce's `steps := deps.Steps; if steps == nil { steps =
+// ui.NewFor(deps.Out) }` fallback stays type-correct for both callers (the
+// pipeline-wrapped cmd/sync.go RunE, and Watch's un-migrated ui.Printer
+// path).
+var (
+	_ Stepper = (*ui.Console)(nil)
+	_ Stepper = (*ui.Printer)(nil)
 )
 
 func TestSynthesizePackFromBareDir(t *testing.T) {

@@ -39,6 +39,13 @@ const syncApplyTimeout = 2 * time.Minute
 // push).
 type Result struct{ Pack, Version, Digest string }
 
+// Stepper is the emitter seam SyncOnce prints its progress lines through —
+// both *ui.Console and *ui.Printer satisfy it as-is (G6: identical Step
+// signatures), so the one-shot path (wrapped in ui.RunPipelineStatic,
+// cmd/sync.go) and the watch path (still a raw ui.Printer, out of scope for
+// Task R3 — spec §5.3) share SyncOnce without an adapter.
+type Stepper interface{ Step(stage, format string, args ...any) }
+
 // Deps is SyncOnce's dependency bag, assembled by cmd/sync.go exactly like
 // status/down connect (config -> provider Ensure -> Applier -> engine
 // factory) and injected here for testability.
@@ -47,6 +54,11 @@ type Deps struct {
 	Engine  engine.Engine
 	REST    *rest.Config
 	Out     io.Writer
+	// Steps is the progress emitter SyncOnce calls Step through. nil
+	// defaults to ui.NewFor(Out) — the pre-R3 behavior, and what Watch's
+	// un-migrated path (internal/syncer/watch.go) still relies on by never
+	// setting this field.
+	Steps Stepper
 	// PushAddr optionally overrides the zot port-forward tunnel — tests
 	// inject a local registry address instead of port-forwarding to a real
 	// cluster. Production leaves it empty.
@@ -82,8 +94,11 @@ func SyncOnce(ctx context.Context, deps Deps, dir string) (Result, error) {
 		return Result{}, err
 	}
 
-	printer := ui.NewFor(deps.Out)
-	printer.Step("sync", "%s@%s rendered (%d object(s))", rendered.Name, rendered.Version, len(rendered.Objects))
+	steps := deps.Steps
+	if steps == nil {
+		steps = ui.NewFor(deps.Out)
+	}
+	steps.Step("sync", "%s@%s rendered (%d object(s))", rendered.Name, rendered.Version, len(rendered.Objects))
 
 	addr := deps.PushAddr
 	if addr == "" {
@@ -100,7 +115,7 @@ func SyncOnce(ctx context.Context, deps Deps, dir string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	printer.Step("sync", "pushed packs/%s:%s", rendered.Name, rendered.Version)
+	steps.Step("sync", "pushed packs/%s:%s", rendered.Name, rendered.Version)
 
 	objs, err := deps.Engine.Deliver(ctx, rendered, ref)
 	if err != nil {
@@ -118,7 +133,7 @@ func SyncOnce(ctx context.Context, deps Deps, dir string) (Result, error) {
 	if err := deps.Engine.Poke(ctx, deps.Applier, rendered.Name); err != nil {
 		return Result{}, err
 	}
-	printer.Step("sync", "%s@%s delivered — engine reconciling", rendered.Name, rendered.Version)
+	steps.Step("sync", "%s@%s delivered — engine reconciling", rendered.Name, rendered.Version)
 
 	return Result{Pack: rendered.Name, Version: rendered.Version, Digest: ref.Digest}, nil
 }

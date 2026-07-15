@@ -62,8 +62,10 @@ Every line carries three fields:
 `cluster`, `trust`; `vendor` emits a single stage, `vendor`, once per pack
 and once per image plus the final bundle-written step (`cmd`/`cube` on
 `run_started` is `"vendor"`/`""` — vendor is a pure `cube.lock` consumer with
-no `cube.yaml`, so `cube` is always empty). Packs and future commands may
-add stages without a schema version bump.
+no `cube.yaml`, so `cube` is always empty); `sync` (one-shot only — `--watch`
+keeps its own plain loop, out of scope for the event stream) emits a single
+stage, `sync`, three times: rendered, pushed, delivered. Packs and future
+commands may add stages without a schema version bump.
 
 ### Event types
 
