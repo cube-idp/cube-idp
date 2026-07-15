@@ -3040,3 +3040,22 @@ git add -A && git commit -m "feat: UX stage B — progress knob, rich status/doc
 
 
 
+
+---
+
+## Post-Execution Findings Register (e2e arbiter wave, 2026-07-14/15)
+
+Bugs only real clusters could find — every one traced, fixed with TDD, merged, and re-verified live unless marked OPEN. All checkboxes above remain ticked; this register is the authoritative record of what the arbiters surfaced beyond the plan's scope.
+
+- [x] **F1 — `vendor --platform` defaulted to the HOST platform (darwin/arm64)**, but container images publish only linux manifests → every macOS vendor failed (CUBE-7002 "no matching manifest"). Fix: default is always `linux/<host-arch>` (merge `142fb70`). CONFIRMED: bundle e2e runs 3 and 5 pull all images.
+- [x] **F2 — Docker Hub official images 401'd**: lock refs like `docker.io/traefik` were pulled without the `library/` namespace (`/v2/traefik/...` does not exist). Fix: docker.io refs with a bare repo get `library/` injected for the PULL only; recorded refs stay original (merge `1310a98`, 12-case normalization table). CONFIRMED: runs 3+5.
+- [x] **F3 — k3d kubeconfig carried no API port** (`https://0.0.0.0` → dial :443 refused): k3d's `KubeconfigGet` reads the port from the server node's `k3d.server.api.port` label, so `ExposeAPI.HostPort` must be bound at creation (the CLI does this; the library transform does not). Fix: assign a free port pre-transform, mirroring the CLI (merge `d91ef38`). CONFIRMED: TestK3dUpDown PASS; live contract both providers.
+- [x] **F4 — provider contract suite never dialed the API** (asserted `REST != nil` only), which is exactly why F3 passed the live contract. Fix: the contract now makes a deadline-bound live API call (same merge `d91ef38`). CONFIRMED: RED against the unfixed k3d provider reproduced the exact CUBE-2003 evidence.
+- [x] **F5 — `down` printed "kind cluster deleted" for k3d clusters.** Fix: provider-accurate wording (merge `d91ef38`).
+- [x] **F6 — the offline e2e's no-ghcr assertion was vacuous** (the asserted string could never appear in any mode). Fix: `up` now emits a per-pack `▸ [pack] fetching <resolved source>` step line (unit-pinned both directions), and the e2e asserts positively (every source in the bundle staging dir, ≥1 line) and negatively (no `oci://` source) (`c574347` + `b8322fa`). CONFIRMED: run 5.
+- [x] **F7 — registry HTTPRoute raced the Gateway API CRDs** with `spec.gateway.pack: envoy-gateway` (traefik never raced — its pack vendors the CRDs as static manifests). Fix: deadline-bound wait for the httproutes CRD to be Established before the registry-route apply, typed timeout `CUBE-5005` (merge `c4aa6d4`). CONFIRMED: the race is gone; the wait exposed F8.
+- [x] **F8 — the in-process Helm render (client-only dry-run) silently dropped BOTH out-of-manifest chart surfaces**: the `crds/` directory (Gateway API + EG CRDs) and install-hook manifests (EG's certgen Job, whose absence left the controller unable to mount its `envoy-gateway` certs secret — operator-diagnosed). Fix: re-inject `chrt.CRDObjects()` (CRDs first) and hook manifests (hook annotations stripped) into the render stream (merge `aae69fb`; network render test pins that the envoy pack renders the Gateway API CRDs and the certgen Job). CONFIRMED: `up` with envoy now completes — all packs Ready, 38 objects.
+- [ ] **F9 — OPEN: envoy gateway TLS probe fails after a fully-Ready `up`** (`connection reset by peer` on host port → NodePort 30443). Suspects, in order: the EnvoyProxy `envoyService.patch` NodePort pinning not landing on the generated data-plane Service (random nodePorts); service name/namespace mismatch vs the `<pack>.<pack>.svc` CoreDNS/TLS conventions; Gateway listener cert resolution; probe timing. UNDER OPERATOR DIAGNOSIS — repro steps in the ledger.
+- [ ] **F10 — OPEN (hardening candidate for the final fix wave): transient `ctr images import` failure** (bundle run 4; runs 3 and 5 passed identical code). Candidate: single retry + stderr surfacing in the providers' LoadImages.
+
+**Arbiter scorecard:** sync one-shot PASS (168s) · k3d up/down PASS · repo create --deploy PASS (179s) · vendor→offline bundle PASS (360s; containerd accepts per-image OCI-layout tars — confirmed twice) · envoy turnkey: `up` PASS, TLS probe OPEN (F9).
