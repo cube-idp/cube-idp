@@ -117,7 +117,7 @@ func pullOCI(ctx context.Context, ref, cacheDir string) (dir string, digest stri
 			"use the form oci://host/repo:tag")
 	}
 	repo.Client = auth.DefaultClient
-	if isLocalRegistryHost(repo.Reference.Registry) {
+	if IsLocalRegistryHost(repo.Reference.Registry) {
 		repo.PlainHTTP = true
 	}
 	tagOrDigest := repo.Reference.Reference
@@ -156,7 +156,10 @@ func pullOCI(ctx context.Context, ref, cacheDir string) (dir string, digest stri
 	return destDir, string(desc.Digest), nil
 }
 
-func isLocalRegistryHost(host string) bool {
+// IsLocalRegistryHost reports whether host (optionally host:port) is a
+// loopback registry — the only case where plain HTTP is acceptable; the ONE
+// shared definition (Phase 4 R8).
+func IsLocalRegistryHost(host string) bool {
 	h := host
 	if i := strings.IndexByte(h, ':'); i != -1 {
 		h = h[:i]

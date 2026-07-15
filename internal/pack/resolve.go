@@ -61,7 +61,7 @@ func ResolveRemote(ctx context.Context, ref, cacheDir string) (string, error) {
 		// the same hosts identically — a real registry (e.g. ghcr.io) still
 		// uses HTTPS here, just as it does on the fetch path.
 		repo.Client = auth.DefaultClient
-		if isLocalRegistryHost(repo.Reference.Registry) {
+		if IsLocalRegistryHost(repo.Reference.Registry) {
 			repo.PlainHTTP = true
 		}
 		tagOrDigest := repo.Reference.Reference

@@ -300,7 +300,7 @@ func pullImageTar(ctx context.Context, img, layoutDir string, plat *ocispec.Plat
 			"check the image reference in cube.lock/pack.cue")
 	}
 	repo.Client = auth.DefaultClient
-	if isLocalRegistryHost(repo.Reference.Registry) {
+	if pack.IsLocalRegistryHost(repo.Reference.Registry) {
 		repo.PlainHTTP = true
 	}
 	tagOrDigest := repo.Reference.Reference
@@ -398,16 +398,4 @@ func ociRefWithDigest(ref, digest string) string {
 		repo = trimmed[:j]
 	}
 	return "oci://" + repo + "@" + digest
-}
-
-// isLocalRegistryHost reports whether host (optionally host:port) is a
-// loopback registry — the only case where plain HTTP is acceptable. Copied
-// from internal/pack/source.go and internal/oci/pushdir.go (unexported in
-// both; a third small export wasn't worth the coupling for six lines).
-func isLocalRegistryHost(host string) bool {
-	h := host
-	if i := strings.IndexByte(h, ':'); i != -1 {
-		h = h[:i]
-	}
-	return h == "127.0.0.1" || h == "localhost"
 }

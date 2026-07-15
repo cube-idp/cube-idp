@@ -32,7 +32,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -45,6 +44,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 
 	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/rafpe/cube-idp/internal/pack"
 )
 
 // PushPackDir pushes the pack source directory at dir to ociRef (form:
@@ -84,9 +84,9 @@ func PushPackDir(ctx context.Context, dir, ociRef string, alsoTags ...string) (s
 		Cache:      auth.NewCache(),
 		Credential: credentials.Credential(credStore),
 	}
-	// Same 6-line gate as internal/pack's pullOCI: plain HTTP only for the
-	// loopback registries (zot tunnel, in-process test registries).
-	if isLocalRegistryHost(repo.Reference.Registry) {
+	// Same gate as internal/pack's pullOCI: plain HTTP only for the loopback
+	// registries (zot tunnel, in-process test registries).
+	if pack.IsLocalRegistryHost(repo.Reference.Registry) {
 		repo.PlainHTTP = true
 	}
 
@@ -115,7 +115,10 @@ func pushPackDirTo(ctx context.Context, dir string, store oras.Target, tags []st
 	}
 
 	annotations := map[string]string{
-		ocispec.AnnotationCreated:  time.Now().UTC().Format(time.RFC3339),
+		// fixed epoch, NOT wall time: identical content must republish to an
+		// identical digest so the CI pack republish is a true no-op (Phase 4
+		// R8; annotation consumers only need a valid RFC3339 value).
+		ocispec.AnnotationCreated:  "1970-01-01T00:00:00Z",
 		ocispec.AnnotationSource:   "cube-idp",
 		ocispec.AnnotationRevision: tags[0],
 	}
@@ -204,16 +207,4 @@ func buildDirLayer(root string) ([]byte, error) {
 			"this is a cube-idp bug — please report it")
 	}
 	return tgz.Bytes(), nil
-}
-
-// isLocalRegistryHost reports whether host (optionally host:port) is a
-// loopback registry — the only case where plain HTTP is acceptable. Copied
-// from internal/pack/source.go (unexported there; a two-package export
-// wasn't worth the coupling for six lines).
-func isLocalRegistryHost(host string) bool {
-	h := host
-	if i := strings.IndexByte(h, ':'); i != -1 {
-		h = h[:i]
-	}
-	return h == "127.0.0.1" || h == "localhost"
 }

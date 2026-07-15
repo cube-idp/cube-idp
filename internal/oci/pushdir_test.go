@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rafpe/cube-idp/internal/oci/ocitest"
 	"github.com/rafpe/cube-idp/internal/pack"
@@ -47,6 +48,32 @@ func TestPushPackDirRoundTripsThroughFetch(t *testing.T) {
 	// --also-tag: the same digest must be fetchable via the extra tag.
 	if p2, err := pack.Fetch(context.Background(), "oci://"+host+"/packs/demo:latest", t.TempDir()); err != nil || p2.Pinned != "oci:"+digest {
 		t.Fatalf("also-tag fetch: %v (pinned %q, want oci:%s)", err, p2.Pinned, digest)
+	}
+}
+
+// TestPushPackDirIsContentAddressed proves that pushing the identical pack
+// directory twice produces the identical digest — a fixed epoch annotation
+// (not wall-clock time.Now) is what makes the CI pack republish a true no-op
+// (Phase 4 R8). The sleep spans a wall-clock second boundary: with the old
+// time.Now()-based annotation, RFC3339's second granularity meant this test
+// only intermittently caught the bug (two fast in-process pushes often land
+// in the same second); the delay makes the RED failure reliable.
+func TestPushPackDirIsContentAddressed(t *testing.T) {
+	host := localRegistry(t)
+	dir := writeDemoPack(t)
+	ref := "oci://" + host + "/packs/demo:0.9.9"
+
+	digest1, err := PushPackDir(context.Background(), dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	digest2, err := PushPackDir(context.Background(), dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digest1 != digest2 {
+		t.Fatalf("republish of identical content changed digest: %q != %q", digest1, digest2)
 	}
 }
 

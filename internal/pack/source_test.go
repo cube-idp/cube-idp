@@ -145,3 +145,19 @@ func TestSafeJoin(t *testing.T) {
 		}
 	}
 }
+
+// TestIsLocalRegistryHost pins the ONE shared definition (Phase 4 R8) — this
+// was previously duplicated byte-for-byte in internal/oci and
+// internal/bundle; this table is the proof the consolidation is
+// behavior-identical.
+func TestIsLocalRegistryHost(t *testing.T) {
+	for host, want := range map[string]bool{
+		"127.0.0.1": true, "127.0.0.1:5000": true, "localhost": true,
+		"localhost:30500": true, "ghcr.io": false, "ghcr.io:443": false,
+		"127.0.0.1.evil.com": false, "": false,
+	} {
+		if got := IsLocalRegistryHost(host); got != want {
+			t.Errorf("%q: got %v want %v", host, got, want)
+		}
+	}
+}
