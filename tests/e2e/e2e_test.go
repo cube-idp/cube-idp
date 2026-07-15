@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -351,15 +352,12 @@ func deleteLingeringCluster(t *testing.T) {
 		// kind not on PATH, or no clusters at all — nothing to clean up.
 		return
 	}
-	for _, name := range strings.Fields(string(out)) {
-		if name == cubeName {
-			del := exec.Command("kind", "delete", "cluster", "--name", cubeName)
-			delOut, delErr := del.CombinedOutput()
-			t.Logf("guard: kind delete cluster --name %s\n%s", cubeName, delOut)
-			if delErr != nil {
-				t.Logf("guard: kind delete cluster --name %s failed (non-fatal): %v", cubeName, delErr)
-			}
-			return
+	if slices.Contains(slices.Collect(strings.FieldsSeq(string(out))), cubeName) {
+		del := exec.Command("kind", "delete", "cluster", "--name", cubeName)
+		delOut, delErr := del.CombinedOutput()
+		t.Logf("guard: kind delete cluster --name %s\n%s", cubeName, delOut)
+		if delErr != nil {
+			t.Logf("guard: kind delete cluster --name %s failed (non-fatal): %v", cubeName, delErr)
 		}
 	}
 }

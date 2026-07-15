@@ -56,9 +56,16 @@ func installFluxCRDs(t *testing.T) {
 }
 
 // cleanupDelivered deletes objs once the test ends. The envtest API server is
-// shared across the whole package (one TestMain), and TestUninstall...'s final
-// assertion lists flux-system unfiltered, so every delivered object a test
-// applies must be removed or it leaks into other tests.
+// shared across the whole package (one TestMain); without this, delivered
+// objects would accumulate in flux-system across every test function in a
+// single `go test` run. This package's tests each use their own cube name
+// ("pokecube" here vs. "testcube" in uninstall_test.go), and
+// TestUninstallDeletesDeliveredSources's final assertion is
+// cube-idp.dev/cube-scoped (Phase 4 R8) rather than listing flux-system
+// unfiltered, so a leaked pokecube object can no longer fail that specific
+// assertion — but this cleanup is kept anyway as general test hygiene: it
+// keeps each test's fixtures from outliving it, independent of what any
+// other test in the package happens to assert.
 func cleanupDelivered(t *testing.T, c client.Client, objs []*unstructured.Unstructured) {
 	t.Helper()
 	t.Cleanup(func() {

@@ -97,6 +97,9 @@ func TestTrustConsentFallsBackWithoutConfig(t *testing.T) {
 	if strings.Contains(out.String(), "cube-idp.localtest.me") {
 		t.Fatalf("with no loadable config, the prompt must not assert a specific host, got:\n%s", out.String())
 	}
+	if !strings.Contains(out.String(), "your cube-idp gateway's HTTPS") {
+		t.Fatalf("generic fallback wording missing:\n%s", out.String())
+	}
 }
 
 // TestTrustYesSkipsConsent covers --yes: install must proceed without

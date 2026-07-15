@@ -3,6 +3,11 @@
 # the vendored argocd-cmd-params-cm ConfigMap document on stdin, so the
 # deviation from upstream argo-cd's manifests/install.yaml is applied by
 # the generator itself instead of relying on a hand-edit after every regen.
+#
+# FRAGILITY NOTE: this script matches the argocd-cmd-params-cm document
+# positionally/textually; an argo-cd version bump can reorder or reformat
+# install.yaml and silently break the injection — hack/gen-argocd-manifests.sh
+# --check (CI) is the tripwire; re-verify this script on every bump.
 BEGIN {
     comment = "# reposerver.oci.layer.media.types (below) is a cube-idp addition to the\n" \
 "# vendored upstream ConfigMap, not part of argo-cd's community install.yaml:\n" \

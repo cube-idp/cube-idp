@@ -114,7 +114,8 @@ func TestUninstallDeletesDeliveredSources(t *testing.T) {
 		list := &unstructured.UnstructuredList{}
 		list.SetAPIVersion(gvk.group + "/" + gvk.version)
 		list.SetKind(gvk.kind)
-		if err := a.Client().List(ctx, list, client.InNamespace(fluxNS)); err != nil {
+		if err := a.Client().List(ctx, list, client.InNamespace(fluxNS),
+			client.MatchingLabels{apply.CubeLabel: "testcube"}); err != nil {
 			t.Fatal(err)
 		}
 		if len(list.Items) != 0 {
