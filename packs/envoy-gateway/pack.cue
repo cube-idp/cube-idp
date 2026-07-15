@@ -11,3 +11,8 @@ version: "0.1.0"
 // (api/v1alpha1/shared_types.go in the github.com/envoyproxy/gateway
 // v1.3.0 source) — re-verify against that constant on any chart bump.
 images: ["docker.io/envoyproxy/envoy:distroless-v1.33.0"]
+
+// Data-plane Service (Phase 4 R7b): a stable, NON-colliding name for the
+// generated Envoy proxy Service, declared so `up` points the CoreDNS
+// *.<host> rewrite at the DATA PLANE instead of the controller Service.
+gatewayService: {name: "cube-idp-gateway", namespace: "envoy-gateway"}

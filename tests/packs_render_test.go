@@ -103,8 +103,60 @@ func TestStarterPacksRender(t *testing.T) {
 			} else if _, hook := certgenJob.GetAnnotations()["helm.sh/hook"]; hook {
 				t.Errorf("%s: certgen Job still carries the helm.sh/hook annotation: %v", dir, certgenJob.GetAnnotations())
 			}
+
+			// R7b collision check (spec §7 risk): the name pack.cue's
+			// gatewayService: declares (and the raw EnvoyProxy's
+			// envoyService.name pins) MUST be free in the rendered stream —
+			// no rendered v1 Service already claims it in the
+			// envoy-gateway namespace. If one did, EG's generated
+			// data-plane Service would collide with it exactly like the F9
+			// hijack (an existing Service's selector getting overwritten),
+			// just with a different colliding owner. It also pins that the
+			// pack's parsed GatewayService and the manifest's EnvoyProxy
+			// agree — one declared name, one place of truth.
+			if p.GatewayService == nil {
+				t.Fatalf("%s: pack.cue must declare gatewayService: — the CoreDNS rewrite target for this pack (R7b)", dir)
+			}
+			for _, o := range r.Objects {
+				if o.GetKind() == "Service" && o.GetNamespace() == p.GatewayService.Namespace && o.GetName() == p.GatewayService.Name {
+					t.Errorf("%s: a rendered v1 Service already claims %s/%s — that name must stay free for EG's generated data-plane Service, or the F9 hijack recurs",
+						dir, p.GatewayService.Namespace, p.GatewayService.Name)
+				}
+			}
+			epName := envoyProxyServiceName(t, dir)
+			if epName != p.GatewayService.Name {
+				t.Errorf("%s: EnvoyProxy envoyService.name %q does not match pack.cue's gatewayService.name %q — up's CoreDNS rewrite and the actual generated Service would disagree",
+					dir, epName, p.GatewayService.Name)
+			}
 		}
 	}
+}
+
+// envoyProxyServiceName reads packDir/manifests/10-gatewayclass.yaml (raw,
+// no helm — the same file TestEnvoyGatewayPackProxyService parses) and
+// returns its EnvoyProxy's spec.provider.kubernetes.envoyService.name.
+func envoyProxyServiceName(t *testing.T, packDir string) string {
+	t.Helper()
+	raw, err := os.ReadFile(packDir + "/manifests/10-gatewayclass.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	objs, err := apply.ParseMultiDoc(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range objs {
+		if o.GetKind() != "EnvoyProxy" {
+			continue
+		}
+		name, _, err := unstructured.NestedString(o.Object, "spec", "provider", "kubernetes", "envoyService", "name")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return name
+	}
+	t.Fatalf("no EnvoyProxy object in %s/manifests/10-gatewayclass.yaml", packDir)
+	return ""
 }
 
 // TestEnvoyGatewayPackProxyService pins the F9-follow-up root cause found
