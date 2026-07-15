@@ -136,7 +136,7 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	route := registry.GatewayRoute(cube.Spec.Gateway.Host)
+	route := registry.GatewayRoute(cube.Spec.Gateway.Host, cube.Spec.Gateway.Pack)
 	tlsNamespace := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1", "kind": "Namespace",
 		"metadata": map[string]any{"name": cube.Spec.Gateway.Pack},

@@ -12,18 +12,20 @@ const NodePort = 30500
 // developer's docker/oras on the HOST can push with TLS + the cube-idp CA.
 // Applied by `up` after the gateway pack is delivered (the HTTPRoute CRD
 // arrives with the gateway pack's Gateway API CRDs). The parentRef matches
-// the phase-1 Gateway ("cube-idp" in ns "traefik", checkpoint 0.14); it
+// the Gateway named "cube-idp"; gwPack is the gateway pack's namespace
+// (gw.Pack, e.g. "traefik" or "envoy-gateway" — F9: hardcoding "traefik"
+// left Attached Routes at 0 whenever the gateway lived elsewhere). It
 // crosses namespaces (route lives in cube-idp-system, next to zot), which
-// the phase-1 Gateway allows via allowedRoutes: {namespaces: {from: All}}.
+// the Gateway allows via allowedRoutes: {namespaces: {from: All}}.
 // Omitting sectionName means the route attaches to every listener the
 // Gateway exposes, including websecure.
-func GatewayRoute(host string) *unstructured.Unstructured {
+func GatewayRoute(host, gwPack string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "gateway.networking.k8s.io/v1",
 		"kind":       "HTTPRoute",
 		"metadata":   map[string]any{"name": "cube-idp-registry", "namespace": "cube-idp-system"},
 		"spec": map[string]any{
-			"parentRefs": []any{map[string]any{"name": "cube-idp", "namespace": "traefik"}},
+			"parentRefs": []any{map[string]any{"name": "cube-idp", "namespace": gwPack}},
 			"hostnames":  []any{"registry." + host},
 			"rules": []any{map[string]any{
 				"backendRefs": []any{map[string]any{"name": "zot", "port": int64(5000)}},

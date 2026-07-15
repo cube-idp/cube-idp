@@ -11,8 +11,59 @@ import (
 	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/lock"
+	"github.com/rafpe/cube-idp/internal/pack"
 	"github.com/rafpe/cube-idp/internal/ui"
 )
+
+// TestVerifyGatewayPackRef pins F11: gateway.ref silently wins over
+// gateway.pack, so a mismatch between the ref'd pack's declared name and
+// gateway.pack must be a typed CUBE-0008 error, not a silent wrong-gateway
+// delivery. The operator's exact misconfig — `init --local` wrote
+// ref=.../packs/traefik, operator edited only pack: envoy-gateway — is the
+// first case.
+func TestVerifyGatewayPackRef(t *testing.T) {
+	cases := []struct {
+		name    string
+		pkName  string
+		gw      config.GatewaySpec
+		wantErr bool
+	}{
+		{
+			name:    "operator misconfig: ref=traefik pack=envoy-gateway",
+			pkName:  "traefik",
+			gw:      config.GatewaySpec{Pack: "envoy-gateway", Ref: "/repo/packs/traefik"},
+			wantErr: true,
+		},
+		{
+			name:   "ref and pack agree",
+			pkName: "envoy-gateway",
+			gw:     config.GatewaySpec{Pack: "envoy-gateway", Ref: "/repo/packs/envoy-gateway"},
+		},
+		{
+			name:   "no ref: PackRef falls back to packs/<pack>, cannot disagree",
+			pkName: "traefik",
+			gw:     config.GatewaySpec{Pack: "envoy-gateway"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := verifyGatewayPackRef(&pack.Pack{Name: tc.pkName}, tc.gw)
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("want nil, got %v", err)
+				}
+				return
+			}
+			var de *diag.Error
+			if !errors.As(err, &de) || de.Code != diag.CodeGatewayPackMismatch {
+				t.Fatalf("want CUBE-0008, got %v", err)
+			}
+			if !strings.Contains(de.Error(), "envoy-gateway") {
+				t.Fatalf("remediation should name the pack, got %q", de.Error())
+			}
+		})
+	}
+}
 
 // TestMergeImagesUnion pins spec D14's lock-assembly merge: the sorted,
 // deduplicated union of rendered-manifest images and a pack's declared

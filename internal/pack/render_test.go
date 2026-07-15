@@ -20,7 +20,7 @@ func TestRenderForSubstitutesGatewayHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gw := config.GatewaySpec{Host: "cube-idp.localtest.me", Port: 8443}
+	gw := config.GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443}
 	r, err := p.RenderFor(nil, gw)
 	if err != nil {
 		t.Fatal(err)
@@ -47,6 +47,41 @@ func TestRenderForSubstitutesGatewayHost(t *testing.T) {
 	}
 	if got, _, _ := unstructured.NestedString(route.Object, "data", "fqdn"); got != "cube-idp.localtest.me" {
 		t.Fatalf("manifest ${GATEWAY_FQDN} substitution: got %q", got)
+	}
+	if got, _, _ := unstructured.NestedString(route.Object, "data", "pack"); got != "traefik" {
+		t.Fatalf("manifest ${GATEWAY_PACK} substitution: got %q", got)
+	}
+}
+
+// TestRenderForSubstitutesGatewayPack pins F9: ${GATEWAY_PACK} expands to
+// gw.Pack — the gateway pack name, which is also the namespace pack
+// HTTPRoute parentRefs must target. It is exercised for BOTH pack values:
+// traefik (the pre-F9 hardcoded literal, which must render byte-identically
+// to before) and envoy-gateway (the case F9 fixes — routes must parent to
+// ns envoy-gateway, not traefik).
+func TestRenderForSubstitutesGatewayPack(t *testing.T) {
+	p, err := Fetch(context.Background(), "testdata/gw-sub-pack", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pk := range []string{"traefik", "envoy-gateway"} {
+		gw := config.GatewaySpec{Pack: pk, Host: "cube-idp.localtest.me", Port: 8443}
+		r, err := p.RenderFor(nil, gw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var route *unstructured.Unstructured
+		for _, o := range r.Objects {
+			if o.GetName() == "gwsub-route" {
+				route = o
+			}
+		}
+		if route == nil {
+			t.Fatalf("%s: expected gwsub-route object", pk)
+		}
+		if got, _, _ := unstructured.NestedString(route.Object, "data", "pack"); got != pk {
+			t.Fatalf("%s: ${GATEWAY_PACK} substitution: got %q", pk, got)
+		}
 	}
 }
 

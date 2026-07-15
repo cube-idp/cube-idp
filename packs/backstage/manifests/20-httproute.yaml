@@ -14,7 +14,7 @@ spec:
     - group: gateway.networking.k8s.io
       kind: Gateway
       name: cube-idp
-      namespace: traefik
+      namespace: ${GATEWAY_PACK}
   hostnames: ["backstage.${GATEWAY_FQDN}"]
   rules:
     - matches:
