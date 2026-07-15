@@ -22,8 +22,9 @@ const pokeAnnotation = "argocd.argoproj.io/refresh"
 // interval, by stamping the argocd.argoproj.io/refresh=normal annotation on
 // the Application named cube-idp-<pack>. One shape covers both delivery kinds
 // (OCI and git both land as an Application). A pack with no Application is
-// CUBE-3007. Idempotent and cheap: a single get + annotation update, no apply
-// and no wait.
+// CUBE-3007. An Application that exists but can't be read or updated (a
+// transient engine IO failure) is CUBE-3008. Idempotent and cheap: a single
+// get + annotation update, no apply and no wait.
 func (g *ArgoCD) Poke(ctx context.Context, a *apply.Applier, packName string) error {
 	c := a.Client()
 	name := deliveryName(packName)
@@ -37,7 +38,7 @@ func (g *ArgoCD) Poke(ctx context.Context, a *apply.Applier, packName string) er
 			"run `cube-idp sync <dir>` or `cube-idp up` first — Poke only refreshes an existing delivery")
 	}
 	if err != nil {
-		return diag.Wrap(err, diag.CodePokeTargetMissing,
+		return diag.Wrap(err, diag.CodePokeIOFail,
 			fmt.Sprintf("cannot read Application %s/%s to poke", Namespace, name),
 			"check kubeconfig and cluster connectivity; re-run the command")
 	}
@@ -48,7 +49,7 @@ func (g *ArgoCD) Poke(ctx context.Context, a *apply.Applier, packName string) er
 	anns[pokeAnnotation] = "normal"
 	app.SetAnnotations(anns)
 	if err := c.Update(ctx, app); err != nil {
-		return diag.Wrap(err, diag.CodePokeTargetMissing,
+		return diag.Wrap(err, diag.CodePokeIOFail,
 			fmt.Sprintf("cannot poke Application %s/%s", Namespace, name),
 			"check RBAC on namespace argocd; re-run the command")
 	}

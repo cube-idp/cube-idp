@@ -46,6 +46,18 @@ func New(cfg *rest.Config, cubeName string) (*Applier, error) {
 	return &Applier{rm: rm, c: c, cube: cubeName}, nil
 }
 
+// NewWithClient builds an Applier around a caller-supplied controller-runtime
+// client instead of dialing cfg itself. Production never calls this (New is
+// the only real entry point); it exists so tests can wrap a real envtest
+// client in sigs.k8s.io/controller-runtime/pkg/client/interceptor to rig a
+// specific call (e.g. Update) to fail, exercising diag-wrap paths like
+// engine.Poke's CUBE-3008 without a fake Kubernetes API.
+func NewWithClient(c client.Client, cubeName string) *Applier {
+	poller := polling.NewStatusPoller(c, c.RESTMapper(), polling.Options{})
+	rm := ssa.NewResourceManager(c, poller, ssa.Owner{Field: FieldManager, Group: "cube-idp.dev"})
+	return &Applier{rm: rm, c: c, cube: cubeName}
+}
+
 // Client returns the underlying controller-runtime client, reused by
 // status/get-secrets commands.
 func (a *Applier) Client() client.Client { return a.c }

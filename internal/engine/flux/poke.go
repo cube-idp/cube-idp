@@ -28,8 +28,9 @@ var pokeSourceKinds = []string{"OCIRepository", "GitRepository"}
 // interval, by stamping the reconcile.fluxcd.io/requestedAt annotation on the
 // pack's source object (the same thing `flux reconcile` does). It tries the
 // OCIRepository named cube-idp-<pack> first, then the GitRepository of the
-// same name; a pack with neither is CUBE-3007. Idempotent and cheap: a single
-// get + annotation update, no apply and no wait.
+// same name; a pack with neither is CUBE-3007. A source that exists but can't
+// be read or updated (a transient engine IO failure) is CUBE-3008. Idempotent
+// and cheap: a single get + annotation update, no apply and no wait.
 func (f *Flux) Poke(ctx context.Context, a *apply.Applier, packName string) error {
 	c := a.Client()
 	name := deliveryName(packName)
@@ -42,7 +43,7 @@ func (f *Flux) Poke(ctx context.Context, a *apply.Applier, packName string) erro
 			continue // this kind's object (or its CRD) is absent — try the next shape
 		}
 		if err != nil {
-			return diag.Wrap(err, diag.CodePokeTargetMissing,
+			return diag.Wrap(err, diag.CodePokeIOFail,
 				fmt.Sprintf("cannot read %s %s/%s to poke", kind, fluxNS, name),
 				"check kubeconfig and cluster connectivity; re-run the command")
 		}
@@ -53,7 +54,7 @@ func (f *Flux) Poke(ctx context.Context, a *apply.Applier, packName string) erro
 		anns[pokeAnnotation] = time.Now().Format(time.RFC3339Nano)
 		src.SetAnnotations(anns)
 		if err := c.Update(ctx, src); err != nil {
-			return diag.Wrap(err, diag.CodePokeTargetMissing,
+			return diag.Wrap(err, diag.CodePokeIOFail,
 				fmt.Sprintf("cannot poke %s %s/%s", kind, fluxNS, name),
 				"check RBAC on namespace flux-system; re-run the command")
 		}

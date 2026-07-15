@@ -72,6 +72,7 @@ const (
 	CodeEngineUninstallFail Code = "CUBE-3005" // flux prune/uninstall timeout
 	CodeEngineArgocdRegFail Code = "CUBE-3006" // reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design
 	CodePokeTargetMissing   Code = "CUBE-3007" // Poke found no delivery source (OCIRepository/GitRepository/Application) for the pack
+	CodePokeIOFail          Code = "CUBE-3008" // Poke found the delivery source but could not read/update it (transient engine IO — retry)
 )
 
 // 4xxx: pack

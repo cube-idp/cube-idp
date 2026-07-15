@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	"github.com/rafpe/cube-idp/internal/apply"
@@ -173,5 +174,56 @@ func TestPokeUndeliveredPackIsCUBE3007(t *testing.T) {
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != diag.CodePokeTargetMissing {
 		t.Fatalf("want CUBE-3007, got %v", err)
+	}
+}
+
+// TestPokeUpdateIOFailureIsCUBE3008 asserts that Poke finding the delivery
+// source (Get succeeds) but failing to persist the reconcile annotation
+// (Update fails, e.g. a transient apiserver/etcd hiccup) surfaces the
+// dedicated transient-IO code CUBE-3008 — distinct from CUBE-3007, which
+// stays reserved for "no delivery source at all". The client is a real
+// envtest client wrapped in an interceptor that fails only Update calls, so
+// Get/List still hit the real API server.
+func TestPokeUpdateIOFailureIsCUBE3008(t *testing.T) {
+	if testREST == nil {
+		t.Skip("KUBEBUILDER_ASSETS not set; envtest unavailable")
+	}
+	ctx := context.Background()
+	installFluxCRDs(t)
+
+	a, err := apply.New(testREST, "pokecube")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := New()
+
+	delivered, err := f.Deliver(ctx, &pack.Rendered{Name: "demo", Version: "0.1.0"},
+		engine.ArtifactRef{Repo: "packs/demo", Tag: "0.1.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Apply(ctx, delivered, false, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	cleanupDelivered(t, a.Client(), delivered)
+
+	watchClient, err := client.NewWithWatch(testREST, client.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failingClient := interceptor.NewClient(watchClient, interceptor.Funcs{
+		Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			return errors.New("simulated transient apiserver write failure")
+		},
+	})
+	failingApplier := apply.NewWithClient(failingClient, "pokecube")
+
+	err = f.Poke(ctx, failingApplier, "demo")
+	if err == nil {
+		t.Fatal("Poke must error when Update fails")
+	}
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodePokeIOFail {
+		t.Fatalf("want CUBE-3008 (CodePokeIOFail) for a transient Update failure, got %v", err)
 	}
 }
