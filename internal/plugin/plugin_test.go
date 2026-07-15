@@ -105,6 +105,32 @@ exit 0
 	}
 }
 
+// TestTrustKeyCanonicalization: recording trust through a symlinked or
+// relative path and checking through the resolved absolute path (or vice
+// versa) must agree — the store keys on Abs+EvalSymlinks canonical paths.
+func TestTrustKeyCanonicalization(t *testing.T) {
+	// store isolation — RESOLVED (Task 0): existing plugin tests inline this
+	// exact triple (no shared helper); mirror it verbatim:
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("XDG_DATA_HOME", "")
+	dir := t.TempDir()
+	real := filepath.Join(dir, "cube-idp-demo")
+	if err := os.WriteFile(real, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link-to-demo")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := Trust("demo", link); err != nil { // record via the symlink
+		t.Fatal(err)
+	}
+	if !isTrusted(real) { // look up via the real path
+		t.Fatal("trust recorded via a symlink must be visible via the canonical path")
+	}
+}
+
 func TestTrustDetectsChangedBinary(t *testing.T) {
 	dir := t.TempDir()
 	p := fakePlugin(t, dir, "mutant", 0)

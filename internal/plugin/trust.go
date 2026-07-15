@@ -91,6 +91,21 @@ func sha256File(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// canonicalPath resolves path to its absolute, symlink-free form — the ONE
+// trust-store key shape. Canonicalization failure falls back to the raw
+// path (fail-safe: worst case is a re-prompt, never a false trust).
+func canonicalPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return abs
+	}
+	return resolved
+}
+
 // Trust records path's current sha256 in the trust store unconditionally —
 // used by `cube-idp plugin trust` and Task 9's verified installs.
 func Trust(name, path string) error {
@@ -102,7 +117,7 @@ func Trust(name, path string) error {
 	if err != nil {
 		return err
 	}
-	m[path] = sum
+	m[canonicalPath(path)] = sum
 	return saveStore(m)
 }
 
@@ -113,7 +128,7 @@ func isTrusted(path string) bool {
 	if err != nil {
 		return false
 	}
-	want, ok := m[path]
+	want, ok := m[canonicalPath(path)]
 	if !ok {
 		return false
 	}
@@ -134,7 +149,8 @@ func EnsureTrusted(name, path string, interactive bool) error {
 	if err != nil {
 		return err
 	}
-	if want, ok := m[path]; ok && want == sum {
+	key := canonicalPath(path)
+	if want, ok := m[key]; ok && want == sum {
 		return nil
 	}
 
@@ -153,7 +169,7 @@ func EnsureTrusted(name, path string, interactive bool) error {
 		return diag.New(diag.CodePluginUntrusted,
 			fmt.Sprintf("plugin %q (%s) was not trusted", name, path), remediation)
 	}
-	m[path] = sum
+	m[key] = sum
 	return saveStore(m)
 }
 
