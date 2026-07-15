@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crds-chart-cm
+data:
+  note: "templated object; proves the manifest still renders alongside crds/"

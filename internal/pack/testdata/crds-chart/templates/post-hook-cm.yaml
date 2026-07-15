@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crds-chart-post
+  annotations:
+    "helm.sh/hook": post-install
+data:
+  note: "post-install hook; must render AFTER the regular manifests"

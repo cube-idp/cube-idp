@@ -23,10 +23,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"helm.sh/helm/v4/pkg/action"
 	"helm.sh/helm/v4/pkg/chart/common"
 	"helm.sh/helm/v4/pkg/chart/loader"
+	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
 	"helm.sh/helm/v4/pkg/cli"
 	"helm.sh/helm/v4/pkg/registry"
 	release "helm.sh/helm/v4/pkg/release/v1"
@@ -155,6 +157,28 @@ func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) 
 			"this is likely a bug in the chart; try `helm template` manually")
 	}
 
+	// Helm returns hook manifests (templates carrying helm.sh/hook
+	// annotations) on rel.Hooks, NOT in rel.Manifest — `helm install` runs
+	// them out-of-band around the manifest apply, so like crds/ they were
+	// silently dropped from the rendered artifact. Our render is a static
+	// artifact for a GitOps engine, so install-time hooks (pre-install /
+	// post-install) must become plain resources in the stream: envoy's
+	// gateway-helm ships its certgen Job (which creates the TLS secret the
+	// controller mounts) as a pre-install hook, and without it the
+	// controller pod never starts. The helm.sh/hook* annotations are
+	// stripped so the engine applies them as ordinary objects; a hook Job
+	// applied as a plain resource runs once, and an unchanged SSA re-apply
+	// of the (immutable) Job is a no-op. Hooks whose events would not fire
+	// on a fresh install (test, delete/rollback-only, upgrade-only) are
+	// skipped. Pre-install hooks go before the manifest objects, post-install
+	// after, mirroring helm's own execution order.
+	preHooks, postHooks, err := hookObjects(rel.Hooks, ref.Chart)
+	if err != nil {
+		return nil, err
+	}
+	objs = append(preHooks, objs...)
+	objs = append(objs, postHooks...)
+
 	if ref.Namespace != "" && !hasNamespaceObject(objs, ref.Namespace) {
 		nsObj := &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1",
@@ -162,6 +186,28 @@ func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) 
 			"metadata":   map[string]any{"name": ref.Namespace},
 		}}
 		objs = append([]*unstructured.Unstructured{nsObj}, objs...)
+	}
+
+	// Helm's dry-run render (rel.Manifest) deliberately OMITS the objects a
+	// chart ships in its crds/ directory — `helm install` applies those
+	// out-of-band, before the templated manifest, and `helm template`
+	// likewise drops them unless --include-crds is passed. The Install SDK
+	// action exposes no such flag, so charts delivering the Gateway API CRDs
+	// (envoy gateway-helm) or any other crds/-shipped CRDs would silently
+	// lose them from the rendered artifact. Recover them from the loaded
+	// chart via CRDObjects() (which also walks subcharts) and prepend them,
+	// CRDs first — ahead of the injected Namespace and any custom resources
+	// the same chart templates — so the definitions that establish their
+	// kinds always land before their instances. (The applier stages by kind,
+	// CRDs ahead of everything, so this ordering is belt-and-suspenders, not
+	// load-bearing, but it keeps the rendered stream sane for callers that
+	// consume it directly.)
+	crdObjs, err := chartCRDObjects(chrt, ref.Chart)
+	if err != nil {
+		return nil, err
+	}
+	if len(crdObjs) > 0 {
+		objs = append(dedupeCRDs(crdObjs, objs), objs...)
 	}
 	return objs, nil
 }
@@ -173,6 +219,134 @@ func hasNamespaceObject(objs []*unstructured.Unstructured, name string) bool {
 		}
 	}
 	return false
+}
+
+// chartCRDObjects parses the CRD manifests a chart ships in its crds/
+// directory into unstructured objects. loader.Load returns chart.Charter
+// (an alias for any); Helm's crds/ machinery — CRDObjects(), which also
+// recurses into subcharts — lives on the concrete apiVersion v1/v2 chart
+// type (*chartv2.Chart). apiVersion v3 charts are still experimental and
+// their loader type lives in an internal Helm package we cannot import, so
+// a non-v2 chart simply yields no CRDs here (its templated CRDs, if any,
+// still render via the manifest). A crds/ file may itself be a multi-doc
+// YAML stream, so each is parsed with ParseMultiDoc.
+func chartCRDObjects(chrt any, chartName string) ([]*unstructured.Unstructured, error) {
+	c, ok := chrt.(*chartv2.Chart)
+	if !ok {
+		return nil, nil
+	}
+	var out []*unstructured.Unstructured
+	for _, crd := range c.CRDObjects() {
+		if crd.File == nil || len(crd.File.Data) == 0 {
+			continue
+		}
+		objs, err := apply.ParseMultiDoc(crd.File.Data)
+		if err != nil {
+			return nil, diag.Wrap(err, diag.CodePackChartErr,
+				fmt.Sprintf("helm chart %q ships an invalid CRD manifest %s", chartName, crd.Name),
+				"this is likely a bug in the chart; inspect the chart's crds/ directory")
+		}
+		out = append(out, objs...)
+	}
+	return out, nil
+}
+
+// hookObjects converts a release's install-time hooks into plain objects:
+// hooks firing on pre-install land in pre, on post-install in post (a hook
+// declaring both counts as pre — it must exist before the manifests need
+// it). Hooks that would not fire on a fresh install (test, delete- or
+// rollback- or upgrade-only) are skipped entirely. Hooks are processed in
+// helm's execution order (ascending helm.sh/hook-weight, stable within a
+// weight) and each object has its helm.sh/hook* annotations stripped so the
+// GitOps engine treats it as an ordinary resource.
+func hookObjects(hooks []*release.Hook, chartName string) (pre, post []*unstructured.Unstructured, err error) {
+	sorted := make([]*release.Hook, len(hooks))
+	copy(sorted, hooks)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Weight < sorted[j].Weight })
+	for _, h := range sorted {
+		var isPre, isPost bool
+		for _, e := range h.Events {
+			switch e {
+			case release.HookPreInstall:
+				isPre = true
+			case release.HookPostInstall:
+				isPost = true
+			}
+		}
+		if !isPre && !isPost {
+			continue
+		}
+		objs, err := apply.ParseMultiDoc([]byte(h.Manifest))
+		if err != nil {
+			return nil, nil, diag.Wrap(err, diag.CodePackChartErr,
+				fmt.Sprintf("helm chart %q rendered an invalid hook manifest %s", chartName, h.Path),
+				"this is likely a bug in the chart; try `helm template --no-hooks` manually")
+		}
+		for _, o := range objs {
+			stripHookAnnotations(o)
+		}
+		if isPre {
+			pre = append(pre, objs...)
+		} else {
+			post = append(post, objs...)
+		}
+	}
+	return pre, post, nil
+}
+
+// stripHookAnnotations removes the helm.sh/hook* annotations (hook event,
+// weight, delete policy, output-log policy) from o, leaving all other
+// annotations intact. Without this a GitOps engine (or anyone reading the
+// artifact) would see a resource that claims to be a helm hook while being
+// delivered as a plain object.
+func stripHookAnnotations(o *unstructured.Unstructured) {
+	ann := o.GetAnnotations()
+	if ann == nil {
+		return
+	}
+	for _, k := range []string{
+		release.HookAnnotation,          // helm.sh/hook
+		release.HookWeightAnnotation,    // helm.sh/hook-weight
+		release.HookDeleteAnnotation,    // helm.sh/hook-delete-policy
+		release.HookOutputLogAnnotation, // helm.sh/hook-output-log-policy
+	} {
+		delete(ann, k)
+	}
+	if len(ann) == 0 {
+		o.SetAnnotations(nil)
+		return
+	}
+	o.SetAnnotations(ann)
+}
+
+// dedupeCRDs returns the subset of crdObjs whose GroupVersionKind+namespace+
+// name is not already present in existing. A chart that both templates a CRD
+// (so it lands in the rendered manifest) and ships the same CRD under crds/
+// is pathological, but SSA on two identical objects is not idempotent enough
+// to rely on — the second apply of the same GVK/name is a conflict — so we
+// drop the crds/ copy defensively and let the templated one win.
+func dedupeCRDs(crdObjs, existing []*unstructured.Unstructured) []*unstructured.Unstructured {
+	if len(existing) == 0 {
+		return crdObjs
+	}
+	seen := make(map[string]struct{}, len(existing))
+	for _, o := range existing {
+		seen[objKey(o)] = struct{}{}
+	}
+	out := crdObjs[:0:0]
+	for _, o := range crdObjs {
+		if _, dup := seen[objKey(o)]; dup {
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
+// objKey identifies an object by apiVersion, kind, namespace and name — the
+// tuple that makes a server-side-apply target unique.
+func objKey(o *unstructured.Unstructured) string {
+	return o.GetAPIVersion() + "|" + o.GetKind() + "|" + o.GetNamespace() + "|" + o.GetName()
 }
 
 // mergeValues deep-merges override on top of base (chart.yaml's default
