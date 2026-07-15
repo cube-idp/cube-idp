@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 
 	"github.com/rafpe/cube-idp/internal/bundle"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 func newVendorCmd() *cobra.Command {
@@ -16,8 +19,17 @@ func newVendorCmd() *cobra.Command {
 			"access, no config mutation. A bundle is complete or an error — any pull\n" +
 			"failure aborts the whole run rather than shipping a partial bundle.",
 		Args: cobra.NoArgs,
+		// RunPipeline owns the event pipeline for the resolved mode (plain /
+		// live / JSON) — vendor is the one R3 command that keeps the live
+		// step-tree (long-running, per-pack/per-image progress; Task R3).
+		// RunStarted.Cube is deliberately empty: vendor is a pure lock
+		// consumer with no cube.yaml.
 		RunE: func(c *cobra.Command, _ []string) error {
-			return bundle.Vendor(c.Context(), lockPath, out, platform, c.OutOrStdout())
+			return ui.RunPipeline(c.Context(), "vendor", c.OutOrStdout(),
+				func(ctx context.Context, con *ui.Console) error {
+					con.Start("vendor", "")
+					return bundle.Vendor(ctx, lockPath, out, platform, con)
+				})
 		},
 	}
 	c.Flags().StringVar(&lockPath, "lock", "cube.lock", "path to cube.lock")

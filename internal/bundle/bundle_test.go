@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,7 +21,26 @@ import (
 	"github.com/rafpe/cube-idp/internal/lock"
 	"github.com/rafpe/cube-idp/internal/oci"
 	"github.com/rafpe/cube-idp/internal/oci/ocitest"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
+
+// vendorForTest drives Vendor through ui.RunPipeline with ModePlain forced
+// (a bytes.Buffer target is never a TTY, so this is deterministic without
+// SetMode) — the sanctioned test-construction path for a *ui.Console (Task
+// R3: no new ui test-constructor API; route through RunPipeline instead,
+// mirroring cmd/vendor.go's real call shape). Every pre-R3 call site in
+// this file that passed os.Stderr as Vendor's io.Writer now calls this
+// helper instead; none of those tests assert output bytes (that is
+// vendor_pipeline_test.go's job), so discarding the buffer here is fine.
+func vendorForTest(t *testing.T, lockPath, outPath, platform string) error {
+	t.Helper()
+	var buf bytes.Buffer
+	return ui.RunPipeline(context.Background(), "vendor", &buf,
+		func(ctx context.Context, con *ui.Console) error {
+			con.Start("vendor", "")
+			return Vendor(ctx, lockPath, outPath, platform, con)
+		})
+}
 
 // TestMain keeps every test in this file fully local (in-process registry,
 // random.Image — no network, per Task 6's constraints): the production
@@ -153,7 +173,7 @@ func tarHasEntry(t *testing.T, tarPath, name string) bool {
 // synthetic lock, no network beyond the in-process test registry.
 func TestVendorThenOpenRoundTrip(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	if err := Vendor(context.Background(), writeLockFixture(t), out, "", os.Stderr); err != nil {
+	if err := vendorForTest(t, writeLockFixture(t), out, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -184,7 +204,7 @@ func TestVendorThenOpenRoundTrip(t *testing.T) {
 }
 
 func TestVendorMissingLock(t *testing.T) {
-	err := Vendor(context.Background(), "nope.lock", filepath.Join(t.TempDir(), "b.tgz"), "", os.Stderr)
+	err := vendorForTest(t, "nope.lock", filepath.Join(t.TempDir(), "b.tgz"), "")
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != "CUBE-7001" {
 		t.Fatalf("want CUBE-7001, got %v", err)
@@ -206,7 +226,7 @@ func TestOpenRejectsGarbage(t *testing.T) {
 // Verify catches the content corruption, not just outright absence.
 func TestVerifyDetectsTampering(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	if err := Vendor(context.Background(), writeLockFixture(t), out, "", os.Stderr); err != nil {
+	if err := vendorForTest(t, writeLockFixture(t), out, ""); err != nil {
 		t.Fatal(err)
 	}
 	o, err := Open(out)
@@ -232,7 +252,7 @@ func TestVerifyDetectsTampering(t *testing.T) {
 func TestVerifyDetectsMissingImageTar(t *testing.T) {
 	lockPath, imgRef := writeLockFixtureWithImage(t, "linux", runtime.GOARCH)
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	if err := Vendor(context.Background(), lockPath, out, "", os.Stderr); err != nil {
+	if err := vendorForTest(t, lockPath, out, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -262,7 +282,7 @@ func TestVerifyDetectsMissingImageTar(t *testing.T) {
 func TestVendorBundlesImages(t *testing.T) {
 	lockPath, imgRef := writeLockFixtureWithImage(t, "linux", runtime.GOARCH)
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	if err := Vendor(context.Background(), lockPath, out, "", os.Stderr); err != nil {
+	if err := vendorForTest(t, lockPath, out, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -295,12 +315,12 @@ func TestVendorPlatformPin(t *testing.T) {
 	lockPath, _ := writeLockFixtureWithImage(t, "linux", "arm64")
 
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	if err := Vendor(context.Background(), lockPath, out, "linux/arm64", os.Stderr); err != nil {
+	if err := vendorForTest(t, lockPath, out, "linux/arm64"); err != nil {
 		t.Fatalf("matching platform: %v", err)
 	}
 
 	out2 := filepath.Join(t.TempDir(), "bundle2.tar.gz")
-	err := Vendor(context.Background(), lockPath, out2, "linux/bogus-arch", os.Stderr)
+	err := vendorForTest(t, lockPath, out2, "linux/bogus-arch")
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != "CUBE-7002" {
 		t.Fatalf("want CUBE-7002 for a platform the image doesn't have, got %v", err)
@@ -386,7 +406,7 @@ func TestVendorImagesIncludesEngineAndRegistry(t *testing.T) {
 	}
 
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	if err := Vendor(context.Background(), lockPath, out, "", os.Stderr); err != nil {
+	if err := vendorForTest(t, lockPath, out, ""); err != nil {
 		t.Fatal(err)
 	}
 	o, err := Open(out)
@@ -468,7 +488,7 @@ func downgradeManifestVersion(t *testing.T, bundlePath string, v int) {
 // ephemeral transport artifacts, no compatibility shim (spec §5.2).
 func TestOpenRejectsV1Bundle(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	if err := Vendor(context.Background(), writeLockFixture(t), out, "", os.Stderr); err != nil {
+	if err := vendorForTest(t, writeLockFixture(t), out, ""); err != nil {
 		t.Fatal(err)
 	}
 	downgradeManifestVersion(t, out, 1) // helper below: rewrites formatVersion in-archive
@@ -487,7 +507,7 @@ func TestOpenRejectsV1Bundle(t *testing.T) {
 // catch this; the dirhash comparison must, naming the pack.
 func TestVerifyDetectsPackContentSwap(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	if err := Vendor(context.Background(), writeLockFixture(t), out, "", os.Stderr); err != nil {
+	if err := vendorForTest(t, writeLockFixture(t), out, ""); err != nil {
 		t.Fatal(err)
 	}
 	o, err := Open(out)
@@ -507,7 +527,7 @@ func TestVerifyDetectsPackContentSwap(t *testing.T) {
 func TestVerifyDetectsImageContentSwap(t *testing.T) {
 	lockPath, imgRef := writeLockFixtureWithImage(t, "linux", runtime.GOARCH)
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	if err := Vendor(context.Background(), lockPath, out, "", os.Stderr); err != nil {
+	if err := vendorForTest(t, lockPath, out, ""); err != nil {
 		t.Fatal(err)
 	}
 	o, err := Open(out)
@@ -527,7 +547,7 @@ func TestVerifyDetectsImageContentSwap(t *testing.T) {
 // an over-limit total are both CUBE-7003 (Open wraps extractTarGz's error).
 func TestExtractCaps(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	if err := Vendor(context.Background(), writeLockFixture(t), out, "", os.Stderr); err != nil {
+	if err := vendorForTest(t, writeLockFixture(t), out, ""); err != nil {
 		t.Fatal(err)
 	}
 	restoreFile, restoreTotal := maxBundleFileBytes, maxBundleTotalBytes
