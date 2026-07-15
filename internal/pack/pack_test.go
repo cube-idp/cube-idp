@@ -125,6 +125,44 @@ version: "0.1.0"
 	}
 }
 
+// TestGatewayServiceParsing pins the R7b data contract: a pack.cue
+// gatewayService: block parses into Pack.GatewayService.
+func TestGatewayServiceParsing(t *testing.T) {
+	dir := writePack(t, `name: "gwp"
+version: "0.1.0"
+gatewayService: {name: "cube-idp-gateway", namespace: "envoy-gateway"}
+`)
+	p, err := Fetch(context.Background(), dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.GatewayService == nil || p.GatewayService.Name != "cube-idp-gateway" || p.GatewayService.Namespace != "envoy-gateway" {
+		t.Fatalf("gatewayService: %+v", p.GatewayService)
+	}
+}
+
+// TestGatewayServiceOptional: packs predating the field load as before —
+// GatewayService stays nil, no error.
+func TestGatewayServiceOptional(t *testing.T) {
+	dir := writePack(t, "name: \"plain\"\nversion: \"0.1.0\"\n")
+	p, err := Fetch(context.Background(), dir, "")
+	if err != nil || p.GatewayService != nil {
+		t.Fatalf("want nil GatewayService, got %+v (err %v)", p.GatewayService, err)
+	}
+}
+
+// TestGatewayServiceMalformed: a gatewayService: block missing namespace is
+// rejected as CUBE-4003 (CodePackCueInvalid), the images: precedent — R7b
+// allocates no new code.
+func TestGatewayServiceMalformed(t *testing.T) {
+	dir := writePack(t, "name: \"gwp\"\nversion: \"0.1.0\"\ngatewayService: {name: \"x\"}\n")
+	_, err := Fetch(context.Background(), dir, "")
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != "CUBE-4003" {
+		t.Fatalf("want CUBE-4003, got %v", err)
+	}
+}
+
 func TestRenderKustomizeFailureIsTyped(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "pack.cue"), []byte("name: \"bad\"\nversion: \"0.1.0\"\n"), 0o644)

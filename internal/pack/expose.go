@@ -12,6 +12,14 @@ import (
 // SecretRef locates a Kubernetes Secret a pack's expose block points at.
 type SecretRef struct{ Namespace, Name string }
 
+// GatewayService is the optional pack.cue declaration of a gateway pack's
+// DATA-PLANE Service (spec §5.7b, R7b): the CoreDNS *.<host> rewrite target
+// `up` points at once the pack is resolved. Absent, `up` falls back to
+// today's <pack>.<pack>.svc default (traefik: zero migration). Parsed from
+// pack.cue's optional gatewayService: block, the same optional-and-typed
+// shape as Expose.
+type GatewayService struct{ Name, Namespace string }
+
 // Expose is the D11 contract: how a pack declares its endpoints and
 // credentials — in data, never in Go. Parsed from pack.cue's optional
 // expose: block; rendered by `up` into the pack's Pack record.

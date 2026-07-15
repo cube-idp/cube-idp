@@ -72,6 +72,12 @@ type Pack struct {
 	// assembly unions this into Entry.Images so `cube-idp vendor` (Task 6)
 	// can bundle it for air-gapped installs.
 	Images []string
+
+	// GatewayService is the pack's declared data-plane Service (spec §5.7b,
+	// R7b, optional pack.cue `gatewayService: {name, namespace}`). nil when
+	// the pack declares none — `up`'s gatewayServiceFQDN then falls back to
+	// the <pack>.<pack>.svc convention (traefik: zero migration).
+	GatewayService *GatewayService
 }
 
 // Rendered is the final set of objects a pack produces for a given set of
@@ -117,8 +123,32 @@ func loadMeta(dir string) (*Pack, error) {
 				`images: must be a list of strings, e.g. images: ["envoyproxy/envoy:v1.29"]`)
 		}
 	}
+
+	if gv := v.LookupPath(cue.ParsePath("gatewayService")); gv.Exists() {
+		schema := ctx.CompileString(gatewayServiceSchemaCUE)
+		unified := schema.Unify(gv)
+		if err := unified.Validate(cue.Concrete(true)); err != nil {
+			return nil, diag.Wrap(err, diag.CodePackCueInvalid,
+				fmt.Sprintf("gatewayService: block in %s/pack.cue is invalid", dir),
+				`gatewayService needs both name and namespace, e.g. gatewayService: {name: "cube-idp-gateway", namespace: "envoy-gateway"}`)
+		}
+		var gs GatewayService
+		if err := unified.Decode(&gs); err != nil {
+			return nil, diag.Wrap(err, diag.CodePackCueInvalid,
+				fmt.Sprintf("gatewayService: block in %s/pack.cue is invalid", dir),
+				"gatewayService.name and .namespace must be strings")
+		}
+		p.GatewayService = &gs
+	}
 	return p, nil
 }
+
+// gatewayServiceSchemaCUE is the R7b gatewayService: block schema (spec
+// §5.7b): both name and namespace are required — a pack that declares this
+// block is naming a specific in-cluster Service, and a half-declared one
+// (e.g. name without namespace) can't resolve to anything, so it's rejected
+// rather than silently partially applied.
+const gatewayServiceSchemaCUE = `{ name: string, namespace: string }`
 
 // exposeSchemaCUE is the D11 expose: block schema (checkpoint 0.8): an
 // optional set of URLs (may contain the ${GATEWAY_HOST} substitution
