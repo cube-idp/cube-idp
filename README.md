@@ -92,7 +92,7 @@ spec:
 | `spec.cluster.mounts` | `[{hostPath, nodePath}]` | — | D10 layer 1: host paths mounted into the node |
 | `spec.cluster.providerConfig` | string | — | D10 layer 2 escape hatch: a file path or inline provider-native config (e.g. a full kind config). cube-idp merges in only what it *requires* and fails with a typed error on real conflicts; inspect the merged result with `cube-idp config render-cluster` |
 | `spec.engine.type` | `flux` \| `argocd` | `flux` | GitOps reconciler; `argocd` ships in Phase 2 (D2) |
-| `spec.gateway.pack` | string | `traefik` | Gateway API implementation |
+| `spec.gateway.pack` | `traefik` \| `envoy-gateway` | `traefik` | Gateway API implementation; `cube-idp init --gateway-pack` writes this and `spec.gateway.ref` coherently |
 | `spec.gateway.host` | string | `cube-idp.localtest.me` | routable hostname for delivered packs |
 | `spec.gateway.port` | int | `8443` | host port mapped to the gateway's `websecure` (HTTPS) listener — see the note below |
 | `spec.gateway.ref` | string | — | overrides the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); falls back to `packs/<pack>` when unset, which only resolves from a checkout — `cube-idp init --local` fills this in |
@@ -104,7 +104,9 @@ equals `gateway.pack` and fails with CUBE-0008 on mismatch. `cube-idp init`
 always writes the two coherently (`--gateway-pack`).
 
 Run `cube-idp config render-cluster` to preview the final merged kind
-provider config (D10 layer 2) before `up` creates anything.
+provider config (D10 layer 2) before `up` creates anything. Run `cube-idp
+config schema` to print the CUE schema `cube.yaml` is validated against —
+every CUBE-0002 (config validation failure) remediation points here.
 
 > **Phase 1 → Phase 2 behavior change:** Phase 1 mapped host
 > `spec.gateway.port` (default `8443`) to Traefik's plain-HTTP NodePort
@@ -208,6 +210,25 @@ supplied in `cube.yaml`'s `spec.packs[].values` are unified against
 `#Values` (CUE) — the defaulted, concrete result is what actually reaches
 rendering.
 
+A gateway pack may also declare an optional `gatewayService:` block, the
+in-cluster Service `up` should point the `*.<gateway.host>` CoreDNS rewrite
+at:
+
+```cue
+gatewayService: {name: "cube-idp-gateway", namespace: "envoy-gateway"}
+```
+
+Most gateway packs need nothing here: `up` falls back to the
+`<pack>.<pack>.svc.cluster.local` convention (traefik's chart installs
+release `traefik` into namespace `traefik`, so the pack name doubles as
+both). `gatewayService:` exists for packs where the controller's own
+Service is not the data-plane Service that actually terminates traffic —
+envoy-gateway is the one shipped example: its Gateway API controller
+spawns a separate Envoy proxy Service at Gateway-attach time, and
+`gatewayService:` names that Service so CoreDNS resolves `*.<host>` to the
+data plane instead of the controller. A malformed block is rejected
+(CUBE-4003, the same code the `images:` list uses).
+
 **`manifests/`** — plain multi-document YAML, parsed and applied via
 server-side apply. Files are applied in lexical filename order (hence the
 `00-`, `10-`, `20-` prefixes in the shipped packs), which matters when one
@@ -303,6 +324,14 @@ change (D6).
   present when git-sourced packs are configured, plus provider/engine health
   — every finding carries a `CUBE-xxxx` code and a copy-pasteable
   remediation.
+- **`cube-idp status --details`** — adds every inventory object
+  (kind/namespace/name) to the health summary; plain `cube-idp status`
+  prints only the component/inventory-count roll-up.
+- **`cube-idp down --keep-cluster`** — deletes cube-idp's resources
+  (inventory-driven cascade) but leaves the cluster itself running; useful
+  for iterating on `cube.yaml` without paying kind/k3d cluster-creation cost
+  each time. Requires the cluster to already exist (it never creates one as
+  a side effect).
 - **`cube.lock`** — written by `up`, one entry per pack:
   - `resolved` — the concrete ref `up` actually fetched (a resolved git SHA,
     an OCI digest, or a content dirhash for local/http/s3 sources).
@@ -370,21 +399,23 @@ For a host with no registry access, split the install into a connected
 # On a connected machine (reads cube.lock; pure lock consumer, no cluster):
 cube-idp vendor -o cube-bundle.tar.gz              # host platform
 cube-idp vendor -o cube-bundle.tar.gz --platform linux/amd64   # cross-arch
+cube-idp vendor --lock ./other/cube.lock -o cube-bundle.tar.gz # non-default lock path
 
 # Carry the tarball to the air-gapped host, then:
 cube-idp up --bundle cube-bundle.tar.gz
 ```
 
 `vendor` pulls every pack source and container image pinned in `cube.lock`
-into one self-contained tarball — a bundle is complete or an error (any pull
-failure aborts rather than shipping a partial bundle). `up --bundle` is
-offline-honest: after the cluster exists it node-loads every bundled image
-into the nodes (so pods start with no registry pull), rewrites every pack ref
-to its bundle-local source before fetching, and fails **loudly** (CUBE-7004)
-on any ref missing from the bundle rather than silently falling through to a
-network fetch. It requires an image-loading provider (`kind` or `k3d`);
-`provider: existing` cannot node-load images and is rejected up front
-(CUBE-7005).
+(or the file `--lock` points at, when `cube.lock` isn't in the working
+directory) into one self-contained tarball — a bundle is complete or an
+error (any pull failure aborts rather than shipping a partial bundle).
+`up --bundle` is offline-honest: after the cluster exists it node-loads
+every bundled image into the nodes (so pods start with no registry pull),
+rewrites every pack ref to its bundle-local source before fetching, and
+fails **loudly** (CUBE-7004) on any ref missing from the bundle rather than
+silently falling through to a network fetch. It requires an image-loading
+provider (`kind` or `k3d`); `provider: existing` cannot node-load images
+and is rejected up front (CUBE-7005).
 
 ## Plugins
 

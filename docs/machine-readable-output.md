@@ -34,12 +34,14 @@ batched, never pretty-printed, exactly one event per object.
 
 ### Envelope
 
-Every line carries three fields:
+Every line carries `v` and `type`; every line except `encode_error` (the
+envelope-level marshal-failure fallback, documented at the end of the
+Event types section below) also carries `ts`:
 
 | Field | Type | Meaning |
 |---|---|---|
 | `v` | number | Schema version. Currently `1`. |
-| `ts` | string | Event timestamp, RFC3339Nano. |
+| `ts` | string | Event timestamp, RFC3339Nano. **Absent on `encode_error`.** |
 | `type` | string | The event type; one of the types below. |
 
 ### Ordering guarantees
@@ -207,6 +209,29 @@ the `✗ CUBE-…` block (which is still printed, human-readable, to stderr).
 | `cause` | string | The underlying cause. **Omitted** when the error has no distinct cause. |
 | `remediation` | string | Copy-pasteable fix. Omitted for untyped errors. |
 | `raw` | string | The full `error.Error()` text. **Always present** — the fallback for untyped errors. |
+
+#### `encode_error`
+
+Not a run event — an envelope-level escape hatch. Every other line above is
+built as a typed Go struct and marshaled; if that marshal itself ever fails
+(a bug in this package, since every field is plain data), the renderer
+still owes the stream *something* rather than silently dropping the event
+and leaving a consumer's step-tree stuck open forever. `encode_error`
+is that fallback: written directly with `fmt.Fprintf`, bypassing
+`json.Marshal` entirely, so it cannot itself fail to encode.
+
+```json
+{"v":1,"type":"encode_error","error":"…"}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `error` | string | The marshal error's `Error()` text. |
+
+**No `ts` field** — unlike every event above, `encode_error` is NOT built
+from `jsonHead{v, ts, type}`; it is a literal `Fprintf` format string
+(`internal/ui/render/json.go`) carrying only `v` and `type`. Consumers
+must not assume every line on the stream carries `ts`.
 
 ---
 
