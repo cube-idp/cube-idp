@@ -97,7 +97,7 @@ func Run(ctx context.Context, opts Options) error {
 		if err := opened.Verify(); err != nil {
 			return err
 		}
-		con.Step("bundle", "bundle opened — lock digest OK, %d packs / %d images present",
+		con.Step("bundle", "bundle verified — content hashes OK, %d packs / %d images present",
 			len(opened.Lock.Packs), len(opened.Manifest.Images))
 	}
 

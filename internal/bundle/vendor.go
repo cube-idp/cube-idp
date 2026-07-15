@@ -19,6 +19,8 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 
+	"golang.org/x/mod/sumdb/dirhash"
+
 	"github.com/rafpe/cube-idp/internal/diag"
 	enginefactory "github.com/rafpe/cube-idp/internal/engine/factory"
 	"github.com/rafpe/cube-idp/internal/lock"
@@ -90,11 +92,12 @@ func Vendor(ctx context.Context, lockPath, outPath, platform string, progress io
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return diag.Wrap(err, diag.CodeVendorPullFail, "cannot create pack cache directory", "check disk space and permissions")
 	}
-	if err := vendorPacks(ctx, lf, cacheDir, stage, p); err != nil {
+	packHashes, err := vendorPacks(ctx, lf, cacheDir, stage, p)
+	if err != nil {
 		return err
 	}
 
-	imageTarIndex, err := vendorImages(ctx, lf, plat, stage, p)
+	imageTarIndex, imageHashes, err := vendorImages(ctx, lf, plat, stage, p)
 	if err != nil {
 		return err
 	}
@@ -105,7 +108,9 @@ func Vendor(ctx context.Context, lockPath, outPath, platform string, progress io
 		Platform:      platform,
 		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
 		LockDigest:    "sha256:" + hex.EncodeToString(sum[:]),
+		PackHashes:    packHashes,
 		Images:        imageTarIndex,
+		ImageHashes:   imageHashes,
 	}
 	if err := writeJSON(filepath.Join(stage, "manifest.json"), manifest); err != nil {
 		return diag.Wrap(err, diag.CodeVendorPullFail, "cannot write bundle manifest", "check disk space and permissions")
@@ -124,8 +129,11 @@ func Vendor(ctx context.Context, lockPath, outPath, platform string, progress io
 // which can move); "git+<sha>" / "dir:h1:…" re-fetch by the original Ref and
 // assert the freshly-resolved Pinned still equals Resolved — a moved pin
 // means the source changed since `up` ran, and vendor refuses to silently
-// bundle something other than what cube.lock recorded.
-func vendorPacks(ctx context.Context, lf *lock.File, cacheDir, stage string, p *ui.Printer) error {
+// bundle something other than what cube.lock recorded. Returns each staged
+// pack's dirhash.Hash1 content hash keyed by entry.Name, for Manifest.
+// PackHashes — the same digest Verify recomputes later to catch tampering.
+func vendorPacks(ctx context.Context, lf *lock.File, cacheDir, stage string, p *ui.Printer) (map[string]string, error) {
+	packHashes := make(map[string]string, len(lf.Packs))
 	for _, entry := range lf.Packs {
 		p.Step("vendor", "pack %s (%s)", entry.Name, entry.Resolved)
 		ref := entry.Ref
@@ -134,21 +142,28 @@ func vendorPacks(ctx context.Context, lf *lock.File, cacheDir, stage string, p *
 		}
 		fetched, err := pack.Fetch(ctx, ref, cacheDir)
 		if err != nil {
-			return diag.Wrap(err, diag.CodeVendorPullFail,
+			return nil, diag.Wrap(err, diag.CodeVendorPullFail,
 				fmt.Sprintf("cannot pull pack %q at its locked pin", entry.Name),
 				"check network/registry access; if the artifact was deleted upstream, re-run `cube-idp up` to re-pin")
 		}
 		if fetched.Pinned != entry.Resolved {
-			return diag.New(diag.CodeVendorPullFail,
+			return nil, diag.New(diag.CodeVendorPullFail,
 				fmt.Sprintf("pack %q resolved to %s but cube.lock pins %s", entry.Name, fetched.Pinned, entry.Resolved),
 				"the source moved since `up` — re-run `cube-idp up` to re-pin, then vendor again")
 		}
-		if err := copyTree(fetched.Dir, filepath.Join(stage, "packs", entry.Name)); err != nil {
-			return diag.Wrap(err, diag.CodeVendorPullFail,
+		packDir := filepath.Join(stage, "packs", entry.Name)
+		if err := copyTree(fetched.Dir, packDir); err != nil {
+			return nil, diag.Wrap(err, diag.CodeVendorPullFail,
 				fmt.Sprintf("cannot stage pack %q", entry.Name), "check disk space and permissions")
 		}
+		h, err := dirhash.HashDir(packDir, "", dirhash.Hash1)
+		if err != nil {
+			return nil, diag.Wrap(err, diag.CodeVendorPullFail,
+				fmt.Sprintf("cannot hash staged pack %q", entry.Name), "check disk space and permissions")
+		}
+		packHashes[entry.Name] = h
 	}
-	return nil
+	return packHashes, nil
 }
 
 // engineInstallImages and registryInstallImages are indirections over the
@@ -199,14 +214,17 @@ func defaultRegistryInstallImages() ([]string, error) {
 // pack-declared runtime images) plus the GitOps engine's own install images
 // plus the in-cluster registry's install images — so an air-gapped install
 // never comes up short an image `up` would otherwise have pulled live.
-func vendorImages(ctx context.Context, lf *lock.File, plat *ocispec.Platform, stage string, p *ui.Printer) (map[string]string, error) {
+// Also returns each written tar's sha256, keyed by the ORIGINAL ref, for
+// Manifest.ImageHashes — the same digest Verify recomputes later to catch
+// tampering.
+func vendorImages(ctx context.Context, lf *lock.File, plat *ocispec.Platform, stage string, p *ui.Printer) (index, imageHashes map[string]string, err error) {
 	engImgs, err := engineInstallImages(lf.Engine.Type)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	regImgs, err := registryInstallImages()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	set := map[string]struct{}{}
@@ -227,21 +245,29 @@ func vendorImages(ctx context.Context, lf *lock.File, plat *ocispec.Platform, st
 	}
 	sort.Strings(images)
 
-	index := make(map[string]string, len(images))
+	index = make(map[string]string, len(images))
+	imageHashes = make(map[string]string, len(images))
 	for i, img := range images {
 		p.Step("vendor", "image %s", img)
 		layoutDir := filepath.Join(stage, ".imagelayout", fmt.Sprint(i))
 		if err := pullImageTar(ctx, img, layoutDir, plat); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		relTar := filepath.Join("images", fmt.Sprintf("%d.tar", i))
-		if err := tarDir(layoutDir, filepath.Join(stage, relTar)); err != nil {
-			return nil, diag.Wrap(err, diag.CodeVendorPullFail,
+		tarPath := filepath.Join(stage, relTar)
+		if err := tarDir(layoutDir, tarPath); err != nil {
+			return nil, nil, diag.Wrap(err, diag.CodeVendorPullFail,
 				fmt.Sprintf("cannot stage image %q", img), "check disk space and permissions")
 		}
+		h, err := sha256File(tarPath)
+		if err != nil {
+			return nil, nil, diag.Wrap(err, diag.CodeVendorPullFail,
+				fmt.Sprintf("cannot hash staged image %q", img), "check disk space and permissions")
+		}
 		index[img] = filepath.ToSlash(relTar)
+		imageHashes[img] = h
 	}
-	return index, nil
+	return index, imageHashes, nil
 }
 
 // pullImageTar pulls img (any container image reference: a bare "name:tag",

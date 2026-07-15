@@ -5,9 +5,11 @@
 //
 // Bundle layout (versioned via manifest.json's formatVersion):
 //
-//	manifest.json     — {"formatVersion":1,"platform":"linux/amd64",
+//	manifest.json     — {"formatVersion":2,"platform":"linux/amd64",
 //	                     "createdAt":RFC3339,"lockDigest":"sha256:…",
-//	                     "images":{"<original ref>":"images/<n>.tar", …}}
+//	                     "packHashes":{"<pack name>":"h1:…", …},
+//	                     "images":{"<original ref>":"images/<n>.tar", …},
+//	                     "imageHashes":{"<original ref>":"sha256:…", …}}
 //	cube.lock          — verbatim copy of the lock the bundle was built from
 //	packs/<name>/       — pack source dir at the locked pin (Fetch-compatible)
 //	images/<n>.tar      — ONE tar per locked image (Owner Decisions #2): a
@@ -41,6 +43,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/mod/sumdb/dirhash"
+
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/lock"
 )
@@ -51,11 +55,22 @@ type Manifest struct {
 	Platform      string            `json:"platform"` // GOOS/GOARCH the images were pulled for
 	CreatedAt     string            `json:"createdAt"`
 	LockDigest    string            `json:"lockDigest"` // sha256 of the embedded cube.lock bytes
-	Images        map[string]string `json:"images"`     // ref -> tar path inside the bundle
+	// PackHashes: pack name -> dirhash.Hash1 ("h1:…") of the STAGED
+	// packs/<name> tree — same algorithm and prefix as the lock's dir: pins.
+	PackHashes map[string]string `json:"packHashes"`
+	Images     map[string]string `json:"images"` // ref -> tar path inside the bundle
+	// ImageHashes: ORIGINAL image ref -> "sha256:…" of the tar file bytes.
+	ImageHashes map[string]string `json:"imageHashes"`
 }
 
 // currentFormatVersion is the only Manifest.FormatVersion Open accepts.
-const currentFormatVersion = 1
+const currentFormatVersion = 2
+
+// Extraction caps (test seam: package vars, NOT exported config).
+var (
+	maxBundleFileBytes  int64 = 4 << 30  // 4 GiB per tar entry
+	maxBundleTotalBytes int64 = 16 << 30 // 16 GiB per bundle
+)
 
 // Opened is a bundle extracted to a temporary directory, with its manifest
 // and embedded cube.lock already parsed. Callers MUST call Close once done
@@ -102,7 +117,7 @@ func Open(bundlePath string) (*Opened, error) {
 		os.RemoveAll(dir)
 		return nil, diag.New(diag.CodeVendorBundleCorrupt,
 			fmt.Sprintf("bundle manifest formatVersion %d is not supported (want %d)", m.FormatVersion, currentFormatVersion),
-			"re-run `cube-idp vendor` with a matching cube-idp version")
+			"re-run `cube-idp vendor` — bundle format upgraded")
 	}
 
 	lf, err := lock.Read(filepath.Join(dir, "cube.lock"))
@@ -160,17 +175,16 @@ func (o *Opened) ImageTars() map[string]string {
 	return out
 }
 
-// Verify checks exactly three things: the embedded cube.lock's content
-// matches Manifest.LockDigest (a real content-hash check, so tampering with
-// or truncating cube.lock itself is caught); every lock-pinned pack has a
-// non-empty packs/<name>/pack.cue; and every Manifest.Images entry has a
-// non-empty tar on disk. The pack and image checks are presence-and-size
-// only — they catch a missing or zero-length file but NOT a swapped-in file
-// of the same size with different content. Content-hash verification of
-// packs and images (matching them against per-entry digests recorded at
-// vendor time) is a known gap, tracked for Phase 4. Any gap Verify does
-// check — missing OR present-but-corrupt (e.g. truncated to zero bytes) — is
-// CUBE-7004, naming the offending pack or image.
+// Verify recomputes the content hash of every pack tree and image tar and
+// compares against the manifest — a tampered, truncated, or swapped file
+// cannot pass. The embedded cube.lock's content is checked against
+// Manifest.LockDigest (unchanged: it was already a content hash); every
+// lock-pinned pack's packs/<name> tree is checked against
+// Manifest.PackHashes via the same dirhash algorithm Vendor used to record
+// it; every Manifest.Images entry's tar is checked against
+// Manifest.ImageHashes via a streamed sha256. Any mismatch — missing,
+// truncated, or same-size-but-swapped — is CUBE-7004, naming the offending
+// pack or image.
 func (o *Opened) Verify() error {
 	raw, err := os.ReadFile(filepath.Join(o.Dir, "cube.lock"))
 	if err != nil {
@@ -185,25 +199,49 @@ func (o *Opened) Verify() error {
 	}
 
 	for _, entry := range o.Lock.Packs {
-		p := filepath.Join(o.Dir, "packs", entry.Name, "pack.cue")
-		info, statErr := os.Stat(p)
-		if statErr != nil || info.Size() == 0 {
+		want, ok := o.Manifest.PackHashes[entry.Name]
+		if !ok {
 			return diag.New(diag.CodeVendorIncomplete,
-				fmt.Sprintf("bundle is missing or has a corrupt pack %q (packs/%s/pack.cue)", entry.Name, entry.Name),
+				fmt.Sprintf("bundle manifest has no content hash for pack %q", entry.Name),
+				"re-run `cube-idp vendor`")
+		}
+		got, err := dirhash.HashDir(filepath.Join(o.Dir, "packs", entry.Name), "", dirhash.Hash1)
+		if err != nil || got != want {
+			return diag.New(diag.CodeVendorIncomplete,
+				fmt.Sprintf("bundle content mismatch for pack %q (packs/%s): bundle is corrupt or was tampered with", entry.Name, entry.Name),
 				"re-run `cube-idp vendor`")
 		}
 	}
 
 	for ref, rel := range o.Manifest.Images {
-		abs := filepath.Join(o.Dir, filepath.FromSlash(rel))
-		info, statErr := os.Stat(abs)
-		if statErr != nil || info.Size() == 0 {
+		want, ok := o.Manifest.ImageHashes[ref]
+		if !ok {
 			return diag.New(diag.CodeVendorIncomplete,
-				fmt.Sprintf("bundle is missing or has a corrupt tar for image %q (%s)", ref, rel),
+				fmt.Sprintf("bundle manifest has no content hash for image %q", ref), "re-run `cube-idp vendor`")
+		}
+		got, err := sha256File(filepath.Join(o.Dir, filepath.FromSlash(rel)))
+		if err != nil || got != want {
+			return diag.New(diag.CodeVendorIncomplete,
+				fmt.Sprintf("bundle content mismatch for image %q (%s): bundle is corrupt or was tampered with", ref, rel),
 				"re-run `cube-idp vendor`")
 		}
 	}
 	return nil
+}
+
+// sha256File returns "sha256:<hex>" of path's contents, streamed rather than
+// slurped — image tars can be GiB-scale.
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // Close removes the extraction directory. Safe to call once after any
@@ -366,7 +404,12 @@ func writeTarTree(tw *tar.Writer, srcDir string) error {
 
 // extractTarGz extracts the gzip-compressed tar at srcPath into destDir,
 // rejecting any entry whose path would escape destDir (zip-slip guard: no
-// ".." segment, no absolute path).
+// ".." segment, no absolute path) and enforcing maxBundleFileBytes per entry
+// plus maxBundleTotalBytes across the whole archive — a malicious or
+// corrupt bundle claiming an enormous or unbounded entry cannot exhaust
+// disk. hdr.Size is untrusted (a crafted header can lie), so the real guard
+// is the LimitReader on the copy itself; the hdr.Size check is a fast-path
+// rejection before any bytes are written.
 func extractTarGz(srcPath, destDir string) error {
 	f, err := os.Open(srcPath)
 	if err != nil {
@@ -379,6 +422,7 @@ func extractTarGz(srcPath, destDir string) error {
 	}
 	defer gr.Close()
 	tr := tar.NewReader(gr)
+	var total int64
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -397,6 +441,13 @@ func extractTarGz(srcPath, destDir string) error {
 				return err
 			}
 		case tar.TypeReg:
+			if hdr.Size > maxBundleFileBytes {
+				return fmt.Errorf("bundle entry %q exceeds the per-file limit (%d > %d bytes)", hdr.Name, hdr.Size, maxBundleFileBytes)
+			}
+			total += hdr.Size
+			if total > maxBundleTotalBytes {
+				return fmt.Errorf("bundle exceeds the total size limit (%d bytes)", maxBundleTotalBytes)
+			}
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
@@ -404,12 +455,16 @@ func extractTarGz(srcPath, destDir string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(out, tr); err != nil {
+			n, err := io.Copy(out, io.LimitReader(tr, maxBundleFileBytes+1))
+			if err != nil {
 				out.Close()
 				return err
 			}
 			if err := out.Close(); err != nil {
 				return err
+			}
+			if n > maxBundleFileBytes {
+				return fmt.Errorf("bundle entry %q exceeds the per-file limit (%d > %d bytes)", hdr.Name, n, maxBundleFileBytes)
 			}
 		}
 	}

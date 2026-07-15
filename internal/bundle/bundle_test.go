@@ -3,6 +3,7 @@ package bundle
 import (
 	"archive/tar"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -171,8 +172,8 @@ func TestVendorThenOpenRoundTrip(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "pack.cue")); err != nil {
 		t.Fatalf("bundled pack dir is not a pack: %v", err)
 	}
-	if o.Manifest.FormatVersion != 1 {
-		t.Fatalf("formatVersion: got %d, want 1", o.Manifest.FormatVersion)
+	if o.Manifest.FormatVersion != 2 {
+		t.Fatalf("formatVersion: got %d, want 2", o.Manifest.FormatVersion)
 	}
 	if o.Manifest.Platform != "linux/"+runtime.GOARCH {
 		t.Fatalf("platform: got %q, want linux/%s (default is always linux, host arch)", o.Manifest.Platform, runtime.GOARCH)
@@ -409,5 +410,140 @@ func TestParsePlatformRejectsMalformed(t *testing.T) {
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != "CUBE-7002" {
 		t.Fatalf("want CUBE-7002 for a malformed --platform, got %v", err)
+	}
+}
+
+// flipOneByte XORs the last byte of the file at path with 0xFF, in place —
+// same length, different content: exactly what a presence+size check cannot
+// catch but a content-hash check must.
+func flipOneByte(t *testing.T, path string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) == 0 {
+		t.Fatalf("cannot flip a byte in empty file %s", path)
+	}
+	raw[len(raw)-1] ^= 0xFF
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// downgradeManifestVersion extracts the tar.gz at bundlePath, rewrites
+// manifest.json's formatVersion to v, and re-archives it over the original
+// path — used to synthesize a bundle claiming an unsupported (old) format
+// without hand-rolling a whole manifest.
+func downgradeManifestVersion(t *testing.T, bundlePath string, v int) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := extractTarGz(bundlePath, dir); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, "manifest.json")
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	m["formatVersion"] = v
+	out, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, out, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarGzDir(dir, bundlePath); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestOpenRejectsV1Bundle: a bundle whose manifest says formatVersion 1 is
+// refused with CUBE-7003 and the format-upgraded remediation — bundles are
+// ephemeral transport artifacts, no compatibility shim (spec §5.2).
+func TestOpenRejectsV1Bundle(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	if err := Vendor(context.Background(), writeLockFixture(t), out, "", os.Stderr); err != nil {
+		t.Fatal(err)
+	}
+	downgradeManifestVersion(t, out, 1) // helper below: rewrites formatVersion in-archive
+	_, err := Open(out)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != "CUBE-7003" {
+		t.Fatalf("want CUBE-7003 for a v1 bundle, got %v", err)
+	}
+	if !strings.Contains(de.Remediation, "bundle format upgraded") {
+		t.Fatalf("remediation must name the format upgrade, got %q", de.Remediation)
+	}
+}
+
+// TestVerifyDetectsPackContentSwap: flip one byte in a pack file WITHOUT
+// changing its size — presence+size verification (the pre-R2 state) cannot
+// catch this; the dirhash comparison must, naming the pack.
+func TestVerifyDetectsPackContentSwap(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	if err := Vendor(context.Background(), writeLockFixture(t), out, "", os.Stderr); err != nil {
+		t.Fatal(err)
+	}
+	o, err := Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer o.Close()
+	flipOneByte(t, filepath.Join(o.Dir, "packs", "demo", "pack.cue"))
+	err = o.Verify()
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != "CUBE-7004" || !strings.Contains(err.Error(), `pack "demo"`) {
+		t.Fatalf("want CUBE-7004 naming pack demo, got %v", err)
+	}
+}
+
+// TestVerifyDetectsImageContentSwap: same-size byte flip inside an image tar.
+func TestVerifyDetectsImageContentSwap(t *testing.T) {
+	lockPath, imgRef := writeLockFixtureWithImage(t, "linux", runtime.GOARCH)
+	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	if err := Vendor(context.Background(), lockPath, out, "", os.Stderr); err != nil {
+		t.Fatal(err)
+	}
+	o, err := Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer o.Close()
+	flipOneByte(t, o.ImageTars()[imgRef])
+	err = o.Verify()
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != "CUBE-7004" || !strings.Contains(err.Error(), imgRef) {
+		t.Fatalf("want CUBE-7004 naming %q, got %v", imgRef, err)
+	}
+}
+
+// TestExtractCaps: with the test-seam limits shrunk, an over-limit entry and
+// an over-limit total are both CUBE-7003 (Open wraps extractTarGz's error).
+func TestExtractCaps(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	if err := Vendor(context.Background(), writeLockFixture(t), out, "", os.Stderr); err != nil {
+		t.Fatal(err)
+	}
+	restoreFile, restoreTotal := maxBundleFileBytes, maxBundleTotalBytes
+	defer func() { maxBundleFileBytes, maxBundleTotalBytes = restoreFile, restoreTotal }()
+
+	maxBundleFileBytes = 8 // every real entry exceeds this
+	_, err := Open(out)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != "CUBE-7003" {
+		t.Fatalf("per-file cap: want CUBE-7003, got %v", err)
+	}
+
+	maxBundleFileBytes = restoreFile
+	maxBundleTotalBytes = 64
+	_, err = Open(out)
+	if !errors.As(err, &de) || de.Code != "CUBE-7003" {
+		t.Fatalf("total cap: want CUBE-7003, got %v", err)
 	}
 }
