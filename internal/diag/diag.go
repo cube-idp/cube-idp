@@ -1,7 +1,9 @@
 // Package diag defines cube-idp's typed error model. Every user-facing
 // failure carries a CUBE-xxxx code and a copy-pasteable remediation
 // (spec §4.5). Code ranges: 0xxx preflight/config, 1xxx cluster,
-// 2xxx apply, 3xxx engine, 4xxx pack, 5xxx registry.
+// 2xxx apply, 3xxx engine, 4xxx pack, 5xxx registry, 6xxx trust/hostname,
+// 7xxx plugins/sync/vendor-bundle/repo, 8xxx release/bundle-integrity
+// (reserved, unallocated).
 package diag
 
 import (

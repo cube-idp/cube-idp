@@ -33,6 +33,12 @@ func repoRoot(t *testing.T) string {
 // "codes.go", say) is never accidentally exempted too.
 const canonicalCodesGo = "internal/diag/codes.go"
 
+// cubeLiteralRe matches a CUBE literal opened by either quote character: a
+// plain double-quoted string ("CUBE-...") or a raw backtick string
+// (`CUBE-...`). A bare strings.Contains(`"CUBE-`) missed the backtick form
+// entirely, letting a raw-string literal slip past the ban undetected.
+var cubeLiteralRe = regexp.MustCompile("[\"`]CUBE-")
+
 // findCubeLiteralOffenders walks root and returns the repo-relative paths of
 // every non-test .go file (other than canonicalCodesGo) containing a
 // `"CUBE-` literal.
@@ -65,7 +71,7 @@ func findCubeLiteralOffenders(root string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if strings.Contains(string(raw), `"CUBE-`) {
+		if cubeLiteralRe.MatchString(string(raw)) {
 			offenders = append(offenders, rel)
 		}
 		return nil
@@ -123,6 +129,34 @@ const oops = "CUBE-9999"
 	want := filepath.Join("internal", "other", "codes.go")
 	if len(offenders) != 1 || offenders[0] != want {
 		t.Fatalf("want exactly [%s] flagged (the canonical internal/diag/codes.go must stay exempt), got %v", want, offenders)
+	}
+}
+
+// mustWriteFile creates path's parent directories and writes contents,
+// failing the test on any error.
+func mustWriteFile(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestBanCatchesBacktickLiterals: raw-string CUBE literals must be flagged
+// too — the scan previously matched only "\"CUBE-".
+func TestBanCatchesBacktickLiterals(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "internal", "diag", "codes.go"), "package diag\n")
+	mustWriteFile(t, filepath.Join(root, "internal", "x", "x.go"),
+		"package x\n\nconst oops = `CUBE-9999: raw`\n")
+	offenders, err := findCubeLiteralOffenders(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(offenders) != 1 {
+		t.Fatalf("backtick literal not flagged: %v", offenders)
 	}
 }
 
