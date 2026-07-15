@@ -160,12 +160,17 @@ func (o *Opened) ImageTars() map[string]string {
 	return out
 }
 
-// Verify checks the bundle is complete and untampered: the embedded
-// cube.lock's content matches Manifest.LockDigest, every lock-pinned pack
-// has a non-empty packs/<name>/pack.cue, and every Manifest.Images entry has
-// a non-empty tar on disk. Any gap — missing OR present-but-corrupt (e.g.
-// truncated to zero bytes) — is CUBE-7004, naming the offending pack or
-// image.
+// Verify checks exactly three things: the embedded cube.lock's content
+// matches Manifest.LockDigest (a real content-hash check, so tampering with
+// or truncating cube.lock itself is caught); every lock-pinned pack has a
+// non-empty packs/<name>/pack.cue; and every Manifest.Images entry has a
+// non-empty tar on disk. The pack and image checks are presence-and-size
+// only — they catch a missing or zero-length file but NOT a swapped-in file
+// of the same size with different content. Content-hash verification of
+// packs and images (matching them against per-entry digests recorded at
+// vendor time) is a known gap, tracked for Phase 4. Any gap Verify does
+// check — missing OR present-but-corrupt (e.g. truncated to zero bytes) — is
+// CUBE-7004, naming the offending pack or image.
 func (o *Opened) Verify() error {
 	raw, err := os.ReadFile(filepath.Join(o.Dir, "cube.lock"))
 	if err != nil {
