@@ -16,6 +16,22 @@ daemon left running on your laptop after `up` exits. The full design
 rationale lives in the spec:
 [`docs/superpowers/specs/2026-07-13-cube-idp-architecture-design.md`](docs/superpowers/specs/2026-07-13-cube-idp-architecture-design.md).
 
+## Install
+
+Releases are private — authenticate `gh` to RafPe/cube-idp first.
+
+```bash
+gh release download v0.1.0 -R RafPe/cube-idp -p "cube-idp_*_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz"
+tar xzf cube-idp_*.tar.gz
+shasum -a 256 -c <(gh release download v0.1.0 -R RafPe/cube-idp -p checksums.txt -O - | grep "$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')")
+chmod +x cube-idp && mv cube-idp ~/bin/   # or anywhere on PATH
+cube-idp version
+```
+
+`go install github.com/rafpe/cube-idp@v0.1.0` does NOT work while the repo is
+private unless you set `GOPRIVATE=github.com/rafpe/cube-idp` and have git
+auth to the repo; prefer `gh release download`.
+
 ## Quickstart
 
 Requires a container runtime (docker or podman) for the `kind` cluster
