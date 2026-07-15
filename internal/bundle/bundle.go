@@ -184,7 +184,15 @@ func (o *Opened) ImageTars() map[string]string {
 // it; every Manifest.Images entry's tar is checked against
 // Manifest.ImageHashes via a streamed sha256. Any mismatch — missing,
 // truncated, or same-size-but-swapped — is CUBE-7004, naming the offending
-// pack or image.
+// pack or image. Verify is also lock-anchored for completeness: every image
+// ref pinned by a lock pack (o.Lock.Packs[*].Images) must be present in
+// Manifest.Images, so a manifest edited to drop an image's entries (from
+// BOTH Images and ImageHashes) cannot pass merely because the
+// manifest-driven hash loop has nothing left to check — that check alone
+// would silently accept a bundle missing a lock-pinned image. Engine and
+// registry images present in the manifest but not pinned by any pack (the
+// install-image union) are unaffected: this only adds a floor, it never
+// rejects legitimate extra manifest entries.
 func (o *Opened) Verify() error {
 	raw, err := os.ReadFile(filepath.Join(o.Dir, "cube.lock"))
 	if err != nil {
@@ -210,6 +218,14 @@ func (o *Opened) Verify() error {
 			return diag.New(diag.CodeVendorIncomplete,
 				fmt.Sprintf("bundle content mismatch for pack %q (packs/%s): bundle is corrupt or was tampered with", entry.Name, entry.Name),
 				"re-run `cube-idp vendor`")
+		}
+
+		for _, ref := range entry.Images {
+			if _, ok := o.Manifest.Images[ref]; !ok {
+				return diag.New(diag.CodeVendorIncomplete,
+					fmt.Sprintf("bundle is missing image %q pinned by pack %q", ref, entry.Name),
+					"re-run `cube-idp vendor`")
+			}
 		}
 	}
 

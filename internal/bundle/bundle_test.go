@@ -483,6 +483,85 @@ func downgradeManifestVersion(t *testing.T, bundlePath string, v int) {
 	}
 }
 
+// deleteManifestImageEntry extracts the tar.gz at bundlePath, removes ref's
+// entries from BOTH manifest.json's "images" and "imageHashes" maps, and
+// re-archives it over the original path — generalizes
+// downgradeManifestVersion's in-archive tamper pattern (Open parses
+// manifest.json once at open time into o.Manifest, so tampering must land
+// on the archive itself, before Open, not on an already-Opened bundle's
+// in-memory struct).
+func deleteManifestImageEntry(t *testing.T, bundlePath, ref string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := extractTarGz(bundlePath, dir); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, "manifest.json")
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"images", "imageHashes"} {
+		if sub, ok := m[key].(map[string]any); ok {
+			delete(sub, ref)
+		}
+	}
+	out, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, out, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarGzDir(dir, bundlePath); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestVerifyDetectsDeletedImageEntry: a manifest edited to remove an image's
+// entries from BOTH "images" and "imageHashes" — the deletion the owner-
+// approved review finding calls out — must still fail Verify. Before the
+// lock-anchored completeness cross-check, the manifest-driven hash loop had
+// nothing left to check (the ref is gone from Manifest.Images too), so
+// Verify passed on a bundle silently missing a lock-pinned image; the
+// air-gapped `up` would then load fewer images and fail later as an opaque
+// ImagePullBackOff instead of a loud CUBE-7004 here.
+func TestVerifyDetectsDeletedImageEntry(t *testing.T) {
+	lockPath, imgRef := writeLockFixtureWithImage(t, "linux", runtime.GOARCH)
+	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	if err := vendorForTest(t, lockPath, out, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	deleteManifestImageEntry(t, out, imgRef)
+
+	o, err := Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer o.Close()
+
+	if _, ok := o.Manifest.Images[imgRef]; ok {
+		t.Fatalf("tamper helper did not remove %q from manifest.Images", imgRef)
+	}
+
+	err = o.Verify()
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != "CUBE-7004" {
+		t.Fatalf("want CUBE-7004 after deleting image entry, got %v", err)
+	}
+	if !strings.Contains(err.Error(), imgRef) {
+		t.Fatalf("want error naming deleted ref %q, got %v", imgRef, err)
+	}
+	if !strings.Contains(err.Error(), `"demo"`) {
+		t.Fatalf("want error naming pinning pack %q, got %v", "demo", err)
+	}
+}
+
 // TestOpenRejectsV1Bundle: a bundle whose manifest says formatVersion 1 is
 // refused with CUBE-7003 and the format-upgraded remediation — bundles are
 // ephemeral transport artifacts, no compatibility shim (spec §5.2).
