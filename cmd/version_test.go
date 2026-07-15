@@ -18,3 +18,19 @@ func TestVersionCommand(t *testing.T) {
 		t.Fatalf("unexpected output: %q", out.String())
 	}
 }
+
+// TestVersionPrintsCommitAndDate pins the R1 stamped-version surface: the
+// un-stamped defaults render exactly as below, and the leading
+// "cube-idp version dev" prefix survives (the pre-R1 assertion keys on it).
+func TestVersionPrintsCommitAndDate(t *testing.T) {
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"version"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "cube-idp version dev (commit none, built unknown)\n" {
+		t.Fatalf("version output: %q", got)
+	}
+}
