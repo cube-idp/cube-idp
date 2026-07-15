@@ -74,7 +74,7 @@ type Deps struct {
 
 // SyncOnce is D7's one-shot iteration:
 //
-//	p := loadOrSynthesize(dir)                            -> CUBE-7201
+//	p, cleanup := loadOrSynthesize(dir); defer cleanup()  -> CUBE-7201
 //	rendered := p.Render(nil)                             -> pack's own CUBE-4xxx codes pass through
 //	addr := deps.PushAddr; if empty, port-forward to zot   -> CUBE-5002
 //	ref := oci.PushRendered(ctx, rendered, addr)           -> CUBE-5003 passes through
@@ -86,10 +86,11 @@ type Deps struct {
 // Every step's error is already typed by the layer that produced it —
 // SyncOnce adds no codes of its own beyond CUBE-7201 (from loadOrSynthesize).
 func SyncOnce(ctx context.Context, deps Deps, dir string) (Result, error) {
-	p, err := loadOrSynthesize(dir)
+	p, cleanup, err := loadOrSynthesize(dir)
 	if err != nil {
 		return Result{}, err
 	}
+	defer cleanup()
 
 	rendered, err := p.Render(nil)
 	if err != nil {
@@ -142,30 +143,36 @@ func SyncOnce(ctx context.Context, deps Deps, dir string) (Result, error) {
 
 // loadOrSynthesize loads dir as a pack. A dir with a pack.cue is fetched
 // normally (pack.Fetch's local-directory path — CUE metadata, #Values
-// schema, chart.yaml/kustomization.yaml all apply as usual). A dir with no
+// schema, chart.yaml/kustomization.yaml all apply as usual); its cleanup is
+// a no-op — dir is the caller's own directory, not staging. A dir with no
 // pack.cue is a bare manifest directory (D7): every *.yaml/*.yml file
-// directly under dir is staged into a synthesized pack whose identity is
-// name = filepath.Base(dir), version = "0.0.0-dev". A dir with neither a
-// pack.cue nor any renderable manifest is CUBE-7201.
-func loadOrSynthesize(dir string) (*pack.Pack, error) {
+// directly under dir is staged into a synthesized pack in a fresh
+// os.MkdirTemp directory whose identity is name = filepath.Base(dir),
+// version = "0.0.0-dev"; its cleanup removes that staging directory (Phase 4
+// R8 — previously leaked one temp dir per bare-dir sync). A dir with neither
+// a pack.cue nor any renderable manifest is CUBE-7201.
+func loadOrSynthesize(dir string) (*pack.Pack, func(), error) {
+	noop := func() {}
 	if _, err := os.Stat(filepath.Join(dir, "pack.cue")); err == nil {
-		return pack.Fetch(context.Background(), dir, "")
+		p, err := pack.Fetch(context.Background(), dir, "")
+		return p, noop, err
 	}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, diag.Wrap(err, diag.CodeSyncNoManifests, fmt.Sprintf("cannot read %s", dir),
+		return nil, noop, diag.Wrap(err, diag.CodeSyncNoManifests, fmt.Sprintf("cannot read %s", dir),
 			"check the directory path and permissions")
 	}
 
 	tmp, err := os.MkdirTemp("", "cube-idp-sync-*")
 	if err != nil {
-		return nil, diag.Wrap(err, diag.CodeSyncNoManifests, "cannot stage synthesized pack",
+		return nil, noop, diag.Wrap(err, diag.CodeSyncNoManifests, "cannot stage synthesized pack",
 			"check available disk space and permissions on the OS temp directory")
 	}
+	cleanup := func() { os.RemoveAll(tmp) }
 	manifestsDir := filepath.Join(tmp, "manifests")
 	if err := os.MkdirAll(manifestsDir, 0o755); err != nil {
-		return nil, diag.Wrap(err, diag.CodeSyncNoManifests, "cannot stage synthesized pack",
+		return nil, cleanup, diag.Wrap(err, diag.CodeSyncNoManifests, "cannot stage synthesized pack",
 			"check available disk space and permissions on the OS temp directory")
 	}
 
@@ -181,16 +188,16 @@ func loadOrSynthesize(dir string) (*pack.Pack, error) {
 		src := filepath.Join(dir, e.Name())
 		data, err := os.ReadFile(src)
 		if err != nil {
-			return nil, diag.Wrap(err, diag.CodeSyncNoManifests, fmt.Sprintf("cannot read %s", src), "check file permissions")
+			return nil, cleanup, diag.Wrap(err, diag.CodeSyncNoManifests, fmt.Sprintf("cannot read %s", src), "check file permissions")
 		}
 		if err := os.WriteFile(filepath.Join(manifestsDir, e.Name()), data, 0o644); err != nil {
-			return nil, diag.Wrap(err, diag.CodeSyncNoManifests, "cannot stage synthesized pack",
+			return nil, cleanup, diag.Wrap(err, diag.CodeSyncNoManifests, "cannot stage synthesized pack",
 				"check available disk space and permissions on the OS temp directory")
 		}
 		staged++
 	}
 	if staged == 0 {
-		return nil, diag.New(diag.CodeSyncNoManifests,
+		return nil, cleanup, diag.New(diag.CodeSyncNoManifests,
 			fmt.Sprintf("%s has no pack.cue and no *.yaml/*.yml manifests", dir),
 			"add a pack.cue (for a full pack) or at least one manifest YAML file directly under the directory")
 	}
@@ -202,9 +209,9 @@ func loadOrSynthesize(dir string) (*pack.Pack, error) {
 	// the Pack struct's Name/Version fields.
 	packCUE := fmt.Sprintf("name: %q\nversion: %q\n", name, version)
 	if err := os.WriteFile(filepath.Join(tmp, "pack.cue"), []byte(packCUE), 0o644); err != nil {
-		return nil, diag.Wrap(err, diag.CodeSyncNoManifests, "cannot stage synthesized pack",
+		return nil, cleanup, diag.Wrap(err, diag.CodeSyncNoManifests, "cannot stage synthesized pack",
 			"check available disk space and permissions on the OS temp directory")
 	}
 
-	return &pack.Pack{Name: name, Version: version, Dir: tmp}, nil
+	return &pack.Pack{Name: name, Version: version, Dir: tmp}, cleanup, nil
 }

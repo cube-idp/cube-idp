@@ -248,17 +248,16 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	var entries []lock.Entry
 	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
-	for i, pr := range refs {
+	for i, pref := range refs {
 		// Task 13 review: record the RESOLVED fetch source before Fetch runs.
 		// This is the falsifiable output proof of offline honesty: an online
 		// run prints the oci:// ref here; a --bundle run prints the
 		// bundle-local dir (under cube-idp-bundle-*), never oci://. A new
 		// additive plain line, consistent with the existing step conventions.
-		stepFetchSource(con, pr.Ref)
-		// pk (not p): p is this function's *ui.Printer — shadowing it with a
-		// same-named *pack.Pack here would still compile (the shadow is
-		// scoped to this loop body), but pk keeps the two unambiguous.
-		pk, err := pack.Fetch(ctx, pr.Ref, dir)
+		stepFetchSource(con, pref.Ref)
+		// pk, not p: kept distinct from pack.Pack's other short names used
+		// elsewhere in this package (verifyGatewayPackRef's own pk param).
+		pk, err := pack.Fetch(ctx, pref.Ref, dir)
 		if err != nil {
 			return err
 		}
@@ -272,7 +271,7 @@ func Run(ctx context.Context, opts Options) error {
 			}
 		}
 		packs = append(packs, pk)
-		rendered, err := pk.RenderFor(pr.Values, cube.Spec.Gateway)
+		rendered, err := pk.RenderFor(pref.Values, cube.Spec.Gateway)
 		if err != nil {
 			return err
 		}
@@ -285,7 +284,7 @@ func Run(ctx context.Context, opts Options) error {
 			return err
 		}
 		entries = append(entries, lock.Entry{
-			Ref:          pr.Ref,
+			Ref:          pref.Ref,
 			Name:         rendered.Name,
 			Version:      rendered.Version,
 			Resolved:     pk.Pinned,

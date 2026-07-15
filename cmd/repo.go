@@ -149,7 +149,10 @@ idempotent, and --deploy re-registers the same delivery source.`,
 // already exists (EnsureRepo is idempotent), so the remediation is simply
 // to re-run `repo create --deploy`.
 func deployRepo(ctx context.Context, a *apply.Applier, eng engine.Engine, name string, repoInfo *gitea.Repo) error {
-	remediation := fmt.Sprintf("re-run `cube-idp repo create %s --deploy` — repo creation is idempotent", name)
+	wrap := func(err error) error {
+		return diag.Wrap(err, diag.CodeRepoDeployFail, "created the repo but could not register the deploy source",
+			fmt.Sprintf("re-run `cube-idp repo create %s --deploy` — repo creation is idempotent", name))
+	}
 
 	src := engine.GitSource{
 		URL:    fmt.Sprintf("http://%s/%s/%s.git", giteaInClusterHost, repoInfo.Owner, repoInfo.Name),
@@ -158,13 +161,13 @@ func deployRepo(ctx context.Context, a *apply.Applier, eng engine.Engine, name s
 	}
 	objs, err := eng.DeliverGit(ctx, name, src)
 	if err != nil {
-		return diag.Wrap(err, diag.CodeRepoDeployFail, "created the repo but could not register the deploy source", remediation)
+		return wrap(err)
 	}
 	if err := a.Apply(ctx, objs, false, repoDeployTimeout); err != nil {
-		return diag.Wrap(err, diag.CodeRepoDeployFail, "created the repo but could not register the deploy source", remediation)
+		return wrap(err)
 	}
 	if err := a.RecordInventory(ctx, objs); err != nil {
-		return diag.Wrap(err, diag.CodeRepoDeployFail, "created the repo but could not register the deploy source", remediation)
+		return wrap(err)
 	}
 	return nil
 }
