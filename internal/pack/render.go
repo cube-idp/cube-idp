@@ -47,7 +47,7 @@ func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendere
 	_, statErr := os.Stat(filepath.Join(p.Dir, "kustomization.yaml"))
 	switch {
 	case statErr == nil:
-		objs, err := RenderDir(p.Dir)
+		objs, err := RenderDirFor(p.Dir, gw)
 		if err != nil {
 			return nil, err
 		}

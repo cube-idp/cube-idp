@@ -113,3 +113,38 @@ func TestRenderLeavesLiteralUntouched(t *testing.T) {
 		t.Fatalf("Render(nil) must leave the literal token untouched, got %q", got)
 	}
 }
+
+// TestRenderForSubstitutesGatewayHostKustomize pins D15's closure of the
+// kustomize-path asymmetry: RenderFor's kustomization.yaml branch now runs
+// the same ${GATEWAY_HOST}/${GATEWAY_FQDN}/${GATEWAY_PACK} substitution the
+// manifests/ walk and chart.yaml helm render already apply, and a zero
+// GatewaySpec (the cnoe loader's RenderDir path) is untouched.
+func TestRenderForSubstitutesGatewayHostKustomize(t *testing.T) {
+	p, err := Fetch(context.Background(), "testdata/gw-sub-kustomize", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw := config.GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443}
+	r, err := p.RenderFor(nil, gw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm := r.Objects[0]
+	for field, want := range map[string]string{
+		"host": "cube-idp.localtest.me:8443",
+		"fqdn": "cube-idp.localtest.me",
+		"ns":   "traefik",
+	} {
+		if got, _, _ := unstructured.NestedString(cm.Object, "data", field); got != want {
+			t.Fatalf("kustomize %s substitution: got %q want %q", field, got, want)
+		}
+	}
+	// Zero-gw identity: tokens pass through untouched (the cnoe/Render path).
+	r0, err := p.Render(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := unstructured.NestedString(r0.Objects[0].Object, "data", "host"); got != "${GATEWAY_HOST}" {
+		t.Fatalf("zero-gw kustomize render must not substitute, got %q", got)
+	}
+}

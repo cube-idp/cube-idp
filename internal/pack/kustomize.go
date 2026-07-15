@@ -8,13 +8,16 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	"github.com/rafpe/cube-idp/internal/apply"
+	"github.com/rafpe/cube-idp/internal/config"
 	"github.com/rafpe/cube-idp/internal/diag"
 )
 
-// RenderDir kustomize-builds dir (which must contain kustomization.yaml) and
-// returns the resulting objects. Exported because the cnoe-compat loader
-// (Task 13) renders arbitrary directories through the same pipeline.
-func RenderDir(dir string) ([]*unstructured.Unstructured, error) {
+// RenderDirFor kustomize-builds dir and applies the D15 gateway substitution
+// to the built YAML bytes BEFORE parsing — the same pre-parse byte-level
+// substitute() the manifests/ walk and renderHelm already apply, closing the
+// documented D15 asymmetry. A zero gw is the identity (byte-identical to the
+// pre-R6 RenderDir output).
+func RenderDirFor(dir string, gw config.GatewaySpec) ([]*unstructured.Unstructured, error) {
 	k := krusty.MakeKustomizer(krusty.MakeDefaultOptions())
 	resMap, err := k.Run(filesys.MakeFsOnDisk(), dir)
 	if err != nil {
@@ -28,5 +31,14 @@ func RenderDir(dir string) ([]*unstructured.Unstructured, error) {
 			fmt.Sprintf("kustomize output for %s is not serializable", dir),
 			"check kustomization.yaml for exotic transformer output")
 	}
+	y = []byte(substitute(string(y), gw))
 	return apply.ParseMultiDoc(y)
+}
+
+// RenderDir is RenderDirFor with a zero GatewaySpec — cnoe's loader and any
+// gateway-less caller keep exactly today's behavior. Exported because the
+// cnoe-compat loader (Task 13) renders arbitrary directories through the
+// same pipeline.
+func RenderDir(dir string) ([]*unstructured.Unstructured, error) {
+	return RenderDirFor(dir, config.GatewaySpec{})
 }
