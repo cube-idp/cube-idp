@@ -1,0 +1,59 @@
+# cube-idp release build (Phase 4 R1). goreleaser v2 schema.
+# Local validation: goreleaser release --snapshot --clean (also run by the
+# ci.yaml release-snapshot job on every push — cheap, no publish).
+version: 2
+
+project_name: cube-idp
+
+builds:
+  - id: cube-idp
+    main: .
+    binary: cube-idp
+    env:
+      - CGO_ENABLED=0   # static binaries (Makefile build parity)
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/rafpe/cube-idp/cmd.Version={{ .Version }}
+      - -X github.com/rafpe/cube-idp/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/rafpe/cube-idp/cmd.Date={{ .Date }}
+
+archives:
+  - id: tarballs
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE*, README.md]
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  use: git
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^feat(\(.*\))?:'
+      order: 0
+    - title: Fixes
+      regexp: '^fix(\(.*\))?:'
+      order: 1
+    - title: Documentation
+      regexp: '^docs(\(.*\))?:'
+      order: 2
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - '^chore\(release\):'
+
+release:
+  github:
+    owner: RafPe
+    name: cube-idp
+  draft: false
+  prerelease: auto
