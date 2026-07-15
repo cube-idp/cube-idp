@@ -64,8 +64,11 @@ and once per image plus the final bundle-written step (`cmd`/`cube` on
 `run_started` is `"vendor"`/`""` — vendor is a pure `cube.lock` consumer with
 no `cube.yaml`, so `cube` is always empty); `sync` (one-shot only — `--watch`
 keeps its own plain loop, out of scope for the event stream) emits a single
-stage, `sync`, three times: rendered, pushed, delivered. Packs and future
-commands may add stages without a schema version bump.
+stage, `sync`, three times: rendered, pushed, delivered. `repo create` emits
+no stages at all — its whole access block (created confirmation, clone URL,
+push command, and the deploy line when `--deploy` was passed) is a sequence
+of `note` events instead. Packs and future commands may add stages without a
+schema version bump.
 
 ### Event types
 

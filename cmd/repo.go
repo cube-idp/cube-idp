@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -66,68 +65,75 @@ anything internet-facing).
 Re-running this command for the same name is safe: repo creation is
 idempotent, and --deploy re-registers the same delivery source.`,
 		Args: cobra.ExactArgs(1),
+		// RunPipelineStatic owns the whole RunE body (Task R3): a failed
+		// config.Load returns before con.Start ever fires (the
+		// RunStarted-skip rule, G6). repo create is a short static command
+		// — it never pops the live step-tree (reserved for vendor/up/down).
 		RunE: func(c *cobra.Command, args []string) error {
 			name := args[0]
-			cube, err := config.Load(file)
-			if err != nil {
-				return err
-			}
-			prov, err := cluster.New(cube.Spec.Cluster, cube.Spec.Gateway)
-			if err != nil {
-				return err
-			}
-			// repo create targets an already-`up` cube: Ensure would CREATE
-			// a missing kind cluster, which repo create must never do as a
-			// side effect (status/get/sync pattern).
-			if err := requireClusterExists(c.Context(), prov, cube.Spec.Cluster.Provider, cube.Metadata.Name); err != nil {
-				return err
-			}
-			ctx, cancel := context.WithTimeout(c.Context(), repoClusterTimeout)
-			conn, err := prov.Ensure(ctx, cube.Metadata.Name, cube.Spec.Cluster)
-			cancel()
-			if err != nil {
-				return err
-			}
-			a, err := apply.New(conn.REST, cube.Metadata.Name)
-			if err != nil {
-				return err
-			}
+			return ui.RunPipelineStatic(c.Context(), "repo", c.OutOrStdout(),
+				func(ctx context.Context, con *ui.Console) error {
+					cube, err := config.Load(file)
+					if err != nil {
+						return err
+					}
+					con.Start("repo", cube.Metadata.Name)
 
-			var sec corev1.Secret
-			key := client.ObjectKey{Namespace: giteaNamespace, Name: giteaAdminSecretName}
-			if err := a.Client().Get(c.Context(), key, &sec); err != nil {
-				return diag.Wrap(err, diag.CodeRepoGiteaUnavailable, "the gitea pack is not installed in this cube",
-					"add the gitea pack to cube.yaml and re-run `cube-idp up`")
-			}
-			username, password := string(sec.Data["username"]), string(sec.Data["password"])
+					prov, err := cluster.New(cube.Spec.Cluster, cube.Spec.Gateway)
+					if err != nil {
+						return err
+					}
+					// repo create targets an already-`up` cube: Ensure would
+					// CREATE a missing kind cluster, which repo create must
+					// never do as a side effect (status/get/sync pattern).
+					if err := requireClusterExists(ctx, prov, cube.Spec.Cluster.Provider, cube.Metadata.Name); err != nil {
+						return err
+					}
+					ensureCtx, cancel := context.WithTimeout(ctx, repoClusterTimeout)
+					conn, err := prov.Ensure(ensureCtx, cube.Metadata.Name, cube.Spec.Cluster)
+					cancel()
+					if err != nil {
+						return err
+					}
+					a, err := apply.New(conn.REST, cube.Metadata.Name)
+					if err != nil {
+						return err
+					}
 
-			addr, stop, err := kube.PortForward(c.Context(), conn.REST, giteaNamespace, giteaPodSelector, giteaPodPort)
-			if err != nil {
-				return diag.Wrap(err, diag.CodeRepoGiteaUnavailable, "cannot reach the gitea pod",
-					"check `kubectl -n gitea get pods`; if the gitea pack isn't installed, add it to cube.yaml and re-run `cube-idp up`")
-			}
-			defer stop()
+					var sec corev1.Secret
+					key := client.ObjectKey{Namespace: giteaNamespace, Name: giteaAdminSecretName}
+					if err := a.Client().Get(ctx, key, &sec); err != nil {
+						return diag.Wrap(err, diag.CodeRepoGiteaUnavailable, "the gitea pack is not installed in this cube",
+							"add the gitea pack to cube.yaml and re-run `cube-idp up`")
+					}
+					username, password := string(sec.Data["username"]), string(sec.Data["password"])
 
-			gc := &gitea.Client{BaseURL: "http://" + addr, Username: username, Password: password}
-			repoInfo, err := gc.EnsureRepo(c.Context(), name)
-			if err != nil {
-				return err
-			}
+					addr, stop, err := kube.PortForward(ctx, conn.REST, giteaNamespace, giteaPodSelector, giteaPodPort)
+					if err != nil {
+						return diag.Wrap(err, diag.CodeRepoGiteaUnavailable, "cannot reach the gitea pod",
+							"check `kubectl -n gitea get pods`; if the gitea pack isn't installed, add it to cube.yaml and re-run `cube-idp up`")
+					}
+					defer stop()
 
-			if deploy {
-				eng, err := enginefactory.New(cube.Spec.Engine.Type)
-				if err != nil {
-					return err
-				}
-				if err := deployRepo(c.Context(), a, eng, name, repoInfo); err != nil {
-					return err
-				}
-			}
+					gc := &gitea.Client{BaseURL: "http://" + addr, Username: username, Password: password}
+					repoInfo, err := gc.EnsureRepo(ctx, name)
+					if err != nil {
+						return err
+					}
 
-			out := c.OutOrStdout()
-			p := ui.NewFor(out)
-			printRepoAccess(out, p, cube.Spec.Gateway, repoInfo, deploy)
-			return nil
+					if deploy {
+						eng, err := enginefactory.New(cube.Spec.Engine.Type)
+						if err != nil {
+							return err
+						}
+						if err := deployRepo(ctx, a, eng, name, repoInfo); err != nil {
+							return err
+						}
+					}
+
+					emitRepoAccess(con, cube.Spec.Gateway, repoInfo, deploy)
+					return nil
+				})
 		},
 	}
 	c.Flags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
@@ -171,15 +177,22 @@ func repoCloneURL(gw config.GatewaySpec, r *gitea.Repo) string {
 	return fmt.Sprintf("https://gitea.%s/%s/%s.git", pack.GatewayHostString(gw), r.Owner, r.Name)
 }
 
-// printRepoAccess prints the access block for a freshly ensured repo: the
-// created confirmation, the clone URL, a ready-to-copy push command, and
-// (only when deployed) a one-line note that the engine is syncing it.
-func printRepoAccess(out io.Writer, p *ui.Printer, gw config.GatewaySpec, r *gitea.Repo, deployed bool) {
+// emitRepoAccess emits the access block for a freshly ensured repo as Note
+// events: the created confirmation, the clone URL, a ready-to-copy push
+// command, and (only when deployed) a one-line note that the engine is
+// syncing it. Each old Fprintf ended with exactly one "\n"; Note's plain
+// projection adds exactly one trailing newline per call — byte-identical
+// (Task R3). The "✔" is the plain-mode literal p.Glyph(ui.GlyphOK) rendered
+// before this migration (Glyph is a no-op passthrough in ModePlain).
+// Deliberate styled-mode delta (repo create's styled output was never
+// pinned): the ✔ loses its green styling in the Styled projection — Note's
+// styled form is Fprintln, same as Plain's, with no glyph coloring.
+func emitRepoAccess(con *ui.Console, gw config.GatewaySpec, r *gitea.Repo, deployed bool) {
 	clone := repoCloneURL(gw, r)
-	fmt.Fprintf(out, "%s repo %s/%s created\n", p.Glyph(ui.GlyphOK), r.Owner, r.Name)
-	fmt.Fprintf(out, "  clone:  %s\n", clone)
-	fmt.Fprintf(out, "  push:   git push %s %s\n", clone, r.DefaultBranch)
+	con.Note("✔ repo %s/%s created", r.Owner, r.Name)
+	con.Note("  clone:  %s", clone)
+	con.Note("  push:   git push %s %s", clone, r.DefaultBranch)
 	if deployed {
-		fmt.Fprintf(out, "  deploy: engine syncs %s on branch %s (--deploy)\n", repoDeliverGitDefault, r.DefaultBranch)
+		con.Note("  deploy: engine syncs %s on branch %s (--deploy)", repoDeliverGitDefault, r.DefaultBranch)
 	}
 }

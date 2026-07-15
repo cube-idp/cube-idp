@@ -79,37 +79,52 @@ func TestRepoCloneURLOmitsDefaultHTTPSPort(t *testing.T) {
 	}
 }
 
-func TestPrintRepoAccessWithoutDeploy(t *testing.T) {
-	var buf bytes.Buffer
-	p := ui.New(&buf, false) // not a TTY -> plain mode, deterministic bytes
+// TestEmitRepoAccessPlainByteStable is Step 4.2's golden test (Task R3):
+// emitRepoAccess driven through ui.RunPipeline with ModePlain forced must
+// produce exactly the pre-R3 four-line block (G7's pinned bytes) — the same
+// literal cmd/repo_test.go's TestNewRepoCmd end-to-end assertion (line ~91)
+// pins, isolated to the emitRepoAccess seam.
+func TestEmitRepoAccessPlainByteStable(t *testing.T) {
 	gw := config.GatewaySpec{Host: "cube-idp.localtest.me", Port: 8443}
 	r := &gitea.Repo{Owner: "gitea_admin", Name: "app", DefaultBranch: "main"}
 
-	printRepoAccess(&buf, p, gw, r, false)
-
+	var buf bytes.Buffer
+	err := ui.RunPipeline(context.Background(), "repo", &buf,
+		func(_ context.Context, con *ui.Console) error {
+			emitRepoAccess(con, gw, r, false)
+			return nil
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
 	got := buf.String()
 	want := "✔ repo gitea_admin/app created\n" +
 		"  clone:  https://gitea.cube-idp.localtest.me:8443/gitea_admin/app.git\n" +
 		"  push:   git push https://gitea.cube-idp.localtest.me:8443/gitea_admin/app.git main\n"
 	if got != want {
-		t.Fatalf("printRepoAccess (no deploy):\ngot:\n%q\nwant:\n%q", got, want)
+		t.Fatalf("emitRepoAccess (no deploy):\ngot:\n%q\nwant:\n%q", got, want)
 	}
 	if strings.Contains(got, "deploy:") {
-		t.Fatalf("printRepoAccess must not print a deploy line when deployed=false, got:\n%s", got)
+		t.Fatalf("emitRepoAccess must not print a deploy line when deployed=false, got:\n%s", got)
 	}
 }
 
-func TestPrintRepoAccessWithDeploy(t *testing.T) {
-	var buf bytes.Buffer
-	p := ui.New(&buf, false)
+func TestEmitRepoAccessWithDeployPlainByteStable(t *testing.T) {
 	gw := config.GatewaySpec{Host: "cube-idp.localtest.me", Port: 8443}
 	r := &gitea.Repo{Owner: "gitea_admin", Name: "app", DefaultBranch: "main"}
 
-	printRepoAccess(&buf, p, gw, r, true)
-
+	var buf bytes.Buffer
+	err := ui.RunPipeline(context.Background(), "repo", &buf,
+		func(_ context.Context, con *ui.Console) error {
+			emitRepoAccess(con, gw, r, true)
+			return nil
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
 	got := buf.String()
 	if !strings.Contains(got, "deploy: engine syncs ./ on branch main (--deploy)\n") {
-		t.Fatalf("printRepoAccess (deploy) missing deploy line, got:\n%s", got)
+		t.Fatalf("emitRepoAccess (deploy) missing deploy line, got:\n%s", got)
 	}
 }
 
