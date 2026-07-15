@@ -96,7 +96,7 @@ func crossValidate(c *Cube) error {
 	cl := c.Spec.Cluster
 	if cl.Provider == "existing" {
 		if len(cl.ExtraPorts) > 0 || len(cl.Mounts) > 0 || cl.ProviderConfig != "" || cl.KubernetesVersion != "" {
-			return diag.New(diag.CodeClusterSetupFailed,
+			return diag.New(diag.CodeClusterFieldsConflict,
 				"cluster.extraPorts/mounts/providerConfig/kubernetesVersion imply node creation and are not valid with provider: existing",
 				"remove those fields, or switch to provider: kind or k3d")
 		}
