@@ -29,6 +29,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -39,6 +40,14 @@ import (
 // memory. Plugin archives are small (a single binary); anything past this
 // is refused rather than silently truncated.
 const maxArchiveBytes = 256 * 1024 * 1024 // 256 MiB
+
+// indexHTTPClient is the client fetchArchive uses to download plugin
+// archives. A var (not a const/local http.DefaultClient) so tests can shrink
+// Timeout to exercise the timeout path deterministically; production always
+// runs with the 60s default. cobra's ctx is otherwise un-deadlined, so
+// without this an unresponsive or slow-loris archive host would hang
+// `plugin install` forever.
+var indexHTTPClient = &http.Client{Timeout: 60 * time.Second}
 
 // IndexEntry is the decoded form of plugins/<name>.yaml in an index repo.
 type IndexEntry struct {
@@ -222,7 +231,7 @@ func fetchArchive(ctx context.Context, name string, platform *Platform) ([]byte,
 			fmt.Sprintf("cannot download plugin archive for %q", name),
 			"check the index URL")
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := indexHTTPClient.Do(req)
 	if err != nil {
 		return nil, diag.Wrap(err, diag.CodePluginTrustIO,
 			fmt.Sprintf("cannot download plugin archive for %q", name),

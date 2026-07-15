@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rafpe/cube-idp/internal/diag"
 )
@@ -99,6 +100,32 @@ func TestInstallRejectsShaMismatch(t *testing.T) {
 	}
 	if _, ok := Lookup("hello"); ok {
 		t.Fatal("a sha-mismatched plugin must never land in InstallDir")
+	}
+}
+
+// TestFetchArchiveTimesOut proves indexHTTPClient enforces a deadline: a
+// server that responds far slower than the client timeout must not hang
+// Install forever. The package var's Timeout is shrunk for the duration of
+// the test (and restored after) so the test itself stays fast. The handler
+// sleeps a fixed duration well past the shrunk timeout and then returns
+// normally (rather than blocking on an external signal) so
+// httptest.Server.Close, which waits for outstanding requests to complete,
+// cannot deadlock against the client giving up first.
+func TestFetchArchiveTimesOut(t *testing.T) {
+	prev := indexHTTPClient.Timeout
+	indexHTTPClient.Timeout = 50 * time.Millisecond
+	defer func() { indexHTTPClient.Timeout = prev }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(500 * time.Millisecond) // well past the shrunk client timeout
+	}))
+	t.Cleanup(srv.Close)
+
+	platform := &Platform{OS: runtime.GOOS, Arch: runtime.GOARCH, URL: srv.URL + "/a.tgz", SHA256: strings.Repeat("0", 64)}
+	_, err := fetchArchive(context.Background(), "hello", platform)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != "CUBE-7102" {
+		t.Fatalf("want CUBE-7102 on client timeout, got %v", err)
 	}
 }
 
