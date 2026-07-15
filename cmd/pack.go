@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -22,24 +23,31 @@ func newPackCmd() *cobra.Command {
 			"If <oci-ref> carries no :tag, the pack's version from pack.cue is used.\n" +
 			"Auth is the ambient docker credential chain (docker login).",
 		Args: cobra.ExactArgs(2),
+		// RunPipelineStatic owns the whole RunE body (Task R3): pack push is
+		// a short static command, never a live step-tree.
 		RunE: func(c *cobra.Command, args []string) error {
-			dir, ref := args[0], args[1]
-			if !refHasTag(ref) {
-				// Tag defaulting: reuse pack.Fetch on the local dir (it
-				// ignores cacheDir for local paths) instead of re-parsing CUE.
-				p, err := pack.Fetch(c.Context(), dir, "")
-				if err != nil {
-					return err
-				}
-				ref = ref + ":" + p.Version
-			}
+			return ui.RunPipelineStatic(c.Context(), "pack", c.OutOrStdout(),
+				func(ctx context.Context, con *ui.Console) error {
+					con.Start("pack", "")
+					dir, ref := args[0], args[1]
+					if !refHasTag(ref) {
+						// Tag defaulting: reuse pack.Fetch on the local dir
+						// (it ignores cacheDir for local paths) instead of
+						// re-parsing CUE.
+						p, err := pack.Fetch(ctx, dir, "")
+						if err != nil {
+							return err
+						}
+						ref = ref + ":" + p.Version
+					}
 
-			digest, err := oci.PushPackDir(c.Context(), dir, ref, alsoTags...)
-			if err != nil {
-				return err
-			}
-			ui.NewFor(c.OutOrStdout()).Step("pack", "pushed %s@%s", ref, digest)
-			return nil
+					digest, err := oci.PushPackDir(ctx, dir, ref, alsoTags...)
+					if err != nil {
+						return err
+					}
+					con.Step("pack", "pushed %s@%s", ref, digest)
+					return nil
+				})
 		},
 	}
 	push.Flags().StringSliceVar(&alsoTags, "also-tag", nil,

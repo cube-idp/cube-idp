@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http/httptest"
@@ -120,5 +121,40 @@ func TestPackPushPlainOutputByteStable(t *testing.T) {
 	}
 	if strings.Count(out, "\n") != 1 {
 		t.Fatalf("expected exactly one output line, got: %q", out)
+	}
+}
+
+// TestPackPushJSONStreamEmitsExpectedEventTypes is Step 5.3's JSON golden
+// for pack push: --progress=json emits run_started/step_done/run_done, one
+// event per line, on stdout.
+func TestPackPushJSONStreamEmitsExpectedEventTypes(t *testing.T) {
+	host := packLocalRegistry(t)
+	dir := writeCmdDemoPack(t, "0.1.0")
+	ref := "oci://" + host + "/packs/demo:0.1.0"
+
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"pack", "push", dir, ref, "--progress=json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("pack push --progress=json: %v\noutput: %s", err, out.String())
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		`"type":"run_started","cmd":"pack","cube":""`,
+		`"type":"step_done","stage":"pack","msg":"pushed ` + ref + `@sha256:`,
+		`"type":"run_done","ok":true`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("JSON stream missing %q, got:\n%s", want, got)
+		}
+	}
+	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+		var v any
+		if err := json.Unmarshal([]byte(line), &v); err != nil {
+			t.Fatalf("line is not valid JSON: %v\nline: %s", err, line)
+		}
 	}
 }

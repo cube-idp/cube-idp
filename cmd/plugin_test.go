@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/plugin"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 // isolatePluginEnv points PATH/HOME/XDG_* at fresh temp dirs so plugin
@@ -81,6 +83,59 @@ func TestPluginListEmptyReportsNoPlugins(t *testing.T) {
 	}
 }
 
+// TestPluginListEmptyPlainByteStable is Step 5.3's exact-byte golden for the
+// empty-state warn line (G7's pinned bytes: "no plugins found — install a
+// cube-idp-<name> binary on PATH", a Warn — Plain's projection is
+// Fprintln(msg), no glyph).
+func TestPluginListEmptyPlainByteStable(t *testing.T) {
+	isolatePluginEnv(t)
+
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"plugin", "list"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	const want = "no plugins found — install a cube-idp-<name> binary on PATH\n"
+	if got := out.String(); got != want {
+		t.Fatalf("plain output drifted:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+// TestPluginListJSONStreamEmitsExpectedEventTypes is the JSON golden for the
+// empty-state path: run_started, a warn event, run_done{ok:true}, one event
+// per line.
+func TestPluginListJSONStreamEmitsExpectedEventTypes(t *testing.T) {
+	isolatePluginEnv(t)
+
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"plugin", "list", "--progress=json"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		`"type":"run_started","cmd":"plugin","cube":""`,
+		`"type":"warn","msg":"no plugins found`,
+		`"type":"run_done","ok":true`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("JSON stream missing %q, got:\n%s", want, got)
+		}
+	}
+	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+		var v any
+		if err := json.Unmarshal([]byte(line), &v); err != nil {
+			t.Fatalf("line is not valid JSON: %v\nline: %s", err, line)
+		}
+	}
+}
+
 func TestPluginTrustRecordsHashAndUnblocksExec(t *testing.T) {
 	dir := isolatePluginEnv(t)
 	writeFakePlugin(t, dir, "hello")
@@ -105,6 +160,27 @@ func TestPluginTrustRecordsHashAndUnblocksExec(t *testing.T) {
 	}
 	if err := plugin.EnsureTrusted("hello", path, false); err != nil {
 		t.Fatalf("plugin trust hello should have unblocked EnsureTrusted: %v", err)
+	}
+}
+
+// TestPluginTrustPlainByteStable is Step 5.3's exact-byte golden: G7's
+// pinned bytes, "%s plugin %q (%s) is now trusted\n" with the plain-mode ✔
+// glyph literal.
+func TestPluginTrustPlainByteStable(t *testing.T) {
+	dir := isolatePluginEnv(t)
+	p := writeFakePlugin(t, dir, "hello")
+
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"plugin", "trust", "hello"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	want := "✔ plugin \"hello\" (" + p + ") is now trusted\n"
+	if got := out.String(); got != want {
+		t.Fatalf("plain output drifted:\ngot:  %q\nwant: %q", got, want)
 	}
 }
 
@@ -178,6 +254,31 @@ func TestPluginInstallWithoutIndexReportsCUBE7102(t *testing.T) {
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != diag.CodePluginTrustIO {
 		t.Fatalf("want CUBE-7102, got %v", err)
+	}
+}
+
+// TestPluginInstallNotePlainByteStable is Step 5.3's golden for `plugin
+// install`'s success line (G7's pinned bytes, "%s plugin %q installed and
+// trusted\n"): a full success run needs a sha256-pinned git index fixture
+// (internal/plugin/index_test.go's setup, not duplicated at the cmd level —
+// no cmd-level install-success test existed pre-R3 per Step 0's inventory),
+// so this isolates the con.Note call shape cmd/plugin.go's install RunE
+// uses on the recorded-slice pattern (14b precedent), through the real
+// ui.RunPipeline plain projection.
+func TestPluginInstallNotePlainByteStable(t *testing.T) {
+	var buf bytes.Buffer
+	err := ui.RunPipeline(context.Background(), "plugin", &buf,
+		func(_ context.Context, con *ui.Console) error {
+			con.Start("plugin", "")
+			con.Note("✔ plugin %q installed and trusted", "hello")
+			return nil
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "✔ plugin \"hello\" installed and trusted\n"
+	if got := buf.String(); got != want {
+		t.Fatalf("plain output drifted:\ngot:  %q\nwant: %q", got, want)
 	}
 }
 

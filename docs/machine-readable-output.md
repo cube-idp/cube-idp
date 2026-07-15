@@ -67,8 +67,16 @@ keeps its own plain loop, out of scope for the event stream) emits a single
 stage, `sync`, three times: rendered, pushed, delivered. `repo create` emits
 no stages at all — its whole access block (created confirmation, clone URL,
 push command, and the deploy line when `--deploy` was passed) is a sequence
-of `note` events instead. Packs and future commands may add stages without a
-schema version bump.
+of `note` events instead. `plugin list`/`trust`/`install` and `pack push`
+are the same shape: `plugin list` emits either one `warn` (nothing
+discovered) or one `note` (the NAME/PATH/TRUSTED table, embedded newlines
+and all); `plugin trust`/`plugin install` each emit one `note`; `pack push`
+emits a single `step_done` on stage `pack`. None of the five short static
+commands ever pop the live step-tree — `--progress=live` still forces it,
+but a real terminal under the default auto-styled mode gets the
+content-identical styled-static projection instead (design doc §5.2; the
+live tree is reserved for `up`/`down`/`vendor`). Packs and future commands
+may add stages without a schema version bump.
 
 ### Event types
 

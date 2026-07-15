@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"bytes"
+	"context"
 	"fmt"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -33,24 +36,33 @@ func newPluginListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List every cube-idp-<name> plugin discovered on PATH or in the plugin install dir",
+		// RunPipelineStatic owns the whole RunE body (Task R3): plugin list
+		// is a short static command, never a live step-tree.
 		RunE: func(c *cobra.Command, _ []string) error {
-			descs := plugin.List()
-			out := c.OutOrStdout()
-			p := ui.NewFor(out)
-			if len(descs) == 0 {
-				p.Warn("no plugins found — install a cube-idp-<name> binary on PATH")
-				return nil
-			}
-			w := tabwriter.NewWriter(out, 0, 0, 1, ' ', 0)
-			fmt.Fprint(w, "NAME\tPATH\tTRUSTED\n")
-			for _, d := range descs {
-				trusted := "no"
-				if d.Trusted {
-					trusted = "yes"
-				}
-				fmt.Fprintf(w, "%s\t%s\t%s\n", d.Name, d.Path, trusted)
-			}
-			return w.Flush()
+			return ui.RunPipelineStatic(c.Context(), "plugin", c.OutOrStdout(),
+				func(_ context.Context, con *ui.Console) error {
+					con.Start("plugin", "")
+					descs := plugin.List()
+					if len(descs) == 0 {
+						con.Warn("no plugins found — install a cube-idp-<name> binary on PATH")
+						return nil
+					}
+					var buf bytes.Buffer
+					w := tabwriter.NewWriter(&buf, 0, 0, 1, ' ', 0)
+					fmt.Fprint(w, "NAME\tPATH\tTRUSTED\n")
+					for _, d := range descs {
+						trusted := "no"
+						if d.Trusted {
+							trusted = "yes"
+						}
+						fmt.Fprintf(w, "%s\t%s\t%s\n", d.Name, d.Path, trusted)
+					}
+					if err := w.Flush(); err != nil {
+						return err
+					}
+					con.Note("%s", strings.TrimRight(buf.String(), "\n"))
+					return nil
+				})
 		},
 	}
 }
@@ -61,19 +73,22 @@ func newPluginTrustCmd() *cobra.Command {
 		Short: "Trust a discovered plugin: record its current sha256 so it runs without prompting",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			name := args[0]
-			path, ok := plugin.Lookup(name)
-			if !ok {
-				return diag.New(diag.CodePluginNotFound,
-					fmt.Sprintf("no cube-idp-%s plugin found on PATH or in the plugin install dir", name),
-					"install the plugin binary, or run `cube-idp plugin list` to see what's discovered")
-			}
-			if err := plugin.Trust(name, path); err != nil {
-				return err
-			}
-			p := ui.NewFor(c.OutOrStdout())
-			fmt.Fprintf(c.OutOrStdout(), "%s plugin %q (%s) is now trusted\n", p.Glyph(ui.GlyphOK), name, path)
-			return nil
+			return ui.RunPipelineStatic(c.Context(), "plugin", c.OutOrStdout(),
+				func(_ context.Context, con *ui.Console) error {
+					con.Start("plugin", "")
+					name := args[0]
+					path, ok := plugin.Lookup(name)
+					if !ok {
+						return diag.New(diag.CodePluginNotFound,
+							fmt.Sprintf("no cube-idp-%s plugin found on PATH or in the plugin install dir", name),
+							"install the plugin binary, or run `cube-idp plugin list` to see what's discovered")
+					}
+					if err := plugin.Trust(name, path); err != nil {
+						return err
+					}
+					con.Note("✔ plugin %q (%s) is now trusted", name, path)
+					return nil
+				})
 		},
 	}
 }
@@ -89,17 +104,20 @@ func newPluginInstallCmd() *cobra.Command {
 		Short: "Install a plugin from a sha256-pinned git index",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			if index == "" {
-				return diag.New(diag.CodePluginTrustIO, "no plugin index configured",
-					"pass --index <git-url>[@commit]; a default public index is planned but not yet published")
-			}
-			name := args[0]
-			if err := plugin.Install(c.Context(), index, name); err != nil {
-				return err
-			}
-			p := ui.NewFor(c.OutOrStdout())
-			fmt.Fprintf(c.OutOrStdout(), "%s plugin %q installed and trusted\n", p.Glyph(ui.GlyphOK), name)
-			return nil
+			return ui.RunPipelineStatic(c.Context(), "plugin", c.OutOrStdout(),
+				func(ctx context.Context, con *ui.Console) error {
+					con.Start("plugin", "")
+					if index == "" {
+						return diag.New(diag.CodePluginTrustIO, "no plugin index configured",
+							"pass --index <git-url>[@commit]; a default public index is planned but not yet published")
+					}
+					name := args[0]
+					if err := plugin.Install(ctx, index, name); err != nil {
+						return err
+					}
+					con.Note("✔ plugin %q installed and trusted", name)
+					return nil
+				})
 		},
 	}
 	install.Flags().StringVar(&index, "index", "", "git URL of the plugin index (optionally @commit-pinned)")
