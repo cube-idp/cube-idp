@@ -22,6 +22,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 // Watch runs SyncOnce, then blocks: re-syncs on every debounced change
@@ -51,14 +52,22 @@ func Watch(ctx context.Context, deps Deps, dir string, debounce time.Duration) e
 			"check the directory exists and is readable")
 	}
 
+	// p is the same ui seam SyncOnce itself prints through (syncer.go's
+	// printer := ui.NewFor(deps.Out)): building it once here, instead of
+	// writing raw bytes to deps.Out, means a failing sync's loud error block
+	// and every other line Watch prints render with the same plain/styled
+	// choice as the rest of the command instead of always falling back to
+	// unstyled literals.
+	p := ui.NewFor(deps.Out)
+
 	syncOnce := deps.syncFn
 	if syncOnce == nil {
 		syncOnce = newDefaultSyncFn(deps, dir)
 	}
 	runSync := func() {
 		if err := syncOnce(ctx); err != nil {
-			fmt.Fprintln(deps.Out, diag.Render(err)) // loud, non-fatal: developer is mid-edit
-			fmt.Fprintln(deps.Out, "  (still watching — fix the file and save again)")
+			fmt.Fprintln(p.Out(), p.RenderError(err)) // loud, non-fatal: developer is mid-edit
+			p.Warn("  (still watching — fix the file and save again)")
 		}
 	}
 
@@ -103,7 +112,7 @@ func Watch(ctx context.Context, deps Deps, dir string, debounce time.Duration) e
 				stopTimer()
 				return nil
 			}
-			fmt.Fprintln(deps.Out, diag.Render(diag.Wrap(err, diag.CodeSyncWatchSetupFail, "filesystem watcher error",
+			fmt.Fprintln(p.Out(), p.RenderError(diag.Wrap(err, diag.CodeSyncWatchSetupFail, "filesystem watcher error",
 				"if this repeats, restart `cube-idp sync --watch`")))
 		}
 	}
@@ -118,13 +127,14 @@ func Watch(ctx context.Context, deps Deps, dir string, debounce time.Duration) e
 // treating the repeat as an error.
 func newDefaultSyncFn(deps Deps, dir string) func(context.Context) error {
 	var lastDigest string
+	p := ui.NewFor(deps.Out)
 	return func(c context.Context) error {
 		res, err := SyncOnce(c, deps, dir)
 		if err != nil {
 			return err
 		}
 		if res.Digest != "" && res.Digest == lastDigest {
-			fmt.Fprintln(deps.Out, "▸ [sync] no manifest changes — skipped push")
+			p.Step("sync", "no manifest changes — skipped push")
 		}
 		lastDigest = res.Digest
 		return nil

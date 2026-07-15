@@ -23,7 +23,21 @@ import (
 // (the live program exited) before main.go calls this — the diagnosis can
 // never be overwritten by the live region or trapped in a dead screen.
 func RenderError(err error) string {
-	switch CurrentMode() {
+	return renderErrorForMode(CurrentMode(), err)
+}
+
+// RenderError is RenderError's per-instance counterpart: it keys off this
+// Printer's own resolved mode rather than the process-wide CurrentMode().
+// It exists for callers like syncer.Watch that render a loud, non-fatal
+// error mid-stream (not main.go's single final-error print point, which
+// RenderError above remains) and need that block to match the styling of
+// everything else they've already printed through this Printer.
+func (p *Printer) RenderError(err error) string {
+	return renderErrorForMode(p.mode, err)
+}
+
+func renderErrorForMode(mode Mode, err error) string {
+	switch mode {
 	case ModeStyled, ModeLive:
 	default:
 		return diag.Render(err)

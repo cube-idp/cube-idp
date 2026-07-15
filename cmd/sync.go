@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -75,11 +74,13 @@ gitea pack ('cube-idp repo create').`,
 				return syncer.Watch(c.Context(), deps, args[0], syncWatchDebounce)
 			}
 
-			result, err := syncer.SyncOnce(c.Context(), deps, args[0])
-			if err != nil {
+			// SyncOnce's own printer.Step already emits the "delivered —
+			// engine reconciling" line (internal/syncer/syncer.go:118) via the
+			// ui seam; a second raw "✔ synced ..." line here would both
+			// bypass ui and duplicate that line.
+			if _, err := syncer.SyncOnce(c.Context(), deps, args[0]); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "✔ synced %s@%s — engine reconciling\n", result.Pack, result.Version)
 			return nil
 		},
 	}

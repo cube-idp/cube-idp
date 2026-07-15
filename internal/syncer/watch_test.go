@@ -12,6 +12,7 @@ import (
 
 	"github.com/rafpe/cube-idp/internal/apply"
 	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/rafpe/cube-idp/internal/ui"
 )
 
 // diagFakeErr stands in for a real sync failure (e.g. a YAML typo) so
@@ -120,6 +121,40 @@ func TestWatchSyncErrorRendersLoudly(t *testing.T) {
 	waitFor(t, func() bool { return strings.Contains(out.String(), "boom") }, "rendered error")
 	if !strings.Contains(out.String(), "still watching") {
 		t.Fatalf("failing sync must note the watch continues, got %q", out.String())
+	}
+	cancel()
+	<-done
+}
+
+// TestWatchSyncErrorRendersStyledThroughUISeam pins Fix 4: watch.go must
+// route its loud error block through the ui.Printer seam (p.RenderError),
+// not a raw fmt.Fprintln(deps.Out, diag.Render(err)) — so when the process
+// mode is forced styled (ModeLive, the one force that bypasses the
+// non-terminal downgrade), the failing-sync block renders the same bordered
+// panel ui.RenderError produces, instead of always falling back to the flat
+// literal text TestWatchSyncErrorRendersLoudly pins for the plain case.
+func TestWatchSyncErrorRendersStyledThroughUISeam(t *testing.T) {
+	prev := ui.CurrentMode()
+	ui.SetMode(ui.ModeLive)
+	defer ui.SetMode(prev)
+
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "cm.yaml"), []byte("a: 1\n"), 0o644)
+	calls := atomic.Int32{}
+	out := &syncBuf{}
+	deps := Deps{Out: out, syncFn: func(context.Context) error {
+		if calls.Add(1) == 1 {
+			return diagFakeErr()
+		}
+		return nil
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Watch(ctx, deps, dir, 30*time.Millisecond) }()
+	waitFor(t, func() bool { return calls.Load() == 1 }, "initial failing sync")
+	waitFor(t, func() bool { return strings.Contains(out.String(), "boom") }, "rendered error")
+	if !strings.Contains(out.String(), "╭") {
+		t.Fatalf("styled mode must render the bordered ui.RenderError panel, got %q", out.String())
 	}
 	cancel()
 	<-done

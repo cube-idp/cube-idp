@@ -167,3 +167,40 @@ func TestRenderErrorStyledPanel(t *testing.T) {
 		t.Fatalf("styled RenderError must render a bordered panel:\n%s", got)
 	}
 }
+
+// TestPrinterRenderErrorFollowsOwnMode pins the seam syncer.Watch relies on
+// (Fix 4): Printer.RenderError must key off the Printer's own resolved mode,
+// not the process-wide CurrentMode() the package-level RenderError uses —
+// so a Printer built for a non-terminal writer (every test buffer, every
+// pipe) stays plain even while CurrentMode() is styled, and a Printer built
+// with an explicitly forced styled mode renders the same bordered panel
+// RenderError does.
+func TestPrinterRenderErrorFollowsOwnMode(t *testing.T) {
+	prev := CurrentMode()
+	defer SetMode(prev)
+
+	err := diag.Wrap(errors.New("docker not running"), diag.Code("CUBE-1001"),
+		"kind cluster create failed", "start docker and re-run `cube-idp up`")
+
+	// CurrentMode() styled, but NewFor downgrades a non-terminal writer to
+	// plain — Printer.RenderError must follow that downgrade, not the
+	// process-wide mode.
+	SetMode(ModeStyled)
+	var buf bufWriter
+	plain := NewFor(&buf)
+	if got, want := plain.RenderError(err), diag.Render(err); got != want {
+		t.Fatalf("Printer.RenderError on a non-terminal writer must stay plain:\ngot:  %q\nwant: %q", got, want)
+	}
+
+	// An explicitly styled Printer renders the identical panel the
+	// package-level RenderError does under the same mode.
+	styled := &Printer{out: &buf, mode: ModeStyled}
+	got := styled.RenderError(err)
+	want := RenderError(err) // CurrentMode() is still ModeStyled here
+	if got != want {
+		t.Fatalf("Printer.RenderError(styled) must match package RenderError:\ngot:  %q\nwant: %q", got, want)
+	}
+	if !strings.Contains(got, "╭") {
+		t.Fatalf("styled Printer.RenderError must render a bordered panel:\n%s", got)
+	}
+}
