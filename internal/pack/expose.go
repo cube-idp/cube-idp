@@ -38,17 +38,22 @@ func GatewayHostString(gw config.GatewaySpec) string {
 }
 
 // substitute performs the D15 gateway substitution on s: ${GATEWAY_HOST}
-// expands to gw's host[:port] (GatewayHostString) and ${GATEWAY_FQDN}
-// expands to the bare gw.Host, for Gateway API `hostnames:` fields, which
-// cannot carry ports. A zero gw (Host == "") performs no substitution — the
-// literal tokens pass through untouched, which is what Render's
-// gateway-less default relies on.
+// expands to gw's host[:port] (GatewayHostString), ${GATEWAY_FQDN} expands
+// to the bare gw.Host (for Gateway API `hostnames:` fields, which cannot
+// carry ports), and ${GATEWAY_PACK} expands to gw.Pack — the gateway pack
+// name, which is also its namespace by convention (gatewayServiceFQDN,
+// internal/up). ${GATEWAY_PACK} exists for F9: pack HTTPRoutes must parent
+// to the Gateway in the gateway pack's namespace (e.g. envoy-gateway), not
+// a hardcoded "traefik", or Attached Routes stays 0 and TLS/HTTP resets.
+// A zero gw (Host == "") performs no substitution — the literal tokens pass
+// through untouched, which is what Render's gateway-less default relies on.
 func substitute(s string, gw config.GatewaySpec) string {
 	if gw.Host == "" {
 		return s
 	}
 	s = strings.ReplaceAll(s, "${GATEWAY_HOST}", GatewayHostString(gw))
 	s = strings.ReplaceAll(s, "${GATEWAY_FQDN}", gw.Host)
+	s = strings.ReplaceAll(s, "${GATEWAY_PACK}", gw.Pack)
 	return s
 }
 

@@ -247,7 +247,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	var entries []lock.Entry
 	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
-	for _, pr := range refs {
+	for i, pr := range refs {
 		// Task 13 review: record the RESOLVED fetch source before Fetch runs.
 		// This is the falsifiable output proof of offline honesty: an online
 		// run prints the oci:// ref here; a --bundle run prints the
@@ -260,6 +260,15 @@ func Run(ctx context.Context, opts Options) error {
 		pk, err := pack.Fetch(ctx, pr.Ref, dir)
 		if err != nil {
 			return err
+		}
+		// F11: refs[0] is the gateway pack (prepended above). Fail loudly if a
+		// gateway.ref/gateway.pack mismatch means the ref would silently
+		// deliver a different gateway than pack: names, before any cluster
+		// mutation for this pack.
+		if i == 0 {
+			if err := verifyGatewayPackRef(pk, cube.Spec.Gateway); err != nil {
+				return err
+			}
 		}
 		packs = append(packs, pk)
 		rendered, err := pk.RenderFor(pr.Values, cube.Spec.Gateway)
@@ -321,7 +330,7 @@ func Run(ctx context.Context, opts Options) error {
 	// D6 canonical hostname: route registry.<host> through the gateway (for
 	// host-side docker/oras push), then make *.<host> resolve in-cluster to
 	// the same gateway Service so pod-side clients use identical URLs.
-	route := registry.GatewayRoute(cube.Spec.Gateway.Host)
+	route := registry.GatewayRoute(cube.Spec.Gateway.Host, cube.Spec.Gateway.Pack)
 	if err := a.Apply(ctx, []*unstructured.Unstructured{route}, false, applyTimeout); err != nil {
 		return err
 	}
@@ -433,6 +442,25 @@ func mergeImages(rendered, declared []string) []string {
 // namespace, matching that chart's install (namespace: traefik).
 func gatewayServiceFQDN(gw config.GatewaySpec) string {
 	return fmt.Sprintf("%s.%s.svc.cluster.local", gw.Pack, gw.Pack)
+}
+
+// verifyGatewayPackRef guards F11: gateway.ref silently wins over
+// gateway.pack (GatewaySpec.PackRef), so an operator who edits only
+// `pack: envoy-gateway` while `init --local` left `ref: .../packs/traefik`
+// in place gets traefik delivered under an envoy-gateway label with no
+// error. When BOTH are set, the fetched gateway pack's declared pack.cue
+// name must equal gw.Pack, else the two disagree about which gateway this
+// is. A bare gw.Ref == "" (PackRef falls back to packs/<Pack>) or gw.Pack
+// == "" cannot disagree, so those skip the check. The seam is here, not
+// config.Load: Load is pure YAML+CUE with no pack-dir I/O, whereas `up`
+// already fetches the gateway pack (pk) and thus holds its parsed pack.cue.
+func verifyGatewayPackRef(pk *pack.Pack, gw config.GatewaySpec) error {
+	if gw.Ref == "" || gw.Pack == "" || pk.Name == gw.Pack {
+		return nil
+	}
+	return diag.New(diag.CodeGatewayPackMismatch,
+		fmt.Sprintf("spec.gateway.ref resolves to the %q pack, but spec.gateway.pack is %q — the ref silently wins, so cube-idp would deliver %q", pk.Name, gw.Pack, pk.Name),
+		fmt.Sprintf("update spec.gateway.ref to the %s pack or remove it to use the published ref", gw.Pack))
 }
 
 // waitHealthy polls eng.Health every healthPoll until every reported

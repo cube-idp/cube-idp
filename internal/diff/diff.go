@@ -233,7 +233,7 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 
 	// D6: applied by up.Run right after the pack loop; pure given the
 	// gateway host alone.
-	desired = append(desired, registry.GatewayRoute(cube.Spec.Gateway.Host))
+	desired = append(desired, registry.GatewayRoute(cube.Spec.Gateway.Host, cube.Spec.Gateway.Pack))
 
 	// Gateway TLS Namespace + Secret identities (see the orphanOnly doc
 	// above). Namespace equals the gateway pack name by convention

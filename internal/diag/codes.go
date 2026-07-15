@@ -3,13 +3,14 @@ package diag
 
 // 0xxx: preflight/config
 const (
-	CodeConfigRead    Code = "CUBE-0001" // cannot read cube.yaml
-	CodeConfigInvalid Code = "CUBE-0002" // cube.yaml YAML syntax or schema validation error
-	CodeLockCorrupt   Code = "CUBE-0003" // cube.lock unreadable or corrupt (Phase 2)
-	CodeProviderMiss  Code = "CUBE-0004" // cluster provider config mismatch (e.g., render-cluster for non-kind)
-	CodeArgoPackRedun Code = "CUBE-0005" // argocd pack listed while engine.type: argocd (Phase 2)
-	CodeInitExists    Code = "CUBE-0006" // cube.yaml already exists; refusing overwrite
-	CodeBadFlagValue  Code = "CUBE-0007" // an enum flag (--progress, --output) got an unrecognized value
+	CodeConfigRead          Code = "CUBE-0001" // cannot read cube.yaml
+	CodeConfigInvalid       Code = "CUBE-0002" // cube.yaml YAML syntax or schema validation error
+	CodeLockCorrupt         Code = "CUBE-0003" // cube.lock unreadable or corrupt (Phase 2)
+	CodeProviderMiss        Code = "CUBE-0004" // cluster provider config mismatch (e.g., render-cluster for non-kind)
+	CodeArgoPackRedun       Code = "CUBE-0005" // argocd pack listed while engine.type: argocd (Phase 2)
+	CodeInitExists          Code = "CUBE-0006" // cube.yaml already exists; refusing overwrite
+	CodeBadFlagValue        Code = "CUBE-0007" // an enum flag (--progress, --output) got an unrecognized value
+	CodeGatewayPackMismatch Code = "CUBE-0008" // gateway.ref points at a pack whose pack.cue name != gateway.pack (F11: ref silently wins over pack)
 )
 
 // 01xx: doctor preflight checks (Phase 2)

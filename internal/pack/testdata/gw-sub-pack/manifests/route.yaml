@@ -5,3 +5,4 @@ metadata:
 data:
   host: "${GATEWAY_HOST}"
   fqdn: "${GATEWAY_FQDN}"
+  pack: "${GATEWAY_PACK}"

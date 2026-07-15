@@ -24,9 +24,10 @@ func (p *Pack) Render(values map[string]any) (*Rendered, error) {
 // RenderFor is Render plus the D15 gateway substitution (spec D15, Owner
 // Decisions #11): every string leaf in the chart values (pack defaults from
 // chart.yaml merged with the caller's values, override winning) and every
-// manifests/*.yaml file's raw bytes get ${GATEWAY_HOST} -> gw's host[:port]
-// and ${GATEWAY_FQDN} -> gw's bare host (see substitute in expose.go — the
-// same two replacements ExposeURLs already applies to expose.urls). A zero
+// manifests/*.yaml file's raw bytes get ${GATEWAY_HOST} -> gw's host[:port],
+// ${GATEWAY_FQDN} -> gw's bare host, and ${GATEWAY_PACK} -> gw's pack name
+// (also its namespace, for F9 HTTPRoute parentRefs) (see substitute in
+// expose.go — the replacements ExposeURLs already applies to expose.urls). A zero
 // gw (Host == "") performs no substitution, so Render(values) — which calls
 // this with config.GatewaySpec{} — is unaffected.
 func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendered, error) {
