@@ -1,10 +1,16 @@
 package k3dp
 
 import (
+	"context"
+	"errors"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	v1alpha5 "github.com/k3d-io/k3d/v5/pkg/config/v1alpha5"
+	"github.com/k3d-io/k3d/v5/pkg/runtimes"
+	k3dtypes "github.com/k3d-io/k3d/v5/pkg/types"
 )
 
 // TestEnsureExposedAPIPort guards the k3d kubeconfig-port bug (Phase 3 e2e,
@@ -39,4 +45,64 @@ func TestEnsureExposedAPIPort(t *testing.T) {
 			t.Fatalf("user-provided HostPort overwritten: got %q, want 6550", cfg.ExposeAPI.HostPort)
 		}
 	})
+}
+
+// TestImportWithRetry_SucceedsOnSecondAttempt exercises the F10 retry seam: a
+// load that fails once (the observed ~1-in-3 transient containerd import
+// failure) then succeeds must not surface an error to the caller.
+func TestImportWithRetry_SucceedsOnSecondAttempt(t *testing.T) {
+	calls := 0
+	load := func(ctx context.Context, runtime runtimes.Runtime, tarPaths []string, cluster *k3dtypes.Cluster, opts k3dtypes.ImageImportOpts) error {
+		calls++
+		if calls == 1 {
+			return errors.New("failed to import images in node 'k3d-x-server-0': exit status 1: Logs from failed access process:\ncontainerd digest mismatch")
+		}
+		return nil
+	}
+	err := importWithRetry(context.Background(), nil, []string{"a.tar"}, &k3dtypes.Cluster{Name: "x"}, k3dtypes.ImageImportOpts{}, load, 0)
+	if err != nil {
+		t.Fatalf("importWithRetry: got error %v, want nil after retry succeeds", err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want exactly 2 (one retry)", calls)
+	}
+}
+
+// TestImportWithRetry_SucceedsFirstTry ensures the happy path does not pay
+// for a retry it doesn't need.
+func TestImportWithRetry_SucceedsFirstTry(t *testing.T) {
+	calls := 0
+	load := func(ctx context.Context, runtime runtimes.Runtime, tarPaths []string, cluster *k3dtypes.Cluster, opts k3dtypes.ImageImportOpts) error {
+		calls++
+		return nil
+	}
+	err := importWithRetry(context.Background(), nil, []string{"a.tar"}, &k3dtypes.Cluster{Name: "x"}, k3dtypes.ImageImportOpts{}, load, time.Hour)
+	if err != nil {
+		t.Fatalf("importWithRetry: got error %v, want nil", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want exactly 1 (no retry needed)", calls)
+	}
+}
+
+// TestImportWithRetry_FailsAfterOneRetry confirms the retry is bounded to
+// exactly one attempt and the underlying error (already carrying k3d's own
+// captured node-exec output, per docker.execInNode) passes through unchanged.
+func TestImportWithRetry_FailsAfterOneRetry(t *testing.T) {
+	calls := 0
+	underlying := "failed to import images in node 'k3d-x-server-0': exit status 1: Logs from failed access process:\ncontainerd: content digest mismatch"
+	load := func(ctx context.Context, runtime runtimes.Runtime, tarPaths []string, cluster *k3dtypes.Cluster, opts k3dtypes.ImageImportOpts) error {
+		calls++
+		return errors.New(underlying)
+	}
+	err := importWithRetry(context.Background(), nil, []string{"a.tar"}, &k3dtypes.Cluster{Name: "x"}, k3dtypes.ImageImportOpts{}, load, 0)
+	if err == nil {
+		t.Fatal("importWithRetry: got nil error, want error after both attempts fail")
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want exactly 2 (initial + one retry, no more)", calls)
+	}
+	if !strings.Contains(err.Error(), "content digest mismatch") {
+		t.Fatalf("error %q lost the underlying node-exec output", err.Error())
+	}
 }

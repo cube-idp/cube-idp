@@ -31,9 +31,12 @@ import (
 // `cube-idp status`, not sync.
 const syncApplyTimeout = 2 * time.Minute
 
-// Result is what SyncOnce reports back to its caller (cmd/sync.go), for the
-// "✔ synced <name>@<version>" line. Digest feeds Task 11's change-skip
-// logic (compare the digest of the last sync to skip a no-op push).
+// Result is what SyncOnce reports back to its caller (cmd/sync.go). The
+// "delivered — engine reconciling" line (below) is the only user-facing
+// confirmation of a completed sync; cmd/sync.go does not print a second
+// summary from Result to avoid duplicating it. Digest feeds Task 11's
+// change-skip logic (compare the digest of the last sync to skip a no-op
+// push).
 type Result struct{ Pack, Version, Digest string }
 
 // Deps is SyncOnce's dependency bag, assembled by cmd/sync.go exactly like

@@ -2,16 +2,19 @@ package kindp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"k8s.io/client-go/tools/clientcmd"
 	kindcluster "sigs.k8s.io/kind/pkg/cluster"
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
 	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
+	kindexec "sigs.k8s.io/kind/pkg/exec"
 
 	"github.com/rafpe/cube-idp/internal/bundle"
 	"github.com/rafpe/cube-idp/internal/config"
@@ -19,6 +22,11 @@ import (
 	"github.com/rafpe/cube-idp/internal/kube"
 	"github.com/rafpe/cube-idp/internal/trust"
 )
+
+// loadRetryBackoff is the pause before the single retry of a per-node image
+// import (F10: `ctr images import` was observed to fail transiently ~1-in-3
+// runs in CI with no reproducible cause other than containerd/host timing).
+const loadRetryBackoff = 2 * time.Second
 
 // Kind implements cluster.Provider for local kind (kubernetes-in-docker)
 // clusters (spec §4.1). It is a thin wrapper around sigs.k8s.io/kind: all
@@ -108,40 +116,88 @@ func (k *Kind) certsD() (CertsD, error) {
 // the loop is node-count-agnostic). Any failure — no such cluster, an
 // unreadable tar, or a runtime import that rejects the layout — wraps as
 // CUBE-7002 naming the image, never a silent skip.
+//
+// A single `ctr images import` call is retried once (loadWithRetry, F10):
+// this failure mode was observed to be transient roughly 1-in-3 times in CI,
+// and the retry alone resolves it without operator intervention. The
+// remediation names that transience explicitly rather than pointing at the
+// bundle, which is not at fault.
 func (k *Kind) LoadImages(ctx context.Context, name string, imageTars map[string]string) error {
-	nodes, err := k.provider.ListNodes(name)
+	nodeList, err := k.provider.ListNodes(name)
 	if err != nil {
 		return diag.Wrap(err, diag.CodeVendorPullFail,
 			fmt.Sprintf("cannot list nodes of kind cluster %q to load bundled images", name),
 			"verify the cluster exists (`cube-idp status`) and the container runtime is running, then retry")
 	}
 	for _, img := range bundle.SortedImageLoads(imageTars) {
-		if err := loadArchiveIntoNodes(nodes, img.Tar); err != nil {
+		if err := loadArchiveIntoNodes(nodeList, img.Tar, openAndLoadArchive, loadRetryBackoff); err != nil {
 			return diag.Wrap(err, diag.CodeVendorPullFail,
 				fmt.Sprintf("cannot load image %s into cluster nodes", img.Ref),
-				"verify the bundle with `cube-idp vendor` on a connected machine and retry")
+				"transient containerd import failure — re-run `cube-idp up --bundle` (idempotent); if it persists, verify the bundle with `cube-idp vendor` on a connected machine and retry")
 		}
 	}
 	return nil
 }
 
-// loadArchiveIntoNodes opens the tar at path once per node and hands the
-// reader to kind's nodeutils.LoadImageArchive (the `kind load image-archive`
-// primitive: containerd import of an OCI-layout tar). A fresh reader per node
-// keeps each import reading from the start of the archive.
-func loadArchiveIntoNodes(nodes []nodes.Node, path string) error {
-	for _, n := range nodes {
-		f, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		err = nodeutils.LoadImageArchive(n, f)
-		f.Close()
-		if err != nil {
+// imageArchiveLoad is the retry seam for importing one image archive into
+// one kind node. Production wires it to openAndLoadArchive; tests inject a
+// fake that fails a fixed number of times, exercising loadWithRetry without a
+// real cluster.
+type imageArchiveLoad func(n nodes.Node, path string) error
+
+// openAndLoadArchive opens the tar at path and hands the reader to kind's
+// nodeutils.LoadImageArchive (the `kind load image-archive` primitive: a
+// containerd import of an OCI-layout tar).
+func openAndLoadArchive(n nodes.Node, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return nodeutils.LoadImageArchive(n, f)
+}
+
+// loadArchiveIntoNodes runs load once per node, retrying each per the rules
+// in loadWithRetry. A fresh reader is opened per attempt (openAndLoadArchive
+// re-opens the file), so a failed first attempt never leaves a partially-read
+// stream behind for the retry.
+func loadArchiveIntoNodes(nodeList []nodes.Node, path string, load imageArchiveLoad, backoff time.Duration) error {
+	for _, n := range nodeList {
+		if err := loadWithRetry(n, path, load, backoff); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// loadWithRetry runs load, and on failure retries exactly once after
+// backoff. If both attempts fail, the returned error surfaces the underlying
+// command's stderr: kind's exec.RunError captures stdout/stderr in its
+// Output field, but its Error() string only reports the exit status —
+// without unwrapping to RunError here, the operator sees "exit status 1"
+// with no clue why the import failed.
+func loadWithRetry(n nodes.Node, path string, load imageArchiveLoad, backoff time.Duration) error {
+	err := load(n, path)
+	if err == nil {
+		return nil
+	}
+	time.Sleep(backoff)
+	if err2 := load(n, path); err2 == nil {
+		return nil
+	} else {
+		err = err2
+	}
+	return withStderr(err)
+}
+
+// withStderr appends the captured command output from a kind exec.RunError
+// (if any) to the error message, since RunError.Error() otherwise omits it.
+func withStderr(err error) error {
+	var runErr *kindexec.RunError
+	if errors.As(err, &runErr) && len(runErr.Output) > 0 {
+		return fmt.Errorf("%w (output: %s)", err, strings.TrimSpace(string(runErr.Output)))
+	}
+	return err
 }
 
 // Exists reports whether a kind cluster with the given name exists.

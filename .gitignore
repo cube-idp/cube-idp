@@ -3,3 +3,5 @@
 *.test
 /bin/
 .claude/worktrees/
+/cube.yaml
+/cube.lock

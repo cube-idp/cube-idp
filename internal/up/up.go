@@ -97,7 +97,8 @@ func Run(ctx context.Context, opts Options) error {
 		if err := opened.Verify(); err != nil {
 			return err
 		}
-		con.Step("bundle", "verified %s (lock %s)", opts.Bundle, opened.Manifest.LockDigest)
+		con.Step("bundle", "bundle opened — lock digest OK, %d packs / %d images present",
+			len(opened.Lock.Packs), len(opened.Manifest.Images))
 	}
 
 	// D12 ("cert material is generated before cluster creation"): ensure the

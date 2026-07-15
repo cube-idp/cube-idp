@@ -71,6 +71,7 @@ func newCnoeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			p := ui.NewFor(c.OutOrStdout())
 			for _, app := range apps {
 				rendered, err := app.Render(c.Context(), cacheDir)
 				if err != nil {
@@ -90,9 +91,9 @@ func newCnoeCmd() *cobra.Command {
 				if err := a.RecordInventory(c.Context(), deliverObjs); err != nil {
 					return err
 				}
-				ui.NewFor(c.OutOrStdout()).Step("cnoe", "%s imported as %s@%s", app.Name, rendered.Name, rendered.Version)
+				p.Step("cnoe", "%s imported as %s@%s", app.Name, rendered.Name, rendered.Version)
 			}
-			fmt.Fprintf(c.OutOrStdout(), "✔ %d application(s) imported — `cube-idp status` tracks their health\n", len(apps))
+			fmt.Fprintf(c.OutOrStdout(), "%s %d application(s) imported — `cube-idp status` tracks their health\n", p.Glyph(ui.GlyphOK), len(apps))
 			return nil
 		},
 	}
