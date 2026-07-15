@@ -136,8 +136,9 @@ func (k *K3d) connect(ctx context.Context, name string) (*kube.Conn, error) {
 // are ordered by image ref (bundle.SortedImageLoads) for a deterministic,
 // reproducible import; ImageImportIntoClusterMulti loads a tar archive when
 // the "image" it is given is a filesystem path. On failure the whole load
-// wraps as CUBE-7002 (k3d imports all tars in one call, so the failing image
-// is not individually identifiable here — the tar list is named instead).
+// wraps as CUBE-7006 (consume-side; k3d imports all tars in one call, so the
+// failing image is not individually identifiable here — the tar list is
+// named instead).
 //
 // The call is retried once (importWithRetry, F10): k3d's own node exec
 // wrapper already appends the failed process's captured stdout/stderr to the
@@ -156,9 +157,16 @@ func (k *K3d) LoadImages(ctx context.Context, name string, imageTars map[string]
 		refs[i] = l.Ref
 	}
 	cluster := &k3dtypes.Cluster{Name: name}
-	if err := importWithRetry(ctx, runtimes.SelectedRuntime, tarPaths, cluster, k3dtypes.ImageImportOpts{},
-		k3dclient.ImageImportIntoClusterMulti, loadRetryBackoff); err != nil {
-		return diag.Wrap(err, diag.CodeVendorPullFail,
+	return importImagesWithDiag(ctx, tarPaths, refs, cluster, k3dclient.ImageImportIntoClusterMulti, loadRetryBackoff)
+}
+
+// importImagesWithDiag runs the (retried) k3d multi-tar import and wraps any
+// permanent (post-retry) failure as CUBE-7006. Split out from LoadImages so
+// the diag-wrap decision is testable against the imageImportFunc fake seam
+// without a real k3d runtime/cluster.
+func importImagesWithDiag(ctx context.Context, tarPaths, refs []string, cluster *k3dtypes.Cluster, load imageImportFunc, backoff time.Duration) error {
+	if err := importWithRetry(ctx, runtimes.SelectedRuntime, tarPaths, cluster, k3dtypes.ImageImportOpts{}, load, backoff); err != nil {
+		return diag.Wrap(err, diag.CodeBundleImageLoadFail,
 			fmt.Sprintf("cannot load images into cluster nodes (%s)", strings.Join(refs, ", ")),
 			"transient containerd import failure — re-run `cube-idp up --bundle` (idempotent); if it persists, verify the bundle with `cube-idp vendor` on a connected machine and retry")
 	}

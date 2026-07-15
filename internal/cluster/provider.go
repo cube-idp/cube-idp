@@ -45,7 +45,9 @@ type Provider interface {
 type ImageLoader interface {
 	// LoadImages loads every image in imageTars (original ref -> bundle tar
 	// path, from bundle.Opened.ImageTars) into the named cluster's nodes.
-	// Failures wrap as CUBE-7002 naming the offending image.
+	// A failure loading an image wraps as CUBE-7006 naming the offending
+	// image; a failure just discovering the cluster's nodes wraps as CUBE-7002
+	// (produce-side: the cluster/runtime itself is unreachable).
 	LoadImages(ctx context.Context, name string, imageTars map[string]string) error
 }
 

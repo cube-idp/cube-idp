@@ -8,6 +8,9 @@ import (
 
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
 	kindexec "sigs.k8s.io/kind/pkg/exec"
+
+	"github.com/rafpe/cube-idp/internal/bundle"
+	"github.com/rafpe/cube-idp/internal/diag"
 )
 
 // TestLoadWithRetry_SucceedsOnSecondAttempt exercises the F10 retry seam: a
@@ -129,5 +132,30 @@ func TestLoadArchiveIntoNodes_StopsAtFirstNodeThatExhaustsRetries(t *testing.T) 
 	// First node: initial attempt + one retry = 2 calls, then loop returns.
 	if calls != 2 {
 		t.Fatalf("calls = %d, want exactly 2 (loop must stop at the first exhausted node)", calls)
+	}
+}
+
+// TestLoadImagesIntoNodes_PermanentFailureSurfacesCUBE7006 asserts that a
+// permanently-failing image load (both the initial attempt and its retry
+// exhausted) surfaces the dedicated consume-side code CUBE-7006
+// (CodeBundleImageLoadFail), not the vendor/produce-side CUBE-7002
+// (CodeVendorPullFail) it used to be overloaded onto.
+func TestLoadImagesIntoNodes_PermanentFailureSurfacesCUBE7006(t *testing.T) {
+	load := func(n nodes.Node, path string) error {
+		return errors.New("permanent containerd import failure")
+	}
+	nodeList := make([]nodes.Node, 1)
+	imageTars := map[string]string{"example.com/app:v1": "app.tar"}
+
+	err := loadImagesIntoNodes(nodeList, bundle.SortedImageLoads(imageTars), load, 0)
+	if err == nil {
+		t.Fatal("loadImagesIntoNodes: got nil error, want error")
+	}
+	var de *diag.Error
+	if !errors.As(err, &de) {
+		t.Fatalf("loadImagesIntoNodes: error %v is not a *diag.Error", err)
+	}
+	if de.Code != diag.CodeBundleImageLoadFail {
+		t.Fatalf("loadImagesIntoNodes: code = %s, want %s (CUBE-7006)", de.Code, diag.CodeBundleImageLoadFail)
 	}
 }

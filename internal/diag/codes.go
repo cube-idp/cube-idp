@@ -115,10 +115,11 @@ const (
 // 70xx: vendor / air-gap bundle (spec §4.1, Phase 3)
 const (
 	CodeVendorLockMissing   Code = "CUBE-7001" // cube.lock missing, unreadable, or corrupt (vendor)
-	CodeVendorPullFail      Code = "CUBE-7002" // vendor: pull of a pinned pack/image, or writing the bundle itself, failed (bundle is complete-or-error, never partial)
+	CodeVendorPullFail      Code = "CUBE-7002" // vendor: pull of a pinned pack/image, or writing the bundle itself, failed — produce side (vendor); the consume-side load is CUBE-7006 (bundle is complete-or-error, never partial)
 	CodeVendorBundleCorrupt Code = "CUBE-7003" // vendor bundle is unreadable or corrupt (Open)
 	CodeVendorIncomplete    Code = "CUBE-7004" // vendor bundle is missing or has corrupt content for a locked pack or image (Verify)
 	CodeBundleNoImageLoader Code = "CUBE-7005" // `up --bundle` needs a provider that node-loads images (kind/k3d); `existing` cannot
+	CodeBundleImageLoadFail Code = "CUBE-7006" // bundled image load into cluster nodes failed (kind/k3d LoadImages, consume side)
 )
 
 // 71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)

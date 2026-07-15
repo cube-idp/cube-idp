@@ -113,9 +113,10 @@ func (k *Kind) certsD() (CertsD, error) {
 // runtime, so `up --bundle` pods start without any registry pull. Images load
 // in ascending ref order (bundle.SortedImageLoads) for deterministic progress
 // output; each tar is streamed once per node (kind runs one node here, but
-// the loop is node-count-agnostic). Any failure — no such cluster, an
-// unreadable tar, or a runtime import that rejects the layout — wraps as
-// CUBE-7002 naming the image, never a silent skip.
+// the loop is node-count-agnostic). A failure listing the cluster's nodes
+// wraps as CUBE-7002 (still vendor/produce-side: the cluster/runtime itself
+// is not reachable); a failure loading an image once nodes are known wraps
+// as CUBE-7006 (consume-side) naming the image, never a silent skip.
 //
 // A single `ctr images import` call is retried once (loadWithRetry, F10):
 // this failure mode was observed to be transient roughly 1-in-3 times in CI,
@@ -129,9 +130,17 @@ func (k *Kind) LoadImages(ctx context.Context, name string, imageTars map[string
 			fmt.Sprintf("cannot list nodes of kind cluster %q to load bundled images", name),
 			"verify the cluster exists (`cube-idp status`) and the container runtime is running, then retry")
 	}
-	for _, img := range bundle.SortedImageLoads(imageTars) {
-		if err := loadArchiveIntoNodes(nodeList, img.Tar, openAndLoadArchive, loadRetryBackoff); err != nil {
-			return diag.Wrap(err, diag.CodeVendorPullFail,
+	return loadImagesIntoNodes(nodeList, bundle.SortedImageLoads(imageTars), openAndLoadArchive, loadRetryBackoff)
+}
+
+// loadImagesIntoNodes streams each image load in order, wrapping any
+// permanent (post-retry) failure as CUBE-7006 naming the failing image. Split
+// out from LoadImages so the diag-wrap decision is testable against the
+// imageArchiveLoad fake seam without a real kind provider/cluster.
+func loadImagesIntoNodes(nodeList []nodes.Node, loads []bundle.ImageLoad, load imageArchiveLoad, backoff time.Duration) error {
+	for _, img := range loads {
+		if err := loadArchiveIntoNodes(nodeList, img.Tar, load, backoff); err != nil {
+			return diag.Wrap(err, diag.CodeBundleImageLoadFail,
 				fmt.Sprintf("cannot load image %s into cluster nodes", img.Ref),
 				"transient containerd import failure — re-run `cube-idp up --bundle` (idempotent); if it persists, verify the bundle with `cube-idp vendor` on a connected machine and retry")
 		}

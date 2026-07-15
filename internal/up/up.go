@@ -154,7 +154,7 @@ func Run(ctx context.Context, opts Options) error {
 		lp := con.Progress("bundle", "loading images into cluster nodes")
 		if err := prov.(cluster.ImageLoader).LoadImages(ctx, cube.Metadata.Name, opened.ImageTars()); err != nil {
 			lp.Stop()
-			return err // LoadImages wraps with CUBE-7002 and names the failing image
+			return err // LoadImages wraps with CUBE-7006 (or CUBE-7002 for a ListNodes failure) and names the failing image
 		}
 		lp.Done("%d image(s) loaded into cluster nodes", len(opened.ImageTars()))
 	}

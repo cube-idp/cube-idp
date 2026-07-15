@@ -11,6 +11,8 @@ import (
 	v1alpha5 "github.com/k3d-io/k3d/v5/pkg/config/v1alpha5"
 	"github.com/k3d-io/k3d/v5/pkg/runtimes"
 	k3dtypes "github.com/k3d-io/k3d/v5/pkg/types"
+
+	"github.com/rafpe/cube-idp/internal/diag"
 )
 
 // TestEnsureExposedAPIPort guards the k3d kubeconfig-port bug (Phase 3 e2e,
@@ -104,5 +106,29 @@ func TestImportWithRetry_FailsAfterOneRetry(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "content digest mismatch") {
 		t.Fatalf("error %q lost the underlying node-exec output", err.Error())
+	}
+}
+
+// TestImportImagesWithDiag_PermanentFailureSurfacesCUBE7006 asserts that a
+// permanently-failing k3d image import (both the initial attempt and its
+// retry exhausted) surfaces the dedicated consume-side code CUBE-7006
+// (CodeBundleImageLoadFail), not the vendor/produce-side CUBE-7002
+// (CodeVendorPullFail) it used to be overloaded onto.
+func TestImportImagesWithDiag_PermanentFailureSurfacesCUBE7006(t *testing.T) {
+	load := func(ctx context.Context, runtime runtimes.Runtime, tarPaths []string, cluster *k3dtypes.Cluster, opts k3dtypes.ImageImportOpts) error {
+		return errors.New("permanent containerd import failure")
+	}
+	cluster := &k3dtypes.Cluster{Name: "x"}
+
+	err := importImagesWithDiag(context.Background(), []string{"a.tar"}, []string{"example.com/app:v1"}, cluster, load, 0)
+	if err == nil {
+		t.Fatal("importImagesWithDiag: got nil error, want error")
+	}
+	var de *diag.Error
+	if !errors.As(err, &de) {
+		t.Fatalf("importImagesWithDiag: error %v is not a *diag.Error", err)
+	}
+	if de.Code != diag.CodeBundleImageLoadFail {
+		t.Fatalf("importImagesWithDiag: code = %s, want %s (CUBE-7006)", de.Code, diag.CodeBundleImageLoadFail)
 	}
 }
