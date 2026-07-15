@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	k3dclient "github.com/k3d-io/k3d/v5/pkg/client"
 	k3dconfig "github.com/k3d-io/k3d/v5/pkg/config"
@@ -20,6 +21,11 @@ import (
 	"github.com/rafpe/cube-idp/internal/diag"
 	"github.com/rafpe/cube-idp/internal/kube"
 )
+
+// loadRetryBackoff is the pause before the single retry of the whole
+// image-import call (F10: a transient containerd import was observed to fail
+// ~1-in-3 runs in CI with no reproducible cause other than host timing).
+const loadRetryBackoff = 2 * time.Second
 
 // K3d implements cluster.Provider for local k3d (k3s-in-docker) clusters
 // (spec §4.1, D4). It is a thin wrapper around github.com/k3d-io/k3d/v5: all
@@ -132,6 +138,12 @@ func (k *K3d) connect(ctx context.Context, name string) (*kube.Conn, error) {
 // the "image" it is given is a filesystem path. On failure the whole load
 // wraps as CUBE-7002 (k3d imports all tars in one call, so the failing image
 // is not individually identifiable here — the tar list is named instead).
+//
+// The call is retried once (importWithRetry, F10): k3d's own node exec
+// wrapper already appends the failed process's captured stdout/stderr to the
+// returned error (see docker.execInNode), so unlike kind's exec.RunError this
+// path does not need extra unwrapping to avoid swallowing it — only the
+// retry and the reworded remediation are needed here.
 func (k *K3d) LoadImages(ctx context.Context, name string, imageTars map[string]string) error {
 	loads := bundle.SortedImageLoads(imageTars)
 	if len(loads) == 0 {
@@ -143,13 +155,32 @@ func (k *K3d) LoadImages(ctx context.Context, name string, imageTars map[string]
 		tarPaths[i] = l.Tar
 		refs[i] = l.Ref
 	}
-	if err := k3dclient.ImageImportIntoClusterMulti(ctx, runtimes.SelectedRuntime, tarPaths,
-		&k3dtypes.Cluster{Name: name}, k3dtypes.ImageImportOpts{}); err != nil {
+	cluster := &k3dtypes.Cluster{Name: name}
+	if err := importWithRetry(ctx, runtimes.SelectedRuntime, tarPaths, cluster, k3dtypes.ImageImportOpts{},
+		k3dclient.ImageImportIntoClusterMulti, loadRetryBackoff); err != nil {
 		return diag.Wrap(err, diag.CodeVendorPullFail,
 			fmt.Sprintf("cannot load images into cluster nodes (%s)", strings.Join(refs, ", ")),
-			"verify the bundle with `cube-idp vendor` on a connected machine and retry")
+			"transient containerd import failure — re-run `cube-idp up --bundle` (idempotent); if it persists, verify the bundle with `cube-idp vendor` on a connected machine and retry")
 	}
 	return nil
+}
+
+// imageImportFunc is the retry seam for the k3d image-import call.
+// Production wires it to k3dclient.ImageImportIntoClusterMulti; tests inject
+// a fake that fails a fixed number of times, exercising importWithRetry
+// without a container runtime.
+type imageImportFunc func(ctx context.Context, runtime runtimes.Runtime, tarPaths []string, cluster *k3dtypes.Cluster, opts k3dtypes.ImageImportOpts) error
+
+// importWithRetry runs load, and on failure retries exactly once after
+// backoff — the same transient-failure tolerance kindp applies to its
+// per-node import.
+func importWithRetry(ctx context.Context, runtime runtimes.Runtime, tarPaths []string, cluster *k3dtypes.Cluster, opts k3dtypes.ImageImportOpts, load imageImportFunc, backoff time.Duration) error {
+	err := load(ctx, runtime, tarPaths, cluster, opts)
+	if err == nil {
+		return nil
+	}
+	time.Sleep(backoff)
+	return load(ctx, runtime, tarPaths, cluster, opts)
 }
 
 // Exists reports whether a k3d cluster with the given name exists.
