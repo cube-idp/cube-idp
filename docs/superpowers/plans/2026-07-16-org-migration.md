@@ -80,17 +80,17 @@ Expected: `{"name":"go-getter","isFork":true,"parent":"hashicorp/go-getter"}` an
 **Interfaces:**
 - Produces: `cube-idp/cube-idp` (private) with issues, tags, the v0.1.0 release + assets, and Actions history; redirect from `RafPe/cube-idp`.
 
-- [ ] **Step 1: Transfer via API**
+- [x] **Step 1: Transfer via API**
 
 Run: `gh api repos/RafPe/cube-idp/transfer -f new_owner=cube-idp`
 Expected: HTTP 202-style JSON. Browser fallback as in Task 1.
 
-- [ ] **Step 2: Verify repo, visibility, release, and tag all transferred**
+- [x] **Step 2: Verify repo, visibility, release, and tag all transferred**
 
 Run: `gh repo view cube-idp/cube-idp --json name,visibility --jq '{name,visibility}' && gh release view v0.1.0 -R cube-idp/cube-idp --json tagName,assets --jq '{tag:.tagName,assets:(.assets|length)}'`
 Expected: `{"name":"cube-idp","visibility":"PRIVATE"}` and the v0.1.0 release with its asset count (>0).
 
-- [ ] **Step 3: Verify org Actions policy won't break the workflows**
+- [x] **Step 3: Verify org Actions policy won't break the workflows**
 
 Run: `gh api orgs/cube-idp/actions/permissions --jq '{enabled_repositories,allowed_actions}' && gh api repos/cube-idp/cube-idp/actions/permissions/workflow --jq .default_workflow_permissions`
 Expected: Actions enabled for the repo (`all` or the repo selected) and any `default_workflow_permissions` value is fine (`read` is OK — both workflows declare explicit `permissions:` blocks). If Actions are disabled org-wide, STOP and ask the user to enable them in org settings.
