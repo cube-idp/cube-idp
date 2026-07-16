@@ -61,12 +61,12 @@ Expected: both print `GraphQL: Could not resolve to a Repository...` (not found)
 **Interfaces:**
 - Produces: `github.com/cube-idp/go-getter` with tag `v1.9.0` reachable.
 
-- [ ] **Step 1: Transfer via API**
+- [x] **Step 1: Transfer via API**
 
 Run: `gh api repos/RafPe/go-getter/transfer -f new_owner=cube-idp`
 Expected: HTTP 202-style JSON response. If it errors with permissions, fall back to the browser: RafPe/go-getter → Settings → Danger Zone → Transfer ownership → `cube-idp`, then confirm here before continuing.
 
-- [ ] **Step 2: Verify the transfer landed, fork intact, tag present**
+- [x] **Step 2: Verify the transfer landed, fork intact, tag present**
 
 Run: `gh repo view cube-idp/go-getter --json name,isFork,parent --jq '{name,isFork,parent:.parent.nameWithOwner}' && gh api repos/cube-idp/go-getter/git/refs/tags/v1.9.0 --jq .ref`
 Expected: `{"name":"go-getter","isFork":true,"parent":"hashicorp/go-getter"}` and `refs/tags/v1.9.0`. (Transfers are async — if 404, wait ~30s and retry.)
