@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // requestTimeout bounds every Gitea API call so a wedged port-forward or

@@ -10,7 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/rafpe/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
 // Live runs the LiveRenderer: a transient Bubble Tea v2 program in INLINE

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // WriteCertsD prepares a containerd certs.d host directory that maps image

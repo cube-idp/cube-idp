@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/rafpe/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
 // JSON returns the machine projection: exactly one JSON object per line, one

@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"oras.land/oras-go/v2/content/memory"
 
-	"github.com/rafpe/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
 // cmObj builds a minimal ConfigMap unstructured object for use as a rendered

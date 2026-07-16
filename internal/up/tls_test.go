@@ -11,9 +11,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/trust"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/trust"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 func TestGatewayTLSSecretShape(t *testing.T) {

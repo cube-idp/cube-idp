@@ -22,8 +22,8 @@ import (
 	// and writes. Already a repo dependency (cmd/init.go, config/load_test.go).
 	"sigs.k8s.io/yaml"
 
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // ZotMirror is k3d's CertsD-equivalent (D12): when Host is non-empty,

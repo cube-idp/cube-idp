@@ -9,7 +9,7 @@ import (
 
 	getter "github.com/hashicorp/go-getter" // RafPe fork via replace (go.mod)
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // isGitRef: no scheme, and the first path segment looks like a hostname

@@ -16,9 +16,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	"github.com/rafpe/cube-idp/internal/apply"
-	"github.com/rafpe/cube-idp/internal/engine"
-	"github.com/rafpe/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/engine"
+	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
 // testREST is non-nil only when KUBEBUILDER_ASSETS is set (make test-apply);

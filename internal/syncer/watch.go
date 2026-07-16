@@ -21,8 +21,8 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // Watch runs SyncOnce, then blocks: re-syncs on every debounced change

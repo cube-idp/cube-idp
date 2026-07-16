@@ -45,8 +45,8 @@ import (
 
 	"golang.org/x/mod/sumdb/dirhash"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/lock"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/lock"
 )
 
 // Manifest is manifest.json's schema, versioned via FormatVersion.

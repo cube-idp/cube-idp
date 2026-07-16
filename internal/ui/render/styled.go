@@ -6,7 +6,7 @@ import (
 
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/rafpe/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
 // The styled-static style definitions are a deliberate, small duplication of

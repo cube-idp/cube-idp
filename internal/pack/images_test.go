@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // TestImagesParsed pins spec D14: a pack.cue images: list is parsed into

@@ -22,7 +22,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/rafpe/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/config"
 )
 
 // cubeName is both the cube's metadata.name and (per internal/cluster/kindp)

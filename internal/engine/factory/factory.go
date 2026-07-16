@@ -8,10 +8,10 @@ package factory
 import (
 	"fmt"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/engine"
-	"github.com/rafpe/cube-idp/internal/engine/argocd"
-	"github.com/rafpe/cube-idp/internal/engine/flux"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/engine"
+	"github.com/cube-idp/cube-idp/internal/engine/argocd"
+	"github.com/cube-idp/cube-idp/internal/engine/flux"
 )
 
 // New builds the Engine named by typ. "flux" and "argocd" (D2) both ship;

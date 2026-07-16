@@ -8,9 +8,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/rafpe/cube-idp/internal/apply"
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/trust"
+	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/trust"
 )
 
 // gatewayTLSValidity is how long an issued gateway leaf cert is valid for.

@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 func tgzWithBin(t *testing.T, binName, content string) []byte {

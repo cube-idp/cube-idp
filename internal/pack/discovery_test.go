@@ -5,7 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/rafpe/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/config"
 )
 
 func TestCRDParsesAndPrintsColumns(t *testing.T) {

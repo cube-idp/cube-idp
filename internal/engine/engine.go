@@ -10,8 +10,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/rafpe/cube-idp/internal/apply"
-	"github.com/rafpe/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
 // ArtifactRef identifies a pushed OCI artifact by repository and tag, e.g.

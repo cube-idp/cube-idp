@@ -7,9 +7,9 @@ import (
 	"sigs.k8s.io/kustomize/api/krusty"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 
-	"github.com/rafpe/cube-idp/internal/apply"
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // RenderDirFor kustomize-builds dir and applies the D15 gateway substitution

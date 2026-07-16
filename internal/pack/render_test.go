@@ -6,7 +6,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/rafpe/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/config"
 )
 
 // TestRenderForSubstitutesGatewayHost pins D15 (spec D15, Owner Decisions

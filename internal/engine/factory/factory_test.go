@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 func TestFactoryFlux(t *testing.T) {

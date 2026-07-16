@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
 // canonicalUpRun is the recorded event slice of a full successful `up`,

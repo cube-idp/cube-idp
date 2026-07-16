@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // TestSyncOncePlainByteStable is Step 3.3's golden test: a recorded sync

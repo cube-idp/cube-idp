@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // validateProgressFlag rejects an unrecognized --progress value with a typed

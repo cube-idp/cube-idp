@@ -5,7 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/rafpe/cube-idp/internal/engine"
+	"github.com/cube-idp/cube-idp/internal/engine"
 )
 
 // DeliverGit is the git-sourced counterpart of Deliver: it translates a

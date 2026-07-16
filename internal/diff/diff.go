@@ -20,15 +20,15 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/rafpe/cube-idp/internal/apply"
-	"github.com/rafpe/cube-idp/internal/cluster"
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/engine"
-	enginefactory "github.com/rafpe/cube-idp/internal/engine/factory"
-	"github.com/rafpe/cube-idp/internal/lock"
-	"github.com/rafpe/cube-idp/internal/pack"
-	"github.com/rafpe/cube-idp/internal/registry"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cluster"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/engine"
+	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
+	"github.com/cube-idp/cube-idp/internal/lock"
+	"github.com/cube-idp/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/registry"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // ensureTimeout bounds the connect step, mirroring status/get: no infinite

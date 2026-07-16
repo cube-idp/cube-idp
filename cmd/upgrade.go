@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rafpe/cube-idp/internal/upgrade"
+	"github.com/cube-idp/cube-idp/internal/upgrade"
 )
 
 func newUpgradeCmd() *cobra.Command {

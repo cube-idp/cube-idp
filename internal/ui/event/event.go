@@ -27,7 +27,7 @@ package event
 import (
 	"time"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // Event is the closed set of run events. The marker method keeps the set

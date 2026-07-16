@@ -9,13 +9,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rafpe/cube-idp/internal/cluster"
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/plugin"
-	"github.com/rafpe/cube-idp/internal/registry"
-	"github.com/rafpe/cube-idp/internal/trust"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/cluster"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/plugin"
+	"github.com/cube-idp/cube-idp/internal/registry"
+	"github.com/cube-idp/cube-idp/internal/trust"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 func NewRootCmd() *cobra.Command {

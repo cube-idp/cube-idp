@@ -6,7 +6,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/rafpe/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/config"
 )
 
 // TestChartRefDecode pins ChartRef's struct tags: sigs.k8s.io/yaml converts

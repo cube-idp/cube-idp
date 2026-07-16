@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rafpe/cube-idp/internal/diff"
+	"github.com/cube-idp/cube-idp/internal/diff"
 )
 
 func newDiffCmd() *cobra.Command {

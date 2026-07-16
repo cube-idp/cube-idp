@@ -5,10 +5,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rafpe/cube-idp/internal/cluster/k3dp"
-	"github.com/rafpe/cube-idp/internal/cluster/kindp"
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/cluster/k3dp"
+	"github.com/cube-idp/cube-idp/internal/cluster/kindp"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // newConfigCmd exposes read-only inspection of the loaded cube.yaml, e.g.

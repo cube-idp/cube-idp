@@ -15,9 +15,9 @@ import (
 
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/pack"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // portProbeTimeout bounds the localhost dial CheckPortFree uses to detect a

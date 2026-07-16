@@ -7,7 +7,7 @@ import (
 
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // RenderError produces the final-error block main.go prints to stderr —

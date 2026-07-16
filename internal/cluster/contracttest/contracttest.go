@@ -13,9 +13,9 @@ import (
 
 	"k8s.io/client-go/discovery"
 
-	"github.com/rafpe/cube-idp/internal/cluster"
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/cluster"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 const gate = "CUBE_IDP_PROVIDER_E2E"
@@ -78,7 +78,7 @@ func Run(t *testing.T, p cluster.Provider, spec config.ClusterSpec) {
 
 	// Diagnose never panics and returns no error-severity findings on a
 	// healthy cluster. (diag.SeverityError verified 2026-07-14 — import
-	// github.com/rafpe/cube-idp/internal/diag.)
+	// github.com/cube-idp/cube-idp/internal/diag.)
 	for _, f := range p.Diagnose(ctx, name) {
 		if f.Severity == diag.SeverityError {
 			t.Fatalf("Diagnose reported an error on a healthy cluster: %+v", f)

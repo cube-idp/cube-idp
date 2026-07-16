@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/engine"
+	"github.com/cube-idp/cube-idp/internal/engine"
 )
 
 func TestDeliverGitShapesFluxObjects(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rafpe/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
 func diagRawOnly() event.Diagnosis { return event.Diagnosis{Raw: "plain failure"} }

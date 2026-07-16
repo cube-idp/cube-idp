@@ -16,7 +16,7 @@ import (
 
 	"github.com/fluxcd/cli-utils/pkg/object"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 func (a *Applier) inventoryName() string { return "cube-idp-inventory-" + a.cube }

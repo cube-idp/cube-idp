@@ -8,13 +8,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rafpe/cube-idp/internal/apply"
-	"github.com/rafpe/cube-idp/internal/cluster"
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/doctor"
-	enginefactory "github.com/rafpe/cube-idp/internal/engine/factory"
-	"github.com/rafpe/cube-idp/internal/trust"
+	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cluster"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/doctor"
+	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
+	"github.com/cube-idp/cube-idp/internal/trust"
 )
 
 func newDoctorCmd() *cobra.Command {

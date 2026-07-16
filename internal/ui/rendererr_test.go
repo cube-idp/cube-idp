@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
 // bufWriter collects live-program output; a plain strings.Builder would do

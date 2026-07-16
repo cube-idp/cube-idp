@@ -19,7 +19,7 @@ import (
 
 	"golang.org/x/mod/sumdb/dirhash"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // Fetch resolves ref to a local, on-disk pack directory and parses its

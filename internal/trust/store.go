@@ -3,7 +3,7 @@ package trust
 import (
 	"github.com/smallstep/truststore"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // InstallOS installs the cube-idp CA into the OS trust stores (the mkcert

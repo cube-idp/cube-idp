@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // Env is the plugin process's env contract (spec §4.4, Owner Decisions #5

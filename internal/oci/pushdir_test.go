@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rafpe/cube-idp/internal/oci/ocitest"
-	"github.com/rafpe/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/oci/ocitest"
+	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
 // localRegistry and writeDemoPack delegate to the shared ocitest package

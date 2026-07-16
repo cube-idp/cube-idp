@@ -16,11 +16,11 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
 	kindexec "sigs.k8s.io/kind/pkg/exec"
 
-	"github.com/rafpe/cube-idp/internal/bundle"
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/kube"
-	"github.com/rafpe/cube-idp/internal/trust"
+	"github.com/cube-idp/cube-idp/internal/bundle"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/kube"
+	"github.com/cube-idp/cube-idp/internal/trust"
 )
 
 // loadRetryBackoff is the pause before the single retry of a per-node image

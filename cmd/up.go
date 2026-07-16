@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rafpe/cube-idp/internal/ui"
-	"github.com/rafpe/cube-idp/internal/up"
+	"github.com/cube-idp/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/up"
 )
 
 func newUpCmd() *cobra.Command {

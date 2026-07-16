@@ -7,15 +7,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rafpe/cube-idp/internal/apply"
-	"github.com/rafpe/cube-idp/internal/cluster"
-	"github.com/rafpe/cube-idp/internal/cnoe"
-	"github.com/rafpe/cube-idp/internal/config"
-	enginefactory "github.com/rafpe/cube-idp/internal/engine/factory"
-	"github.com/rafpe/cube-idp/internal/oci"
-	"github.com/rafpe/cube-idp/internal/pack"
-	"github.com/rafpe/cube-idp/internal/registry"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cluster"
+	"github.com/cube-idp/cube-idp/internal/cnoe"
+	"github.com/cube-idp/cube-idp/internal/config"
+	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
+	"github.com/cube-idp/cube-idp/internal/oci"
+	"github.com/cube-idp/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/registry"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 const cnoeClusterTimeout = 3 * time.Minute

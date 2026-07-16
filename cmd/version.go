@@ -7,7 +7,7 @@ import (
 )
 
 // Version, Commit and Date are stamped at release time via
-// -ldflags "-X github.com/rafpe/cube-idp/cmd.Version=… -X github.com/rafpe/cube-idp/cmd.Commit=… -X github.com/rafpe/cube-idp/cmd.Date=…"
+// -ldflags "-X github.com/cube-idp/cube-idp/cmd.Version=… -X github.com/cube-idp/cube-idp/cmd.Commit=… -X github.com/cube-idp/cube-idp/cmd.Date=…"
 // (.goreleaser.yaml). Defaults describe a plain `go build`.
 var (
 	Version = "dev"

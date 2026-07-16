@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/ui/event"
-	"github.com/rafpe/cube-idp/internal/ui/render"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/ui/render"
 )
 
 // eventBuffer is the channel capacity: a full `up` emits well under 100

@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rafpe/cube-idp/internal/bundle"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/bundle"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 func newVendorCmd() *cobra.Command {

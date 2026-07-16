@@ -3,8 +3,8 @@ package argocd
 import (
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/engine"
-	"github.com/rafpe/cube-idp/internal/engine/contract"
+	"github.com/cube-idp/cube-idp/internal/engine"
+	"github.com/cube-idp/cube-idp/internal/engine/contract"
 )
 
 func TestArgoCDContract(t *testing.T) {

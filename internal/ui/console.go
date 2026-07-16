@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rafpe/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
 // Console is the producer's handle on the event stream (design doc §4.3).

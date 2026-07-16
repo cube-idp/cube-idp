@@ -5,7 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/rafpe/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/apply"
 )
 
 //go:embed manifests/pack-crd.yaml

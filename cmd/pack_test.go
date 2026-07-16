@@ -15,7 +15,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/registry"
 
-	"github.com/rafpe/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
 // packLocalRegistry starts an in-process OCI registry (go-containerregistry's

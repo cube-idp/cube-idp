@@ -12,7 +12,7 @@ import (
 	"github.com/k3d-io/k3d/v5/pkg/runtimes"
 	k3dtypes "github.com/k3d-io/k3d/v5/pkg/types"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // TestEnsureExposedAPIPort guards the k3d kubeconfig-port bug (Phase 3 e2e,

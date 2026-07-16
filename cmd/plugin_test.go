@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/plugin"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/plugin"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // isolatePluginEnv points PATH/HOME/XDG_* at fresh temp dirs so plugin

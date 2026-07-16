@@ -22,7 +22,7 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 	"golang.org/x/term"
 
-	"github.com/rafpe/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
 // Mode is the process-wide output mode, resolved exactly once by

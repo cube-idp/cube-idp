@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/lock"
+	"github.com/cube-idp/cube-idp/internal/lock"
 )
 
 func TestPlanRowClassification(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/rafpe/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
 // Plain returns the plain projection: a pure per-event function whose output

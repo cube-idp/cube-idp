@@ -15,9 +15,9 @@ builds:
     goarch: [amd64, arm64]
     ldflags:
       - -s -w
-      - -X github.com/rafpe/cube-idp/cmd.Version={{ .Version }}
-      - -X github.com/rafpe/cube-idp/cmd.Commit={{ .ShortCommit }}
-      - -X github.com/rafpe/cube-idp/cmd.Date={{ .Date }}
+      - -X github.com/cube-idp/cube-idp/cmd.Version={{ .Version }}
+      - -X github.com/cube-idp/cube-idp/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/cube-idp/cube-idp/cmd.Date={{ .Date }}
 
 archives:
   - id: tarballs

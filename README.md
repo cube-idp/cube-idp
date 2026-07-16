@@ -28,8 +28,8 @@ chmod +x cube-idp && mv cube-idp ~/bin/   # or anywhere on PATH
 cube-idp version
 ```
 
-`go install github.com/rafpe/cube-idp@v0.1.0` does NOT work while the repo is
-private unless you set `GOPRIVATE=github.com/rafpe/cube-idp` and have git
+`go install github.com/cube-idp/cube-idp@v0.1.0` does NOT work while the repo is
+private unless you set `GOPRIVATE=github.com/cube-idp/*` and have git
 auth to the repo; prefer `gh release download`.
 
 > **Known limitation (v0.1.0, F12):** the default profile resolves the gateway

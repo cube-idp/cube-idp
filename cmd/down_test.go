@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/trust"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/trust"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // runRevertTrust wraps revertTrust in the Task 14b event pipeline exactly

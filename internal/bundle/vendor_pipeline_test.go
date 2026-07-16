@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // TestVendorPlainByteStable is Step 2's golden test (Task R3): Vendor driven

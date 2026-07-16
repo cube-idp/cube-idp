@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // TestProgressFlagRejectsUnknownValue pins the design-doc §6.4 preflight: an

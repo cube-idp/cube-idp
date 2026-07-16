@@ -5,9 +5,9 @@ import (
 	"path"
 	"strings"
 
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/lock"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/lock"
 )
 
 // resolveBundleRefs rewrites every cube pack ref to point at that pack's

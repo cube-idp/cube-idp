@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // fakePlugin writes an executable cube-idp-<name> into dir that dumps its

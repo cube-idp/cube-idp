@@ -16,13 +16,13 @@ import (
 
 	"k8s.io/client-go/rest"
 
-	"github.com/rafpe/cube-idp/internal/apply"
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/engine"
-	"github.com/rafpe/cube-idp/internal/kube"
-	"github.com/rafpe/cube-idp/internal/oci"
-	"github.com/rafpe/cube-idp/internal/pack"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/engine"
+	"github.com/cube-idp/cube-idp/internal/kube"
+	"github.com/cube-idp/cube-idp/internal/oci"
+	"github.com/cube-idp/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // syncApplyTimeout bounds the wait=false server-side apply of the delivery

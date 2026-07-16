@@ -17,11 +17,11 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/lock"
-	"github.com/rafpe/cube-idp/internal/oci"
-	"github.com/rafpe/cube-idp/internal/oci/ocitest"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/lock"
+	"github.com/cube-idp/cube-idp/internal/oci"
+	"github.com/cube-idp/cube-idp/internal/oci/ocitest"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // vendorForTest drives Vendor through ui.RunPipeline with ModePlain forced

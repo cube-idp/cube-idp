@@ -5,9 +5,9 @@ import (
 
 	"k8s.io/client-go/rest"
 
-	"github.com/rafpe/cube-idp/internal/apply"
-	"github.com/rafpe/cube-idp/internal/diag"
-	"github.com/rafpe/cube-idp/internal/kube"
+	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/kube"
 )
 
 // PortForward tunnels a free local port to the zot pod and returns

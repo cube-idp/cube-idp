@@ -9,8 +9,8 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
 	kindexec "sigs.k8s.io/kind/pkg/exec"
 
-	"github.com/rafpe/cube-idp/internal/bundle"
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/bundle"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 // TestLoadWithRetry_SucceedsOnSecondAttempt exercises the F10 retry seam: a

@@ -3,9 +3,9 @@ package kindp_test
 import (
 	"testing"
 
-	"github.com/rafpe/cube-idp/internal/cluster/contracttest"
-	"github.com/rafpe/cube-idp/internal/cluster/kindp"
-	"github.com/rafpe/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/cluster/contracttest"
+	"github.com/cube-idp/cube-idp/internal/cluster/kindp"
+	"github.com/cube-idp/cube-idp/internal/config"
 )
 
 func TestKindProviderContract(t *testing.T) {

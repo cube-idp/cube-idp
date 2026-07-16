@@ -9,7 +9,7 @@ import (
 
 	sigyaml "sigs.k8s.io/yaml"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 func codeOf(t *testing.T, err error) diag.Code {

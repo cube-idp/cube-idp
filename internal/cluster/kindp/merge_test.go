@@ -10,8 +10,8 @@ import (
 	"gopkg.in/yaml.v3"
 	v1alpha4 "sigs.k8s.io/kind/pkg/apis/config/v1alpha4"
 
-	"github.com/rafpe/cube-idp/internal/config"
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 var gw = config.GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443}

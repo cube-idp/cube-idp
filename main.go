@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/rafpe/cube-idp/cmd"
-	"github.com/rafpe/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/cmd"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 func main() {

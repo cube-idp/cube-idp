@@ -5,7 +5,7 @@ package doctor
 import (
 	"golang.org/x/sys/unix"
 
-	"github.com/rafpe/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
 func CheckDiskSpace(dir string, minBytes uint64) *diag.Finding {
