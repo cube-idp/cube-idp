@@ -211,3 +211,17 @@ func TestConsoleHealthChangeFilter(t *testing.T) {
 		t.Fatalf("change filter drifted: want 2 health_tick lines, got %d:\n%s", got, out.String())
 	}
 }
+
+// ConsoleProgress.Stop must forward the message and elapsed it already
+// holds — the bare information-free StepFailed{Stage} is audit P4.
+func TestConsoleStopCarriesMsg(t *testing.T) {
+	ch := make(chan event.Event, 4)
+	con := &Console{ch: ch}
+	pr := con.Progress("packs", "delivering gitea@0.1.0")
+	pr.Stop()
+	<-ch // StepStarted
+	ev := (<-ch).(event.StepFailed)
+	if ev.Msg != "delivering gitea@0.1.0" || ev.Dur <= 0 {
+		t.Fatalf("Stop dropped msg/dur: %+v", ev)
+	}
+}

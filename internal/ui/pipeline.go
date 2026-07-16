@@ -110,11 +110,11 @@ func runPipeline(ctx context.Context, cmdName string, out io.Writer,
 	go func() {
 		err := fn(runCtx, con)
 		if err != nil {
-			if st := con.open(); st != "" {
+			if st, msg := con.open(); st != "" {
 				// The producer's error unwound past an open step without
 				// reaching its Stop — resolve it so renderers never leave a
 				// spinner dangling.
-				ch <- event.StepFailed{Stage: st}
+				ch <- event.StepFailed{Stage: st, Msg: msg}
 			}
 			ch <- event.RunDone{OK: false, Dur: time.Since(start)}
 			ch <- diagnosisOf(err) // ALWAYS the final event on failure

@@ -49,7 +49,7 @@ func Styled(w io.Writer) func(event.Event) {
 			b = append(b, fmt.Sprintf("  %s\n", th.Msg.Render(e.Hint))...)
 			w.Write(b)
 		case event.RunStarted, event.StepStarted, event.StepFailed,
-			event.HealthTick, event.Diagnosis, event.RunDone:
+			event.StepLog, event.HealthTick, event.Diagnosis, event.RunDone:
 			// Zero bytes: same silent event set as Plain.
 		}
 	}

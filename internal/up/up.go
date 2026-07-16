@@ -249,62 +249,73 @@ func Run(ctx context.Context, opts Options) error {
 	var entries []lock.Entry
 	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
 	for i, pref := range refs {
-		// Task 13 review: record the RESOLVED fetch source before Fetch runs.
-		// This is the falsifiable output proof of offline honesty: an online
-		// run prints the oci:// ref here; a --bundle run prints the
-		// bundle-local dir (under cube-idp-bundle-*), never oci://. A new
-		// additive plain line, consistent with the existing step conventions.
-		stepFetchSource(con, pref.Ref)
-		// pk, not p: kept distinct from pack.Pack's other short names used
-		// elsewhere in this package (verifyGatewayPackRef's own pk param).
-		pk, err := pack.Fetch(ctx, pref.Ref, dir)
-		if err != nil {
-			return err
-		}
-		// F11: refs[0] is the gateway pack (prepended above). Fail loudly if a
-		// gateway.ref/gateway.pack mismatch means the ref would silently
-		// deliver a different gateway than pack: names, before any cluster
-		// mutation for this pack.
-		if i == 0 {
-			if err := verifyGatewayPackRef(pk, cube.Spec.Gateway); err != nil {
+		// Each pack delivery is an enumerated open step (pack i+1/len(refs))
+		// so renderers can show n-of-m; the Done message is byte-identical to
+		// the previous con.Step line and plain never prints Dur — zero plain
+		// drift.
+		if err := func() error {
+			pr := con.ProgressN("pack", "delivering "+pref.Ref, i+1, len(refs))
+			defer pr.Stop() // no-op after Done; resolves the step on any error return
+			// Task 13 review: record the RESOLVED fetch source before Fetch runs.
+			// This is the falsifiable output proof of offline honesty: an online
+			// run prints the oci:// ref here; a --bundle run prints the
+			// bundle-local dir (under cube-idp-bundle-*), never oci://. A new
+			// additive plain line, consistent with the existing step conventions.
+			stepFetchSource(con, pref.Ref)
+			// pk, not p: kept distinct from pack.Pack's other short names used
+			// elsewhere in this package (verifyGatewayPackRef's own pk param).
+			pk, err := pack.Fetch(ctx, pref.Ref, dir)
+			if err != nil {
 				return err
 			}
-		}
-		packs = append(packs, pk)
-		rendered, err := pk.RenderFor(pref.Values, cube.Spec.Gateway)
-		if err != nil {
+			// F11: refs[0] is the gateway pack (prepended above). Fail loudly if a
+			// gateway.ref/gateway.pack mismatch means the ref would silently
+			// deliver a different gateway than pack: names, before any cluster
+			// mutation for this pack.
+			if i == 0 {
+				if err := verifyGatewayPackRef(pk, cube.Spec.Gateway); err != nil {
+					return err
+				}
+			}
+			packs = append(packs, pk)
+			rendered, err := pk.RenderFor(pref.Values, cube.Spec.Gateway)
+			if err != nil {
+				return err
+			}
+			artifact, err := oci.PushRendered(ctx, rendered, tunnelAddr)
+			if err != nil {
+				return err
+			}
+			rh, err := lock.RenderedHash(rendered.Objects)
+			if err != nil {
+				return err
+			}
+			entries = append(entries, lock.Entry{
+				Ref:          pref.Ref,
+				Name:         rendered.Name,
+				Version:      rendered.Version,
+				Resolved:     pk.Pinned,
+				RenderedHash: rh,
+				// D14: union rendered-manifest images with the pack's own
+				// declared images (pack.cue images:) — see the Entry.Images
+				// field comment for why both sources matter.
+				Images: mergeImages(lock.ImagesFrom(rendered.Objects), pk.Images),
+			})
+			deliverObjs, err := eng.Deliver(ctx, rendered, artifact)
+			if err != nil {
+				return err
+			}
+			if err := a.Apply(ctx, deliverObjs, false, applyTimeout); err != nil {
+				return err
+			}
+			if err := a.RecordInventory(ctx, deliverObjs); err != nil {
+				return err
+			}
+			pr.Done("%s@%s delivered", rendered.Name, rendered.Version)
+			return nil
+		}(); err != nil {
 			return err
 		}
-		artifact, err := oci.PushRendered(ctx, rendered, tunnelAddr)
-		if err != nil {
-			return err
-		}
-		rh, err := lock.RenderedHash(rendered.Objects)
-		if err != nil {
-			return err
-		}
-		entries = append(entries, lock.Entry{
-			Ref:          pref.Ref,
-			Name:         rendered.Name,
-			Version:      rendered.Version,
-			Resolved:     pk.Pinned,
-			RenderedHash: rh,
-			// D14: union rendered-manifest images with the pack's own
-			// declared images (pack.cue images:) — see the Entry.Images
-			// field comment for why both sources matter.
-			Images: mergeImages(lock.ImagesFrom(rendered.Objects), pk.Images),
-		})
-		deliverObjs, err := eng.Deliver(ctx, rendered, artifact)
-		if err != nil {
-			return err
-		}
-		if err := a.Apply(ctx, deliverObjs, false, applyTimeout); err != nil {
-			return err
-		}
-		if err := a.RecordInventory(ctx, deliverObjs); err != nil {
-			return err
-		}
-		con.Step("pack", "%s@%s delivered", rendered.Name, rendered.Version)
 	}
 
 	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
