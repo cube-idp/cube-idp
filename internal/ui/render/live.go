@@ -96,6 +96,9 @@ func scrollbackLine(ev event.Event) string {
 		}
 		b.WriteString("\n  " + th.Msg.Render(e.Hint))
 		return b.String()
+	case event.StepLog:
+		// Live-region tail only (T05); never a permanent scrollback line.
+		return ""
 	default:
 		// RunStarted/StepStarted/HealthTick/RunDone/Diagnosis: live-region
 		// state only. The diagnosis renders AFTER the program exits, via
@@ -182,6 +185,8 @@ func (m liveModel) applyEvent(ev event.Event) liveModel {
 		if e.Stage == "health" {
 			m.components = nil
 		}
+	case event.StepLog:
+		// No-op for now: T05's bounded tail (TE-1.4) gives it behavior.
 	case event.HealthTick:
 		m.components = e.Components
 	case event.RunDone:

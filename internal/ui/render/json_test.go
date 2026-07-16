@@ -105,6 +105,29 @@ func TestJSONFailedRunDiagnosisLast(t *testing.T) {
 	}
 }
 
+// StepFailed must carry msg/dur_ms; steps carry idx/of — all additive
+// under the v1-EXPERIMENTAL window (spec WP2).
+func TestJSONStepFailedCarriesMsgAndDur(t *testing.T) {
+	var buf bytes.Buffer
+	project := JSONWithClock(&buf, fixedClock())
+	project(event.StepFailed{Stage: "packs", Msg: "gitea@0.1.0 pull failed", Dur: 4 * time.Second})
+	line := buf.String()
+	for _, want := range []string{`"type":"step_failed"`, `"msg":"gitea@0.1.0 pull failed"`, `"dur_ms":4000`} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("step_failed line missing %s: %s", want, line)
+		}
+	}
+}
+
+func TestJSONStepCarriesIndexTotal(t *testing.T) {
+	var buf bytes.Buffer
+	project := JSONWithClock(&buf, fixedClock())
+	project(event.StepStarted{Stage: "pack", Msg: "delivering gitea", Index: 3, Total: 7})
+	if !strings.Contains(buf.String(), `"idx":3`) || !strings.Contains(buf.String(), `"of":7`) {
+		t.Fatalf("step_started missing idx/of: %s", buf.String())
+	}
+}
+
 // TestJSONDiagnosisUntypedError covers the fallback: no *diag.Error means
 // code/summary/cause/remediation are omitted entirely and raw carries the
 // error text.

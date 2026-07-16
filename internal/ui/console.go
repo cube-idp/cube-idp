@@ -20,6 +20,7 @@ type Console struct {
 
 	mu         sync.Mutex
 	openStage  string                 // the unresolved StepStarted's stage, if any
+	openMsg    string                 // that step's message, forwarded on unwind StepFailed
 	lastHealth []event.ComponentState // change filter for Health
 }
 
@@ -39,11 +40,22 @@ func (c *Console) Step(stage, format string, args ...any) {
 // mirroring ui.Progress's contract exactly: every Progress is resolved by
 // exactly one Done (success) or Stop (abandoned on error).
 func (c *Console) Progress(stage, message string) *ConsoleProgress {
+	return c.ProgressN(stage, message, 0, 0)
+}
+
+// ProgressN is Progress for enumerated repeats (pack 3/7): Index/Total ride
+// StepStarted and the eventual StepDone so renderers can show n-of-m.
+func (c *Console) ProgressN(stage, message string, index, total int) *ConsoleProgress {
 	c.mu.Lock()
-	c.openStage = stage
+	c.openStage, c.openMsg = stage, message
 	c.mu.Unlock()
-	c.ch <- event.StepStarted{Stage: stage, Msg: message}
-	return &ConsoleProgress{con: c, stage: stage, start: time.Now()}
+	c.ch <- event.StepStarted{Stage: stage, Msg: message, Index: index, Total: total}
+	return &ConsoleProgress{con: c, stage: stage, msg: message, idx: index, total: total, start: time.Now()}
+}
+
+// Log forwards one line of the open step's output (live-only tail).
+func (c *Console) Log(stage, format string, args ...any) {
+	c.ch <- event.StepLog{Stage: stage, Line: fmt.Sprintf(format, args...)}
 }
 
 // Note emits a neutral passthrough line. Msg may carry embedded newlines;
@@ -79,19 +91,19 @@ func (c *Console) Access(packs []event.PackAccess, hint string) {
 	c.ch <- event.Access{Packs: packs, Hint: hint}
 }
 
-// open returns the stage of the still-unresolved Progress, if any —
-// RunPipeline emits its StepFailed when the producer's error unwinds past
-// an open step without Stop being reached.
-func (c *Console) open() string {
+// open returns the stage and message of the still-unresolved Progress, if
+// any — RunPipeline emits its StepFailed when the producer's error unwinds
+// past an open step without Stop being reached.
+func (c *Console) open() (stage, msg string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.openStage
+	return c.openStage, c.openMsg
 }
 
 func (c *Console) resolve(stage string) {
 	c.mu.Lock()
 	if c.openStage == stage {
-		c.openStage = ""
+		c.openStage, c.openMsg = "", ""
 	}
 	c.mu.Unlock()
 }
@@ -102,10 +114,11 @@ func (c *Console) resolve(stage string) {
 // StepFailed{Stage, Err: nil} (the authoritative error arrives later as the
 // run's Diagnosis).
 type ConsoleProgress struct {
-	con      *Console
-	stage    string
-	start    time.Time
-	resolved bool
+	con        *Console
+	stage, msg string
+	idx, total int
+	start      time.Time
+	resolved   bool
 }
 
 // Done resolves the step successfully. Idempotent after Stop/Done (matching
@@ -120,16 +133,19 @@ func (cp *ConsoleProgress) Done(format string, args ...any) {
 		Stage: cp.stage,
 		Msg:   fmt.Sprintf(format, args...),
 		Dur:   time.Since(cp.start),
+		Index: cp.idx,
+		Total: cp.total,
 	}
 }
 
 // Stop abandons the step on an error path. Plain projection: zero bytes,
-// same as ui.Progress.Stop.
+// same as ui.Progress.Stop. It forwards the message and elapsed the handle
+// already holds — a bare StepFailed{Stage} tells renderers nothing.
 func (cp *ConsoleProgress) Stop() {
 	if cp.resolved {
 		return
 	}
 	cp.resolved = true
 	cp.con.resolve(cp.stage)
-	cp.con.ch <- event.StepFailed{Stage: cp.stage}
+	cp.con.ch <- event.StepFailed{Stage: cp.stage, Msg: cp.msg, Dur: time.Since(cp.start)}
 }

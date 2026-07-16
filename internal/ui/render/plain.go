@@ -39,7 +39,7 @@ func Plain(w io.Writer) func(event.Event) {
 			}
 			fmt.Fprintf(w, "  %s\n", e.Hint)
 		case event.RunStarted, event.StepStarted, event.StepFailed,
-			event.HealthTick, event.Diagnosis, event.RunDone:
+			event.StepLog, event.HealthTick, event.Diagnosis, event.RunDone:
 			// Zero bytes: nothing was printed for these today. The failure
 			// diagnosis stays main.go's job (stderr, ui.RenderError).
 		}

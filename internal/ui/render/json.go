@@ -39,11 +39,14 @@ func JSONWithClock(w io.Writer, now func() time.Time) func(event.Event) {
 		case event.RunStarted:
 			emit(jsonRunStarted{jsonHead{1, ts(), "run_started"}, e.Cmd, e.Cube})
 		case event.StepStarted:
-			emit(jsonStep{jsonHead{1, ts(), "step_started"}, e.Stage, e.Msg, 0})
+			emit(jsonStep{jsonHead{1, ts(), "step_started"}, e.Stage, e.Msg, 0, e.Index, e.Total})
 		case event.StepDone:
-			emit(jsonStep{jsonHead{1, ts(), "step_done"}, e.Stage, e.Msg, e.Dur.Milliseconds()})
+			emit(jsonStep{jsonHead{1, ts(), "step_done"}, e.Stage, e.Msg, e.Dur.Milliseconds(), e.Index, e.Total})
 		case event.StepFailed:
-			emit(jsonStepFailed{jsonHead{1, ts(), "step_failed"}, e.Stage})
+			emit(jsonStepFailed{jsonHead{1, ts(), "step_failed"}, e.Stage, e.Msg, e.Dur.Milliseconds()})
+		case event.StepLog:
+			// Zero bytes: StepLog is live-only richness (a JSON projection
+			// may be added later under its own ratification).
 		case event.HealthTick:
 			comps := make([]jsonComponent, len(e.Components))
 			for i, c := range e.Components {
@@ -96,11 +99,15 @@ type jsonStep struct {
 	Stage string `json:"stage"`
 	Msg   string `json:"msg"`
 	DurMS int64  `json:"dur_ms,omitempty"` // omitted when 0 (instantaneous steps)
+	Idx   int    `json:"idx,omitempty"`    // 1-based n-of-m; omitted when not enumerated
+	Of    int    `json:"of,omitempty"`
 }
 
 type jsonStepFailed struct {
 	jsonHead
 	Stage string `json:"stage"`
+	Msg   string `json:"msg,omitempty"`
+	DurMS int64  `json:"dur_ms,omitempty"`
 }
 
 type jsonComponent struct {

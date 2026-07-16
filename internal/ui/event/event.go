@@ -43,13 +43,21 @@ type RunStarted struct{ Cmd, Cube string }
 
 // StepStarted marks a stage as in-flight. Today's ui.Progress start.
 // Plain projection: zero bytes (the pinned Progress invariant).
-type StepStarted struct{ Stage, Msg string }
+type StepStarted struct {
+	Stage, Msg string
+	// Index/Total: 1-based n-of-m for repeated stages (pack loop); 0
+	// means not enumerated.
+	Index, Total int
+}
 
 // StepDone completes a stage. Today's ui.Printer.Step / Progress.Done.
 // Dur is 0 for instantaneous steps (plain projection never includes it).
 type StepDone struct {
 	Stage, Msg string
 	Dur        time.Duration
+	// Index/Total: 1-based n-of-m for repeated stages (pack loop); 0
+	// means not enumerated.
+	Index, Total int
 }
 
 // StepFailed marks the in-flight stage as failed. Today's Progress.Stop on
@@ -57,9 +65,16 @@ type StepDone struct {
 // Diagnosis (the common case: the producer's error unwinds to the run
 // lifecycle, which emits Diagnosis).
 type StepFailed struct {
-	Stage string
-	Err   *diag.Error
+	Stage, Msg string
+	Dur        time.Duration
+	Err        *diag.Error
 }
+
+// StepLog is one line of an in-flight step's captured output — the live
+// renderer's bounded tail (TE-1.4) and failure dump (TE-2.2). Plain,
+// styled, and JSON projections emit ZERO bytes for it (live-only richness;
+// a JSON projection may be added later under its own ratification).
+type StepLog struct{ Stage, Line string }
 
 // ComponentState mirrors engine.ComponentHealth (internal/engine/engine.go)
 // without importing it (event stays dependency-light).
@@ -117,6 +132,7 @@ func (RunStarted) event()  {}
 func (StepStarted) event() {}
 func (StepDone) event()    {}
 func (StepFailed) event()  {}
+func (StepLog) event()     {}
 func (HealthTick) event()  {}
 func (Note) event()        {}
 func (Warn) event()        {}
