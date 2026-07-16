@@ -230,7 +230,7 @@ git commit -m "chore: consume go-getter fork from cube-idp org"
 - Consumes: nothing (string change; the new refs only resolve after Task 8 publishes).
 - Produces: default pack refs `oci://ghcr.io/cube-idp/packs/{gitea,argocd}:0.1.0`; workflow publishes to `ghcr.io/cube-idp/packs/<name>`.
 
-- [ ] **Step 1: Mechanical sweep (code + tests change together, so tests stay green)**
+- [x] **Step 1: Mechanical sweep (code + tests change together, so tests stay green)**
 
 ```bash
 sed -i '' 's|ghcr.io/rafpe/cube-idp/packs|ghcr.io/cube-idp/packs|g' \
@@ -239,18 +239,18 @@ sed -i '' 's|ghcr.io/rafpe/cube-idp/packs|ghcr.io/cube-idp/packs|g' \
   cube.yaml README.md .github/workflows/release-packs.yaml
 ```
 
-- [ ] **Step 2: Refresh the stale comment on the workflow NS line**
+- [x] **Step 2: Refresh the stale comment on the workflow NS line**
 
 `.github/workflows/release-packs.yaml:29` —
 Old: `          NS="ghcr.io/cube-idp/packs"   # Owner Decisions #1`
 New: `          NS="ghcr.io/cube-idp/packs"   # org namespace — spec docs/superpowers/specs/2026-07-16-org-migration-design.md`
 
-- [ ] **Step 3: Verify zero stragglers and green tests**
+- [x] **Step 3: Verify zero stragglers and green tests**
 
 Run: `grep -rn "ghcr.io/rafpe" --exclude-dir=.git --exclude-dir=docs . ; echo "exit=$?" && go test ./cmd/... ./internal/config/... ./internal/up/...`
 Expected: grep empty with `exit=1`; the three package groups `ok`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
