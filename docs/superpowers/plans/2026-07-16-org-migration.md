@@ -135,7 +135,7 @@ Expected: same URLs. If that path isn't a git checkout, note it and move on.
 - Consumes: nothing from earlier tasks (pure rename; the old fork replace still resolves).
 - Produces: module `github.com/cube-idp/cube-idp` — every later task's build assumes it.
 
-- [ ] **Step 1: Mechanical sweep**
+- [x] **Step 1: Mechanical sweep**
 
 ```bash
 grep -rl 'github.com/rafpe/cube-idp' --include='*.go' . \
@@ -143,24 +143,24 @@ grep -rl 'github.com/rafpe/cube-idp' --include='*.go' . \
 sed -i '' 's|github.com/rafpe/cube-idp|github.com/cube-idp/cube-idp|g' go.mod .goreleaser.yaml README.md
 ```
 
-- [ ] **Step 2: Fix the README GOPRIVATE guidance to the org wildcard**
+- [x] **Step 2: Fix the README GOPRIVATE guidance to the org wildcard**
 
 In `README.md` (~line 32), the sed above produced `GOPRIVATE=github.com/cube-idp/cube-idp`. Edit it to the wildcard so it also covers any future private org module:
 
 Old: `` private unless you set `GOPRIVATE=github.com/cube-idp/cube-idp` and have git ``
 New: `` private unless you set `GOPRIVATE=github.com/cube-idp/*` and have git ``
 
-- [ ] **Step 3: Verify no old module references remain outside history**
+- [x] **Step 3: Verify no old module references remain outside history**
 
 Run: `go mod tidy && grep -rn "github.com/rafpe/cube-idp" --exclude-dir=.git --exclude-dir=docs . ; echo "exit=$?"`
 Expected: `go mod tidy` silent; grep prints nothing, `exit=1`.
 
-- [ ] **Step 4: Build + full test suite**
+- [x] **Step 4: Build + full test suite**
 
 Run: `go build ./... && go test ./...`
 Expected: all `ok`. The rename is import-path-only; any failure means a missed file — re-run the Step 3 grep.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
