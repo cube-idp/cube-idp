@@ -32,22 +32,22 @@
 - Consumes: clean working tree on `main`.
 - Produces: a green baseline; `gh` authenticated with scopes needed by later tasks.
 
-- [ ] **Step 1: Verify clean tree on main**
+- [x] **Step 1: Verify clean tree on main**
 
 Run: `git status --short && git branch --show-current`
 Expected: no output from status; branch `main`.
 
-- [ ] **Step 2: Verify the test suite is green before touching anything**
+- [x] **Step 2: Verify the test suite is green before touching anything**
 
 Run: `go build ./... && go test ./...`
 Expected: build silent; every package `ok` (or `[no test files]`). If anything fails, STOP — fix the baseline first; this plan must not start from red.
 
-- [ ] **Step 3: Verify gh auth + org access**
+- [x] **Step 3: Verify gh auth + org access**
 
 Run: `gh auth status && gh api user --jq .login && gh api orgs/cube-idp --jq .login`
 Expected: logged in; `RafPe` (or the account owning the repos); `cube-idp`. A 404 on the org means the account isn't a member — STOP and fix org membership first.
 
-- [ ] **Step 4: Verify the org does NOT already have repos with the target names**
+- [x] **Step 4: Verify the org does NOT already have repos with the target names**
 
 Run: `gh repo view cube-idp/cube-idp 2>&1 | head -1; gh repo view cube-idp/go-getter 2>&1 | head -1`
 Expected: both print `GraphQL: Could not resolve to a Repository...` (not found). If either exists, STOP — GitHub blocks the transfer; the existing repo must be renamed/deleted by the user first.
