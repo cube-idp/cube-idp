@@ -106,7 +106,7 @@ Expected: Actions enabled for the repo (`all` or the repo selected) and any `def
 **Interfaces:**
 - Produces: `origin` = `https://github.com/cube-idp/cube-idp.git` in both; later tasks push to it.
 
-- [ ] **Step 1: Update the primary checkout's remote**
+- [x] **Step 1: Update the primary checkout's remote**
 
 Run (from the primary checkout):
 ```bash
@@ -115,7 +115,7 @@ git remote -v && git fetch origin --dry-run
 ```
 Expected: both fetch/push lines show `cube-idp/cube-idp.git`; dry-run fetch succeeds silently (or lists refs).
 
-- [ ] **Step 2: Update the secondary checkout's remote**
+- [x] **Step 2: Update the secondary checkout's remote**
 
 Run:
 ```bash
