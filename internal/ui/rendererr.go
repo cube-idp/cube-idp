@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	lipgloss "charm.land/lipgloss/v2"
-
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
@@ -49,22 +47,15 @@ func renderErrorForMode(mode Mode, err error) string {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s  %s\n",
-		errPanelGlyphStyle.Render("✗"),
-		errPanelCodeStyle.Render(string(de.Code)),
+		th.Err.Render("✗"),
+		th.Err.Render(string(de.Code)),
 		de.Summary)
 	if de.Cause != nil {
-		fmt.Fprintf(&b, "%s %v\n", errPanelLabelStyle.Render("cause:"), de.Cause)
+		fmt.Fprintf(&b, "%s %v\n", th.ErrLabel.Render("cause:"), de.Cause)
 	}
 	if de.Remediation != "" {
 		// Remediation stays unstyled: copy-paste safe.
-		fmt.Fprintf(&b, "%s %s\n", errPanelLabelStyle.Render("fix:  "), de.Remediation)
+		fmt.Fprintf(&b, "%s %s\n", th.ErrLabel.Render("fix:  "), de.Remediation)
 	}
-	return errPanelStyle.Render(strings.TrimRight(b.String(), "\n"))
+	return th.ErrPanel.Render(strings.TrimRight(b.String(), "\n"))
 }
-
-var (
-	errPanelStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("196")).Padding(0, 1)
-	errPanelGlyphStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
-	errPanelCodeStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
-	errPanelLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-)

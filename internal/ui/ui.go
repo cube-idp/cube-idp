@@ -19,11 +19,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	lipgloss "charm.land/lipgloss/v2"
 	"golang.org/x/term"
 
 	"github.com/cube-idp/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/ui/theme"
 )
+
+// th is the process-wide adaptive palette (internal/ui/theme): detected once
+// from the real terminal, dark-defaulting on any doubt. Styled rendering only
+// ever engages on a real TTY (per-writer downgrade), so non-TTY runs never
+// depend on it.
+var th = theme.Detect(os.Stdin, os.Stdout)
 
 // Mode is the process-wide output mode, resolved exactly once by
 // cmd/root.go's PersistentPreRunE via Resolve (the §6 ladder) and stored
@@ -190,11 +196,6 @@ func (p *Printer) Styled() bool { return p.mode == ModeStyled }
 // same destination without threading the writer separately.
 func (p *Printer) Out() io.Writer { return p.out }
 
-var (
-	stepBadgeStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
-	stepMsgStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-)
-
 // Step prints one line of user-facing progress: name is the stage tag
 // (e.g. "tls", "ca", "cluster"); format/args build the message exactly like
 // fmt.Sprintf. In ModePlain this reproduces the phase-1 format verbatim —
@@ -208,8 +209,8 @@ func (p *Printer) Step(name, format string, args ...any) {
 		return
 	}
 	fmt.Fprintf(p.out, "%s %s\n",
-		stepBadgeStyle.Render(fmt.Sprintf("▸ [%s]", name)),
-		stepMsgStyle.Render(msg))
+		th.Badge.Render(fmt.Sprintf("▸ [%s]", name)),
+		th.Msg.Render(msg))
 }
 
 // Section prints a heading line (e.g. internal/diff's "KERNEL OBJECTS",
@@ -222,7 +223,7 @@ func (p *Printer) Section(title string) {
 		fmt.Fprintln(p.out, title)
 		return
 	}
-	fmt.Fprintln(p.out, sectionStyle.Render(title))
+	fmt.Fprintln(p.out, th.Section.Render(title))
 }
 
 // Severity glyphs shared by status, doctor, and get secrets — the "one
@@ -233,13 +234,6 @@ const (
 	GlyphOK   = "✔"
 	GlyphErr  = "✗"
 	GlyphWarn = "⚠"
-)
-
-var (
-	sectionStyle = lipgloss.NewStyle().Bold(true)
-	okStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
-	errStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
-	warnStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
 )
 
 // Glyph returns g verbatim in ModePlain (so every existing plain-mode
@@ -253,11 +247,11 @@ func (p *Printer) Glyph(g string) string {
 	}
 	switch g {
 	case GlyphOK:
-		return okStyle.Render(g)
+		return th.OK.Render(g)
 	case GlyphErr:
-		return errStyle.Render(g)
+		return th.Err.Render(g)
 	case GlyphWarn:
-		return warnStyle.Render(g)
+		return th.Warn.Render(g)
 	default:
 		return g
 	}
@@ -274,15 +268,13 @@ func (p *Printer) Warn(format string, args ...any) {
 		fmt.Fprintln(p.out, msg)
 		return
 	}
-	fmt.Fprintf(p.out, "%s %s\n", p.Glyph(GlyphWarn), warnStyle.Render(msg))
+	fmt.Fprintf(p.out, "%s %s\n", p.Glyph(GlyphWarn), th.Warn.Render(msg))
 }
 
 // progressTick is the spinner's animation interval.
 const progressTick = 100 * time.Millisecond
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
-var progressStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 
 // eraseLine returns the cursor to column 0 and clears the rest of the line —
 // how a running Progress line is removed before the next frame (or the final
@@ -347,7 +339,7 @@ func (pr *Progress) render() {
 	frame := spinnerFrames[pr.frame%len(spinnerFrames)]
 	pr.frame++
 	line := fmt.Sprintf("%s [%s] %s… (%s)", frame, pr.stage, pr.message, elapsed)
-	fmt.Fprint(pr.p.out, eraseLine+progressStyle.Render(line))
+	fmt.Fprint(pr.p.out, eraseLine+th.Warn.Render(line))
 }
 
 // Stop erases any running spinner line without printing a step — the error
@@ -399,12 +391,12 @@ func (p *Printer) AccessSummary(packs []PackAccess, hint string) {
 		return
 	}
 	var b strings.Builder
-	b.WriteString(sectionStyle.Render("Access") + "\n")
+	b.WriteString(th.Section.Render("Access") + "\n")
 	for _, pk := range packs {
 		for _, u := range pk.URLs {
-			fmt.Fprintf(&b, "  %s %s\n", stepBadgeStyle.Render(fmt.Sprintf("%-12s", pk.Name)), u)
+			fmt.Fprintf(&b, "  %s %s\n", th.Badge.Render(fmt.Sprintf("%-12s", pk.Name)), u)
 		}
 	}
-	fmt.Fprintf(&b, "  %s\n", stepMsgStyle.Render(hint))
+	fmt.Fprintf(&b, "  %s\n", th.Msg.Render(hint))
 	fmt.Fprint(p.out, "\n"+b.String())
 }

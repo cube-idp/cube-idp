@@ -8,9 +8,9 @@ import (
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
-	lipgloss "charm.land/lipgloss/v2"
 
 	"github.com/cube-idp/cube-idp/internal/ui/event"
+	"github.com/cube-idp/cube-idp/internal/ui/theme"
 )
 
 // Live runs the LiveRenderer: a transient Bubble Tea v2 program in INLINE
@@ -63,16 +63,6 @@ func Live(out io.Writer, input io.Reader, cancel func(), ch <-chan event.Event) 
 type evMsg struct{ ev event.Event }
 type eofMsg struct{}
 
-var (
-	liveOKStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
-	liveErrStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
-	liveWarnStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
-	liveBadgeStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
-	liveMsgStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	liveHeaderStyle = lipgloss.NewStyle().Bold(true)
-	liveDimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-)
-
 // scrollbackLine is the pure projection of one event into a permanent
 // scrollback line ("" = nothing printed; the event only affects the live
 // region). Content-identical rule: styled presentation may add color and a
@@ -81,30 +71,30 @@ func scrollbackLine(ev event.Event) string {
 	switch e := ev.(type) {
 	case event.StepDone:
 		line := fmt.Sprintf("%s %s %s",
-			liveOKStyle.Render("✔"),
-			liveBadgeStyle.Render(fmt.Sprintf("[%s]", e.Stage)),
+			th.OK.Render("✔"),
+			th.Badge.Render(fmt.Sprintf("[%s]", e.Stage)),
 			e.Msg)
 		if e.Dur > 0 {
-			line += " " + liveDimStyle.Render(fmt.Sprintf("(%s)", e.Dur.Round(time.Second)))
+			line += " " + th.Dim.Render(fmt.Sprintf("(%s)", e.Dur.Round(time.Second)))
 		}
 		return line
 	case event.StepFailed:
 		return fmt.Sprintf("%s %s",
-			liveErrStyle.Render("✗"),
-			liveBadgeStyle.Render(fmt.Sprintf("[%s]", e.Stage)))
+			th.Err.Render("✗"),
+			th.Badge.Render(fmt.Sprintf("[%s]", e.Stage)))
 	case event.Note:
 		return e.Msg // verbatim
 	case event.Warn:
-		return fmt.Sprintf("%s %s", liveWarnStyle.Render("⚠"), liveWarnStyle.Render(e.Msg))
+		return fmt.Sprintf("%s %s", th.Warn.Render("⚠"), th.Warn.Render(e.Msg))
 	case event.Access:
 		var b strings.Builder
-		b.WriteString("\n" + liveHeaderStyle.Render("Access"))
+		b.WriteString("\n" + th.Section.Render("Access"))
 		for _, pk := range e.Packs {
 			for _, u := range pk.URLs {
-				b.WriteString(fmt.Sprintf("\n  %s %s", liveBadgeStyle.Render(fmt.Sprintf("%-12s", pk.Name)), u))
+				b.WriteString(fmt.Sprintf("\n  %s %s", th.Badge.Render(fmt.Sprintf("%-12s", pk.Name)), u))
 			}
 		}
-		b.WriteString("\n  " + liveMsgStyle.Render(e.Hint))
+		b.WriteString("\n  " + th.Msg.Render(e.Hint))
 		return b.String()
 	default:
 		// RunStarted/StepStarted/HealthTick/RunDone/Diagnosis: live-region
@@ -126,6 +116,7 @@ type inFlight struct {
 // RunDone and quits when the stream ends.
 type liveModel struct {
 	cancel     func()
+	th         theme.Theme // fixed dark palette for now; T05 adapts it via tea.BackgroundColorMsg
 	spin       spinner.Model
 	header     string
 	steps      []inFlight
@@ -135,9 +126,11 @@ type liveModel struct {
 }
 
 func newLiveModel(cancel func()) liveModel {
+	th := theme.New(true)
 	return liveModel{
 		cancel: cancel,
-		spin:   spinner.New(spinner.WithStyle(liveWarnStyle)),
+		th:     th,
+		spin:   spinner.New(spinner.WithStyle(th.Warn)),
 		now:    time.Now,
 	}
 }
@@ -176,7 +169,7 @@ func (m liveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m liveModel) applyEvent(ev event.Event) liveModel {
 	switch e := ev.(type) {
 	case event.RunStarted:
-		m.header = liveDimStyle.Render(fmt.Sprintf("cube-idp %s — cube %q", e.Cmd, e.Cube))
+		m.header = m.th.Dim.Render(fmt.Sprintf("cube-idp %s — cube %q", e.Cmd, e.Cube))
 	case event.StepStarted:
 		m.steps = append(m.steps, inFlight{stage: e.Stage, msg: e.Msg, start: m.now()})
 	case event.StepDone:
@@ -226,18 +219,18 @@ func (m liveModel) View() tea.View {
 		elapsed := m.now().Sub(s.start).Round(time.Second)
 		lines = append(lines, fmt.Sprintf("%s %s %s… %s",
 			m.spin.View(),
-			liveBadgeStyle.Render(fmt.Sprintf("[%s]", s.stage)),
-			liveMsgStyle.Render(s.msg),
-			liveDimStyle.Render(fmt.Sprintf("(%s)", elapsed))))
+			m.th.Badge.Render(fmt.Sprintf("[%s]", s.stage)),
+			m.th.Msg.Render(s.msg),
+			m.th.Dim.Render(fmt.Sprintf("(%s)", elapsed))))
 	}
 	if len(m.components) > 0 && hasStage(m.steps, "health") {
 		for _, c := range m.components {
-			glyph := liveErrStyle.Render("✗")
+			glyph := m.th.Err.Render("✗")
 			if c.Ready {
-				glyph = liveOKStyle.Render("✔")
+				glyph = m.th.OK.Render("✔")
 			}
 			lines = append(lines, fmt.Sprintf("  %s %-24s %s",
-				glyph, c.Name, liveMsgStyle.Render(c.Message)))
+				glyph, c.Name, m.th.Msg.Render(c.Message)))
 		}
 	}
 	return tea.NewView(strings.Join(lines, "\n"))
