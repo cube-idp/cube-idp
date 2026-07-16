@@ -178,13 +178,13 @@ git commit -m "chore: rename module to github.com/cube-idp/cube-idp (org migrati
 - Consumes: Task 1 (fork lives at `cube-idp/go-getter` with tag `v1.9.0`).
 - Produces: `replace github.com/hashicorp/go-getter => github.com/cube-idp/go-getter v1.9.0`.
 
-- [ ] **Step 1: Edit the replace directive**
+- [x] **Step 1: Edit the replace directive**
 
 In `go.mod`, change:
 Old: `replace github.com/hashicorp/go-getter => github.com/rafpe/go-getter v1.9.0`
 New: `replace github.com/hashicorp/go-getter => github.com/cube-idp/go-getter v1.9.0`
 
-- [ ] **Step 2: Update the two fork-naming comments**
+- [x] **Step 2: Update the two fork-naming comments**
 
 `internal/pack/getter.go:10` —
 Old: `	getter "github.com/hashicorp/go-getter" // RafPe fork via replace (go.mod)`
@@ -194,17 +194,17 @@ New: `	getter "github.com/hashicorp/go-getter" // cube-idp fork via replace (go.
 Old: `// RECONCILE (verified against github.com/rafpe/go-getter v1.9.0 client.go):`
 New: `// RECONCILE (verified against github.com/cube-idp/go-getter v1.9.0 client.go):`
 
-- [ ] **Step 3: Re-resolve and verify go.sum swapped fork entries**
+- [x] **Step 3: Re-resolve and verify go.sum swapped fork entries**
 
 Run: `go mod tidy && grep "go-getter" go.sum`
 Expected: tidy fetches `github.com/cube-idp/go-getter v1.9.0` (fork is public — a fork of a public repo — so no auth needed); go.sum shows `github.com/cube-idp/go-getter v1.9.0 h1:...` lines and NO `rafpe/go-getter` lines. If the proxy 404s on the fresh path, retry with `GOPRIVATE=github.com/cube-idp/* go mod tidy` (direct git fetch).
 
-- [ ] **Step 4: Build + tests (the oci:// getter is the risk surface)**
+- [x] **Step 4: Build + tests (the oci:// getter is the risk surface)**
 
 Run: `go build ./... && go test ./internal/pack/... ./... 2>&1 | tail -20`
 Expected: all `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add go.mod go.sum internal/pack/getter.go
