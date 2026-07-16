@@ -180,7 +180,7 @@ red work to main.
   glyph consts `theme.GlyphStep/GlyphOK/GlyphErr/GlyphWarn`;
   `theme.Stages map[string]theme.StageMeta` and `theme.BadgeWidth() int`.
 
-- [ ] **Step 1: Write the failing test** — `internal/ui/theme/theme_test.go`:
+- [x] **Step 1: Write the failing test** — `internal/ui/theme/theme_test.go`:
 
 ```go
 package theme
@@ -213,11 +213,11 @@ func TestBadgeWidthCoversAllStages(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 Run: `go test ./internal/ui/theme/ -v`
 Expected: FAIL — `package internal/ui/theme` does not exist yet.
 
-- [ ] **Step 3: Implement `internal/ui/theme/theme.go`** (complete file; a
+- [x] **Step 3: Implement `internal/ui/theme/theme.go`** (complete file; a
 LEAF package — imports only lipgloss v2, x/term, stdlib):
 
 ```go
@@ -320,17 +320,17 @@ func BadgeWidth() int {
 }
 ```
 
-- [ ] **Step 4: Run the theme tests**
+- [x] **Step 4: Run the theme tests**
 Run: `go test ./internal/ui/theme/ -v`
 Expected: PASS (2 tests). If `lipgloss.LightDark` or `HasDarkBackground`
 does not exist under these names in the pinned lipgloss v2.0.5, STOP:
 run `go doc charm.land/lipgloss/v2 | grep -i 'lightdark\|darkbackground'`,
 use the actual v2 symbol, and record the exact name in FINDINGS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 `git add internal/ui/theme/ && git commit -m "feat(ui): add theme leaf package — adaptive palette, glyphs, stage metadata"`
 
-- [ ] **Step 6: Rewire the six duplication sites.** In each file below,
+- [x] **Step 6: Rewire the six duplication sites.** In each file below,
 delete the local `lipgloss.NewStyle()` var blocks and replace uses with a
 package-level `var th = theme.Detect(os.Stdin, os.Stdout)` (in `cmd/` and
 `internal/doctor`) or a `th theme.Theme` passed/held where a struct already
@@ -346,7 +346,7 @@ makes it background-adaptive). Delete render/styled.go's "deliberate
 duplication" comment block (:12–17) — the cycle it documents is dissolved.
 ModePlain paths never touch theme, so plain bytes cannot change.
 
-- [ ] **Step 7: Verify no stray palettes, all tests green**
+- [x] **Step 7: Verify no stray palettes, all tests green**
 Run: `grep -rn '"39"\|"42"\|"196"\|"214"\|"245"\|"240"' internal/ cmd/ --include='*.go' | grep -v _test.go`
 Expected: zero hits (theme.go itself uses only ANSI-16 values).
 Run: `go build ./... && go test ./...`
@@ -355,19 +355,61 @@ Expected: all pass — styled tests compare ANSI-stripped content
 is invisible to them. If any test pins exact ANSI bytes, update it in the
 same commit and record it in FINDINGS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 `git add -A && git commit -m "refactor(ui): route all styling through internal/ui/theme — six palettes become one"`
 
-- [ ] **Step 9: Task-level verify + merge + ledger** (protocol steps 5–7).
+- [x] **Step 9: Task-level verify + merge + ledger** (protocol steps 5–7).
 
 #### Outcome — W1.T01 (ledger; the executing agent MUST fill this)
-- STATUS: `IN_PROGRESS(claude-fable-agent, 2026-07-16T18:19:56Z)`
-- BRANCH: `tui/w1-t01-theme` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w1-t01-theme` (merged: yes — cec3e8b)
+- COMMITS: `ef9493d` feat(ui): add theme leaf package — adaptive palette, glyphs,
+  stage metadata · `48b5b1d` refactor(ui): route all styling through
+  internal/ui/theme — six palettes become one · `cec3e8b` merge: tui W1.T01
+  theme (tui/w1-t01-theme)
+- FINDINGS:
+  - lipgloss v2.0.5 API names match the plan exactly: `lipgloss.LightDark(isDark)
+    LightDarkFunc` and `lipgloss.HasDarkBackground(in, out term.File) bool`
+    (verified via `go doc`). No API drift, no dependency changes
+    (`golang.org/x/term v0.45.0` was already in go.mod).
+  - Deviation (scope of the `th` var): the plan prescribed package-level
+    `var th = theme.Detect(os.Stdin, os.Stdout)` only for `cmd/` and
+    `internal/doctor`, struct-held elsewhere. `internal/ui` (used by
+    package-level `renderErrorForMode`) and `internal/ui/render` (used by
+    package-level `scrollbackLine`, declared in styled.go) also got the
+    package-level var, since no struct exists on those paths. `liveModel`
+    holds its own `th theme.Theme` field initialized `theme.New(true)` per
+    the plan (T05 makes it adaptive via tea.BackgroundColorMsg).
+  - Deviation (doctor): `doctorPanelStyle` (colorless rounded border) was
+    KEPT as a local style — it borders Warning/Note groups too, so
+    `th.ErrPanel`'s red border would be wrong, and it duplicates no palette
+    value. `doctorFixStyle` ("fix:" label, 245) mapped to `th.ErrLabel`
+    (matching rendererr's label mapping), not `th.Msg`.
+  - Mapping notes: `statusHeaderStyle → th.Section`, `statusDimStyle →
+    th.Msg`, `progressStyle → th.Warn` — all as the plan's table implies.
+  - Zero test updates were needed: no test pins exact ANSI bytes; the full
+    suite passed untouched (plain-mode paths never touch theme).
+  - Behavior note: on a real TTY, `theme.Detect` runs
+    `lipgloss.HasDarkBackground` once at package init (OSC query, guarded to
+    real TTYs, dark default on any doubt). Non-TTY/CI paths are byte-identical
+    to before. Styled/live color values moved from 256-palette (39/42/196/
+    214/245/240) to basic ANSI-16 LightDark pairs — the sanctioned WP1 change.
+- REVIEW: `go test ./internal/ui/theme/ -v` red before implementation
+  (undefined symbols), green after (2 tests). Acceptance grep
+  `grep -rn '"39"\|"42"\|"196"\|"214"\|"245"\|"240"' internal/ cmd/
+  --include='*.go' | grep -v _test.go` → zero hits. `go build ./... && go vet
+  ./... && go test ./...` green in the worktree pre-merge and `go test ./...`
+  green in $ROOT post-merge. No TE frame touched by this task (TE gate n/a —
+  TE tests arrive in T05).
+- BLOCKERS: none
+- HANDOFF: `theme.Theme{Badge,Msg,OK,Err,Warn,Dim,Section,ErrPanel,ErrLabel}`,
+  `theme.New(isDark)`, `theme.Detect(in,out)`, glyphs
+  `GlyphStep/GlyphOK/GlyphErr/GlyphWarn`, `theme.Stages`, `theme.BadgeWidth()`
+  all exist under the exact planned names. Package `render` has a package-level
+  `th` (declared in styled.go) that `scrollbackLine` already uses; `liveModel.th`
+  is fixed dark until T05. `ui.GlyphOK/GlyphErr/GlyphWarn` constants still
+  exist separately in package ui (unifying them onto theme was not in scope).
+  Branch `tui/w1-t01-theme` left in place per protocol.
 
 ---
 
