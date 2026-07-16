@@ -18,12 +18,12 @@ rationale lives in the spec:
 
 ## Install
 
-Releases are private — authenticate `gh` to RafPe/cube-idp first.
+Releases are private — authenticate `gh` to cube-idp/cube-idp first.
 
 ```bash
-gh release download v0.1.0 -R RafPe/cube-idp -p "cube-idp_*_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz"
+gh release download v0.1.0 -R cube-idp/cube-idp -p "cube-idp_*_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz"
 tar xzf cube-idp_*.tar.gz
-shasum -a 256 -c <(gh release download v0.1.0 -R RafPe/cube-idp -p checksums.txt -O - | grep "$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')")
+shasum -a 256 -c <(gh release download v0.1.0 -R cube-idp/cube-idp -p checksums.txt -O - | grep "$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')")
 chmod +x cube-idp && mv cube-idp ~/bin/   # or anywhere on PATH
 cube-idp version
 ```
