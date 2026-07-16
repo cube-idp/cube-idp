@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	getter "github.com/hashicorp/go-getter" // RafPe fork via replace (go.mod)
+	getter "github.com/hashicorp/go-getter" // cube-idp fork via replace (go.mod)
 
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
@@ -98,7 +98,7 @@ func gitCacheKey(repoPath, sha, subdir string) string {
 // trust. Stray .tmp-* orphans from prior crashes are swept best-effort
 // before fetching.
 //
-// RECONCILE (verified against github.com/rafpe/go-getter v1.9.0 client.go):
+// RECONCILE (verified against github.com/cube-idp/go-getter v1.9.0 client.go):
 // the fork's v1 Client field set matches the brief exactly — Ctx, Src, Dst,
 // Mode, Detectors, Getters — plus a DisableSymlinks bool this fork adds. It
 // is set here as defense in depth; GuardTree still runs unconditionally

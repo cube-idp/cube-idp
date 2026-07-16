@@ -304,4 +304,4 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
 )
 
-replace github.com/hashicorp/go-getter => github.com/rafpe/go-getter v1.9.0
+replace github.com/hashicorp/go-getter => github.com/cube-idp/go-getter v1.9.0
