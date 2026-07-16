@@ -435,7 +435,7 @@ same commit and record it in FINDINGS.
 - Consumed by: T03 (Epilogue rides the same JSON window), T04 (start lines
   read Index/Total), T05 (live renderer renders everything here).
 
-- [ ] **Step 1: Failing tests.** Add to `internal/ui/render/json_test.go`
+- [x] **Step 1: Failing tests.** Add to `internal/ui/render/json_test.go`
 (match the file's existing golden/clock style — read it first):
 
 ```go
@@ -485,11 +485,11 @@ func TestConsoleStopCarriesMsg(t *testing.T) {
 (`Console{ch: ch}` construction requires same-package test — these files are
 already `package ui` / `package render` internal tests; keep that.)
 
-- [ ] **Step 2: Verify they fail**
+- [x] **Step 2: Verify they fail**
 Run: `go test ./internal/ui/... -run 'TestJSONStepFailed|TestJSONStepCarries|TestConsoleStopCarries' -v`
 Expected: compile FAIL (`unknown field Msg in event.StepFailed`, etc.).
 
-- [ ] **Step 3: Widen `event.go`.** `StepFailed` gains `Msg string` and
+- [x] **Step 3: Widen `event.go`.** `StepFailed` gains `Msg string` and
 `Dur time.Duration` (keep the existing `Err *diag.Error` field and its
 comment); `StepStarted` and `StepDone` gain `Index, Total int` with the
 comment `// Index/Total: 1-based n-of-m for repeated stages (pack loop); 0
@@ -505,7 +505,7 @@ type StepLog struct{ Stage, Line string }
 func (StepLog) event() {}
 ```
 
-- [ ] **Step 4: Console plumbing** (`internal/ui/console.go`):
+- [x] **Step 4: Console plumbing** (`internal/ui/console.go`):
 `ConsoleProgress` gains `msg string` and `idx, total int` fields. `Progress`
 delegates: `func (c *Console) Progress(stage, message string) *ConsoleProgress { return c.ProgressN(stage, message, 0, 0) }`.
 New:
@@ -545,7 +545,7 @@ func (cp *ConsoleProgress) Stop() {
 In `pipeline.go`'s unwind guard, use both returns:
 `if st, msg := con.open(); st != "" { ch <- event.StepFailed{Stage: st, Msg: msg} }`.
 
-- [ ] **Step 5: Renderer arms.** `json.go`: `jsonStep` gains
+- [x] **Step 5: Renderer arms.** `json.go`: `jsonStep` gains
 `Idx int \`json:"idx,omitempty"\`` and `Of int \`json:"of,omitempty"\``
 (emit from StepStarted/StepDone); `jsonStepFailed` gains
 `Msg string \`json:"msg,omitempty"\`` and `DurMS int64 \`json:"dur_ms,omitempty"\``;
@@ -554,7 +554,7 @@ add `case event.StepLog:` → emit nothing (explicit arm + comment).
 case list. `live.go`: add `case event.StepLog:` returning `""` in
 `scrollbackLine` and a no-op arm in `applyEvent` (T05 gives it behavior).
 
-- [ ] **Step 6: Producer — pack loop N/M** (`internal/up/up.go` ~:250).
+- [x] **Step 6: Producer — pack loop N/M** (`internal/up/up.go` ~:250).
 Wrap each iteration so every pack delivery is an enumerated open step whose
 Done message is byte-identical to today's `con.Step` line (plain never
 prints Dur → zero plain drift):
@@ -577,26 +577,60 @@ for i, pref := range refs {
 The existing `con.Step("pack", "%s@%s delivered", ...)` at ~:307 is replaced
 by `pr.Done(...)` — same stage, same words.
 
-- [ ] **Step 7: All green**
+- [x] **Step 7: All green**
 Run: `go test ./internal/ui/... ./internal/up/... -v 2>&1 | tail -20`
 Expected: PASS including the three new tests; `render/plain_test.go`
 untouched and green (zero plain drift is the gate).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 `git add -A && git commit -m "feat(ui): widen event vocabulary — StepFailed msg/dur, pack n/m, StepLog tail feed"`
 
-- [ ] **Step 9: Task-level verify + merge + ledger** (protocol 5–7). Note in
+- [x] **Step 9: Task-level verify + merge + ledger** (protocol 5–7). Note in
 FINDINGS: JSONL additions are inside the documented v1-EXPERIMENTAL window;
 changelog entry required before the D5 freeze (T14 owns the README note).
 
 #### Outcome — W1.T02
-- STATUS: `IN_PROGRESS(claude-fable-agent, 2026-07-16T18:49:45Z)`
-- BRANCH: `tui/w1-t02-events` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w1-t02-events` (merged: yes — 3a12f42)
+- COMMITS: 3d3fa57 `docs: tui plan — claim W1.T02` · 267d360 `feat(ui): widen
+  event vocabulary — StepFailed msg/dur, pack n/m, StepLog tail feed` ·
+  3a12f42 `merge: tui W1.T02 events (tui/w1-t02-events)`
+- FINDINGS: (1) Plan's test snippets called `fixedClock(t)`; the existing
+  json_test.go helper takes no argument — used `fixedClock()`, tests otherwise
+  verbatim. (2) `jsonStep` gained `Idx`/`Of` (`omitempty`) and
+  `jsonStepFailed` gained `Msg`/`DurMS` (`omitempty`) exactly as planned; the
+  JSON golden (`TestJSONGoldenUpRun`) passed unchanged because its fixture
+  events carry no Index/Total and omitempty drops the zero values. (3) Real
+  `up` runs now additionally emit `step_started`/`step_done` with `idx`/`of`
+  for the pack stage, a `step_started` "delivering <ref>" line per pack, and
+  `dur_ms` on the pack `step_done` — all additive inside the documented
+  v1-EXPERIMENTAL JSONL window; changelog entry required before the D5 freeze
+  (T14 owns the README note). (4) `stepFetchSource` verified to be a bare
+  `con.Step` (StepDone only) — it cannot clobber the enumerated open step's
+  openStage/openMsg. (5) up.go's loop body moved into the per-iteration
+  closure with existing comments preserved; `con.Step("pack", "%s@%s
+  delivered", ...)` became `pr.Done(...)` — same stage, same words, so plain
+  bytes are unchanged (plain never prints Dur; StepStarted is zero plain
+  bytes). (6) `gofmt -l` flags three pre-existing files this task never
+  touched (internal/bundle/bundle.go, internal/config/types.go,
+  internal/syncer/synconce_test.go) — left alone. (7) Zero existing test
+  assertions modified; only the three planned tests were added.
+- REVIEW: Step 2 red run failed compile exactly as Expected (`unknown field
+  Msg in struct literal of type event.StepFailed`, etc.). Step 7 green:
+  `go test ./internal/ui/... ./internal/up/...` all ok, three new tests PASS,
+  plain_test.go untouched and green (zero plain drift). Task gate
+  `go build ./... && go vet ./... && go test ./...` in the worktree: 29
+  packages ok, zero FAIL. Post-merge `go test ./...` in $ROOT clean. TE gate
+  n/a (no TE frame touched; TE goldens arrive in T05).
+- BLOCKERS: none
+- HANDOFF: `event.StepLog{Stage, Line}` exists with explicit zero-byte arms
+  in plain/styled/json and placed-but-inert arms in live.go (`scrollbackLine`
+  returns "", `applyEvent` no-op) — T05 gives it the bounded tail (TE-1.4).
+  `Console.ProgressN(stage, msg, index, total)` and `Console.Log(stage,
+  format, ...)` exist; Log has no producer callers yet. `Console.open()` now
+  returns `(stage, msg string)` — the pipeline unwind guard forwards both.
+  T04's start lines can read Index/Total off StepStarted. `.superpowers/` is
+  gitignored, so the progress.md append is on-disk only (same note as T01).
 
 ---
 
