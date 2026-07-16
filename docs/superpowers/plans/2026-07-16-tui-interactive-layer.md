@@ -590,7 +590,7 @@ FINDINGS: JSONL additions are inside the documented v1-EXPERIMENTAL window;
 changelog entry required before the D5 freeze (T14 owns the README note).
 
 #### Outcome — W1.T02
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(claude-fable-agent, 2026-07-16T18:49:45Z)`
 - BRANCH: `tui/w1-t02-events` (merged: no)
 - COMMITS: —
 - FINDINGS: —
