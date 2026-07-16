@@ -732,7 +732,7 @@ Expected: PASS.
 - [ ] **Step 7: Task-level verify + merge + ledger.**
 
 #### Outcome — W1.T03
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(claude-fable-agent, 2026-07-16T19:16:08Z)`
 - BRANCH: `tui/w1-t03-epilogue` (merged: no)
 - COMMITS: —
 - FINDINGS: —
