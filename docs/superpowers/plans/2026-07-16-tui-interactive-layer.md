@@ -361,7 +361,7 @@ same commit and record it in FINDINGS.
 - [ ] **Step 9: Task-level verify + merge + ledger** (protocol steps 5–7).
 
 #### Outcome — W1.T01 (ledger; the executing agent MUST fill this)
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(claude-fable-agent, 2026-07-16T18:19:56Z)`
 - BRANCH: `tui/w1-t01-theme` (merged: no)
 - COMMITS: —
 - FINDINGS: —
