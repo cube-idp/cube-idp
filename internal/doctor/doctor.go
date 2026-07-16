@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -18,7 +19,12 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/pack"
 	"github.com/cube-idp/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/ui/theme"
 )
+
+// th is the adaptive palette for doctor's styled render — detected once,
+// dark on any doubt; the styled path only engages on a real TTY.
+var th = theme.Detect(os.Stdin, os.Stdout)
 
 // portProbeTimeout bounds the localhost dial CheckPortFree uses to detect a
 // listener — generous for any real service, short enough not to stall doctor.
@@ -116,11 +122,10 @@ func Render(out io.Writer, findings []diag.Finding) bool {
 	return hasErrors
 }
 
-var (
-	doctorSectionStyle = lipgloss.NewStyle().Bold(true)
-	doctorFixStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	doctorPanelStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
-)
+// doctorPanelStyle keeps its own colorless rounded border: doctor's panels
+// group ALL severities (warnings, notes), so theme.ErrPanel's red border
+// would be wrong — and a colorless border duplicates no palette value.
+var doctorPanelStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 
 // renderStyled is the stage-B rich static doctor (design doc §10): findings
 // grouped by severity into bordered sections, each finding a glyph-led line
@@ -130,7 +135,7 @@ var (
 func renderStyled(p *ui.Printer, findings []diag.Finding, hasErrors bool) {
 	out := p.Out()
 	if len(findings) == 0 {
-		fmt.Fprintf(out, "%s %s\n", p.Glyph(ui.GlyphOK), doctorSectionStyle.Render("no problems found"))
+		fmt.Fprintf(out, "%s %s\n", p.Glyph(ui.GlyphOK), th.Section.Render("no problems found"))
 		return
 	}
 	groups := []struct {
@@ -154,12 +159,12 @@ func renderStyled(p *ui.Printer, findings []diag.Finding, hasErrors bool) {
 			}
 			n++
 			fmt.Fprintf(&body, "%s %s  %s\n    %s %s",
-				p.Glyph(g.glyph), f.Code, f.Message, doctorFixStyle.Render("fix:"), f.Remediation)
+				p.Glyph(g.glyph), f.Code, f.Message, th.ErrLabel.Render("fix:"), f.Remediation)
 		}
 		if n == 0 {
 			continue
 		}
-		fmt.Fprintln(out, doctorSectionStyle.Render(g.title))
+		fmt.Fprintln(out, th.Section.Render(g.title))
 		fmt.Fprintln(out, doctorPanelStyle.Render(body.String()))
 	}
 	verdict := "no errors — you are good to go"
@@ -167,7 +172,7 @@ func renderStyled(p *ui.Printer, findings []diag.Finding, hasErrors bool) {
 	if hasErrors {
 		verdict, glyph = "errors found — resolve the items above before `cube-idp up`", ui.GlyphErr
 	}
-	fmt.Fprintf(out, "%s %s\n", p.Glyph(glyph), doctorSectionStyle.Render(verdict))
+	fmt.Fprintf(out, "%s %s\n", p.Glyph(glyph), th.Section.Render(verdict))
 }
 
 // ClusterProbeTimeout bounds the cluster-side portion of doctor (provider

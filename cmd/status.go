@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
 
-	lipgloss "charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,7 +23,13 @@ import (
 	"github.com/cube-idp/cube-idp/internal/engine"
 	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
 	"github.com/cube-idp/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/ui/theme"
 )
+
+// th is the adaptive palette for cmd's styled static renders (status,
+// doctor verdicts) — detected once, dark on any doubt; styled paths only
+// engage on a real TTY.
+var th = theme.Detect(os.Stdin, os.Stdout)
 
 const statusClusterTimeout = 3 * time.Minute
 
@@ -132,11 +138,6 @@ func renderStatusPlain(out io.Writer, p *ui.Printer, health []engine.ComponentHe
 	}
 }
 
-var (
-	statusHeaderStyle = lipgloss.NewStyle().Bold(true)
-	statusDimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-)
-
 // renderStatusStyled is the stage-B rich static snapshot (design doc §10): a
 // glyph-led component table with dimmed status messages, the inventory count,
 // the access URLs from the Pack records (when any), and, under --details, the
@@ -144,7 +145,7 @@ var (
 // --watch, no resident view).
 func renderStatusStyled(p *ui.Printer, health []engine.ComponentHealth, inventory []object.ObjMetadata, details bool, access []ui.PackAccess) {
 	out := p.Out()
-	fmt.Fprintln(out, statusHeaderStyle.Render("Components"))
+	fmt.Fprintln(out, th.Section.Render("Components"))
 	name := 0
 	for _, h := range health {
 		if len(h.Name) > name {
@@ -156,17 +157,17 @@ func renderStatusStyled(p *ui.Printer, health []engine.ComponentHealth, inventor
 		if !h.Ready {
 			glyph, msg = p.Glyph(ui.GlyphErr), h.Message
 		}
-		fmt.Fprintf(out, "  %s %-*s  %s\n", glyph, name, h.Name, statusDimStyle.Render(msg))
+		fmt.Fprintf(out, "  %s %-*s  %s\n", glyph, name, h.Name, th.Msg.Render(msg))
 	}
 	if len(access) > 0 {
-		fmt.Fprintf(out, "\n%s\n", statusHeaderStyle.Render("Access"))
+		fmt.Fprintf(out, "\n%s\n", th.Section.Render("Access"))
 		for _, pk := range access {
 			for _, u := range pk.URLs {
 				fmt.Fprintf(out, "  %-12s %s\n", pk.Name, u)
 			}
 		}
 	}
-	fmt.Fprintf(out, "\n%s\n", statusHeaderStyle.Render(fmt.Sprintf("%d object(s) in inventory", len(inventory))))
+	fmt.Fprintf(out, "\n%s\n", th.Section.Render(fmt.Sprintf("%d object(s) in inventory", len(inventory))))
 	if details {
 		fmt.Fprintf(out, "\n%s", formatInventory(inventory))
 	}
