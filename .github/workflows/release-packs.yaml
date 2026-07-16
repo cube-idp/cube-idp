@@ -26,7 +26,7 @@ jobs:
       - name: push all packs (version tag + latest, one push)
         run: |
           set -euo pipefail
-          NS="ghcr.io/rafpe/cube-idp/packs"   # Owner Decisions #1
+          NS="ghcr.io/cube-idp/packs"   # org namespace — spec docs/superpowers/specs/2026-07-16-org-migration-design.md
           for dir in packs/*/; do
             name="$(basename "$dir")"
             ./cube-idp pack push --also-tag latest "$dir" "oci://${NS}/${name}"   # tag = pack.cue version

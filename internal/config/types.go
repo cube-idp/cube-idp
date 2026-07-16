@@ -132,8 +132,8 @@ func Default(name string) *Cube {
 			Engine:  EngineSpec{Type: "flux"},
 			Gateway: GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443},
 			Packs: []PackRef{
-				{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0"},
-				{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/argocd:0.1.0"},
+				{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"},
+				{Ref: "oci://ghcr.io/cube-idp/packs/argocd:0.1.0"},
 			},
 		},
 	}

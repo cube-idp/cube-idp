@@ -120,9 +120,9 @@ func TestMergeImagesEmptyDeclared(t *testing.T) {
 func TestResolveBundleRefs(t *testing.T) {
 	inBundle := map[string]string{"gitea": "/tmp/x/packs/gitea"} // pack name -> dir
 	lk := &lock.File{Packs: []lock.Entry{
-		{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0", Name: "gitea"},
+		{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0", Name: "gitea"},
 	}}
-	refs := []config.PackRef{{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0"}}
+	refs := []config.PackRef{{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"}}
 	resolved, err := resolveBundleRefs(refs, lk, func(name string) (string, bool) {
 		d, ok := inBundle[name]
 		return d, ok
@@ -136,7 +136,7 @@ func TestResolveBundleRefs(t *testing.T) {
 
 	// A ref absent from both the lock and the bundle is CUBE-7004.
 	_, err = resolveBundleRefs(
-		[]config.PackRef{{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/absent:1.0.0"}},
+		[]config.PackRef{{Ref: "oci://ghcr.io/cube-idp/packs/absent:1.0.0"}},
 		&lock.File{},
 		func(string) (string, bool) { return "", false },
 	)
@@ -170,10 +170,10 @@ func TestResolveBundleRefs_LocalDirFallback(t *testing.T) {
 // pack's Values overrides intact — only the source location changes.
 func TestResolveBundleRefs_PreservesValues(t *testing.T) {
 	refs := []config.PackRef{{
-		Ref:    "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0",
+		Ref:    "oci://ghcr.io/cube-idp/packs/gitea:0.1.0",
 		Values: map[string]any{"replicas": 2},
 	}}
-	lk := &lock.File{Packs: []lock.Entry{{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0", Name: "gitea"}}}
+	lk := &lock.File{Packs: []lock.Entry{{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0", Name: "gitea"}}}
 	resolved, err := resolveBundleRefs(refs, lk, func(string) (string, bool) {
 		return "/tmp/x/packs/gitea", true
 	})
@@ -209,8 +209,8 @@ func TestStepFetchSourcePlainOutput(t *testing.T) {
 	}
 
 	// Online: the network ref itself must appear, byte-for-byte.
-	online := emit([]config.PackRef{{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0"}})
-	if want := "▸ [pack] fetching oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0\n"; !strings.Contains(online, want) {
+	online := emit([]config.PackRef{{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"}})
+	if want := "▸ [pack] fetching oci://ghcr.io/cube-idp/packs/gitea:0.1.0\n"; !strings.Contains(online, want) {
 		t.Fatalf("online fetch-source line missing %q in:\n%s", want, online)
 	}
 

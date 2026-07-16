@@ -90,7 +90,7 @@ func newInitCmd() *cobra.Command {
 			// the argocd pack would trip CUBE-0005 (redundant pack).
 			if engineType == "argocd" {
 				cube.Spec.Packs = []config.PackRef{
-					{Ref: "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0"},
+					{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"},
 				}
 			}
 			var localAbs string

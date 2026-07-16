@@ -194,7 +194,7 @@ func TestDefaultProfileIncludesGitea(t *testing.T) { // D9
 	c := Default("dev")
 	found := false
 	for _, p := range c.Spec.Packs {
-		if p.Ref == "oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0" {
+		if p.Ref == "oci://ghcr.io/cube-idp/packs/gitea:0.1.0" {
 			found = true
 		}
 	}

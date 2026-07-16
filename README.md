@@ -70,7 +70,7 @@ To change any of these, recreate the cluster:
 Developing against an unreleased checkout (no published OCI packs yet)?
 Use `init --local <path-to-this-repo>` instead of `init --name dev`, which
 writes `gateway.ref` and pack `ref`s as absolute local paths into this
-checkout's `packs/` directory rather than `oci://ghcr.io/rafpe/cube-idp/packs/...`
+checkout's `packs/` directory rather than `oci://ghcr.io/cube-idp/packs/...`
 refs (see `tests/e2e/e2e_test.go` for a full example).
 
 ## `cube.yaml` reference
@@ -473,7 +473,7 @@ A pack ref (`spec.gateway.ref` / `spec.packs[].ref`) accepts:
 | Form | Example | Pin behavior |
 | --- | --- | --- |
 | local directory | `./mypack`, `packs/gitea` | content dirhash |
-| OCI | `oci://ghcr.io/rafpe/cube-idp/packs/gitea:0.1.0` | digest |
+| OCI | `oci://ghcr.io/cube-idp/packs/gitea:0.1.0` | digest |
 | bare git grammar | `github.com/org/repo//path@v1.2.3` | tag/branch resolved to a commit SHA, or a full SHA passed through |
 | explicit go-getter URL | `git::https://example.com/repo.git//path?ref=v1`, `s3::https://s3.amazonaws.com/bucket/pack.tar.gz`, `https://example.com/pack.tar.gz` | dirhash of the fetched tree |
 
@@ -482,9 +482,9 @@ Remote refs must be pinned (a tag, a full commit SHA, or an explicit
 rejected (CUBE-4007) so `cube.lock` always records something reproducible.
 
 The catalog packs under `packs/` are published to
-`ghcr.io/rafpe/cube-idp/packs/<name>` by `.github/workflows/release-packs.yaml`
+`ghcr.io/cube-idp/packs/<name>` by `.github/workflows/release-packs.yaml`
 on every push to `main` that touches `packs/**`: it runs `cube-idp pack push
---also-tag latest <dir> oci://ghcr.io/rafpe/cube-idp/packs/<name>` for each
+--also-tag latest <dir> oci://ghcr.io/cube-idp/packs/<name>` for each
 pack directory, tagging the pushed artifact with both the pack's
 `pack.cue` version and a moving `latest`.
 
