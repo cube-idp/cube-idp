@@ -268,25 +268,25 @@ git commit -m "feat: publish and consume packs under ghcr.io/cube-idp/packs"
 - Consumes: Task 2 (repo lives in the org, so `owner: cube-idp` is valid).
 - Produces: GoReleaser publishes releases to `cube-idp/cube-idp`; README download commands point there. Task 9 relies on this.
 
-- [ ] **Step 1: GoReleaser owner**
+- [x] **Step 1: GoReleaser owner**
 
 `.goreleaser.yaml:56` —
 Old: `    owner: RafPe`
 New: `    owner: cube-idp`
 
-- [ ] **Step 2: README release/download references**
+- [x] **Step 2: README release/download references**
 
 ```bash
 sed -i '' 's|RafPe/cube-idp|cube-idp/cube-idp|g' README.md
 ```
 Affects lines 21 (authenticate note), 24 and 26 (`gh release download ... -R ...`).
 
-- [ ] **Step 3: Verify no RafPe remains outside history, and goreleaser config parses**
+- [x] **Step 3: Verify no RafPe remains outside history, and goreleaser config parses**
 
 Run: `grep -rn "RafPe" --exclude-dir=.git --exclude-dir=docs . ; echo "exit=$?" && (command -v goreleaser >/dev/null && goreleaser check || echo "goreleaser not installed locally — CI validates it in Task 9")`
 Expected: grep empty, `exit=1`; `goreleaser check` prints `1 configuration file(s) validated` (or the skip note).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .goreleaser.yaml README.md
