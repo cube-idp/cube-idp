@@ -3,11 +3,15 @@ package render
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	lipgloss "charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/cube-idp/cube-idp/internal/ui/event"
 	"github.com/cube-idp/cube-idp/internal/ui/theme"
@@ -31,6 +35,7 @@ func Live(out io.Writer, input io.Reader, cancel func(), ch <-chan event.Event) 
 	m := newLiveModel(cancel)
 	p := tea.NewProgram(m, tea.WithOutput(out), tea.WithInput(input))
 
+	sb := newScrollback(theme.Detect(os.Stdin, outFile(out)))
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -40,7 +45,7 @@ func Live(out io.Writer, input io.Reader, cancel func(), ch <-chan event.Event) 
 		// drains the channel so the producer can never block on a dead
 		// renderer.
 		for ev := range ch {
-			if line := scrollbackLine(ev); line != "" {
+			for _, line := range sb.lines(ev) {
 				p.Println(line)
 			}
 			p.Send(evMsg{ev})
@@ -57,59 +62,143 @@ func Live(out io.Writer, input io.Reader, cancel func(), ch <-chan event.Event) 
 	<-done
 }
 
+// outFile unwraps the *os.File behind out (nil for pipes and buffers) so
+// theme.Detect's TTY guard sees the real terminal when there is one.
+func outFile(out io.Writer) *os.File {
+	f, _ := out.(*os.File)
+	return f
+}
+
 // evMsg wraps one stream event for the model. eofMsg reports the channel
 // closed — the single quit trigger (it follows every event, including the
 // terminal RunDone/Diagnosis, in strict order).
 type evMsg struct{ ev event.Event }
 type eofMsg struct{}
 
-// scrollbackLine is the pure projection of one event into a permanent
-// scrollback line ("" = nothing printed; the event only affects the live
-// region). Content-identical rule: styled presentation may add color and a
-// duration suffix, never different words (design doc §5.2).
-func scrollbackLine(ev event.Event) string {
+// scrollback projects events into permanent scrollback lines. Stateful:
+// it buffers StepLog lines per open stage so a failure can dump the full
+// captured tail (TE-2.2) ahead of the diagnosis box. Content-identical
+// rule: styled presentation may add color, alignment, and a duration
+// suffix, never different words (design doc §5.2).
+type scrollback struct {
+	th    theme.Theme
+	tails map[string][]string
+	// started/cmd come from RunStarted and gate the RunDone summary line —
+	// a stream with no RunStarted (config.Load failed) ends silently.
+	started bool
+	cmd     string
+}
+
+func newScrollback(th theme.Theme) *scrollback {
+	return &scrollback{th: th, tails: map[string][]string{}}
+}
+
+// lines returns zero or more finished scrollback lines for ev.
+func (s *scrollback) lines(ev event.Event) []string {
 	switch e := ev.(type) {
+	case event.RunStarted:
+		s.started, s.cmd = true, e.Cmd
+		return nil
+	case event.StepLog:
+		s.tails[e.Stage] = append(s.tails[e.Stage], e.Line)
+		return nil
 	case event.StepDone:
-		line := fmt.Sprintf("%s %s %s",
-			th.OK.Render("✔"),
-			th.Badge.Render(fmt.Sprintf("[%s]", e.Stage)),
-			e.Msg)
-		if e.Dur > 0 {
-			line += " " + th.Dim.Render(fmt.Sprintf("(%s)", e.Dur.Round(time.Second)))
-		}
-		return line
+		delete(s.tails, e.Stage) // BuildKit collapse: success discards the tail
+		return []string{s.stepDoneLine(e)}
 	case event.StepFailed:
-		return fmt.Sprintf("%s %s",
-			th.Err.Render("✗"),
-			th.Badge.Render(fmt.Sprintf("[%s]", e.Stage)))
+		out := []string{s.stepFailedLine(e)}
+		for _, l := range s.tails[e.Stage] { // full dump, most important info last
+			out = append(out, "  "+s.th.Dim.Render("│ "+l))
+		}
+		delete(s.tails, e.Stage)
+		return out
 	case event.Note:
-		return e.Msg // verbatim
+		return []string{e.Msg} // verbatim
 	case event.Epilogue:
-		// Temporary minimal arm: the styled headline only — T05 replaces it
-		// with the full TE-4 block (context/registry rows, next: hint line).
-		return fmt.Sprintf("\n%s cube %q is up — %s",
-			th.OK.Render(theme.GlyphOK), e.Cube, e.GatewayURL)
+		return s.epilogueLines(e)
 	case event.Warn:
-		return fmt.Sprintf("%s %s", th.Warn.Render("⚠"), th.Warn.Render(e.Msg))
+		return []string{fmt.Sprintf("%s %s", s.th.Warn.Render(theme.GlyphWarn), s.th.Warn.Render(e.Msg))}
 	case event.Access:
 		var b strings.Builder
-		b.WriteString("\n" + th.Section.Render("Access"))
+		b.WriteString("\n" + s.th.Section.Render("Access"))
 		for _, pk := range e.Packs {
 			for _, u := range pk.URLs {
-				b.WriteString(fmt.Sprintf("\n  %s %s", th.Badge.Render(fmt.Sprintf("%-12s", pk.Name)), u))
+				b.WriteString(fmt.Sprintf("\n  %s %s", s.th.Badge.Render(fmt.Sprintf("%-12s", pk.Name)), u))
 			}
 		}
-		b.WriteString("\n  " + th.Msg.Render(e.Hint))
-		return b.String()
-	case event.StepLog:
-		// Live-region tail only (T05); never a permanent scrollback line.
-		return ""
+		b.WriteString("\n  " + s.th.Msg.Render(e.Hint))
+		return []string{b.String()}
+	case event.RunDone:
+		if !s.started {
+			return nil
+		}
+		d := e.Dur.Round(time.Second)
+		if e.OK {
+			return []string{fmt.Sprintf("%s %s finished in %s", s.th.OK.Render(theme.GlyphOK), s.cmd, d)}
+		}
+		return []string{fmt.Sprintf("%s %s failed after %s", s.th.Err.Render(theme.GlyphErr), s.cmd, d)}
 	default:
-		// RunStarted/StepStarted/HealthTick/RunDone/Diagnosis: live-region
-		// state only. The diagnosis renders AFTER the program exits, via
-		// main.go's ui.RenderError — never here (diagnosis-last, §5.2).
-		return ""
+		// StepStarted/HealthTick: live-region state only. The diagnosis
+		// renders AFTER the program exits, via main.go's ui.RenderError —
+		// never here (diagnosis-last, §5.2).
+		return nil
 	}
+}
+
+// TE-1 layout: fixed badge column, message field, right-aligned dim
+// duration at durCol (golden-pinned at 80 cols; wider terminals keep the
+// same columns — scrollback lines are permanent and must not depend on
+// resize).
+const durCol = 62
+
+// regionIndent hangs progress-bar and log-tail lines under their step
+// (TE-1 frame).
+const regionIndent = "             "
+
+func (s *scrollback) stepDoneLine(e event.StepDone) string {
+	return s.stepLine(s.th.OK.Render(theme.GlyphOK), e.Stage, e.Msg, e.Dur)
+}
+
+func (s *scrollback) stepFailedLine(e event.StepFailed) string {
+	msg := e.Msg
+	if msg == "" {
+		msg = "failed" // never a naked ✗ again (audit P4)
+	}
+	return s.stepLine(s.th.Err.Render(theme.GlyphErr), e.Stage, msg, e.Dur)
+}
+
+func (s *scrollback) stepLine(glyph, stage, msg string, dur time.Duration) string {
+	badge := s.th.Badge.Render(fmt.Sprintf("%-*s", theme.BadgeWidth(), "["+stage+"]"))
+	line := fmt.Sprintf("%s %s %s", glyph, badge, msg)
+	if dur > 0 {
+		d := s.th.Dim.Render(fmt.Sprintf("(%s)", dur.Round(time.Second)))
+		if pad := durCol - lipgloss.Width(line); pad > 1 {
+			return line + strings.Repeat(" ", pad) + d
+		}
+		return line + " " + d
+	}
+	return line
+}
+
+// epilogueLines renders the TE-4 block: blank separator, headline, one
+// key-value row per non-empty field, next-hint. The headline carries no
+// duration — RunDone arrives after Epilogue and prints the run summary
+// line with the total (TE-4's «2m13s» lives there).
+func (s *scrollback) epilogueLines(e event.Epilogue) []string {
+	out := []string{"", fmt.Sprintf("%s cube %q is up", s.th.OK.Render(theme.GlyphOK), e.Cube)}
+	row := func(key, val string) string {
+		return fmt.Sprintf("  %s %s", s.th.Dim.Render(fmt.Sprintf("%-11s", key)), val)
+	}
+	if e.GatewayURL != "" {
+		out = append(out, row("gateway", s.th.Badge.Render(e.GatewayURL)))
+	}
+	if e.Context != "" {
+		out = append(out, row("context", e.Context))
+	}
+	if e.Registry != "" {
+		out = append(out, row("registry", e.Registry))
+	}
+	return append(out, "  "+s.th.Dim.Render("next: cube-idp status · "+e.Hint))
 }
 
 // inFlight is one open step shown as a spinner line in the live region.
@@ -119,15 +208,22 @@ type inFlight struct {
 }
 
 // liveModel is the inline Bubble Tea model. The View is ONLY the in-flight
-// region: header, one spinner line per open step, and the health component
-// table while the "health" stage is open. It collapses to zero lines on
-// RunDone and quits when the stream ends.
+// region: header, one spinner line per open step (with n/m counter,
+// progress bar, and bounded log tail where applicable), and the health
+// component table from the latest HealthTick until RunDone. It collapses
+// to zero lines on RunDone and quits when the stream ends.
 type liveModel struct {
 	cancel     func()
-	th         theme.Theme // fixed dark palette for now; T05 adapts it via tea.BackgroundColorMsg
+	th         theme.Theme
 	spin       spinner.Model
+	prog       progress.Model // bubbles/v2 progress bar for the enumerated step
 	header     string
+	width      int // from tea.WindowSizeMsg; 0 = unknown, clamp only when known
 	steps      []inFlight
+	packStage  string // stage of the open enumerated step ("" = none)
+	packIdx    int
+	packTotal  int
+	tails      map[string][]string // last ≤5 StepLog lines per open stage (TE-1.4)
 	components []event.ComponentState
 	collapsed  bool
 	now        func() time.Time // injectable clock for elapsed rendering in tests
@@ -138,12 +234,18 @@ func newLiveModel(cancel func()) liveModel {
 	return liveModel{
 		cancel: cancel,
 		th:     th,
-		spin:   spinner.New(spinner.WithStyle(th.Warn)),
+		spin:   spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(th.Warn)),
+		// █/░ fill per the TE-1 frame (glyphs are literal, spec §2) — the
+		// bubbles v2 default is a half-block.
+		prog: progress.New(progress.WithWidth(30), progress.WithFillCharacters('█', '░')),
+		tails:  map[string][]string{},
 		now:    time.Now,
 	}
 }
 
-func (m liveModel) Init() tea.Cmd { return m.spin.Tick }
+func (m liveModel) Init() tea.Cmd {
+	return tea.Batch(m.spin.Tick, tea.RequestBackgroundColor)
+}
 
 func (m liveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -158,6 +260,12 @@ func (m liveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
 		return m, cmd
+	case tea.BackgroundColorMsg:
+		m.th = theme.New(msg.IsDark())
+		return m, nil
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			// Map to the run context's cancel: the producer unwinds through
@@ -180,18 +288,29 @@ func (m liveModel) applyEvent(ev event.Event) liveModel {
 		m.header = m.th.Dim.Render(fmt.Sprintf("cube-idp %s — cube %q", e.Cmd, e.Cube))
 	case event.StepStarted:
 		m.steps = append(m.steps, inFlight{stage: e.Stage, msg: e.Msg, start: m.now()})
+		if e.Total > 0 {
+			m.packStage, m.packIdx, m.packTotal = e.Stage, e.Index, e.Total
+		}
 	case event.StepDone:
 		m.steps = removeStep(m.steps, e.Stage)
-		if e.Stage == "health" {
-			m.components = nil // the table collapses with its stage
+		delete(m.tails, e.Stage)
+		if e.Stage == m.packStage {
+			m.packStage, m.packIdx, m.packTotal = "", 0, 0
 		}
+		// The health snapshot persists until RunDone (spec WP3) — closing
+		// the health stage no longer drops the table.
 	case event.StepFailed:
 		m.steps = removeStep(m.steps, e.Stage)
-		if e.Stage == "health" {
-			m.components = nil
+		delete(m.tails, e.Stage)
+		if e.Stage == m.packStage {
+			m.packStage, m.packIdx, m.packTotal = "", 0, 0
 		}
 	case event.StepLog:
-		// No-op for now: T05's bounded tail (TE-1.4) gives it behavior.
+		t := append(m.tails[e.Stage], e.Line)
+		if len(t) > 5 {
+			t = t[len(t)-5:] // bounded tail window (TE-1.4)
+		}
+		m.tails[e.Stage] = t
 	case event.HealthTick:
 		m.components = e.Components
 	case event.RunDone:
@@ -214,43 +333,56 @@ func removeStep(steps []inFlight, stage string) []inFlight {
 	return kept
 }
 
-// View renders ONLY the managed bottom region. AltScreen is never set —
-// inline mode is the whole point (Dagger/gh pattern; Tilt's full-screen HUD
-// is the rejected anti-pattern).
+// View renders ONLY the managed bottom region. The alt screen is never
+// set — inline mode is the whole point (Dagger/gh pattern; Tilt's
+// full-screen HUD is the rejected anti-pattern).
 func (m liveModel) View() tea.View {
 	if m.collapsed {
 		return tea.NewView("")
 	}
 	var lines []string
+	add := func(s string) { lines = append(lines, clamp(s, m.width)) }
 	if m.header != "" {
-		lines = append(lines, m.header)
+		add(m.header)
 	}
 	for _, s := range m.steps {
-		elapsed := m.now().Sub(s.start).Round(time.Second)
-		lines = append(lines, fmt.Sprintf("%s %s %s… %s",
-			m.spin.View(),
-			m.th.Badge.Render(fmt.Sprintf("[%s]", s.stage)),
-			m.th.Msg.Render(s.msg),
-			m.th.Dim.Render(fmt.Sprintf("(%s)", elapsed))))
-	}
-	if len(m.components) > 0 && hasStage(m.steps, "health") {
-		for _, c := range m.components {
-			glyph := m.th.Err.Render("✗")
-			if c.Ready {
-				glyph = m.th.OK.Render("✔")
+		badge := m.th.Badge.Render(fmt.Sprintf("%-*s", theme.BadgeWidth(), "["+s.stage+"]"))
+		line := fmt.Sprintf("%s %s %s", m.spin.View(), badge, m.th.Msg.Render(s.msg))
+		if s.stage == m.packStage && m.packTotal > 0 {
+			// TE-1.3: right-aligned n/m counter + progress bar underneath.
+			counter := m.th.Dim.Render(fmt.Sprintf("%d/%d", m.packIdx, m.packTotal))
+			if pad := durCol - lipgloss.Width(line); pad > 1 {
+				line += strings.Repeat(" ", pad) + counter
+			} else {
+				line += " " + counter
 			}
-			lines = append(lines, fmt.Sprintf("  %s %-24s %s",
-				glyph, c.Name, m.th.Msg.Render(c.Message)))
+			add(line)
+			add(regionIndent + m.prog.ViewAs(float64(m.packIdx)/float64(m.packTotal)))
+		} else {
+			elapsed := m.now().Sub(s.start).Round(time.Second)
+			add(fmt.Sprintf("%s… %s", line, m.th.Dim.Render(fmt.Sprintf("(%s)", elapsed))))
+		}
+		for _, l := range m.tails[s.stage] {
+			add(regionIndent + m.th.Dim.Render("│ "+l))
+		}
+	}
+	if len(m.components) > 0 {
+		for _, c := range m.components {
+			glyph := m.th.Err.Render(theme.GlyphErr)
+			if c.Ready {
+				glyph = m.th.OK.Render(theme.GlyphOK)
+			}
+			add(fmt.Sprintf("  %s %-24s %s", glyph, c.Name, m.th.Msg.Render(c.Message)))
 		}
 	}
 	return tea.NewView(strings.Join(lines, "\n"))
 }
 
-func hasStage(steps []inFlight, stage string) bool {
-	for _, s := range steps {
-		if s.stage == stage {
-			return true
-		}
+// clamp truncates a rendered line to w cells with a trailing … — the region
+// must never wrap (TE-1.5). w == 0 means the width is unknown: no clamping.
+func clamp(s string, w int) string {
+	if w <= 0 || lipgloss.Width(s) <= w {
+		return s
 	}
-	return false
+	return ansi.Truncate(s, w-1, "…")
 }
