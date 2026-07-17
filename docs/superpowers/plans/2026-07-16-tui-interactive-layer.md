@@ -1700,7 +1700,7 @@ while unhealthy — the CI gate
 `cube-idp status --watch --exit-status && run-e2e`. `--compact` hides
 Ready rows. The watch is the SAME view on a timer — no new TUI (spec WP7).
 
-- [ ] **Step 1: Failing test** — refactor seam first: extract the existing
+- [x] **Step 1: Failing test** — refactor seam first: extract the existing
 one-shot render into `func renderStatusOnce(...) (allReady bool, err error)`
 (pure over collected state; read status.go's three render paths and thread
 through whichever the mode picks). Test:
@@ -1716,7 +1716,7 @@ func TestWatchExitsWhenAllReady(t *testing.T) {
 
 Run → FAIL (no --watch flag).
 
-- [ ] **Step 2: Implement.** Non-TTY (buffers, CI): a plain `for` loop —
+- [x] **Step 2: Implement.** Non-TTY (buffers, CI): a plain `for` loop —
 render, check allReady, `select { case <-ctx.Done(): ...; case <-time.After(interval): }`
 — each render appended (no ANSI clearing on pipes; flux-style repeated
 blocks). TTY + rich mode: an inline Bubble Tea tick program (reuse the
@@ -1726,20 +1726,20 @@ ctrl-c → quit with interrupted flag; AltScreen never set). `--exit-status`
 + interrupted-while-unhealthy → `return errExitCode(1)` (T08's sentinel).
 `--compact` filters Ready rows in `renderStatusOnce`.
 
-- [ ] **Step 3: Green + commit**
+- [x] **Step 3: Green + commit**
 Run: `go test ./cmd/ -run 'TestWatch|TestStatus' -v -timeout 60s` → PASS; full suite → PASS.
 `git add -A && git commit -m "feat(cmd): status --watch/--interval/--exit-status/--compact — one-shot view on a timer"`
 
-- [ ] **Step 4: Task-level verify + merge + ledger.**
+- [x] **Step 4: Task-level verify + merge + ledger.**
 
 #### Outcome — W2.T12
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T12:08:23Z)`
-- BRANCH: `tui/w2-t12-watch` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w2-t12-watch` (merged: yes — fe6f921)
+- COMMITS: 7cbfa77 `docs: tui plan — claim W2.T12` · 2782f71 `feat(cmd): status --watch/--interval/--exit-status/--compact — one-shot view on a timer` (cmd/status.go + cmd/status_test.go, +434/−58) · fe6f921 `merge: tui W2.T12 watch (tui/w2-t12-watch)`
+- FINDINGS: (1) Seam shape: implemented as TWO seams, not one — `renderStatusOnce` (pure over a new `statusSnapshot{Health,Inventory,Access}`) plus the package-level var `statusConnect` (→ `connectStatus`), a factory that does the whole one-time cluster preamble (config.Load → cluster.New → requireClusterExists → Ensure → apply/engine construction) and returns the cube name + a per-tick `statusCollector`; watch tests stub `statusConnect` and never touch a cluster or need a cube.yaml fixture. (2) `renderStatusStyled` now takes `out io.Writer` explicitly (was `p.Out()`) so the TTY tick program can render the same styled view into its region buffer; both status_test.go call sites updated. (3) Pack-access rows moved into the collector (fetched only when styled && !jsonDoc — same condition as the old in-switch fetch; plain/JSON still make zero extra API calls); a live watch re-fetches them per tick. (4) `--compact` filters Ready rows in the plain and styled renders only; the JSON document always carries the full component set (a machine consumer filters for itself — silently dropped rows would lie); `--compact` also works on the one-shot view. (5) `--watch` + `-o json` takes the appending loop and re-emits the full doc each interval (no special-casing); under `--watch` the engine-health unready error is NOT returned per tick — the loop runs until ready (exit 0) or interrupt, per WP7. (6) Interrupt contract: without `--exit-status` an interrupted watch exits 0 quietly; with it, exit 1 via T08's bare sentinel; a ctx-cancel that surfaces as a collect error is treated as interrupt, not failure. (7) Live-path gate: the Bubble Tea tick program engages only when `p.Styled() && !jsonDoc` AND stdin AND the writer are real TTYs; every other combination uses the appending loop (which still renders styled blocks under the ModeLive escape hatch). (8) Live final frame: on all-Ready the model persists the last view via `tea.Sequence(tea.Println, tea.Quit)` before the region vanishes; ctrl-c handled as KeyPressMsg plus `tea.InterruptMsg`; `tea.WithContext` ties the program to the command context; AltScreen never set. (9) Extra tests beyond the plan's one: `TestWatchInterruptedWhileUnhealthy` (both flag variants, 2s never-hang fences), `TestStatusCompactHidesReadyRows` (verdict survives filtering), `TestWatchModelLifecycle` (model-driven, live_test style — no PTY). (10) `--interval` is not validated (≤0 fires immediately; each tick does real I/O so it self-throttles) and `--interval`/`--exit-status` without `--watch` are silently inert (gh-style). (11) No new CUBE codes, no new deps, no files touched beyond the plan's two.
+- REVIEW: red gate matched the Expected line exactly (`unknown flag: --watch`; refactor kept all pre-existing tests green first). Green: `go test ./cmd/ -run 'TestWatch|TestStatus' -v -timeout 60s` → 8 PASS (5 new + 3 existing; byte-frozen plain and JSON-doc pins untouched and green). Task gate in worktree: build + vet clean, `go test ./...` → 29 ok / 0 FAIL. Precautionary TE gate (no frame touched) → ok. Post-merge on main: 29 ok / 0 FAIL, tree clean.
+- BLOCKERS: none
+- HANDOFF: next UNCLAIMED is W2.T13 (fang styled help + NO_COLOR/CLICOLOR/--color, branch `tui/w2-t13-fang-color` — the only task allowed to add a dep: pinned `charm.land/fang/v2`). `statusConnect`/`statusCollector`/`renderStatusOnce` are the status seams from here on — anything wrapping status (fang, T14 fences) should stub `statusConnect`. `renderStatusStyled` signature changed (out first). status --watch is not prompt-capable (nothing for the §6.3 fence to gate) but its never-hangs fences exist (2s timeouts in both watch tests). The CI gate idiom `cube-idp status --watch --exit-status && run-e2e` works as spec'd.
 
 ---
 
