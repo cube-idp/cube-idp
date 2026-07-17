@@ -1841,7 +1841,7 @@ ANSI-stripped; color plumbing must not move them).
   "vhs binary unavailable" in FINDINGS; tapes are the deliverable, GIFs are
   best-effort)
 
-- [ ] **Step 1: Mode-matrix fence** (`pipeline_test.go`): a table test — for
+- [x] **Step 1: Mode-matrix fence** (`pipeline_test.go`): a table test — for
 each mode in {ModePlain, ModeStyled, ModeJSON, ModeLive} × {RunPipeline,
 RunPipelineStatic}, run a canonical fake producer (RunStarted, ProgressN
 start/done, StepLog, a failing step with Stop, Epilogue, error return) into
@@ -1852,31 +1852,31 @@ goroutine survives (the existing leak-check pattern in this file, if any —
 else `runtime.NumGoroutine` before/after with tolerance); (d) the buffer
 never contains ESC bytes in plain/JSON modes.
 
-- [ ] **Step 2: Prompt-fence completeness.** One table test driving every
+- [x] **Step 2: Prompt-fence completeness.** One table test driving every
 prompt-capable command (`down`, `trust`, `upgrade`, `pack install`) with
 empty-buffer stdin + 5s `-timeout` headroom asserting completion (the §6.3
 gate — most already exist from T06/T07/T11; this step makes the TABLE so a
 future prompt can't dodge it).
 
-- [ ] **Step 3: README.** New "Terminal output & interactivity" section:
+- [x] **Step 3: README.** New "Terminal output & interactivity" section:
 the mode ladder + `--color`; prompt doctrine (TTY-only, `--yes`/`--confirm`
 twins, `--no-input`-equivalent behavior, `ACCESSIBLE`); R1/R2/R3 changelog
 notes (R3 prominently: piped `down` now requires `--yes`); `explain`,
 `status --watch`, `pack install`; JSONL additive fields (T02/T03) with the
 pre-freeze EXPERIMENTAL caveat.
 
-- [ ] **Step 4: VHS tapes.** `docs/vhs/up.tape` scripting: `cube-idp up`
+- [x] **Step 4: VHS tapes.** `docs/vhs/up.tape` scripting: `cube-idp up`
 against a kind-less demo (or `--help` + `status` if a cluster is
 unavailable — tapes must run without a live cluster; use `explain CUBE-0007`
 and the down-consent decline path as the second tape). Record GIFs if `vhs`
 exists on PATH.
 
-- [ ] **Step 5: The full battery, one last time**
+- [x] **Step 5: The full battery, one last time**
 Run: `go build ./... && go vet ./... && go test ./... && go test ./internal/ui/... ./cmd/... -run TE`
 Expected: all PASS. This is the Approach-B exit gate: spec §6.1 matrix
 green + §6.2 frozen-contract fence green + §6.3 prompt fence green.
 
-- [ ] **Step 6: Commit + merge + ledger**
+- [x] **Step 6: Commit + merge + ledger**
 `git add -A && git commit -m "test(ui)+docs: mode-matrix and prompt fences; README UX contract; VHS tapes"`
 HANDOFF: state that Approach B is complete and list anything deferred
 (pack-contributed epilogue lines, StepLog JSON projection, full three-axis
@@ -1884,13 +1884,83 @@ color model, status/doctor event-stream migration — all recorded as future
 work in the spec).
 
 #### Outcome — W2.T14
-- STATUS: `IN_PROGRESS(claude-session-6b9ef6ab, 2026-07-17T13:06:04Z)`
-- BRANCH: `tui/w2-t14-fence-docs` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w2-t14-fence-docs` (merged: yes — 64009b1; branch kept, not pushed)
+- COMMITS: `3ff5b5b` docs: tui plan — claim W2.T14 · `a4220b7` test(ui)+docs:
+  mode-matrix and prompt fences; README UX contract; VHS tapes (6 files
+  changed, 411 insertions, 18 deletions) · `64009b1` merge: tui W2.T14
+  fence-docs (tui/w2-t14-fence-docs)
+  · this ledger commit
+- FINDINGS:
+  - Files beyond the task's Files list (both recorded per the T13 precedent):
+    (a) `cmd/promptfence_test.go` CREATED — the §6.3 prompt-fence table must
+    drive real commands, so it lives in package `cmd`; the only listed test
+    file (`internal/ui/pipeline_test.go`, package ui) cannot import cmd.
+    (b) `docs/machine-readable-output.md` UPDATED with the T02/T03 additive
+    JSONL fields the README note references (step_failed `msg`/`dur_ms`,
+    step `idx`/`of`, the `epilogue` record with its actual
+    `cube/gateway_url/context/registry/hint` tags verified against
+    render/json.go, and the success-ordering line `… → epilogue? → access?
+    → run_done`) — it is the canonical reference the README defers to;
+    leaving it stale would have contradicted the new README text.
+  - Mode-matrix fence design: one canonical producer (Start, ProgressN 1/2
+    + Done, StepLog, Progress+Stop, Epilogue, error return) through all four
+    modes × both runners. A warm-up ModeLive run precedes the goroutine
+    baseline (bubbletea/lipgloss pay one-time global init); the color policy
+    is pinned via `resetColorPolicy()` (ui_test.go helper) so a developer's
+    exported CLICOLOR_FORCE can never restyle the fence (T13's documented
+    env sensitivity). ModeLive legs run the real Bubble Tea program against
+    the buffer (nil input under `go test`) — asserted for error passthrough
+    and goroutine hygiene only; styled≡plain byte-identity is asserted for
+    the auto-styled downgrade, no-ESC for ModePlain/ModeJSON, and the JSON
+    stream for per-line `"v":1` validity ending run_done→diagnosis.
+  - Prompt-fence rows and outcomes: down → CUBE-0010 refusal pre-pipeline;
+    trust → EOF on the text fallback → "aborted", trustInstall stubbed to
+    t.Error defensively; upgrade --plan → the no-cube.lock typed error (zero
+    network — ResolveRemote is never reached; the drift prompt itself is
+    unreachable on buffers since PromptsAllowed is false, proven by
+    prompt_test.go); bare pack install → CUBE-0010. Completion within 5s is
+    the assertion; each row's exact wording stays pinned by its own command
+    tests. `plugin trust` is not a table row (the plan names four commands);
+    its non-TTY CUBE-7104 refusal keeps its own fence in the plugin tests.
+  - VHS: `vhs` binary unavailable on this machine — tapes committed, GIFs
+    not recorded (the plan's sanctioned fallback). Both tapes run without
+    docker or a live cluster: up.tape records styled help, the no-cube.yaml
+    failure frame (CUBE-0001 box + explain footer), `explain CUBE-0001`, and
+    the init short-circuit; down-consent.tape records the TE-3 preview +
+    typed-name decline (exit 0), the R3 piped refusal (`down | cat` →
+    CUBE-0010), and `explain CUBE-0010`/`CUBE-0007`. Every non-TTY command
+    in the tapes was dry-run against the built binary and behaved exactly as
+    scripted; the TTY consent path is pinned by TestTE3_DeclineAbortsCleanly.
+  - Pre-existing wart (owner FYI, not touched): go.mod marks
+    `github.com/charmbracelet/colorprofile // indirect` although
+    internal/ui/ui.go imports it directly since T13 — a future `go mod tidy`
+    will reclassify the comment; build/vet/test are unaffected.
+  - `.superpowers/sdd/progress.md` is gitignored — the W2.T14 append is
+    on-disk only (same note as every prior task).
+- REVIEW: TestModeMatrixFence PASS (0.09s) and TestPromptFenceNeverBlocks-
+  OnBufferStdin PASS (4 subtests, each <10ms — far inside the 5s fence).
+  Step-5 exit battery in the worktree: `go build ./... && go vet ./...`
+  clean, `go test ./...` 29 ok / 0 FAIL, TE gate `go test ./internal/ui/...
+  ./cmd/... -run TE` all ok (goldens unmoved). gofmt clean on both new/
+  changed Go files. Post-merge on main: `go test ./...` 29 ok / 0 FAIL,
+  tree clean, worktree removed. Tape flows verified by executing them
+  against a fresh `go build` binary in a scratch dir (CUBE-0001 box,
+  CUBE-0010 refusal, explain output — all as scripted).
+- BLOCKERS: none
+- HANDOFF: **Approach B is complete** — all 14 tasks DONE, spec §6.1 TE
+  matrix green, §6.2 frozen-contract fence green (now including the WP10
+  mode-matrix table), §6.3 prompt fence green (now a table a future
+  prompt-capable command must join). Deferred/future work (recorded in the
+  spec/plan, deliberately not done): pack-contributed epilogue lines,
+  a StepLog JSON projection, the full three-axis color model (the `--color`
+  flag does not reach the live program or fang's help writer — env vars do),
+  status/doctor migration onto the event stream, producer-side subprocess
+  log capture (TE-1.4/TE-2.2 are proven against synthetic StepLog events),
+  and recording the VHS GIFs once `vhs` is installed
+  (`go build -o cube-idp . && PATH="$PWD:$PATH" vhs docs/vhs/<tape>`).
+  Wave-2 sign-off (spec §6.4) still wants the tapes' GIFs attached to the
+  closing PR alongside the golden tests.
 
 ---
 
