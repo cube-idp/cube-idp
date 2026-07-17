@@ -752,7 +752,7 @@ Expected: PASS.
 - Check: `tests/e2e/*.go` substring assertions (additive lines — should be
   unaffected; verify, don't assume)
 
-- [ ] **Step 1: Failing golden test** (`plain_test.go`):
+- [x] **Step 1: Failing golden test** (`plain_test.go`):
 
 ```go
 // R1 (spec §5): a started step is visible in CI logs — hung and slow must
@@ -769,32 +769,32 @@ func TestPlainStepStartedLine(t *testing.T) {
 Run: `go test ./internal/ui/render/ -run TestPlainStepStartedLine -v` → FAIL
 (zero bytes today).
 
-- [ ] **Step 2: Implement.** `plain.go`: move `event.StepStarted` out of the
+- [x] **Step 2: Implement.** `plain.go`: move `event.StepStarted` out of the
 zero-bytes case into `fmt.Fprintf(w, "▸ [%s] %s...\n", e.Stage, e.Msg)`.
 `styled.go`: same content, badge via `th.Badge`, msg + `...` via `th.Dim`.
 Do NOT touch the live renderer (its region already shows in-flight state)
 or JSON (`step_started` records already exist).
 
-- [ ] **Step 3: Full suite — expect deliberate golden churn**
+- [x] **Step 3: Full suite — expect deliberate golden churn**
 Run: `go test ./... 2>&1 | tail -20`
 Any failing pipeline/e2e-adjacent test that asserted the ABSENCE of start
 lines or pinned full plain transcripts gets updated in this commit; list
 every updated assertion in FINDINGS (this is the ratified R1 churn).
 Expected after updates: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 `git add -A && git commit -m "feat(ui): R1 — plain/styled start lines for StepStarted (ratified, spec §5; fixes silent CI waits)"`
 
-- [ ] **Step 5: Task-level verify + merge + ledger.**
+- [x] **Step 5: Task-level verify + merge + ledger.**
 
 #### Outcome — W1.T04
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T06:21:26Z)`
-- BRANCH: `tui/w1-t04-startlines` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w1-t04-startlines` (merged: yes)
+- COMMITS: `024b7cc` feat(ui): R1 — plain/styled start lines for StepStarted (ratified, spec §5; fixes silent CI waits) · merge `54fc57d` · claim `1692be5`
+- FINDINGS: (1) Step-1 test added verbatim from the plan; FAIL verified first (got `""`, want the start line). (2) Implementation exactly per plan: `plain.go` gains `case event.StepStarted: fmt.Fprintf(w, "▸ [%s] %s...\n", ...)`; `styled.go` renders the same content — badge via `th.Badge`, `msg+"..."` via `th.Dim`; StepStarted removed from both zero-byte case lists; live renderer and JSON untouched. (3) The ratified R1 churn — 8 test updates across 4 packages, every one an absence-of-start-lines assertion: `render/plain_test.go` `TestPlainGoldenUpRun` (golden kept byte-identical; the want-transform — T03's R2 pattern — now also inserts the fixture's three start lines: cluster/engine/health), `TestPlainGoldenFailedRun` (want = golden + the opened-then-failed cluster step's start line), `silentEventsFixture` (StepStarted removed — no longer silent; fixes `TestPlainSilentEvents` + styled_test.go's `TestStyledSilentEventsAreZeroBytes`); `ui/pipeline_test.go` `TestRunPipelinePlainByteNeutrality` (want gains `▸ [cluster] creating kind cluster...`), `TestRunPipelineContextCancelUnwinds` (zero-bytes assertion replaced: an aborted progress now leaves EXACTLY its start line — deliberate R1 semantics, interrupted waits visible; Stop's StepFailed still zero plain bytes); `bundle/vendor_pipeline_test.go` `TestVendorPlainByteStable` (line count 2→3), `TestVendorImagePlainByteStable` (3→5); `up/tls_test.go` `TestRunOrdersCABeforeCluster` (ordering proof reworked: a `▸ [cluster]` start line legitimately appears before Ensure now — the test fails only on a cluster line WITHOUT the `...` suffix, i.e. a completion). (4) `TestStyledContentIdenticalToPlain` passed unchanged — the styled start line ANSI-strips to plain's exact bytes; no new content-identity exception. (5) e2e substring assertions verified additive-safe (`phase3_test.go` uses Contains on "▸ [bundle]"/"▸ [pack] fetching"); e2e not run (unit gate is the default, no step required it). (6) JSON already had `step_started` records — untouched per plan.
+- REVIEW: Step-1 FAIL verified before implementing; after churn updates `go test ./...` = 29 packages ok, 0 FAIL; `go build ./... && go vet ./...` clean; TE gate `go test ./internal/ui/... ./cmd/... -run TE` green (render 0.572s ok); post-merge `go test ./...` on main 0 FAIL; worktree removed, branch kept unpushed.
+- BLOCKERS: none
+- HANDOFF: T05 (live tree): the live renderer was deliberately untouched — its managed region already shows in-flight state; scrollback semantics unchanged. Plain transcripts now include `▸ [stage] msg...` start lines — any new full-transcript pin must account for them; the canonical-fixture want-transform in plain_test.go now stacks R2+R1, so T05's TE goldens should be recorded fresh as `testdata/te*.golden` rather than extending that transform. Aborted/failed steps leaving their start line is pinned behavior (ContextCancelUnwinds + GoldenFailedRun). All three ratified plain-output changes are now landed except R3 (T07).
 
 ---
 
