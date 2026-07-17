@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/ui"
 	"github.com/cube-idp/cube-idp/internal/upgrade"
 )
@@ -18,7 +18,9 @@ func newUpgradeCmd() *cobra.Command {
 		Short: "Preview available pack updates and pending changes (apply them with `cube-idp up`)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if !plan {
-				return fmt.Errorf("cube-idp has no separate apply step: re-running `cube-idp up` IS the upgrade.\nUse `cube-idp upgrade --plan` to preview what it would change")
+				return diag.New(diag.CodeUpgradeGuard,
+					"cube-idp has no separate apply step: re-running `cube-idp up` IS the upgrade.",
+					"Use `cube-idp upgrade --plan` to preview what it would change")
 			}
 			changed, err := upgrade.Plan(c.Context(), file, c.OutOrStdout())
 			if err != nil {
@@ -41,7 +43,7 @@ func newUpgradeCmd() *cobra.Command {
 						return runUpPipeline(c, file, "")
 					}
 				}
-				os.Exit(1)
+				return errExitCode(1)
 			}
 			return nil
 		},

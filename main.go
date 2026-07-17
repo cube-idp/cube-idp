@@ -21,12 +21,13 @@ func main() {
 		// renders as a CUBE-xxxx block and exits 1, as before.
 		code, render := cmd.ExitCodeFor(err)
 		if render {
-			// ui.RenderError: diag.Render verbatim in plain/JSON modes; a
-			// styled panel on a rich terminal. Printed only after Execute
-			// returned — i.e. after any live program fully released the
-			// terminal — so the diagnosis is always the last thing shown
-			// (design doc §5.2, diagnosis-last).
-			fmt.Fprintln(os.Stderr, ui.RenderError(err))
+			// ui.RenderErrorTo: diag.Render verbatim in plain/JSON modes or
+			// whenever stderr is not a real terminal (a `2>file` redirect
+			// must never capture ANSI borders); a styled panel on a rich
+			// terminal. Printed only after Execute returned — i.e. after any
+			// live program fully released the terminal — so the diagnosis is
+			// always the last thing shown (design doc §5.2, diagnosis-last).
+			fmt.Fprintln(os.Stderr, ui.RenderErrorTo(os.Stderr, err))
 		}
 		stop() // os.Exit skips deferred calls; release the signal handler explicitly
 		os.Exit(code)
