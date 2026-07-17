@@ -1540,7 +1540,7 @@ Wave 1 — note it in HANDOFF for the dispatcher.
 - Modify: `cmd/root.go` (AddCommand), `internal/ui/rendererr.go` (footer),
   `internal/ui/rendererr_test.go`, TE-2 golden
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```go
 // internal/diag/registry_test.go — every registered code must be
@@ -1576,21 +1576,21 @@ func TestExplainUnknownCodeFails(t *testing.T) { /* "CUBE-9999" → diag error n
 
 Run → compile FAIL.
 
-- [ ] **Step 2: Implement `internal/diag/registry.go`.** A `Desc{Summary,
+- [x] **Step 2: Implement `internal/diag/registry.go`.** A `Desc{Summary,
 Detail, Remediation string}` map keyed by `Code`, one entry per constant in
 `codes.go` — lift each entry's Summary from the constant's `//` comment
 verbatim; `AllCodes() []Code` returns them sorted; `Describe(Code) (Desc,
 bool)` looks up. (Mechanical but long — every existing code gets an entry;
 the test from step 1 enforces completeness forever.)
 
-- [ ] **Step 3: Implement `cmd/explain.go`.** `Use: "explain CUBE-XXXX"`,
+- [x] **Step 3: Implement `cmd/explain.go`.** `Use: "explain CUBE-XXXX"`,
 Args: exactly 1; normalize case; unknown → `diag.New(diag.CodeBadFlagValue,
 …, "see internal/diag/codes.go ranges; run cube-idp explain --list")`;
 `--list` prints all codes + summaries via tabwriter. Output: code, summary,
 detail, `fix:` remediation — plain text, `-o json` NOT supported in this
 task (record as future work). Register in root.go.
 
-- [ ] **Step 4: The TE-2.3 footer.** In `renderErrorForMode`'s styled
+- [x] **Step 4: The TE-2.3 footer.** In `renderErrorForMode`'s styled
 branch, append after the fix line:
 `fmt.Fprintf(&b, "%s\n", errPanelLabelStyle.Render("more:  cube-idp explain "+string(de.Code)))`
 — a Dim line INSIDE the panel (the spec's border-embedded footer is
@@ -1600,20 +1600,20 @@ rendering — note it in FINDINGS). Update the TE-2 diag-box golden
 `rendererr_test.go`: fixed diag.Error → ANSI-stripped panel equals
 `internal/ui/testdata/te2_box.golden`).
 
-- [ ] **Step 5: Green + commit**
+- [x] **Step 5: Green + commit**
 Run: `go test ./cmd/ ./internal/diag/ ./internal/ui/ -run 'Explain|Code|TE2' -v` → PASS; then full `go test ./...` → PASS.
 `git add -A && git commit -m "feat(cmd): cube-idp explain — the lookup half of the CUBE-code contract; diag box footer"`
 
-- [ ] **Step 6: Task-level verify + merge + ledger.**
+- [x] **Step 6: Task-level verify + merge + ledger.**
 
 #### Outcome — W2.T10
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T11:08:30Z)`
-- BRANCH: `tui/w2-t10-explain` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w2-t10-explain` (merged: yes — 0362c97)
+- COMMITS: `d9e6cec` docs: tui plan — claim W2.T10 · `1febe8c` feat(cmd): cube-idp explain — the lookup half of the CUBE-code contract; diag box footer (8 files, +449) · `0362c97` merge: tui W2.T10 explain (tui/w2-t10-explain) · ledger-close commit follows this edit
+- FINDINGS: (1) Registry scale: codes.go declares 86 CUBE codes; registry.go carries all 86, each Summary lifted verbatim from the constant's `//` comment, keyed by the typed constants (not string literals) so an entry cannot outlive its code. (2) Two pre-existing repo fences in codes_test.go constrained the implementation beyond the plan's letter: TestNoCubeLiteralsOutsideCatalog bans any quoted `CUBE-` literal in non-test code outside codes.go — RangeMeaning derives the digits via `strings.Cut` on `-` instead of trimming a literal prefix; and TestCatalogExhaustive's identifier scan matched the capitalized word "Codes" in explain.go's Long help prose as an undefined Code identifier — reworded to "The codes are stable". (3) Beyond the plan's output list (code, summary, detail, fix), explain prints a `range:` line with the code range's section comment verbatim (spec WP8 mandates "documented range meaning"); registry.go carries the ranges table + `RangeMeaning(Code)`. (4) Desc.Detail/Remediation exist per the plan's struct but are empty for every code — real remediations are situation-specific and attached by call sites at error time; explain omits empty lines; richer per-code prose is future work. (5) Extra tests beyond the plan's snippets: TestRegistryCoversEveryDeclaredCode (parses codes.go and asserts every declared literal has an entry AND counts match — the actual "enforces completeness forever" mechanism, which the AllCodes-iterating test alone cannot provide), TestAllCodesSortedAndComplete, TestRangeMeaningCoversAllCodes, TestExplainNormalizesCase, TestExplainListAllCodes. (6) Footer rendered via `th.ErrLabel` (T01 dissolved the plan's `errPanelLabelStyle` name) as a dim `more:  cube-idp explain CUBE-XXXX` line INSIDE the panel — the spec's border-embedded footer approximated inside the box, recorded here as the approved rendering per the plan's instruction; unconditional in the styled branch (every diag.Error carries a Code, and the command ships in the same commit, so the box never advertises a command that doesn't run). (7) TestTE2_DiagBoxGolden did not exist (T05 built only render/testdata frames) — created in rendererr_test.go with new golden internal/ui/testdata/te2_box.golden (CUBE-4012 fixture mirroring the spec's TE-2 frame); package ui gained its own stripANSI helper (previously only in render's tests). (8) Args: plan said "exactly 1"; implemented MaximumNArgs(1) + in-RunE guard so `--list` legally takes zero args; bare `explain` without --list → CUBE-0007 diag error pointing at `--list`. (9) Unknown code reuses CodeBadFlagValue with the plan's remediation text verbatim; case normalized via ToUpper. (10) `-o json` not supported — future work per the plan. (11) Frozen contracts intact: plain/JSON error paths return diag.Render verbatim (untouched); only the styled panel gained the footer; Printer.RenderError (syncer.Watch seam) shares renderErrorForMode so it gains the footer consistently under styled mode.
+- REVIEW: Step 1 red verified as compile FAIL (`undefined: AllCodes`, `undefined: Describe`, `undefined: diag.AllCodes`). Plan's Step 5 run `go test ./cmd/ ./internal/diag/ ./internal/ui/ -run 'Explain|Code|TE2'` → all PASS. Task gate in worktree: `go build ./... && go vet ./...` clean, `go test ./...` 29 pkgs ok / 0 FAIL; TE gate `go test ./internal/ui/... ./cmd/... -run TE` → 12 PASS (TE-1 ×3, TE-2 ×3 incl. new TestTE2_DiagBoxGolden, TE-3 ×4, TE-4 ×2). Post-merge on main: 29 ok / 0 FAIL. Worktree removed; branch kept, not pushed.
+- BLOCKERS: none
+- HANDOFF: `cube-idp explain CUBE-XXXX` / `explain --list` are live and the diag box footer advertises them — TE-2.3 is satisfied and pinned by internal/ui/testdata/te2_box.golden. `diag.AllCodes()/Describe()/RangeMeaning()` are available for future surfaces (T13 fang help, docs generation). Any task adding a NEW code must add a registry.go entry (TestRegistryCoversEveryDeclaredCode fails otherwise) and beware: a capitalized `Code<Word>` token at a word boundary in non-test prose trips TestCatalogExhaustive's ident scan. T13's fang ErrorHandler must keep routing through ui.RenderErrorTo so the footer renders exactly once. Next UNCLAIMED: W2.T11 (`pack install` MultiSelect).
 
 ---
 
