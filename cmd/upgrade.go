@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cube-idp/cube-idp/internal/ui"
 	"github.com/cube-idp/cube-idp/internal/upgrade"
 )
 
@@ -24,6 +25,22 @@ func newUpgradeCmd() *cobra.Command {
 				return err
 			}
 			if changed {
+				// WP5: after the plan has reported drift on a real TTY,
+				// offer to apply it — the prompt runs BEFORE any pipeline
+				// (spec Decision 5) and never fires on non-TTY/plain runs,
+				// whose drift-exit semantics stay exactly as they were
+				// (exit-path hygiene is T08's business).
+				if ui.PromptsAllowed(c.InOrStdin(), c.OutOrStdout()) {
+					ok, cerr := ui.Confirm(c.InOrStdin(), c.OutOrStdout(), ui.ConfirmOpts{
+						Title: "apply now (runs cube-idp up)?", Default: false})
+					if cerr != nil {
+						return cerr
+					}
+					if ok {
+						fmt.Fprintln(c.OutOrStdout(), "  hint: cube-idp up") // flag-twin hint (spec Decision 4)
+						return runUpPipeline(c, file, "")
+					}
+				}
 				os.Exit(1)
 			}
 			return nil
