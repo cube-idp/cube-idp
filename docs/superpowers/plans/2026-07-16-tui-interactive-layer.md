@@ -1491,14 +1491,14 @@ Expected: zero hits (main.go is the only os.Exit in the binary).
   `progressTick`, `eraseLine`, `Progress()/loop()/render()/Stop()/Done()`),
   `internal/ui/ui_test.go`, `cmd/progress_test.go`
 
-- [ ] **Step 1: Prove zero production call sites**
+- [x] **Step 1: Prove zero production call sites**
 Run: `grep -rn '\.Progress(' --include='*.go' internal/ cmd/ | grep -v _test.go | grep -v 'con\.' | grep -v 'Console'`
 Expected: zero hits outside `internal/ui/ui.go` itself (Console.Progress /
 ConsoleProgress are the event-stream seam and STAY). If a production call
 site exists, STOP → BLOCKED with the site listed (the audit said none; a
 new one appearing means an intervening change — do not delete under it).
 
-- [ ] **Step 2: Delete** `Printer.Progress` and its machinery from `ui.go`
+- [x] **Step 2: Delete** `Printer.Progress` and its machinery from `ui.go`
 (the raw `\r\x1b[2K` writes are audit P2 — the corruption hazard). Port or
 delete its tests in `ui_test.go` and `cmd/progress_test.go` (tests of
 ConsoleProgress/pipeline behavior stay; tests of the deleted goroutine
@@ -1506,7 +1506,7 @@ spinner go). Update ui.go's package comment: Printer is the STATIC surface
 (Step/Section/Glyph/Warn/AccessSummary); every animated or multi-step
 surface goes through RunPipeline/RunPipelineStatic.
 
-- [ ] **Step 3: Wave-1 sweep** — the full gate battery:
+- [x] **Step 3: Wave-1 sweep** — the full gate battery:
 Run: `go build ./... && go vet ./... && go test ./... 2>&1 | tail -5` → PASS.
 Run: `go test ./internal/ui/... ./cmd/... -run TE -v 2>&1 | tail -15`
 Expected: every TE test from T03/T04/T05/T07 passes — Wave 1's spec §6.1
@@ -1514,19 +1514,19 @@ conformance gate.
 Run: `go test -race ./internal/ui/... 2>&1 | tail -3` → PASS (the deleted
 spinner was the main data-race surface).
 
-- [ ] **Step 4: Commit + merge + ledger**
+- [x] **Step 4: Commit + merge + ledger**
 `git add -A && git commit -m "refactor(ui): delete hand-rolled spinner — bubbles/spinner in the live renderer is the only animation"`
 FINDINGS: record the full sweep output summary (test counts). This closes
 Wave 1 — note it in HANDOFF for the dispatcher.
 
 #### Outcome — W1.T09
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T10:40:22Z)`
-- BRANCH: `tui/w1-t09-spinner-sweep` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w1-t09-spinner-sweep` (merged: yes)
+- COMMITS: `0f6204d` docs: tui plan — claim W1.T09 · `c58b369` refactor(ui): delete hand-rolled spinner — bubbles/spinner in the live renderer is the only animation (2 files, +6/−158) · `816045c` merge: tui W1.T09 spinner-sweep (tui/w1-t09-spinner-sweep) · ledger-close commit follows this edit
+- FINDINGS: (1) Step 1 grep returned zero hits anywhere — not even inside ui.go: the method *definition* (`func (p *Printer) Progress`) doesn't match the `\.Progress(` call pattern, so "zero hits outside ui.go itself" was met with margin; no production call site existed. (2) Line drift: the spinner block sat at ui.go:274–365, not the plan's :280–373 — T01/T04 edits above it shifted the numbers; contents matched the audit exactly (progressTick, spinnerFrames, eraseLine `\r\x1b[2K`, Progress type + Progress/loop/render/Stop/Done). (3) cmd/progress_test.go contains ONLY `--progress` flag/ladder tests (CUBE-0007 unknown-value rejection, accepted-value mode resolution, --progress-beats---plain precedence) — none touch the goroutine spinner; the file is untouched. (4) Deleted three ui_test.go tests whose only subject was the deleted type: TestProgressPlainEmitsNothingBeforeDone, TestProgressPlainStopEmitsNothing, TestProgressStyledRendersSpinnerAndErases; nothing needed porting — the plain byte contracts they leaned on (Step "▸ [%s] %s\n", Section, Glyph, Warn) each keep their own dedicated pins. (5) Removed ui.go's now-unused `"time"` import (the spinner was its sole user). (6) Package comment updated per Step 2: Printer is the STATIC surface (Step/Section/Glyph/Warn/AccessSummary), everything animated/multi-step goes through RunPipeline/RunPipelineStatic; bubbles/spinner in the live renderer named as the only animation system. (7) ConsoleProgress / Console.Progress (the event-stream seam) verified untouched. (8) Sweep counts: full suite 29 packages ok / 0 FAIL; TE gate all PASS — TE-1 ×3 + TE-2 ×2 + TE-4 ×2 (internal/ui/render) and TE-3 ×4 (cmd); `go test -race ./internal/ui/...` ok for ui, render, theme (event: no test files). Known noise: theme package prints `[no tests to run]` under `-run TE`.
+- REVIEW: Step 1 grep (with the plan's exact filters) → exit 1, no output. Post-deletion: `grep -rn 'Progress\|spinnerFrames\|progressTick\|eraseLine'` over ui.go+ui_test.go shows only the unrelated ProgressFlag/EnvProgress ladder fields. Gate battery inside the worktree: `go build ./... && go vet ./...` clean, `go test ./...` 29 ok / 0 FAIL, TE matrix all PASS, `-race ./internal/ui/...` ok. Post-merge on main: `go test ./...` 29 ok / 0 FAIL. Worktree removed; branch kept, not pushed.
+- BLOCKERS: none
+- HANDOFF: **Wave 1 is CLOSED** — W1.T01–T09 all DONE; dispatcher may open Wave 2 (next UNCLAIMED: W2.T10 `explain`). internal/ui now contains zero raw cursor-control writes (`\r\x1b[2K` is gone); Printer's static-only rule is documented in the package comment — any future "still working" need must go through the pipeline, not a Printer method. The `--progress` flag machinery (ProgressFlag/EnvProgress, cmd/progress_test.go) is unrelated to the deleted spinner and remains fully in force.
 
 ---
 
