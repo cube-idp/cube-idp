@@ -1009,7 +1009,7 @@ environment") in FINDINGS.
   `ui.InputExact(in io.Reader, out io.Writer, title, want string) (bool, error)`.
   T07 (down/upgrade) and T11 (pack menu) build on these.
 
-- [ ] **Step 1: Failing gate tests** (`internal/ui/prompt_test.go`):
+- [x] **Step 1: Failing gate tests** (`internal/ui/prompt_test.go`):
 
 ```go
 // The single prompt gate (spec Decision 4 + §6.3): buffers, pipes, and
@@ -1051,7 +1051,7 @@ func TestPromptsRefusedWhilePipelineActive(t *testing.T) {
 
 Run: `go test ./internal/ui/ -run 'TestPrompts|TestConfirmNonTTY' -v` → compile FAIL.
 
-- [ ] **Step 2: Implement `internal/ui/prompt.go`** (mirror `cmd/init.go`'s
+- [x] **Step 2: Implement `internal/ui/prompt.go`** (mirror `cmd/init.go`'s
 proven huh v2 construction — read init.go:243–320 first and reuse its exact
 option style):
 
@@ -1127,7 +1127,7 @@ If huh v2.0.3's `Form` lacks `WithInput/WithOutput` under those exact names,
 STOP, check `go doc charm.land/huh/v2 Form` and cmd/init.go's usage, adapt,
 and record the real API in FINDINGS.
 
-- [ ] **Step 3: Migrate `cmd/trust.go`** (:39–59). Keep `--yes` and every
+- [x] **Step 3: Migrate `cmd/trust.go`** (:39–59). Keep `--yes` and every
 byte of the fallback path; the huh prompt engages only when allowed:
 
 ```go
@@ -1165,7 +1165,7 @@ if !yes {
 (The fallback wording must reproduce today's exact bytes — diff the printed
 string against the original before committing; `cmd/trust_test.go` pins it.)
 
-- [ ] **Step 4: Migrate `internal/plugin/trust.go`** (:143–174).
+- [x] **Step 4: Migrate `internal/plugin/trust.go`** (:143–174).
 `EnsureTrusted` keeps its signature. Replace the raw stderr bufio block:
 when `ui.PromptsAllowed(os.Stdin, os.Stderr)` → `ui.Confirm(os.Stdin,
 os.Stderr, ui.ConfirmOpts{Title: fmt.Sprintf("plugin %q is not trusted — run it and remember this hash?", name),
@@ -1178,24 +1178,33 @@ prominently in FINDINGS (it is spec-Decision-4-correct). `internal/plugin`
 now imports `internal/ui` — verify no import cycle:
 `go build ./internal/plugin/` must pass (ui does not import plugin).
 
-- [ ] **Step 5: Green**
+- [x] **Step 5: Green**
 Run: `go test ./internal/ui/ ./internal/plugin/ ./cmd/ 2>&1 | tail -10`
 Expected: PASS — trust_test.go still green because buffer streams take the
 byte-identical fallback path.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 `git add -A && git commit -m "feat(ui): huh-v2 prompt seam with hard TTY/mode/pipeline gating; migrate trust + plugin-trust prompts"`
 
-- [ ] **Step 7: Task-level verify + merge + ledger.**
+- [x] **Step 7: Task-level verify + merge + ledger.**
 
 #### Outcome — W1.T06
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T08:34:50Z)`
-- BRANCH: `tui/w1-t06-prompts` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w1-t06-prompts` (merged: yes)
+- COMMITS: `72de00a` docs: tui plan — claim W1.T06 · `e92c050` feat(ui): huh-v2 prompt seam with hard TTY/mode/pipeline gating; migrate trust + plugin-trust prompts · `faa2335` merge: tui W1.T06 prompts (tui/w1-t06-prompts)
+- FINDINGS:
+  1. huh v2.0.3's API matched the plan's names exactly — `Form.WithInput/WithOutput/WithAccessible` all exist (cross-checked against cmd/init.go's proven wizard); no STOP, no API drift, no dependency change (go.mod/go.sum untouched).
+  2. `pipelineActive` lives in pipeline.go and is set/cleared in `runPipeline` — the shared body of BOTH `RunPipeline` and `RunPipelineStatic`, so static pipelines also block prompts.
+  3. Spec WP4 mentions a "debug-build assertion (panics)"; the plan's normative Step-2 code instead gates at runtime (`PromptsAllowed` returns false while a pipeline is active). Implemented the plan's literal code — no panic path added.
+  4. cmd/trust.go fallback byte-identity: `desc + "\nProceed? [y/N] "` reassembles the pre-migration prompt exactly; all six buffer-driven cmd/trust_test.go tests pass unmodified.
+  5. **Behavior change (spec-Decision-4-correct, release-note candidate):** plugin trust previously prompted on stderr whenever stdin was a TTY — even in ModePlain/ModeJSON or with stderr piped. Now `!interactive || !ui.PromptsAllowed(os.Stdin, os.Stderr)` → clean CUBE-7104 "is not trusted" refusal, byte-for-byte the existing non-interactive message. The declined-prompt path keeps its distinct "was not trusted" message.
+  6. The interactive plugin-trust prompt copy changed from the raw 4-line stderr block to a huh Confirm (title `plugin %q is not trusted — run it and remember this hash?`, description path/sha256/permissions). TTY-only surface; no test pinned the old bytes.
+  7. `internal/plugin/exec.go` untouched — `EnsureTrusted` kept its signature so stream-threading ("if needed") was not needed; exec.go's `term.IsTerminal(stdin)` remains a pre-filter ahead of the stricter gate.
+  8. No import cycle: `go build ./internal/plugin/` clean with the new `internal/plugin` → `internal/ui` import; ui does not import plugin.
+  9. Flag-twin hint after an accepted trust confirm prints `  hint: cube-idp trust --yes` (spec Decision 4/TE-3.2 pattern).
+- REVIEW: Step 1 gate tests first failed to compile (undefined ConfirmOpts/pipelineActive/PromptsAllowed), then all three passed post-implementation (`go test ./internal/ui/ -run 'TestPrompts|TestConfirmNonTTY' -v` → 3× PASS, non-TTY Confirm returns default in <1ms without writing). Step 5: `go test ./internal/ui/ ./internal/plugin/ ./cmd/` → 3× ok. Task gate in worktree: `go build ./... && go vet ./...` clean, `go test ./...` → 29 packages ok / 0 FAIL. TE gate run as safety (T06 touches no frame): render TE suite still green. Post-merge on main: `go test ./...` → 29 ok. Checkbox sed verified: 7 ticked in §T06, 0 left, 0 leaked into later tasks.
+- BLOCKERS: none
+- HANDOFF: T07 (down consent, R3) builds directly on this seam: `ui.PromptsAllowed(in, out)`, `ui.Confirm(in, out, ConfirmOpts)` and `ui.InputExact(in, out, title, want)` are exported and tested — InputExact is the TE-3.2 typed-name consent and returns `(false, nil)` when disallowed, so down MUST implement its own R3 refusal (CUBE-0010) rather than lean on the default. Prompts must run BEFORE `RunPipeline` — `pipelineActive` makes a mid-pipeline prompt return the default silently, not panic. `ConfirmOpts.Default` is what a disallowed Confirm returns verbatim. T11's pack menu still needs `Select`/`MultiSelect` wrappers — only Confirm/InputExact exist so far; follow init.go's option style. The plugin-trust tightening (finding 5) belongs in the wave release notes.
 
 ---
 
