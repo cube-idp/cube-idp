@@ -531,24 +531,108 @@ carry, e.g. Argo CD's implicit `admin` username, never actually stored in
 convention is **deprecated** (one release of grace) in favor of this
 `expose:`-driven pivot.
 
-## Terminal output
+## Terminal output & interactivity
 
-On a real terminal, `cube-idp` prints styled, colorized status lines
-(lipgloss). Piped output, `--plain`, or `$CI` set all force stable,
-machine-readable plain lines instead — the plain format is pinned
-byte-for-byte to what phase 1 shipped, so scripts/CI never see output
-churn across releases. `cube-idp init` runs a short interactive wizard
-(huh) when no flags are given on a TTY; any flag short-circuits the wizard
-for scripted/CI use.
+### Output modes
 
 The output style is one knob: `--progress=auto|plain|live|json` (or the
 `CUBE_IDP_PROGRESS` env var; `--plain` is a permanent alias for
-`--progress=plain`). `--progress=json` turns long-running commands
-(`up`, `down`) into a JSON-lines event stream, and `status`, `doctor`, and
-`get secrets` also accept `--output json` for a single gh-style JSON
-document. Both schemas are **experimental** until the config v1 freeze —
-see [docs/machine-readable-output.md](docs/machine-readable-output.md) for
-the full event and document reference.
+`--progress=plain`). Resolution is a single ladder, highest rung wins:
+an explicit `--progress`/`--plain` beats `CUBE_IDP_PROGRESS`, which beats
+auto-detection (stdout not a TTY, `$CI` set, or `TERM` dumb/unset all
+force plain; otherwise a real terminal gets the rich mode).
+
+On a real terminal, long-running commands (`up`, `down`, `vendor`) render
+a live step tree — completed steps scroll into normal scrollback, the
+in-flight step shows a spinner, pack `n/m` progress, and a bounded tail of
+its output; on failure the failed step's full captured tail is flushed to
+scrollback *before* the `✗ CUBE-…` diagnosis box, so the most important
+information is last. Piped output, `--plain`, or `$CI` force the stable
+plain lines instead — the plain format is pinned byte-for-byte by tests,
+so scripts and CI never see output churn across releases.
+`--progress=json` turns the long-running commands into a JSON-lines event
+stream, and `status`, `doctor`, and `get secrets` also accept
+`--output json` for a single gh-style JSON document. Both schemas are
+**experimental** until the config v1 freeze — see
+[docs/machine-readable-output.md](docs/machine-readable-output.md) for the
+full event and document reference. Recent additive JSONL fields (same
+experimental window): `step_failed` now carries `msg` and `dur_ms`,
+`step_started`/`step_done` carry `idx`/`of` for enumerated pack
+deliveries, and a structured `epilogue` record carries the post-`up`
+success block as data.
+
+**Three ratified plain-output changes** shipped with the interactive
+layer — the only sanctioned ones (everything else that moves plain bytes
+is a bug by definition):
+
+- **R3 — `down` refuses without consent on non-TTY runs.** A piped or CI
+  `cube-idp down` without `--yes` now exits 1 with `CUBE-0010` instead of
+  silently destroying the cube. **Update your scripts: add `--yes`** (or
+  `--confirm=<cube-name>`).
+- **R1 — started steps print a start line.** Plain output gains
+  `▸ [stage] msg...` when a step begins, so a minutes-long cluster or
+  engine wait is visible in CI and "hung" is distinguishable from "slow".
+- **R2 — the up epilogue is data.** Plain prints the final
+  `cube "<name>" is up — <url>` block without the `✔` glyph (renderers add
+  it as presentation); JSON gains the `epilogue` record.
+
+### Color
+
+`--color=auto|always|never` (persistent flag) overrides all environment
+variables. Under `auto`: a non-empty `NO_COLOR` strips color only —
+layout, glyphs, and words survive, per [no-color.org](https://no-color.org)
+(an empty `NO_COLOR` is treated as unset); a non-empty `CLICOLOR_FORCE`
+forces color through pipes (useful in CI — GitHub Actions renders ANSI);
+otherwise color reaches exactly the writers that are real terminals.
+Semantic colors stay in the basic ANSI-16 range, so your terminal theme
+keeps control, and meaning never rides on color alone (glyph + word are
+always paired).
+
+### Prompts & consent
+
+The prompt doctrine is gh's rule, hard: **no prompt ever fires unless
+stdin and stdout are both real TTYs**, the output mode is rich, and no
+suppressing flag was passed. Every prompt has a scriptable flag twin, and
+after an accepted prompt the CLI prints that twin as a dim hint. A
+non-interactive run never hangs: it refuses (destructive operations) or
+falls back (everything else).
+
+- **`cube-idp down`** — Terraform-style consent: prints the real deletion
+  set (cluster + context, registry volume + TLS certs, pack count, OS
+  trust-store revert when applicable), then asks you to type the cube name.
+  Twins: `--yes`, `--confirm=<cube-name>`. Declining prints
+  `aborted — nothing was changed` and exits 0. Non-TTY without a twin
+  refuses (R3 above).
+- **`cube-idp trust`** — consent prompt; `--yes` is the twin.
+- **`cube-idp upgrade --plan`** — after reporting drift on a TTY, offers
+  `apply now (runs cube-idp up)?` (default No); non-TTY behavior is
+  unchanged.
+- **`cube-idp pack install`** (bare, on a TTY) — a filterable multi-select
+  over the pack catalog plus one summary confirm; the hint then names the
+  exact `pack install <refs…>` twin. With positional args, or on a
+  non-TTY, it never prompts — passing refs as arguments *is* the twin.
+- **`$ACCESSIBLE`** (non-empty) swaps TUI prompts for plain sequential
+  ones — the gh accessibility retrofit.
+
+`cube-idp init` runs a short interactive wizard (huh) when no flags are
+given on a TTY; any flag short-circuits the wizard for scripted/CI use.
+
+### Watching and explaining
+
+- **`cube-idp status --watch`** — the one-shot status view redrawn every
+  `--interval` (default 3s) until every component is Ready (gh-run-watch
+  model, not a separate TUI). `--exit-status` exits 1 if interrupted while
+  anything is unhealthy — the CI gate idiom is
+  `cube-idp status --watch --exit-status && run-e2e`. `--compact` hides
+  Ready rows. On a non-TTY the view is appended per interval with no ANSI
+  clearing.
+- **`cube-idp explain CUBE-XXXX`** — offline lookup for any diagnostic
+  code: summary, the documented meaning of its numeric range, and the
+  remediation (rustc `--explain` pattern). `--list` prints every code.
+  Every failure box's footer advertises it.
+- **`cube-idp --version`** and styled `--help` ship via
+  [fang](https://github.com/charmbracelet/fang); a hidden `man` command
+  generates manpages.
 
 ## Migrating from idpbuilder
 

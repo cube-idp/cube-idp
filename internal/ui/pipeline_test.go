@@ -3,7 +3,9 @@ package ui
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"runtime"
 	"strings"
 	"testing"
@@ -217,6 +219,107 @@ func TestConsoleHealthChangeFilter(t *testing.T) {
 	if got := strings.Count(out.String(), `"type":"health_tick"`); got != 2 {
 		t.Fatalf("change filter drifted: want 2 health_tick lines, got %d:\n%s", got, out.String())
 	}
+}
+
+// TestModeMatrixFence is the WP10 regression fence (spec §6.2): one
+// canonical producer — RunStarted, an enumerated ProgressN start/done, a
+// StepLog line, a failing step resolved by Stop, an Epilogue, and an error
+// return — driven through every mode × both pipeline runners, into a
+// bytes.Buffer. It pins the per-writer downgrade (auto-styled on a buffer is
+// byte-identical to plain), the JSON stream's validity and terminal
+// ordering, the no-ESC guarantee for the machine modes, and that no
+// goroutine survives any leg. The color policy is pinned to its zero
+// behavior (SetColorPolicy auto/false/false/false = pre-T13 bytes) so a
+// developer's exported CLICOLOR_FORCE can never restyle this fence.
+func TestModeMatrixFence(t *testing.T) {
+	defer SetMode(ModeStyled) // restore the zero-value default
+	resetColorPolicy()
+	defer resetColorPolicy()
+
+	errBoom := errors.New("boom")
+	producer := func(_ context.Context, con *Console) error {
+		con.Start("up", "dev")
+		pr := con.ProgressN("pack", "delivering demo", 1, 2)
+		con.Log("pack", "fetching oci://example/packs/demo:0.1.0")
+		pr.Done("demo@0.1.0 delivered")
+		failing := con.Progress("engine", "installing flux")
+		failing.Stop()
+		con.Epilogue(event.Epilogue{Cube: "dev", GatewayURL: "https://cube.local:8443",
+			Hint: "credentials: cube-idp get secrets"})
+		return errBoom
+	}
+
+	// Warm-up: the first live program pays one-time global init inside
+	// bubbletea/lipgloss; take the goroutine baseline after it so the leak
+	// check below measures this fence's legs, not library init.
+	SetMode(ModeLive)
+	var warm bytes.Buffer
+	_ = RunPipeline(context.Background(), "up", &warm, producer)
+	before := runtime.NumGoroutine()
+
+	runners := []struct {
+		name string
+		run  func(context.Context, string, io.Writer, func(context.Context, *Console) error) error
+	}{
+		{"RunPipeline", RunPipeline},
+		{"RunPipelineStatic", RunPipelineStatic},
+	}
+	for _, r := range runners {
+		outputs := map[Mode]string{}
+		for _, m := range []Mode{ModePlain, ModeStyled, ModeJSON, ModeLive} {
+			SetMode(m)
+			var buf bytes.Buffer
+			if err := r.run(context.Background(), "up", &buf, producer); !errors.Is(err, errBoom) {
+				t.Fatalf("%s mode %v: producer error not returned verbatim: %v", r.name, m, err)
+			}
+			outputs[m] = buf.String()
+		}
+
+		// (a) The per-writer downgrade: auto-styled output on a non-terminal
+		// writer is byte-identical to plain — the load-bearing rule that
+		// keeps every pipe, test buffer, and CI log stable.
+		if outputs[ModeStyled] != outputs[ModePlain] {
+			t.Errorf("%s: styled-on-buffer must be byte-identical to plain:\nstyled: %q\nplain:  %q",
+				r.name, outputs[ModeStyled], outputs[ModePlain])
+		}
+
+		// (d) The machine modes never emit an escape byte.
+		for _, m := range []Mode{ModePlain, ModeJSON} {
+			if strings.ContainsRune(outputs[m], 0x1b) {
+				t.Errorf("%s mode %v: ESC byte in machine-mode output: %q", r.name, m, outputs[m])
+			}
+		}
+
+		// (b) JSON: exactly one valid {"v":1,...} object per line, ending
+		// run_done then diagnosis (diagnosis TERMINAL — §4.2).
+		var types []string
+		for _, line := range strings.Split(strings.TrimRight(outputs[ModeJSON], "\n"), "\n") {
+			var obj struct {
+				V    int    `json:"v"`
+				Type string `json:"type"`
+			}
+			if err := json.Unmarshal([]byte(line), &obj); err != nil {
+				t.Fatalf("%s: invalid JSON line %q: %v", r.name, line, err)
+			}
+			if obj.V != 1 {
+				t.Fatalf("%s: JSON line missing \"v\":1: %q", r.name, line)
+			}
+			types = append(types, obj.Type)
+		}
+		if n := len(types); n < 2 || types[n-2] != "run_done" || types[n-1] != "diagnosis" {
+			t.Errorf("%s: JSON stream must end run_done then diagnosis, got %v", r.name, types)
+		}
+	}
+
+	// (c) No goroutine survives any leg (the existing reap-deadline pattern).
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= before {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("goroutines leaked across the mode matrix: before=%d after=%d", before, runtime.NumGoroutine())
 }
 
 // ConsoleProgress.Stop must forward the message and elapsed it already
