@@ -3,10 +3,14 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"image/color"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	fang "charm.land/fang/v2"
+	lipgloss "charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/cube-idp/cube-idp/internal/cluster"
@@ -16,6 +20,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/registry"
 	"github.com/cube-idp/cube-idp/internal/trust"
 	"github.com/cube-idp/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/ui/theme"
 )
 
 func NewRootCmd() *cobra.Command {
@@ -100,7 +105,56 @@ func Execute(ctx context.Context) error {
 				"run `cube-idp plugin list` to see discovered plugins, or `cube-idp --help` for built-in commands")
 		}
 	}
-	return root.ExecuteContext(ctx)
+	return executeFang(ctx, root)
+}
+
+// executeFang dispatches root through fang v2 (spec WP8): styled help/usage
+// on real terminals (full ANSI strip on pipes via fang's colorprofile
+// writer), --version from the release-stamped Version/Commit vars, hidden
+// manpage + completion generators. The error handler passed is a deliberate
+// no-op: fang both invokes its handler AND returns the error, and main.go is
+// this process's single final-error print point (diagnosis-last, the T08
+// exit sentinel's print-nothing contract, plugin passthrough) — rendering
+// here too would double-print every diagnosis. CUBE boxes stay ours, in
+// internal/ui/rendererr.go.
+func executeFang(ctx context.Context, root *cobra.Command) error {
+	return fang.Execute(ctx, root,
+		fang.WithVersion(Version),
+		fang.WithCommit(Commit),
+		fang.WithColorSchemeFunc(cubeColorScheme),
+		fang.WithErrorHandler(func(io.Writer, fang.Styles, error) {}),
+	)
+}
+
+// cubeColorScheme maps fang's help roles onto the internal/ui/theme palette
+// so help shares the CLI's one color language (basic ANSI 16 only, spec §2)
+// instead of fang's charmtone defaults.
+func cubeColorScheme(ld lipgloss.LightDarkFunc) fang.ColorScheme {
+	// Recover the light/dark choice ld encodes: lipgloss.LightDark(isDark)
+	// returns its second argument exactly when the background is dark.
+	isDark := ld(lipgloss.Color("0"), lipgloss.Color("1")) == lipgloss.Color("1")
+	t := theme.New(isDark)
+	base := t.Msg.GetForeground()
+	badge := t.Badge.GetForeground()
+	dim := t.Dim.GetForeground()
+	errc := t.Err.GetForeground()
+	return fang.ColorScheme{
+		Base:           base,
+		Title:          badge,
+		Description:    base,
+		Program:        badge,
+		Command:        badge,
+		Flag:           t.Warn.GetForeground(),
+		FlagDefault:    dim,
+		Comment:        dim,
+		DimmedArgument: dim,
+		QuotedString:   t.OK.GetForeground(),
+		Argument:       base,
+		Help:           base,
+		Dash:           dim,
+		ErrorHeader:    [2]color.Color{base, errc},
+		ErrorDetails:   errc,
+	}
 }
 
 // pluginEnv assembles the exec-plugin env contract (spec §4.4). It is
