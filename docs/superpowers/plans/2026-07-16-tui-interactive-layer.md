@@ -1389,13 +1389,13 @@ R3 is a behavior change for piped `down` (release-note item, T14 README).
   `internal/diag/codes.go` (`CUBE-0009`),
   `internal/ui/rendererr.go`, `internal/ui/rendererr_test.go`, `main.go`
 
-- [ ] **Step 1: PIN the exit codes FIRST** (`cmd/exit_test.go`) — before any
+- [x] **Step 1: PIN the exit codes FIRST** (`cmd/exit_test.go`) — before any
 refactor, add table rows asserting today's semantics: plugin
 `*exec.ExitError` → (its code, render=false); generic error → (1, true).
 Run: `go test ./cmd/ -run TestExitCodeFor -v` → PASS (they pin current
 behavior; if a test with this name exists, extend it).
 
-- [ ] **Step 2: Failing sentinel test** (same file):
+- [x] **Step 2: Failing sentinel test** (same file):
 
 ```go
 // os.Exit inside RunE skips main.go's cleanup and would leave a future
@@ -1411,7 +1411,7 @@ func TestExitCodeForSentinel(t *testing.T) {
 
 Run → FAIL (`errExitCode` undefined).
 
-- [ ] **Step 3: Implement.** `cmd/exit.go`:
+- [x] **Step 3: Implement.** `cmd/exit.go`:
 
 ```go
 // exitStatus carries a bare exit code through the normal error return path
@@ -1431,7 +1431,7 @@ fallback verbatim. Replace `os.Exit(1)` with `return errExitCode(1)` at
 site: if it is not inside RunE's direct return path (e.g. inside a helper),
 thread the error up; the RunE must return it.
 
-- [ ] **Step 4: CUBE-0009 for upgrade's raw error.**
+- [x] **Step 4: CUBE-0009 for upgrade's raw error.**
 Run: `sed -n '15,30p' cmd/upgrade.go` — locate the raw
 `fmt.Errorf` with the embedded newline (audit P7, ~:20). Register in
 `internal/diag/codes.go`:
@@ -1440,7 +1440,7 @@ and convert: summary = the current first line verbatim, remediation = the
 current second line verbatim (words preserved; only the envelope changes).
 Update any test pinning the old raw error text (list in FINDINGS).
 
-- [ ] **Step 5: `RenderErrorTo`** (`internal/ui/rendererr.go`):
+- [x] **Step 5: `RenderErrorTo`** (`internal/ui/rendererr.go`):
 
 ```go
 // RenderErrorTo renders err for a SPECIFIC writer, applying the same
@@ -1461,24 +1461,24 @@ func RenderErrorTo(w io.Writer, err error) string {
 `rendererr_test.go`: a bytes.Buffer writer under `SetMode(ModeStyled)`
 yields `diag.Render` bytes exactly (no ANSI).
 
-- [ ] **Step 6: Green**
+- [x] **Step 6: Green**
 Run: `go test ./cmd/ ./internal/ui/ ./internal/diag/... 2>&1 | tail -5` → PASS.
 Run: `grep -rn "os.Exit" cmd/*.go | grep -v _test.go`
 Expected: zero hits (main.go is the only os.Exit in the binary).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 `git add -A && git commit -m "fix(cmd/ui): exit sentinel replaces os.Exit-in-RunE; CUBE-0009 for upgrade guard; writer-aware RenderErrorTo"`
 
-- [ ] **Step 8: Task-level verify + merge + ledger.**
+- [x] **Step 8: Task-level verify + merge + ledger.**
 
 #### Outcome — W1.T08
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T10:02:18Z)`
-- BRANCH: `tui/w1-t08-exitpaths` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w1-t08-exitpaths` (merged: yes)
+- COMMITS: `2e0500d` docs: tui plan — claim W1.T08 · `06c066b` fix(cmd/ui): exit sentinel replaces os.Exit-in-RunE; CUBE-0009 for upgrade guard; writer-aware RenderErrorTo (9 files, +84/−23) · `50a0587` merge: tui W1.T08 exitpaths (tui/w1-t08-exitpaths)
+- FINDINGS: (1) Step 1's pin rows already existed — `TestExitCodeForPluginExitError` (real `sh -c "exit 3"` ExitError → (3,false)), `TestExitCodeForDiagError`/`TestExitCodeForPlainError` (→ (1,true)) fully cover the plan's table; nothing added, ran → PASS. (2) Line drift: upgrade.go's `os.Exit(1)` was at :44, not the plan's :27 (T07's apply-confirm block moved it); doctor.go :114/:119 matched; diff.go :22 matched. (3) Plan-internal conflict: Step 3's exit.go snippet comment contains the literal "os.Exit-in-RunE", which Step 6's fence grep (expected zero hits) matches — kept the grep normative, reworded the comment ("the replacement for exiting the process directly inside RunE"); same for doctor.go's stale writeDoctorJSON comment mentioning os.Exit(1). (4) `exitStatus` checked FIRST in `ExitCodeFor` via `errors.As`, before the `*exec.ExitError` arm, fallback verbatim. (5) CUBE-0009 inserted between CUBE-0008 and CUBE-0010 (numeric order; 0009 was deliberately reserved by T07). Summary = old first line verbatim (incl. trailing period), remediation = old second line verbatim — only the envelope changed. (6) No test pinned the old raw upgrade error text — zero assertion updates needed. (7) Root has `SilenceErrors`+`SilenceUsage`, so a returned `exitStatus` prints nothing extra: stdout/stderr and exit codes are byte-identical to the old os.Exit(1) paths (diff/doctor/upgrade CI semantics preserved). (8) `RenderErrorTo(w io.Writer, ...)` needed no adapter — `ui.IsTerminal` already takes `any`; test uses a `bytes.Buffer` under forced `ModeStyled` asserting `diag.Render` byte-equality + zero ANSI. (9) TE gate run as a precaution (rendererr.go touched): green.
+- REVIEW: Step 2 red gate: `undefined: errExitCode` (compile fail), then `go test ./cmd/ -run TestExitCodeFor -v` → 4× PASS incl. `TestExitCodeForSentinel`. Step 6: `go test ./cmd/ ./internal/ui/ ./internal/diag/...` → 3× ok; `grep -rn "os.Exit" cmd/*.go | grep -v _test.go` → 0 hits; main.go:33 is the binary's only `os.Exit`. Task gate in worktree: `go build ./... && go vet ./...` clean, `go test ./...` → 29 ok / 0 FAIL; TE gate (`go test ./internal/ui/... ./cmd/... -run TE`) green. Post-merge on main: 29 ok / 0 FAIL, tree clean, worktree removed, branch kept (not pushed).
+- BLOCKERS: none
+- HANDOFF: `errExitCode(n)` / `exitStatus` in cmd/exit.go is the "exit N, print nothing" channel — any future silent-exit need must use it, never os.Exit. main.go now renders via `ui.RenderErrorTo(os.Stderr, err)`; package `RenderError` and `Printer.RenderError` are untouched (syncer.Watch seam intact). CUBE-0009 (`CodeUpgradeGuard`) is registered — W2.T10's `explain` can index it; the upgrade no-`--plan` guard is now a diag.Error (styled panel on a TTY, diag.Render otherwise) — wording unchanged, wave release-note item only if the envelope matters. T09's sweep: the hand-rolled spinner (`internal/ui/ui.go:280–373`) is still in place, and doctor/diff/upgrade RunEs are now clean return paths for any future TUI wrapping.
 
 ---
 
