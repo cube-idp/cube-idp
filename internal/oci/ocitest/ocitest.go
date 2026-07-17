@@ -9,8 +9,11 @@
 package ocitest
 
 import (
+	"encoding/base64"
+	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -34,6 +37,47 @@ func LocalRegistry(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return u.Host
+}
+
+// LocalRegistryWithBasicAuth is LocalRegistry behind a gate: every request
+// must carry the given basic-auth credentials or is refused with a 401
+// Basic challenge — the in-process stand-in for a private registry (a
+// private GHCR pack namespace). Returns the registry's host:port.
+func LocalRegistryWithBasicAuth(t *testing.T, username, password string) string {
+	t.Helper()
+	inner := registry.New(registry.Logger(log.New(io.Discard, "", 0)))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+		if !ok || u != username || p != password {
+			w.Header().Set("WWW-Authenticate", `Basic realm="ocitest"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		inner.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u.Host
+}
+
+// SetDockerAuth points DOCKER_CONFIG (which oras-go's docker credential
+// store honors) at a fresh temp dir whose config.json holds inline
+// basic-auth credentials for host, isolating the test from the developer's
+// real ~/.docker/config.json and its keychain credsStore. t.Setenv restores
+// the variable on cleanup (and, as a side effect, forbids t.Parallel in the
+// calling test — the price of mutating process env).
+func SetDockerAuth(t *testing.T, host, username, password string) {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := fmt.Sprintf(`{"auths":{%q:{"auth":%q}}}`,
+		host, base64.StdEncoding.EncodeToString([]byte(username+":"+password)))
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DOCKER_CONFIG", dir)
 }
 
 // WriteDemoPack writes a minimal, valid pack directory (pack.cue + one

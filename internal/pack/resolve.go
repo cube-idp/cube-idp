@@ -10,7 +10,6 @@ import (
 	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/storage/memory"
 	"oras.land/oras-go/v2/registry/remote"
-	"oras.land/oras-go/v2/registry/remote/auth"
 
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
@@ -56,11 +55,17 @@ func ResolveRemote(ctx context.Context, ref, cacheDir string) (string, error) {
 		if err != nil {
 			return "", diag.Wrap(err, diag.CodeDigestResolveFail, fmt.Sprintf("bad OCI ref %q", ref), "use oci://host/repo:tag")
 		}
-		// Mirrors pullOCI's client setup exactly (anonymous auth; plain HTTP
-		// only for the 127.0.0.1/localhost zot tunnel) so both paths trust
-		// the same hosts identically — a real registry (e.g. ghcr.io) still
-		// uses HTTPS here, just as it does on the fetch path.
-		repo.Client = auth.DefaultClient
+		// Mirrors pullOCI's client setup exactly (docker credential chain via
+		// RegistryClient; plain HTTP only for the 127.0.0.1/localhost zot
+		// tunnel) so both paths trust and authenticate to the same hosts
+		// identically — a real registry (e.g. ghcr.io) still uses HTTPS here,
+		// just as it does on the fetch path.
+		client, err := RegistryClient()
+		if err != nil {
+			return "", diag.Wrap(err, diag.CodeDigestResolveFail, "cannot load docker credential store",
+				"check ~/.docker/config.json (run `docker login <registry>` to create it)")
+		}
+		repo.Client = client
 		if IsLocalRegistryHost(repo.Reference.Registry) {
 			repo.PlainHTTP = true
 		}

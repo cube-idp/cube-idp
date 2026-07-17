@@ -15,7 +15,6 @@ import (
 	oras "oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/oci"
 	"oras.land/oras-go/v2/registry/remote"
-	"oras.land/oras-go/v2/registry/remote/auth"
 
 	"golang.org/x/mod/sumdb/dirhash"
 
@@ -103,7 +102,8 @@ func dirPin(abs string) (string, error) {
 // pullOCI pulls the OCI artifact identified by ref (host/repo:tag, "oci://"
 // already trimmed) into cacheDir and returns the extracted pack directory
 // plus the pulled manifest digest (fed into Pack.Pinned as "oci:<digest>").
-// Anonymous auth only (Phase 1); plain HTTP is used for 127.0.0.1/localhost
+// Auth comes from the ambient docker credential chain (RegistryClient),
+// falling back to anonymous; plain HTTP is used for 127.0.0.1/localhost
 // registries (the zot port-forward tunnel). Every failure in this family
 // (bad ref, network, corrupt artifact, extraction) reports CUBE-4012.
 // Note: the digest-keyed cache only skips re-extraction — the registry
@@ -116,7 +116,12 @@ func pullOCI(ctx context.Context, ref, cacheDir string) (dir string, digest stri
 		return "", "", diag.Wrap(err, diag.CodePackOCIErr, fmt.Sprintf("invalid OCI pack ref %q", ref),
 			"use the form oci://host/repo:tag")
 	}
-	repo.Client = auth.DefaultClient
+	client, err := RegistryClient()
+	if err != nil {
+		return "", "", diag.Wrap(err, diag.CodePackOCIErr, "cannot load docker credential store",
+			"check ~/.docker/config.json (run `docker login <registry>` to create it)")
+	}
+	repo.Client = client
 	if IsLocalRegistryHost(repo.Reference.Registry) {
 		repo.PlainHTTP = true
 	}
@@ -140,7 +145,7 @@ func pullOCI(ctx context.Context, ref, cacheDir string) (dir string, digest stri
 	desc, err := oras.Copy(ctx, repo, tagOrDigest, store, tagOrDigest, oras.DefaultCopyOptions)
 	if err != nil {
 		return "", "", diag.Wrap(err, diag.CodePackOCIErr, fmt.Sprintf("cannot pull pack %q", ref),
-			"check the pack reference, registry availability, and network; re-run with the same command")
+			"check the pack reference, registry availability, and network — a 401/403 from a private registry means missing credentials (run `docker login <host>`); re-run with the same command")
 	}
 
 	destDir := filepath.Join(cacheDir, sanitizeRepoDigest(repo.Reference.Repository, string(desc.Digest)))
