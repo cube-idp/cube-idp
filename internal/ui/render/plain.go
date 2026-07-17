@@ -18,7 +18,8 @@ import (
 //
 // The one deliberate new projection is Access (§9): previously a styled-only
 // block, now stable plain lines — "what URLs did I just get" is exactly what
-// scripts and CI want to scrape.
+// scripts and CI want to scrape. The epilogue's one-glyph change is the
+// other sanctioned delta (ratified R2, TUI design doc §5).
 func Plain(w io.Writer) func(event.Event) {
 	return func(ev event.Event) {
 		switch e := ev.(type) {
@@ -28,6 +29,12 @@ func Plain(w io.Writer) func(event.Event) {
 			fmt.Fprintf(w, "▸ [%s] %s\n", e.Stage, e.Msg)
 		case event.Note:
 			fmt.Fprintln(w, e.Msg)
+		case event.Epilogue:
+			// R2 (ratified, design doc §5): the epilogue is data — plain
+			// projects it WITHOUT the ✔ glyph (presentation belongs to the
+			// styled/live renderers). These bytes are frozen; Context and
+			// Registry never print here (TE-4.4 keeps plain minimal).
+			fmt.Fprintf(w, "\ncube %q is up — %s\n  %s\n", e.Cube, e.GatewayURL, e.Hint)
 		case event.Warn:
 			fmt.Fprintln(w, e.Msg)
 		case event.Access:

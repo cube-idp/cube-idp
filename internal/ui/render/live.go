@@ -84,6 +84,11 @@ func scrollbackLine(ev event.Event) string {
 			th.Badge.Render(fmt.Sprintf("[%s]", e.Stage)))
 	case event.Note:
 		return e.Msg // verbatim
+	case event.Epilogue:
+		// Temporary minimal arm: the styled headline only — T05 replaces it
+		// with the full TE-4 block (context/registry rows, next: hint line).
+		return fmt.Sprintf("\n%s cube %q is up — %s",
+			th.OK.Render(theme.GlyphOK), e.Cube, e.GatewayURL)
 	case event.Warn:
 		return fmt.Sprintf("%s %s", th.Warn.Render("⚠"), th.Warn.Render(e.Msg))
 	case event.Access:

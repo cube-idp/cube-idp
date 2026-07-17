@@ -55,6 +55,8 @@ func JSONWithClock(w io.Writer, now func() time.Time) func(event.Event) {
 			emit(jsonHealthTick{jsonHead{1, ts(), "health_tick"}, comps})
 		case event.Note:
 			emit(jsonMsg{jsonHead{1, ts(), "note"}, e.Msg})
+		case event.Epilogue:
+			emit(jsonEpilogue{jsonHead{1, ts(), "epilogue"}, e.Cube, e.GatewayURL, e.Context, e.Registry, e.Hint})
 		case event.Warn:
 			emit(jsonMsg{jsonHead{1, ts(), "warn"}, e.Msg})
 		case event.Access:
@@ -124,6 +126,18 @@ type jsonHealthTick struct {
 type jsonMsg struct {
 	jsonHead
 	Msg string `json:"msg"`
+}
+
+// jsonEpilogue is the additive "epilogue" record (R2 / TE-4.4): the up
+// success block as structured data. Context/Registry are omitted when the
+// producer does not know them.
+type jsonEpilogue struct {
+	jsonHead
+	Cube       string `json:"cube"`
+	GatewayURL string `json:"gateway_url"`
+	Context    string `json:"context,omitempty"`
+	Registry   string `json:"registry,omitempty"`
+	Hint       string `json:"hint"`
 }
 
 type jsonPack struct {
