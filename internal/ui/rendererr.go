@@ -69,5 +69,10 @@ func renderErrorForMode(mode Mode, err error) string {
 		// Remediation stays unstyled: copy-paste safe.
 		fmt.Fprintf(&b, "%s %s\n", th.ErrLabel.Render("fix:  "), de.Remediation)
 	}
+	// TE-2.3 footer: every code the box shows is resolvable offline via
+	// `cube-idp explain` (same wave as the command itself — the box never
+	// advertises a command that doesn't run). Rendered as a dim line inside
+	// the panel; the spec's border-embedded footer is approximated here.
+	fmt.Fprintf(&b, "%s\n", th.ErrLabel.Render("more:  cube-idp explain "+string(de.Code)))
 	return th.ErrPanel.Render(strings.TrimRight(b.String(), "\n"))
 }

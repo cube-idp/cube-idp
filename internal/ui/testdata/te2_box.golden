@@ -1,0 +1,6 @@
+╭────────────────────────────────────────────────────────────────────╮
+│ ✗ CUBE-4012  cannot pull pack "ghcr.io/cube-idp/packs/gitea:0.1.0" │
+│ cause: registry returned 401: authentication required              │
+│ fix:   cube-idp repo login ghcr.io                                 │
+│ more:  cube-idp explain CUBE-4012                                  │
+╰────────────────────────────────────────────────────────────────────╯
