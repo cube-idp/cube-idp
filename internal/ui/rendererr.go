@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
@@ -28,12 +30,19 @@ func RenderError(err error) string {
 // RenderErrorTo renders err for a SPECIFIC writer, applying the same
 // per-writer downgrade NewFor gives stdout: the styled panel only ever
 // reaches a real terminal; a redirected stderr gets diag.Render verbatim
-// (audit P11 — no more ANSI borders inside `2>file`).
+// (audit P11 — no more ANSI borders inside `2>file`). Under an explicit
+// color suppression (--color=never / non-empty NO_COLOR) the panel keeps
+// its border and layout but every escape is stripped — no-color.org's
+// strip-color-only rule (W2.T13).
 func RenderErrorTo(w io.Writer, err error) string {
 	if !IsTerminal(w) {
 		return diag.Render(err)
 	}
-	return renderErrorForMode(CurrentMode(), err)
+	s := renderErrorForMode(CurrentMode(), err)
+	if colorPolicyNow().colorOff() {
+		s = ansi.Strip(s)
+	}
+	return s
 }
 
 // RenderError is RenderError's per-instance counterpart: it keys off this

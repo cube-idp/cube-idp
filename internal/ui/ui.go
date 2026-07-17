@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/charmbracelet/colorprofile"
 	"golang.org/x/term"
 
 	"github.com/cube-idp/cube-idp/internal/ui/event"
@@ -84,8 +85,9 @@ type Request struct {
 	EnvProgress  string // $CUBE_IDP_PROGRESS
 	IsTTY        bool   // ui.IsTerminal(os.Stdout)
 	CIEnv        string // $CI
-	NoColor      bool   // $NO_COLOR present (os.LookupEnv ok-bool; presence suffices, no-color.org semantics)
+	NoColor      bool   // $NO_COLOR present AND non-empty (EnvColorPolicy; no-color.org: empty = unset). Since W2.T13 this feeds the color policy, not a mode rung.
 	Term         string // $TERM
+	ColorFlag    string // --color value (auto|always|never); consumed by SetColorPolicy, never by a mode rung — WP8 refines the ladder's inputs, not its precedence
 }
 
 // Resolve is the pure, side-effect-free resolve ladder (design doc §6.2) —
@@ -100,8 +102,9 @@ type Request struct {
 //     the BUILDKIT_PROGRESS precedent; auto/empty/unknown falls through)
 //  6. stdout not a TTY → ModePlain
 //  7. $CI set (non-empty) → ModePlain
-//  8. $NO_COLOR present (even empty) or TERM dumb/unset → ModePlain (the
-//     strictest reading: plain, not merely uncolored)
+//  8. TERM dumb/unset → ModePlain ($NO_COLOR left this rung in W2.T13:
+//     no-color.org strips color only, so a non-empty NO_COLOR keeps the
+//     resolved mode and ColorEnabled/NewFor strip escapes at the writer)
 //  9. → ModeStyled (the rich-by-default decision)
 //
 // --progress beats --plain (more specific); documented, never an error.
@@ -128,10 +131,99 @@ func Resolve(r Request) Mode {
 	if !r.IsTTY || r.CIEnv != "" {
 		return ModePlain
 	}
-	if r.NoColor || r.Term == "dumb" || r.Term == "" {
+	if r.Term == "dumb" || r.Term == "" {
 		return ModePlain
 	}
 	return ModeStyled
+}
+
+// EnvColorPolicy reads the color-governing environment per the specs it
+// implements: NO_COLOR counts only when present AND non-empty (no-color.org
+// — an empty value is unset, fixing the pre-T13 presence-only reading) and
+// CLICOLOR_FORCE counts when non-empty (bixense). cmd/root.go calls it once
+// beside Resolve and feeds the result to SetColorPolicy.
+func EnvColorPolicy() (noColor, force bool) {
+	v, ok := os.LookupEnv("NO_COLOR")
+	noColor = ok && v != ""
+	force = os.Getenv("CLICOLOR_FORCE") != ""
+	return noColor, force
+}
+
+// colorPolicy is the process-wide color decision, stored beside the resolved
+// Mode. The zero value (no flag, no env signals, no explicit plain ask)
+// reproduces every pre-T13 behavior: color reaches exactly the writers
+// IsTerminal approves.
+type colorPolicy struct {
+	flag          string // --color: ""/"auto" (defer to env+terminal), "always", "never"
+	noColor       bool   // non-empty $NO_COLOR
+	force         bool   // non-empty $CLICOLOR_FORCE
+	explicitPlain bool   // plain/json demanded by flag or env — force-color never overrides an explicit ask
+}
+
+var currentColor atomic.Value // colorPolicy
+
+// SetColorPolicy stores the process-wide color policy. cmd/root.go calls it
+// once, in PersistentPreRunE, right after SetMode.
+func SetColorPolicy(flag string, noColor, force, explicitPlain bool) {
+	currentColor.Store(colorPolicy{flag: flag, noColor: noColor, force: force, explicitPlain: explicitPlain})
+}
+
+func colorPolicyNow() colorPolicy {
+	p, _ := currentColor.Load().(colorPolicy)
+	return p
+}
+
+// colorOff reports an explicit color suppression: the --color flag beats the
+// environment, and NO_COLOR beats CLICOLOR_FORCE (colorprofile's documented
+// precedence). Terminal detection is deliberately absent — a non-TTY writer
+// is "no color detected", not "color suppressed", so the ModeLive escape
+// hatch keeps forcing styled bytes onto buffers.
+func (p colorPolicy) colorOff() bool {
+	switch p.flag {
+	case "never":
+		return true
+	case "always":
+		return false
+	}
+	return p.noColor
+}
+
+// colorForce reports an explicit color force (--color=always or
+// CLICOLOR_FORCE): styled bytes may cross pipes, animations may not.
+func (p colorPolicy) colorForce() bool {
+	switch p.flag {
+	case "always":
+		return true
+	case "never":
+		return false
+	}
+	return p.force && !p.noColor
+}
+
+// ColorEnabled implements the WP8 color ladder for one writer:
+// --color=never or non-empty NO_COLOR → false; --color=always or non-empty
+// CLICOLOR_FORCE → true; otherwise whether w is a real terminal.
+func ColorEnabled(w io.Writer) bool {
+	p := colorPolicyNow()
+	if p.colorOff() {
+		return false
+	}
+	if p.colorForce() {
+		return true
+	}
+	return IsTerminal(w)
+}
+
+// stripFor returns w wrapped in a full ANSI strip when the color policy
+// suppresses color (NO_COLOR / --color=never): layout and glyphs survive
+// because they are characters, escapes never reach the writer. Otherwise w
+// passes through untouched. The wrapper strips per Write call, which is safe
+// here because every styled surface writes whole lines.
+func stripFor(w io.Writer) io.Writer {
+	if colorPolicyNow().colorOff() {
+		return &colorprofile.Writer{Forward: w, Profile: colorprofile.NoTTY}
+	}
+	return w
 }
 
 // IsTerminal reports whether v — typically an io.Reader or io.Writer backed
@@ -176,17 +268,33 @@ func New(out io.Writer, plain bool) *Printer {
 // byte-stable with zero plumbing. The sole exception is ModeLive
 // (producible only by an explicit live request, never by auto-detection) —
 // a documented escape hatch, the GH_FORCE_TTY analog.
+//
+// The W2.T13 color policy composes on top without touching the rules above
+// (zero-value policy = pre-T13 behavior exactly):
+//   - an explicit force (--color=always / CLICOLOR_FORCE) lets styled bytes
+//     cross a pipe — but never over an explicit --plain/--progress ask and
+//     never over ModeJSON's machine contract;
+//   - an explicit suppression (--color=never / non-empty NO_COLOR) keeps
+//     the styled surface but strips every escape at the writer (stripFor) —
+//     no-color.org's actual rule: color goes, layout and glyphs stay.
 func NewFor(out io.Writer) *Printer {
 	m := CurrentMode()
+	pol := colorPolicyNow()
 	switch {
 	case m == ModeJSON:
 		m = ModePlain // a Printer has no JSON form: plain IS the machine contract for static commands in stage A
 	case m == ModeLive:
 		m = ModeStyled // explicit force: the ONLY path that skips the TTY downgrade
-	case m == ModeStyled && !IsTerminal(out):
+	case m == ModeStyled && !IsTerminal(out) && !pol.colorForce():
 		m = ModePlain // per-writer downgrade: auto-styled never reaches a non-terminal
+	case m == ModePlain && pol.colorForce() && !pol.explicitPlain:
+		m = ModeStyled // bixense force: colored styled-static bytes on an auto-plain pipe
 	}
-	return &Printer{out: out, mode: m}
+	w := out
+	if m == ModeStyled {
+		w = stripFor(out)
+	}
+	return &Printer{out: w, mode: m}
 }
 
 // Styled reports whether this Printer renders the rich (lipgloss) surface.

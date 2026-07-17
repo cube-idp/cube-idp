@@ -69,13 +69,20 @@ func RunPipelineStatic(ctx context.Context, cmdName string, out io.Writer,
 type rendererPicker func(mode Mode, out io.Writer, cancel context.CancelFunc, ch <-chan event.Event)
 
 // pickRenderer is RunPipeline's renderer switch (§4.2): ModeJSON → JSON;
-// ModeLive or (ModeStyled on a real TTY) → the LiveRenderer; else → Plain.
+// ModeLive or (ModeStyled on a real TTY) → the LiveRenderer; else → Plain —
+// unless the W2.T13 color policy forces color through the pipe, in which
+// case the animation-free styled-static projection renders instead (color
+// crosses pipes, cursor movement never does). The live program needs no
+// NO_COLOR/CLICOLOR_FORCE plumbing here: Bubble Tea v2 detects its color
+// profile from the environment itself and downgrades in place.
 func pickRenderer(mode Mode, out io.Writer, cancel context.CancelFunc, ch <-chan event.Event) {
 	switch {
 	case mode == ModeJSON:
 		drain(ch, render.JSON(out))
 	case mode == ModeLive || (mode == ModeStyled && IsTerminal(out)):
 		runLive(out, cancel, ch)
+	case forceColorUpgrade(mode):
+		drain(ch, render.Styled(out))
 	default: // ModePlain, or auto-styled downgraded per-writer
 		drain(ch, render.Plain(out))
 	}
@@ -84,7 +91,9 @@ func pickRenderer(mode Mode, out io.Writer, cancel context.CancelFunc, ch <-chan
 // pickRendererStatic is RunPipelineStatic's renderer switch: identical to
 // pickRenderer except ModeStyled on a real TTY gets the Styled projection
 // instead of the LiveRenderer — short static commands never pop a live
-// step-tree. ModeLive is still an explicit force and still goes live.
+// step-tree. ModeLive is still an explicit force and still goes live. The
+// styled-static arm strips per the color policy (stripFor) so NO_COLOR /
+// --color=never leave layout and glyphs while dropping every escape.
 func pickRendererStatic(mode Mode, out io.Writer, cancel context.CancelFunc, ch <-chan event.Event) {
 	switch {
 	case mode == ModeJSON:
@@ -92,10 +101,24 @@ func pickRendererStatic(mode Mode, out io.Writer, cancel context.CancelFunc, ch 
 	case mode == ModeLive:
 		runLive(out, cancel, ch)
 	case mode == ModeStyled && IsTerminal(out):
+		drain(ch, render.Styled(stripFor(out)))
+	case forceColorUpgrade(mode):
 		drain(ch, render.Styled(out))
 	default: // ModePlain, or auto-styled downgraded per-writer
 		drain(ch, render.Plain(out))
 	}
+}
+
+// forceColorUpgrade reports whether a pipe-bound projection should render
+// the colored styled-static arm anyway: --color=always or CLICOLOR_FORCE
+// force color through pipes (the CI-log use case), but never over an
+// explicit plain/json ask and never into ModeJSON's machine stream.
+func forceColorUpgrade(mode Mode) bool {
+	p := colorPolicyNow()
+	if !p.colorForce() || p.explicitPlain {
+		return false
+	}
+	return mode == ModePlain || mode == ModeStyled
 }
 
 // runPipeline is RunPipeline/RunPipelineStatic's shared producer/lifecycle
