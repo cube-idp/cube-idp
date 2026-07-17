@@ -1884,7 +1884,7 @@ color model, status/doctor event-stream migration — all recorded as future
 work in the spec).
 
 #### Outcome — W2.T14
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(claude-session-6b9ef6ab, 2026-07-17T13:06:04Z)`
 - BRANCH: `tui/w2-t14-fence-docs` (merged: no)
 - COMMITS: —
 - FINDINGS: —
