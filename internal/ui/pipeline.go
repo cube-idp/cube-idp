@@ -5,12 +5,18 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/ui/event"
 	"github.com/cube-idp/cube-idp/internal/ui/render"
 )
+
+// pipelineActive is true while runPipeline owns the terminal — the
+// PromptsAllowed gate reads it so a prompt can never share the terminal
+// with a running event pipeline (spec Decision 5).
+var pipelineActive atomic.Bool
 
 // eventBuffer is the channel capacity: a full `up` emits well under 100
 // events even with health ticks; renderers consume promptly (one Fprintf or
@@ -98,6 +104,9 @@ func pickRendererStatic(mode Mode, out io.Writer, cancel context.CancelFunc, ch 
 func runPipeline(ctx context.Context, cmdName string, out io.Writer,
 	fn func(ctx context.Context, con *Console) error, pick rendererPicker) error {
 	_ = cmdName // producers self-identify via Console.Start; kept for §4.2's normative signature
+
+	pipelineActive.Store(true)
+	defer pipelineActive.Store(false)
 
 	mode := CurrentMode()
 	ch := make(chan event.Event, eventBuffer)
