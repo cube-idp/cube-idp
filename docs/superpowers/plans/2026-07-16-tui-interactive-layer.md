@@ -1634,7 +1634,7 @@ No cluster mutation in this task.
   not duplicate: extract init's pack-option list into a shared unexported
   helper `packCatalogOptions()` in cmd)
 
-- [ ] **Step 1: Failing tests** (`cmd/pack_test.go`):
+- [x] **Step 1: Failing tests** (`cmd/pack_test.go`):
 
 ```go
 // gh doctrine: args → never prompt; non-TTY bare invocation → refuse with
@@ -1652,7 +1652,7 @@ func TestPackInstallBareNonTTYRefuses(t *testing.T) {
 
 Run → FAIL (unknown command "install").
 
-- [ ] **Step 2: Implement** `newPackInstallCmd()` in `cmd/pack.go`,
+- [x] **Step 2: Implement** `newPackInstallCmd()` in `cmd/pack.go`,
 registered on `packCmd`. With args: validate each ref (reuse whatever ref
 validation `up`/config already applies — grep `PackRef`), load cube.yaml,
 append non-duplicate refs to `spec.packs`, write the file back (preserve
@@ -1669,20 +1669,20 @@ allowed: `diag.New(diag.CodeConfirmRequired, "pack install needs pack refs
 in non-interactive mode", "pass refs: cube-idp pack install
 oci://ghcr.io/cube-idp/packs/<name>:<version>")`.
 
-- [ ] **Step 3: Green + commit**
+- [x] **Step 3: Green + commit**
 Run: `go test ./cmd/ -run TestPackInstall -v -timeout 60s` → PASS; full suite → PASS.
 `git add -A && git commit -m "feat(cmd): pack install — filterable MultiSelect on TTY, config-mutating, flags-first"`
 
-- [ ] **Step 4: Task-level verify + merge + ledger.**
+- [x] **Step 4: Task-level verify + merge + ledger.**
 
 #### Outcome — W2.T11
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T11:34:25Z)`
-- BRANCH: `tui/w2-t11-packmenu` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w2-t11-packmenu` (merged: yes — d53552e)
+- COMMITS: `da7aaa5` docs: tui plan — claim W2.T11 · `2a11b73` feat(cmd): pack install — filterable MultiSelect on TTY, config-mutating, flags-first (3 files, +394/−8) · `d53552e` merge: tui W2.T11 packmenu (tui/w2-t11-packmenu)
+- FINDINGS: (1) Scope decision echoed per the plan header: `pack install` CREATED as a config-mutating command — selected/passed refs are appended to `spec.packs`; delivery happens on the next `cube-idp up` (the closing `next: cube-idp up` line says so); no cluster mutation. (2) Step 1 Expected deviation: this cobra version prints the `pack` help and returns nil for an unmatched subcommand of a non-runnable parent — there is no `unknown command "install"` error; the two red tests failed on their assertions instead (ref not appended; nil error instead of the refusal). Red gate semantically identical: both fail solely because `install` doesn't exist. (3) Plan-internal reconciliation: Step 1's sketch said assert a diag error "naming 'pass pack refs as arguments'", but Step 2's literal remediation is `pass refs: cube-idp pack install oci://ghcr.io/cube-idp/packs/<name>:<version>` — the test asserts the Step-2 literal (contains `cube-idp pack install oci://`). (4) Catalog extraction: `packCatalog` (name/version/desc) + `packCatalogOptions()`/`packCatalogNames()`/`packCatalogRef()` live in cmd/pack.go; init.go's `optionalPacks` is now derived from it and the wizard MultiSelect consumes `packCatalogOptions()` — wizard labels changed from `gitea (in-cluster git server)` to WP6's `gitea@0.1.0 — in-cluster git server` shape (TTY-only surface, no golden pins it). (5) Ref validation reused, not duplicated: the candidate cube.yaml is written to `<file>.tmp`, validated by `config.Load` (schema's non-empty ref, argocd-engine redundancy CUBE-0005, defaults), then renamed over the original — a rejected ref leaves cube.yaml untouched; the rejection message names the `.tmp` path. (6) Because install rewrites through Load→`sigs.k8s.io/yaml.Marshal` (init's writer), schema defaults materialize explicitly in the rewritten file (init-generated files are already explicit, so byte-stable in practice). (7) `Filterable(true)` confirmed on pinned huh v2.0.3 MultiSelect via `go doc`. (8) Added `-f/--file` flag (default `cube.yaml`) matching down/config/doctor — the plan named no file flag. (9) Extra tests beyond the plan's two: menu happy path (appends + hint with actual refs), decline abort (trust.go's exact wording), duplicate-skip; via seams `packPromptsAllowed`/`packMenuSelect`/`packConfirm` (down.go's seam pattern). (10) Duplicates: skipped with a Warn line; an all-duplicate run prints `nothing to add — cube.yaml unchanged`, exit 0. (11) Hints: menu-path scriptable-twin hint is `th.Dim`-rendered with down.go's two-space indent; `next: cube-idp up` is plain in plain mode, dim in styled.
+- REVIEW: Red verified: both Step-1 tests FAIL pre-implementation (see FINDINGS 2). Green: `go test ./cmd/ -run TestPackInstall -v -timeout 60s` → 5 PASS. Task gate in worktree: `go build ./... && go vet ./...` clean, `go test ./...` → 29 packages ok / 0 FAIL (includes codes_test.go literal/ident fences over the new non-test code and init's wizard tests over the catalog rewire). TE gate run as precaution (no frame code touched): ok, no TE regressions. Post-merge on main: `go test ./...` → 29 ok / 0 FAIL. Non-TTY bare invocation fenced with a 2s timeout (§6.3 shape).
+- BLOCKERS: none
+- HANDOFF: Next UNCLAIMED: W2.T12 (`status --watch`). `pack install` is config-mutating only — do not wire cluster work into it. `packCatalog` in cmd/pack.go is now the single optional-pack catalog: a newly published pack gets one entry there and both the init wizard and the install menu pick it up. The menu/consent paths are seam-overridable (`packPromptsAllowed`/`packMenuSelect`/`packConfirm`) — W2.T14's prompt-gating fence can reuse them; the never-hangs fence for `pack install` already exists (`TestPackInstallBareNonTTYRefuses`). The `pack install` refusal reuses CUBE-0010 (`diag.CodeConfirmRequired`) — no new codes, so no registry.go change was needed.
 
 ---
 
