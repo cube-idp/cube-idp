@@ -1218,14 +1218,14 @@ byte-identical fallback path.
   (register `CUBE-0010`), `tests/e2e/e2e_test.go` (:88, :167),
   `tests/e2e/phase3_test.go` (:141, :301, :356, :367, :439, :496)
 
-- [ ] **Step 1: Register the refusal code** (`internal/diag/codes.go`, 0xxx
+- [x] **Step 1: Register the refusal code** (`internal/diag/codes.go`, 0xxx
 command-contract range — after CUBE-0008):
 
 ```go
 CodeConfirmRequired Code = "CUBE-0010" // a destructive command refused to run without confirmation (--yes / --confirm)
 ```
 
-- [ ] **Step 2: Failing tests** (`cmd/down_test.go`):
+- [x] **Step 2: Failing tests** (`cmd/down_test.go`):
 
 ```go
 // R3 (spec §5 + TE-3.4): non-TTY down without --yes REFUSES — it must
@@ -1263,7 +1263,7 @@ func TestTE3_DeclineAbortsCleanly(t *testing.T) {
 Run: `go test ./cmd/ -run TestTE3 -v` → FAIL (down has no --yes and
 proceeds today).
 
-- [ ] **Step 3: Implement the down gate.** In `newDownCmd`, add flags
+- [x] **Step 3: Implement the down gate.** In `newDownCmd`, add flags
 `--yes` and `--confirm string`. In RunE, BEFORE `ui.RunPipeline` (spec
 Decision 5 — a prompt and the pipeline must never share the terminal):
 
@@ -1317,7 +1317,7 @@ plain-text content; golden-test it as `TestTE3_DownPreviewGolden` with a
 fixture cube (ANSI-stripped compare against
 `cmd/testdata/te3_preview.golden` — create the testdata dir).
 
-- [ ] **Step 4: The eight e2e call sites gain `--yes`** (same commit — R3's
+- [x] **Step 4: The eight e2e call sites gain `--yes`** (same commit — R3's
 same-commit rule): `tests/e2e/e2e_test.go:88` (`exec.Command(bin, "down")` →
 `exec.Command(bin, "down", "--yes")`), `:167` (`run(t, dir, bin, "down")` →
 `run(t, dir, bin, "down", "--yes")`), and the six `phase3_test.go` sites
@@ -1325,7 +1325,7 @@ same-commit rule): `tests/e2e/e2e_test.go:88` (`exec.Command(bin, "down")` →
 Run: `grep -rn '"down"' tests/e2e/ | grep -v -- --yes`
 Expected: zero hits.
 
-- [ ] **Step 5: upgrade apply-confirm.** Extract up's pipeline body into a
+- [x] **Step 5: upgrade apply-confirm.** Extract up's pipeline body into a
 shared helper in `cmd/up.go`:
 `func runUpPipeline(c *cobra.Command, file string) error` (move the existing
 `ui.RunPipeline(...)` call; `newUpCmd`'s RunE becomes a one-liner calling
@@ -1349,24 +1349,33 @@ if ui.PromptsAllowed(c.InOrStdin(), c.OutOrStdout()) {
 
 Non-TTY behavior unchanged (exit semantics are T08's business).
 
-- [ ] **Step 6: Green + never-blocks fence**
+- [x] **Step 6: Green + never-blocks fence**
 Run: `go test ./cmd/ -run 'TestTE3|TestDown|TestUpgrade' -v -timeout 60s` → PASS.
 Run: `go test ./... 2>&1 | tail -5` → PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 `git add -A && git commit -m "feat(cmd): down destroy preview + typed consent; R3 non-TTY refusal (CUBE-0010, ratified); upgrade apply-confirm"`
 
-- [ ] **Step 8: Task-level verify + merge + ledger.** FINDINGS must note:
+- [x] **Step 8: Task-level verify + merge + ledger.** FINDINGS must note:
 R3 is a behavior change for piped `down` (release-note item, T14 README).
 
 #### Outcome — W1.T07
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T09:21:03Z)`
-- BRANCH: `tui/w1-t07-consent` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w1-t07-consent` (merged: yes)
+- COMMITS: `0547ee8` docs: tui plan — claim W1.T07 · `72d9cb7` feat(cmd): down destroy preview + typed consent; R3 non-TTY refusal (CUBE-0010, ratified); upgrade apply-confirm · `97a6f53` merge: tui W1.T07 consent (tui/w1-t07-consent)
+- FINDINGS:
+  1. **R3 is a behavior change for piped `down` (release-note item, T14 README):** a non-TTY `down` without `--yes` now exits 1 with CUBE-0010 instead of destroying silently. `--yes` and `--confirm=<name>` are the scriptable twins; the refusal message names both.
+  2. **Nine e2e `down` call sites, not eight.** The plan (and spec WP5) list 8, but `tests/e2e/phase3_test.go:568` is a ninth `run(t, dir, bin, "down")` — all nine gained `--yes` in the same commit; the normative check (`grep -rn '"down"' tests/e2e/ | grep -v -- --yes`) is zero hits.
+  3. **`runUpPipeline` signature deviates by one param:** the plan's `runUpPipeline(c, file)` would have dropped up's `--bundle` flag, so it is `runUpPipeline(c *cobra.Command, file, bundlePath string) error`; up passes `bundlePath`, upgrade passes `""`.
+  4. **Test-safety hardening (this machine has a REAL kind cluster named `voodoo`):** the pipeline-reaching tests use fixture name `te3-down-fixture` (kind Delete is a guaranteed no-op, 0.10s) and a `stubTrustSeams` helper stubs `trustDir`/`trustUninstall` in every TE-3 test so `go test` can never touch the developer's OS trust store (trustUninstall firing is itself a test failure).
+  5. `printDownPreview` styles: headline `th.Section`, bullet glyph `•` in `th.Err` (deletion severity), content plain text; reuses status.go's package-level `th = theme.Detect(os.Stdin, os.Stdout)`. Golden compares ANSI-stripped bytes (`stripANSI` mirror of render/styled_test.go).
+  6. Preview branches mirror runDown exactly: kind/k3d → `<provider> cluster + kubeconfig context <provider>-<name>` + zot/TLS line; `existing`/`--keep-cluster` → engine + CoreDNS revert + inventory cascade (cluster kept); pack count from `len(cube.Spec.Packs)`; OS trust-store bullet only when `trust.LoadState(trustDir())` reports Installed (errors skip the bullet silently — the preview is advisory, runDown still warns).
+  7. `--confirm=<wrong-name>` returns the CUBE-0010 diag (plan's literal code); only the interactive typed-name mismatch takes the TE-3.3 `aborted — nothing was changed` exit-0 path.
+  8. upgrade's TTY-declined path still `os.Exit(1)` (drift signal preserved); non-TTY path byte-identical. The `os.Exit` in RunE itself is T08's job — untouched here.
+  9. `CUBE-0009` deliberately skipped: T08 registers it for upgrade's unstructured error; CUBE-0010 sits after CUBE-0008 per plan (codes append-only).
+- REVIEW: Step 2 gate ran red first (compile FAIL: undefined `downPromptsAllowed`/`downConfirmName`), then `go test ./cmd/ -run TestTE3 -v -timeout 60s` → 4× PASS (golden, non-TTY refusal, --yes skip, decline) with no test blocking on buffer stdin (§6.3 fence). Step 4 check: zero `"down"`-without-`--yes` hits, 9 `+--yes` diff lines. Step 6: full suite 29 ok / 0 FAIL. Task gate in worktree: `go build ./... && go vet ./...` clean, `go test ./...` 29 ok. TE gate (`go test ./internal/ui/... ./cmd/... -run TE`): render + cmd TE suites PASS. Post-merge on main: 29 ok / 0 FAIL, tree clean. Checkbox sed verified: 8 ticked in §T07, 0 left, 0 leaked into later tasks.
+- BLOCKERS: none
+- HANDOFF: `down` now has the full TE-3 consent surface: preview (`printDownPreview`), typed-name consent via the `downConfirmName`/`downPromptsAllowed` seams (override these in tests — never fake a TTY), `--yes`/`--confirm` twins, CUBE-0010 refusal. T08 (exit paths): upgrade.go still calls `os.Exit(1)` inside RunE at the drift exit — replace with the typed sentinel; `runUpPipeline(c, file, bundlePath)` is the shared up-pipeline entry point if upgrade's confirm path needs revisiting. T14: R3 + the CUBE-0010 refusal wording and the plugin-trust tightening (T06 finding 5) are the wave's release-note items. The e2e suite always passes `--yes` now — TE-3 consent has unit coverage only, by design.
 
 ---
 
