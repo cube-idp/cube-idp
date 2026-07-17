@@ -788,7 +788,7 @@ Expected after updates: PASS.
 - [ ] **Step 5: Task-level verify + merge + ledger.**
 
 #### Outcome — W1.T04
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T06:21:26Z)`
 - BRANCH: `tui/w1-t04-startlines` (merged: no)
 - COMMITS: —
 - FINDINGS: —
