@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -16,6 +19,39 @@ import (
 // bufWriter collects live-program output; a plain strings.Builder would do
 // but bytes.Buffer keeps parity with the other pipeline tests.
 type bufWriter struct{ strings.Builder }
+
+// stripANSI removes CSI escape sequences so a styled panel can be compared
+// on content and layout alone (same helper the render package tests use).
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+
+func stripANSI(s string) string { return ansiRE.ReplaceAllString(s, "") }
+
+// TestTE2_DiagBoxGolden pins the TE-2.3 box anatomy (spec §6.1 matrix):
+// rounded border, ✗ + code badge, cause: line, copy-paste-safe fix: line,
+// and the explain footer — the box may only advertise `cube-idp explain`
+// because the command ships in the same wave. Name is normative.
+func TestTE2_DiagBoxGolden(t *testing.T) {
+	prev := CurrentMode()
+	SetMode(ModeStyled)
+	defer SetMode(prev)
+
+	err := diag.Wrap(errors.New("registry returned 401: authentication required"),
+		diag.Code("CUBE-4012"),
+		`cannot pull pack "ghcr.io/cube-idp/packs/gitea:0.1.0"`,
+		"cube-idp repo login ghcr.io")
+	got := stripANSI(RenderError(err)) + "\n"
+	want, e := os.ReadFile(filepath.Join("testdata", "te2_box.golden"))
+	if e != nil {
+		t.Fatalf("golden: %v", e)
+	}
+	if got != string(want) {
+		t.Fatalf("TE-2 box drifted from golden:\n got:\n%s\nwant:\n%s", got, want)
+	}
+	// The fix: line's content stays unstyled even before stripping (TE-2.5).
+	if !strings.Contains(RenderError(err), "cube-idp repo login ghcr.io") {
+		t.Fatal("remediation must appear verbatim (copy-paste safe)")
+	}
+}
 
 // TestRunPipelineLiveDiagnosisAfterExit is the diagnosis-last structural
 // test the design doc §12 names: a FAILING event stream through the LIVE
