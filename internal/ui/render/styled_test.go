@@ -49,8 +49,9 @@ func TestStyledContentIdenticalToPlain(t *testing.T) {
 }
 
 // TestStyledSilentEventsAreZeroBytes restates the zero-byte event set for
-// Styled: RunStarted/StepStarted/StepFailed/HealthTick/Diagnosis/RunDone
-// produce no output in the styled-static projection either — same as Plain.
+// Styled: RunStarted/StepFailed/HealthTick/Diagnosis/RunDone produce no
+// output in the styled-static projection either — same as Plain.
+// (StepStarted left the set with ratified R1, spec §5.)
 func TestStyledSilentEventsAreZeroBytes(t *testing.T) {
 	for _, ev := range silentEventsFixture() {
 		var b bytes.Buffer

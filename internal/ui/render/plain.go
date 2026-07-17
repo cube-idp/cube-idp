@@ -14,15 +14,20 @@ import (
 // Plain returns the plain projection: a pure per-event function whose output
 // is defined as the bytes internal/ui emitted before Task 14b (design doc
 // §5.1, normative table). No ANSI, no goroutines, zero bytes for
-// RunStarted/StepStarted/StepFailed/HealthTick/Diagnosis/RunDone.
+// RunStarted/StepFailed/HealthTick/Diagnosis/RunDone.
 //
 // The one deliberate new projection is Access (§9): previously a styled-only
 // block, now stable plain lines — "what URLs did I just get" is exactly what
-// scripts and CI want to scrape. The epilogue's one-glyph change is the
-// other sanctioned delta (ratified R2, TUI design doc §5).
+// scripts and CI want to scrape. The epilogue's one-glyph change (ratified
+// R2) and the StepStarted start line (ratified R1) are the other sanctioned
+// deltas (TUI design doc §5).
 func Plain(w io.Writer) func(event.Event) {
 	return func(ev event.Event) {
 		switch e := ev.(type) {
+		case event.StepStarted:
+			// R1 (ratified, TUI design doc §5): a started step prints a
+			// start line so CI logs distinguish hung from slow (audit P12).
+			fmt.Fprintf(w, "▸ [%s] %s...\n", e.Stage, e.Msg)
 		case event.StepDone:
 			// Printer.Step's ModePlain branch — the phase-1 checkpoint-0.13
 			// format, byte-for-byte. Dur is NEVER printed in plain mode.
@@ -45,8 +50,8 @@ func Plain(w io.Writer) func(event.Event) {
 				}
 			}
 			fmt.Fprintf(w, "  %s\n", e.Hint)
-		case event.RunStarted, event.StepStarted, event.StepFailed,
-			event.StepLog, event.HealthTick, event.Diagnosis, event.RunDone:
+		case event.RunStarted, event.StepFailed, event.StepLog,
+			event.HealthTick, event.Diagnosis, event.RunDone:
 			// Zero bytes: nothing was printed for these today. The failure
 			// diagnosis stays main.go's job (stderr, ui.RenderError).
 		}

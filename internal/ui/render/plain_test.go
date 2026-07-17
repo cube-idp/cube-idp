@@ -17,8 +17,9 @@ import (
 // golden-stream fixture. Its plain projection must be byte-identical to
 // what the pre-Task-14b code emitted for the same run
 // (testdata/plain_up_pretask.golden, recorded from the pre-task tree)
-// plus ONLY the owner-ratified Access block (§9) and the R2 one-glyph
-// change (the epilogue's leading "✔ " moved from content to presentation).
+// plus ONLY the owner-ratified Access block (§9), the R2 one-glyph change
+// (the epilogue's leading "✔ " moved from content to presentation), and the
+// R1 start lines (each StepStarted now projects "▸ [stage] msg...\n").
 func canonicalUpRun() []event.Event {
 	return []event.Event{
 		event.RunStarted{Cmd: "up", Cube: "dev"},
@@ -102,6 +103,16 @@ func TestPlainGoldenUpRun(t *testing.T) {
 	// from content to presentation. The golden keeps the historical bytes;
 	// this transform is the entire ratified diff.
 	want := strings.Replace(string(pretask), "✔ ", "", 1) + accessBlock
+	// R1 (ratified, spec §5): each StepStarted in the fixture now projects
+	// a start line the pre-task recording lacks. Inserting exactly these
+	// three lines is the entire ratified R1 diff for this stream.
+	for _, ins := range [][2]string{
+		{"▸ [cluster] kind cluster ready", "▸ [cluster] creating kind cluster...\n"},
+		{"▸ [engine] flux installed", "▸ [engine] installing flux...\n"},
+		{"▸ [health] 3 component(s) ready", "▸ [health] waiting for components to become ready...\n"},
+	} {
+		want = strings.Replace(want, ins[0], ins[1]+ins[0], 1)
+	}
 
 	var b bytes.Buffer
 	project(t, canonicalUpRun(), Plain(&b))
@@ -114,30 +125,34 @@ func TestPlainGoldenUpRun(t *testing.T) {
 	}
 }
 
-// TestPlainGoldenFailedRun pins the failure projection: identical to the
-// pre-task bytes (the two completed step lines), because
-// StepStarted/StepFailed/RunDone/Diagnosis all project to zero plain bytes —
-// the diagnosis block belongs to main.go's stderr print, not the renderer.
+// TestPlainGoldenFailedRun pins the failure projection: the pre-task bytes
+// (the two completed step lines) plus ONLY the R1 start line of the step
+// that then fails — StepFailed/RunDone/Diagnosis still project to zero
+// plain bytes; the diagnosis block belongs to main.go's stderr print, not
+// the renderer.
 func TestPlainGoldenFailedRun(t *testing.T) {
-	want, err := os.ReadFile("testdata/plain_fail_pretask.golden")
+	pretask, err := os.ReadFile("testdata/plain_fail_pretask.golden")
 	if err != nil {
 		t.Fatal(err)
 	}
+	// R1 (ratified, spec §5): the opened-then-failed cluster step now leaves
+	// its start line — hung and slow are distinguishable in CI logs.
+	want := string(pretask) + "▸ [cluster] creating kind cluster...\n"
 	var b bytes.Buffer
 	project(t, failedRun(), Plain(&b))
-	if got := b.String(); got != string(want) {
+	if got := b.String(); got != want {
 		t.Fatalf("failed-run plain projection drifted:\ngot:\n%q\nwant:\n%q", got, want)
 	}
 }
 
 // silentEventsFixture is the recorded slice of events that print zero bytes
-// in both Plain and Styled (RunStarted/StepStarted/StepFailed/HealthTick/
-// Diagnosis/RunDone) — shared by TestPlainSilentEvents and
-// TestStyledSilentEventsAreZeroBytes (styled_test.go).
+// in both Plain and Styled (RunStarted/StepFailed/HealthTick/Diagnosis/
+// RunDone) — shared by TestPlainSilentEvents and
+// TestStyledSilentEventsAreZeroBytes (styled_test.go). StepStarted left
+// this set with ratified R1 (spec §5): it now projects a start line.
 func silentEventsFixture() []event.Event {
 	return []event.Event{
 		event.RunStarted{Cmd: "up", Cube: "dev"},
-		event.StepStarted{Stage: "cluster", Msg: "creating kind cluster"},
 		event.StepFailed{Stage: "cluster"},
 		event.HealthTick{Components: []event.ComponentState{{Name: "x", Ready: false, Message: "m"}}},
 		event.Diagnosis{Raw: "boom"},
@@ -155,6 +170,16 @@ func TestPlainSilentEvents(t *testing.T) {
 		if b.Len() != 0 {
 			t.Fatalf("%T must project to zero plain bytes, got %q", ev, b.String())
 		}
+	}
+}
+
+// R1 (spec §5): a started step is visible in CI logs — hung and slow must
+// be distinguishable (audit P12). Exact bytes: "▸ [stage] msg...\n".
+func TestPlainStepStartedLine(t *testing.T) {
+	var buf bytes.Buffer
+	Plain(&buf)(event.StepStarted{Stage: "cluster", Msg: "creating kind cluster"})
+	if got, want := buf.String(), "▸ [cluster] creating kind cluster...\n"; got != want {
+		t.Fatalf("got %q want %q", got, want)
 	}
 }
 

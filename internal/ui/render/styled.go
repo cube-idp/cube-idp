@@ -25,6 +25,12 @@ var th = theme.Detect(os.Stdin, os.Stdout)
 func Styled(w io.Writer) func(event.Event) {
 	return func(ev event.Event) {
 		switch e := ev.(type) {
+		case event.StepStarted:
+			// R1 (ratified, TUI design doc §5): same content as Plain's
+			// start line — badge styled, message + ellipsis dimmed.
+			fmt.Fprintf(w, "%s %s\n",
+				th.Badge.Render(fmt.Sprintf("▸ [%s]", e.Stage)),
+				th.Dim.Render(e.Msg+"..."))
 		case event.StepDone:
 			// Printer.Step's ModeStyled branch, reproduced: badge + dimmed
 			// message, content identical to Plain's "▸ [%s] %s".
@@ -54,8 +60,8 @@ func Styled(w io.Writer) func(event.Event) {
 			}
 			b = append(b, fmt.Sprintf("  %s\n", th.Msg.Render(e.Hint))...)
 			w.Write(b)
-		case event.RunStarted, event.StepStarted, event.StepFailed,
-			event.StepLog, event.HealthTick, event.Diagnosis, event.RunDone:
+		case event.RunStarted, event.StepFailed, event.StepLog,
+			event.HealthTick, event.Diagnosis, event.RunDone:
 			// Zero bytes: same silent event set as Plain.
 		}
 	}
