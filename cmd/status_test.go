@@ -4,16 +4,182 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/fluxcd/cli-utils/pkg/object"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/engine"
 	"github.com/cube-idp/cube-idp/internal/ui"
 )
+
+// stubStatusConnect swaps the cluster-connection seam for a fake whose
+// collector returns the given snapshots in order (repeating the last one),
+// so watch loops run entirely off-cluster (trust.go's trustInstall pattern).
+func stubStatusConnect(t *testing.T, snaps ...statusSnapshot) {
+	t.Helper()
+	restore := statusConnect
+	calls := 0
+	statusConnect = func(context.Context, string, bool) (string, statusCollector, error) {
+		return "watch-fixture", func(context.Context) (statusSnapshot, error) {
+			i := calls
+			if i >= len(snaps) {
+				i = len(snaps) - 1
+			}
+			calls++
+			return snaps[i], nil
+		}, nil
+	}
+	t.Cleanup(func() { statusConnect = restore })
+}
+
+// TestWatchExitsWhenAllReady is the W2.T12 core semantic (spec WP7):
+// --watch re-renders the one-shot view every interval and exits 0 once
+// every component reports Ready — the fake collector is unready once, then
+// ready, so the output must contain both renders.
+func TestWatchExitsWhenAllReady(t *testing.T) {
+	stubStatusConnect(t,
+		statusSnapshot{Health: []engine.ComponentHealth{{Name: "flux", Ready: false, Message: "reconciling"}}},
+		statusSnapshot{Health: []engine.ComponentHealth{{Name: "flux", Ready: true}}},
+	)
+
+	var out bytes.Buffer
+	done := make(chan error, 1)
+	go func() {
+		root := NewRootCmd()
+		root.SetOut(&out)
+		root.SetErr(&out)
+		root.SetIn(&bytes.Buffer{})
+		root.SetArgs([]string{"status", "--watch", "--interval=10ms"})
+		done <- root.ExecuteContext(context.Background())
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("watch must exit 0 once all components are Ready: %v\noutput: %s", err, out.String())
+		}
+		got := out.String()
+		if !strings.Contains(got, "✗ flux reconciling") {
+			t.Fatalf("expected the first (unready) render, got:\n%s", got)
+		}
+		if !strings.Contains(got, "✔ flux Ready") {
+			t.Fatalf("expected the second (ready) render, got:\n%s", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("status --watch must exit once every component is Ready, not keep polling")
+	}
+}
+
+// TestWatchInterruptedWhileUnhealthy pins the --exit-status contract: an
+// interrupt (context cancel) while components are unhealthy exits 1 via the
+// T08 bare sentinel — and exits 0 without the flag. Never hangs.
+func TestWatchInterruptedWhileUnhealthy(t *testing.T) {
+	cases := []struct {
+		name     string
+		args     []string
+		wantExit bool
+	}{
+		{"exit-status", []string{"status", "--watch", "--interval=10ms", "--exit-status"}, true},
+		{"default", []string{"status", "--watch", "--interval=10ms"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stubStatusConnect(t, statusSnapshot{Health: []engine.ComponentHealth{
+				{Name: "flux", Ready: false, Message: "reconciling"},
+			}})
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() {
+				root := NewRootCmd()
+				var out bytes.Buffer
+				root.SetOut(&out)
+				root.SetErr(&out)
+				root.SetIn(&bytes.Buffer{})
+				root.SetArgs(tc.args)
+				done <- root.ExecuteContext(ctx)
+			}()
+			time.AfterFunc(50*time.Millisecond, cancel)
+			select {
+			case err := <-done:
+				var es exitStatus
+				if tc.wantExit {
+					if !errors.As(err, &es) || es.code != 1 {
+						t.Fatalf("interrupt while unhealthy with --exit-status must be the bare exit-1 sentinel, got %v", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("interrupted watch without --exit-status must exit 0, got %v", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("interrupted watch must return promptly, not hang")
+			}
+		})
+	}
+}
+
+// TestStatusCompactHidesReadyRows: --compact hides Ready rows in the human
+// render while the overall verdict (the CUBE-coded unready error, the JSON
+// ready field) still reflects the full component set.
+func TestStatusCompactHidesReadyRows(t *testing.T) {
+	stubStatusConnect(t, statusSnapshot{Health: []engine.ComponentHealth{
+		{Name: "flux", Ready: true},
+		{Name: "traefik", Ready: false, Message: "reconciling"},
+	}})
+
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetIn(&bytes.Buffer{})
+	root.SetArgs([]string{"status", "--compact"})
+	err := root.ExecuteContext(context.Background())
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeEngineHealthTimeout {
+		t.Fatalf("unready status must keep its coded verdict under --compact, got %v", err)
+	}
+	got := out.String()
+	if strings.Contains(got, "flux") {
+		t.Fatalf("--compact must hide Ready component rows, got:\n%s", got)
+	}
+	if !strings.Contains(got, "✗ traefik reconciling") {
+		t.Fatalf("--compact must keep unready rows, got:\n%s", got)
+	}
+}
+
+// TestWatchModelLifecycle drives the TTY tick model directly (the live
+// renderer's model-driven style — no PTY): an unready snapshot updates the
+// region view and schedules the next tick; a ready snapshot quits through
+// the scrollback-persisting final; an interrupt flags and quits.
+func TestWatchModelLifecycle(t *testing.T) {
+	m := watchModel{interval: time.Millisecond}
+
+	mod, cmd := m.Update(watchSnapMsg{view: "one", allReady: false})
+	wm := mod.(watchModel)
+	if wm.view != "one" || cmd == nil {
+		t.Fatalf("unready snap must update the view and schedule a tick, got view=%q cmd=%v", wm.view, cmd)
+	}
+
+	mod, cmd = wm.Update(watchSnapMsg{view: "two", allReady: true})
+	wm = mod.(watchModel)
+	if !wm.allReady || wm.view != "" || cmd == nil {
+		t.Fatalf("ready snap must collapse the region and quit via the println sequence, got %+v", wm)
+	}
+
+	mod, cmd = m.Update(tea.InterruptMsg{})
+	wm = mod.(watchModel)
+	if !wm.interrupted || cmd == nil {
+		t.Fatal("interrupt must set the interrupted flag and quit")
+	}
+}
 
 // TestPackAccessRows pins the styled-status Access source (design doc §10):
 // the D11 Pack records' spec.urls, sorted by pack name; packs without urls are
@@ -38,7 +204,7 @@ func TestRenderStatusStyledIncludesAccess(t *testing.T) {
 	ui.SetMode(ui.ModeLive)
 	var b bytes.Buffer
 	p := ui.NewFor(&b)
-	renderStatusStyled(p, []engine.ComponentHealth{{Name: "flux", Ready: true}}, nil, false,
+	renderStatusStyled(&b, p, []engine.ComponentHealth{{Name: "flux", Ready: true}}, nil, false,
 		[]ui.PackAccess{{Name: "gitea", URLs: []string{"https://gitea.cube.local:8443"}}})
 	got := b.String()
 	for _, want := range []string{"Components", "flux", "Access", "https://gitea.cube.local:8443"} {
@@ -48,7 +214,7 @@ func TestRenderStatusStyledIncludesAccess(t *testing.T) {
 	}
 	// And with no access rows the section is omitted entirely.
 	b.Reset()
-	renderStatusStyled(p, nil, nil, false, nil)
+	renderStatusStyled(&b, p, nil, nil, false, nil)
 	if strings.Contains(b.String(), "Access") {
 		t.Fatalf("Access section must be omitted when no pack carries URLs:\n%s", b.String())
 	}
