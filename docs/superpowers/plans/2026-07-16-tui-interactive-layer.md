@@ -1520,7 +1520,7 @@ FINDINGS: record the full sweep output summary (test counts). This closes
 Wave 1 — note it in HANDOFF for the dispatcher.
 
 #### Outcome — W1.T09
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T10:40:22Z)`
 - BRANCH: `tui/w1-t09-spinner-sweep` (merged: no)
 - COMMITS: —
 - FINDINGS: —
