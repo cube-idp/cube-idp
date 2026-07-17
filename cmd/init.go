@@ -25,11 +25,12 @@ import (
 // so a name accepted by the wizard is never rejected later by `up`.
 var cubeNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,30}$`)
 
-// optionalPacks is the catalog the wizard's pack multi-select offers. A pack
-// ref (OCI or --local path) is matched to its catalog name by substring, the
-// same convention withoutGiteaPack uses; a ref matching none of these is
+// optionalPacks is the catalog the wizard's pack multi-select offers, derived
+// from pack.go's packCatalog (one source for wizard and `pack install`). A
+// pack ref (OCI or --local path) is matched to its catalog name by substring,
+// the same convention withoutGiteaPack uses; a ref matching none of these is
 // treated as non-optional and always kept.
-var optionalPacks = []string{"gitea", "argocd"}
+var optionalPacks = packCatalogNames()
 
 // gatewayPacks is the catalog --gateway-pack and the wizard's "Gateway pack"
 // Select accept — the two shipped gateway implementations (R7a). An unknown
@@ -295,10 +296,7 @@ func runInitWizard(c *cobra.Command, name, engineType *string, res *initWizardRe
 				Value(&res.GatewayPack),
 			huh.NewMultiSelect[string]().
 				Title("Optional packs").
-				Options(
-					huh.NewOption("gitea (in-cluster git server)", "gitea"),
-					huh.NewOption("argocd (delivery UI)", "argocd"),
-				).
+				Options(packCatalogOptions()...).
 				Value(&res.Packs),
 		),
 	).WithOutput(c.OutOrStdout()).WithInput(c.InOrStdin()).WithAccessible(accessible)
