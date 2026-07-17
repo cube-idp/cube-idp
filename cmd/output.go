@@ -26,6 +26,21 @@ func validateProgressFlag(v string) error {
 		"use one of: auto, plain, live, json")
 }
 
+// validateColorFlag rejects an unrecognized --color value with the same
+// CUBE-0007 preflight code the other enum flags use. The empty string never
+// reaches here — the flag defaults to "auto" — but it is accepted for
+// safety. The value itself is consumed by ui.SetColorPolicy (WP8), never by
+// a mode rung.
+func validateColorFlag(v string) error {
+	switch v {
+	case "", "auto", "always", "never":
+		return nil
+	}
+	return diag.New(diag.CodeBadFlagValue,
+		fmt.Sprintf("unknown --color value %q", v),
+		"use one of: auto, always, never")
+}
+
 // docSchemaVersion is the "v" field every JSON document carries — the same
 // experimental-until-D5-freeze contract the event stream uses (design doc
 // §5.3). Documents (this file) are the request/response counterpart to the

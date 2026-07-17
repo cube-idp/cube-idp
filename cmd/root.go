@@ -26,6 +26,7 @@ import (
 func NewRootCmd() *cobra.Command {
 	var plain bool
 	var progress string
+	var colorFlag string
 	root := &cobra.Command{
 		Use:           "cube-idp",
 		Short:         "cube-idp stands up an internal developer platform on Kubernetes and gets out of the way",
@@ -40,11 +41,11 @@ func NewRootCmd() *cobra.Command {
 		PersistentPreRunE: func(*cobra.Command, []string) error {
 			// Resolve the mode first — an unrecognized --progress value already
 			// falls through the ladder (Resolve matches only json/plain/live),
-			// so SetMode still reflects the real environment (TTY/CI/NO_COLOR).
+			// so SetMode still reflects the real environment (TTY/CI).
 			// The bad-value error then renders in the right mode (plain when
 			// piped or in CI), instead of a styled panel on a machine pipe.
-			_, noColor := os.LookupEnv("NO_COLOR")
-			ui.SetMode(ui.Resolve(ui.Request{
+			noColor, forceColor := ui.EnvColorPolicy()
+			req := ui.Request{
 				ProgressFlag: progress,
 				PlainFlag:    plain,
 				EnvProgress:  os.Getenv("CUBE_IDP_PROGRESS"),
@@ -52,14 +53,26 @@ func NewRootCmd() *cobra.Command {
 				CIEnv:        os.Getenv("CI"),
 				NoColor:      noColor,
 				Term:         os.Getenv("TERM"),
-			}))
-			return validateProgressFlag(progress)
+				ColorFlag:    colorFlag,
+			}
+			ui.SetMode(ui.Resolve(req))
+			// force-color may restyle a pipe that resolved plain only by
+			// auto-detection (non-TTY/CI) — never one the user asked for.
+			explicitPlain := req.ProgressFlag == "plain" || req.ProgressFlag == "json" ||
+				req.PlainFlag || req.EnvProgress == "plain" || req.EnvProgress == "json"
+			ui.SetColorPolicy(colorFlag, noColor, forceColor, explicitPlain)
+			if err := validateProgressFlag(progress); err != nil {
+				return err
+			}
+			return validateColorFlag(colorFlag)
 		},
 	}
 	root.PersistentFlags().BoolVar(&plain, "plain", false,
 		"force plain, non-styled output (permanent alias for --progress=plain)")
 	root.PersistentFlags().StringVar(&progress, "progress", "auto",
 		"output style: auto|plain|live|json (json is EXPERIMENTAL until the config v1 freeze)")
+	root.PersistentFlags().StringVar(&colorFlag, "color", "auto",
+		"color output: auto|always|never (overrides NO_COLOR and CLICOLOR_FORCE)")
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newUpCmd())

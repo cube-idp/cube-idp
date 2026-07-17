@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 )
@@ -93,8 +94,10 @@ func TestResolve(t *testing.T) {
 		{"CUBE_IDP_PROGRESS=json -> json", func() Request { r := ttyRequest(); r.EnvProgress = "json"; return r }, ModeJSON},
 		{"CUBE_IDP_PROGRESS=auto falls through", func() Request { r := ttyRequest(); r.EnvProgress = "auto"; return r }, ModeStyled},
 		{"CUBE_IDP_PROGRESS unknown falls through", func() Request { r := ttyRequest(); r.EnvProgress = "fancy"; return r }, ModeStyled},
-		// Rung 8: no-color.org semantics + dumb/unset TERM:
-		{"NO_COLOR present (even empty) -> plain", func() Request { r := ttyRequest(); r.NoColor = true; return r }, ModePlain},
+		// Rung 8: dumb/unset TERM only — NO_COLOR left the mode ladder in
+		// W2.T13 (WP8): a non-empty NO_COLOR keeps the resolved mode and
+		// strips color at the writer instead (ColorEnabled/NewFor).
+		{"non-empty NO_COLOR keeps ModeStyled on a TTY (strip-only)", func() Request { r := ttyRequest(); r.NoColor = true; return r }, ModeStyled},
 		{"TERM=dumb -> plain", func() Request { r := ttyRequest(); r.Term = "dumb"; return r }, ModePlain},
 		{"TERM unset -> plain", func() Request { r := ttyRequest(); r.Term = ""; return r }, ModePlain},
 	}
@@ -250,5 +253,162 @@ func TestAccessSummaryStyledListsURLsAndHint(t *testing.T) {
 	}
 	if !strings.Contains(got, "credentials: cube-idp get secrets") {
 		t.Fatalf("AccessSummary missing the credentials hint: %q", got)
+	}
+}
+
+// resetColorPolicy restores the zero-signal default every color test must
+// leave behind: --color=auto, no env vars, no explicit plain ask.
+func resetColorPolicy() { SetColorPolicy("auto", false, false, false) }
+
+// TestEnvColorPolicyEmptyMeansUnset pins the no-color.org fix (WP8): an
+// empty NO_COLOR is unset — only a non-empty value counts — and the same
+// non-empty rule applies to CLICOLOR_FORCE (bixense).
+func TestEnvColorPolicyEmptyMeansUnset(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CLICOLOR_FORCE", "")
+	noColor, force := EnvColorPolicy()
+	if noColor {
+		t.Fatal("empty NO_COLOR must count as unset (no-color.org)")
+	}
+	if force {
+		t.Fatal("empty CLICOLOR_FORCE must count as unset")
+	}
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("CLICOLOR_FORCE", "1")
+	noColor, force = EnvColorPolicy()
+	if !noColor {
+		t.Fatal("non-empty NO_COLOR must be honored")
+	}
+	if !force {
+		t.Fatal("non-empty CLICOLOR_FORCE must be honored")
+	}
+}
+
+// TestNoColorStripsColorOnly pins NO_COLOR's actual spec: the styled
+// surface keeps its layout and glyphs, only the escapes go. ModeLive is the
+// documented escape hatch that lets a styled Printer reach a buffer.
+func TestNoColorStripsColorOnly(t *testing.T) {
+	defer SetMode(ModeStyled)
+	defer resetColorPolicy()
+	SetMode(ModeLive)
+	SetColorPolicy("auto", true, false, false)
+	var b bytes.Buffer
+	p := NewFor(&b)
+	if !p.Styled() {
+		t.Fatal("NO_COLOR must not downgrade the mode — strip color only")
+	}
+	p.Step("tls", "gateway certificate ready")
+	got := b.String()
+	if strings.Contains(got, "\x1b[") {
+		t.Fatalf("non-empty NO_COLOR must render zero ANSI: %q", got)
+	}
+	if got != "▸ [tls] gateway certificate ready\n" {
+		t.Fatalf("layout and glyphs must survive the strip: %q", got)
+	}
+}
+
+// TestColorNeverStripsOnStyled pins --color=never: zero ANSI on a styled
+// surface, and the flag beats a force-color environment.
+func TestColorNeverStripsOnStyled(t *testing.T) {
+	defer SetMode(ModeStyled)
+	defer resetColorPolicy()
+	SetMode(ModeLive)
+	SetColorPolicy("never", false, true, false) // CLICOLOR_FORCE set — the flag must win
+	var b bytes.Buffer
+	p := NewFor(&b)
+	p.Step("tls", "ready")
+	if strings.Contains(b.String(), "\x1b[") {
+		t.Fatalf("--color=never must render zero ANSI even under CLICOLOR_FORCE: %q", b.String())
+	}
+}
+
+// TestColorForcePipesStyledStatic pins the CI half of the bixense ladder:
+// CLICOLOR_FORCE (or --color=always) upgrades an auto-resolved plain pipe to
+// the colored styled-static surface — but never an explicit plain/json ask.
+func TestColorForcePipesStyledStatic(t *testing.T) {
+	defer SetMode(ModeStyled)
+	defer resetColorPolicy()
+
+	SetMode(ModePlain) // what CI's rung 7 resolves
+	SetColorPolicy("auto", false, true, false)
+	var b bytes.Buffer
+	p := NewFor(&b)
+	if !p.Styled() {
+		t.Fatal("CLICOLOR_FORCE must upgrade an auto-plain pipe to styled-static")
+	}
+	p.Step("tls", "ready")
+	if !strings.Contains(b.String(), "\x1b[") {
+		t.Fatalf("forced color must emit ANSI on the pipe: %q", b.String())
+	}
+
+	// --plain / --progress=plain stays plain: force never overrides an ask.
+	SetColorPolicy("auto", false, true, true)
+	var b2 bytes.Buffer
+	if p := NewFor(&b2); p.Styled() {
+		t.Fatal("force-color must never override an explicit plain request")
+	}
+
+	// ModeJSON stays the machine contract: never colored.
+	SetMode(ModeJSON)
+	SetColorPolicy("always", false, false, false)
+	var b3 bytes.Buffer
+	if p := NewFor(&b3); p.Styled() {
+		t.Fatal("force-color must never restyle ModeJSON output")
+	}
+}
+
+// TestColorEnabledLadder pins the exported WP8 ladder end to end:
+// flag beats env, NO_COLOR beats CLICOLOR_FORCE, terminal detection last.
+func TestColorEnabledLadder(t *testing.T) {
+	defer resetColorPolicy()
+	cases := []struct {
+		name                   string
+		flag                   string
+		noColor, force         bool
+		want                   bool
+	}{
+		{"--color=never", "never", false, false, false},
+		{"--color=never beats CLICOLOR_FORCE", "never", false, true, false},
+		{"--color=always", "always", false, false, true},
+		{"--color=always beats NO_COLOR", "always", true, false, true},
+		{"NO_COLOR beats CLICOLOR_FORCE", "auto", true, true, false},
+		{"CLICOLOR_FORCE forces a pipe", "auto", false, true, true},
+		{"auto on a non-terminal", "auto", false, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			SetColorPolicy(tc.flag, tc.noColor, tc.force, false)
+			var b bytes.Buffer // never a terminal
+			if got := ColorEnabled(&b); got != tc.want {
+				t.Fatalf("ColorEnabled(flag=%q noColor=%v force=%v) = %v, want %v",
+					tc.flag, tc.noColor, tc.force, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRunPipelineStaticForcedColorOnPipe pins the pipeline-level reach:
+// CLICOLOR_FORCE selects the styled-static projection (colored bytes, no
+// animations) for an auto-plain pipe — the CI log use case.
+func TestRunPipelineStaticForcedColorOnPipe(t *testing.T) {
+	defer SetMode(ModeStyled)
+	defer resetColorPolicy()
+	SetMode(ModePlain)
+	SetColorPolicy("auto", false, true, false)
+	var b bytes.Buffer
+	err := RunPipelineStatic(context.Background(), "test", &b,
+		func(ctx context.Context, con *Console) error {
+			con.Step("tls", "gateway certificate ready")
+			return nil
+		})
+	if err != nil {
+		t.Fatalf("RunPipelineStatic: %v", err)
+	}
+	got := b.String()
+	if !strings.Contains(got, "gateway certificate ready") {
+		t.Fatalf("styled-static projection lost the step content: %q", got)
+	}
+	if !strings.Contains(got, "\x1b[") {
+		t.Fatalf("CLICOLOR_FORCE must emit colored styled-static bytes on a pipe: %q", got)
 	}
 }
