@@ -1809,7 +1809,7 @@ ANSI-stripped; color plumbing must not move them).
 - [ ] **Step 4: Task-level verify + merge + ledger.**
 
 #### Outcome — W2.T13
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T12:32:57Z)`
 - BRANCH: `tui/w2-t13-fang-color` (merged: no)
 - COMMITS: —
 - FINDINGS: —
