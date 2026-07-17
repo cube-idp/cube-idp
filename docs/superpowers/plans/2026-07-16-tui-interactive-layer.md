@@ -1753,7 +1753,7 @@ Run: `go test ./cmd/ -run 'TestWatch|TestStatus' -v -timeout 60s` → PASS; full
   (Resolve/Request), `internal/ui/ui_test.go`
 - This is the fuzziest task: two sub-deliverables, two commits.
 
-- [ ] **Step 1 (commit A): fang.**
+- [x] **Step 1 (commit A): fang.**
 `go get charm.land/fang/v2@latest && go mod tidy` — record the pinned
 version in FINDINGS. In `cmd/root.go`'s `Execute`, replace
 `root.ExecuteContext(ctx)` with
@@ -1770,7 +1770,7 @@ implement `root.SetUsageTemplate/SetHelpFunc` with theme styles gated on
 exactly why in FINDINGS. Commit A:
 `git commit -m "feat(cmd): styled help/usage/version via fang v2 (pinned; CUBE boxes stay ours)"`
 
-- [ ] **Step 2 (commit B): color-spec compliance** (spec WP8; no-color.org
+- [x] **Step 2 (commit B): color-spec compliance** (spec WP8; no-color.org
 + bixense ladder). Changes to `internal/ui/ui.go`:
 - `Request.NoColor bool` semantics: set only when `NO_COLOR` is present AND
   non-empty (`v, ok := os.LookupEnv("NO_COLOR"); noColor := ok && v != ""`)
@@ -1801,21 +1801,32 @@ exactly why in FINDINGS. Commit A:
   styled-static bytes on a pipe.
 Commit B: `git commit -m "feat(ui): NO_COLOR per spec (strip color only), CLICOLOR_FORCE, --color=auto|always|never"`
 
-- [ ] **Step 3: Green**
+- [x] **Step 3: Green**
 Run: `go test ./... 2>&1 | tail -5` → PASS. Run the TE gate:
 `go test ./internal/ui/... ./cmd/... -run TE` → PASS (goldens are
 ANSI-stripped; color plumbing must not move them).
 
-- [ ] **Step 4: Task-level verify + merge + ledger.**
+- [x] **Step 4: Task-level verify + merge + ledger.**
 
 #### Outcome — W2.T13
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T12:32:57Z)`
-- BRANCH: `tui/w2-t13-fang-color` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w2-t13-fang-color` (merged: yes — 279f192; branch kept, not pushed)
+- COMMITS: `aca7390` docs: tui plan — claim W2.T13 · `9cd60fe` feat(cmd): styled help/usage/version via fang v2 (pinned; CUBE boxes stay ours) · `b030e76` feat(ui): NO_COLOR per spec (strip color only), CLICOLOR_FORCE, --color=auto|always|never · `279f192` merge: tui W2.T13 fang-color (tui/w2-t13-fang-color) · this ledger commit
+- FINDINGS:
+  - fang pinned **v2.0.1** (latest; only v2.0.0/v2.0.1 exist). Its requirements sit at-or-below our pins (wants lipgloss v2.0.1 ≤ v2.0.5), so MVS moved **none** of the four frozen Charm versions (verified in go.mod post-tidy). New transitive deps: muesli/mango{,-cobra,-pflag}, muesli/roff (manpage gen), x/exp/charmtone.
+  - fang API as documented: `Execute(ctx, root, ...Option)`, `WithErrorHandler(func(io.Writer, Styles, error))`, `WithColorSchemeFunc(func(lipgloss.LightDarkFunc) ColorScheme)` — the scheme func receives a LightDarkFunc, not isDark; `cubeColorScheme` recovers isDark by probing it, then derives every role from `theme.New` via `Style.GetForeground()` (basic ANSI 16 only, zero duplicated palette values).
+  - **Error-handler deviation (deliberate):** fang's Execute both INVOKES its handler and RETURNS the error; the plan's sketch (handler calling ui.RenderErrorTo) would double-print every diagnosis because main.go remains the single final-error print point. The handler passed is an explicit no-op — error rendering stays in main.go untouched, preserving diagnosis-last, the T08 sentinel's print-nothing contract, and the plugin passthrough (which anyway returns before fang runs; the fallthrough block is byte-identical). No fall-back-to-option-(b) needed; fang works.
+  - fang extras now live: `--version`/`-v` fed from the release-stamped `cmd.Version`/`cmd.Commit` vars via WithVersion/WithCommit (fang's own debug.ReadBuildInfo fallback would print "unknown (built from source)"); hidden `man` generator command; completions unchanged (cobra default). fang re-sets SilenceUsage/SilenceErrors=true — already ours. Help styling queries HasDarkBackground only when os.Stdout is a TTY (fang's own guard) and goes through a colorprofile writer → full ANSI strip on pipes (pinned by `TestHelpOnPipeHasZeroANSI`; its red gate was a compile failure — `undefined: executeFang` — the step named no Expected failure shape).
+  - **Strip-profile deviation:** plan said force colorprofile's **Ascii** profile; Ascii keeps non-color SGR (bold/faint) per colorprofile's downsample, which would break the plan's own zero-ANSI expectations. Used **NoTTY** (ansi.Strip): every escape goes, glyphs/layout/border characters survive — no-color.org's strip-color-only rule as the plan's tests define it.
+  - Color policy design: `ui.SetColorPolicy(flag, noColor, force, explicitPlain)` stored beside SetMode (zero value = pre-T13 behavior exactly); `ui.EnvColorPolicy()` reads NO_COLOR (present AND non-empty; empty = unset per no-color.org — cmd/root.go call site fixed) and CLICOLOR_FORCE (non-empty, the plan's literal rule; bixense would also exclude "0"). Precedence: `--color` flag > NO_COLOR > CLICOLOR_FORCE > IsTerminal — spec's "flag overrides all env vars" + colorprofile's documented NO_COLOR-beats-CLICOLOR_FORCE. `ui.ColorEnabled(w)` is the exported ladder.
+  - Force never overrides an ask: `explicitPlain` (computed in root's hook from --plain/--progress/CUBE_IDP_PROGRESS plain|json) blocks the styled upgrade; ModeJSON is structurally unreachable by force (its NewFor/picker arms match first). TERM-dumb plain IS upgradeable under force (colorprofile's own doctrine).
+  - Reach implemented: NewFor (strip wrapper on styled printers; force-upgrade of auto-plain writers), pickRendererStatic styled arm (stripFor) + force arm (render.Styled on pipes — colored, animation-free), pickRenderer force arm, RenderErrorTo (panel keeps border/layout, escapes stripped). Files touched beyond the task's Files list: `internal/ui/pipeline.go` (named by the step text) and `internal/ui/rendererr.go` (strip-only must include the CUBE panel); `cmd/output.go` for validateColorFlag (CUBE-0007 reused — codes append-only respected, no new code).
+  - Reach NOT implemented (future three-axis work, per the plan's own note): the `--color` flag does not reach the live Bubble Tea program (env vars DO — bubbletea v2 detects its color profile from the environment natively, tea.go:1083) nor fang's help writer (helpFunc reads os.Environ; PersistentPreRunE never runs for --help); command code that writes styled content to its own writer (status's styled table gated on p.Styled()) is not stripped.
+  - Resolve rung 8: NoColor deleted (TERM dumb/unset keeps forcing plain); `Request.NoColor` re-documented as non-empty-only; new `Request.ColorFlag` consumed by SetColorPolicy, never by a rung — "refines inputs, not precedence" honored. One TestResolve case updated accordingly (NO_COLOR on a TTY → ModeStyled now).
+  - Env sensitivity: cmd tests running through PersistentPreRunE now read real NO_COLOR/CLICOLOR_FORCE (same pre-existing pattern as ui.New's $CI check); a developer running the suite with CLICOLOR_FORCE=1 exported could restyle auto-plain buffers.
+- REVIEW: both steps red-first (compile failures: executeFang, then ColorEnabled/SetColorPolicy undefined) → green. Targeted `-v` run: TestHelpOnPipeHasZeroANSI, TestResolve (19 subtests), TestNewForDowngradeMatrix, TestEnvColorPolicyEmptyMeansUnset, TestNoColorStripsColorOnly, TestColorNeverStripsOnStyled, TestColorForcePipesStyledStatic (incl. explicit-plain + JSON guards), TestColorEnabledLadder (7 subtests), TestRunPipelineStaticForcedColorOnPipe — all PASS. Task gate in worktree: build+vet clean, `go test ./...` 29 ok / 0 FAIL; TE gate ok (ui 0.962s, render 0.746s, theme [no tests to run], cmd 1.315s — goldens unmoved). Post-merge on main: 29 ok / 0 FAIL. Four Charm pins re-verified unchanged after go get/tidy.
+- BLOCKERS: none
+- HANDOFF: W2.T14 (fence/README/VHS) is next. README must now document: `--color=auto|always|never` (overrides env), non-empty-NO_COLOR semantics, CLICOLOR_FORCE, `--version`, the hidden `man` generator. The mode-matrix fence should pin the new arms with `ui.SetColorPolicy` zero-value = pre-T13 bytes; `ui.ColorEnabled(w)` is the ladder for any new surface. fang adds no prompts (nothing new for the §6.3 fence). Note for anything help-related: `--help` bypasses PersistentPreRunE, so only os.Environ-driven signals reach fang's help writer.
 
 ---
 
