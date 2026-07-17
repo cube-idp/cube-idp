@@ -37,6 +37,8 @@ func TestRunPipelinePlainByteNeutrality(t *testing.T) {
 		t.Fatal(err)
 	}
 	const want = "▸ [config] cube \"dev\" loaded and validated\n" +
+		// R1: the opened progress step now prints its start line.
+		"▸ [cluster] creating kind cluster...\n" +
 		"▸ [cluster] kind cluster ready (context kind-dev)\n" +
 		// R2: the epilogue's ✔ left the content — plain projects it bare.
 		"\ncube \"dev\" is up — https://cube.local:8443\n  credentials: cube-idp get secrets\n" +
@@ -141,8 +143,11 @@ func TestRunPipelineContextCancelUnwinds(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("want context.Canceled through the pipeline, got %v", err)
 	}
-	if out.Len() != 0 {
-		t.Fatalf("plain projection of an aborted progress must be zero bytes, got %q", out.String())
+	// R1 (spec §5): an aborted progress leaves exactly its start line — the
+	// whole point is that an interrupted/hung wait is visible in the log.
+	// Stop()'s StepFailed still projects to zero plain bytes.
+	if got, want := out.String(), "▸ [health] waiting...\n"; got != want {
+		t.Fatalf("plain projection of an aborted progress must be only its start line:\ngot %q want %q", got, want)
 	}
 }
 

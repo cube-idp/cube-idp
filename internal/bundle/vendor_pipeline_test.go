@@ -40,10 +40,11 @@ func TestVendorPlainByteStable(t *testing.T) {
 	if !bytes.HasSuffix([]byte(got), []byte(wantSuffix)) {
 		t.Fatalf("plain projection missing expected bundle-written suffix:\ngot: %q\nwant suffix: %q", got, wantSuffix)
 	}
-	// Exactly two lines: the pack line and the bundle-written line (no image
-	// lines — the fixture's lock pins no Entry.Images).
-	if n := bytes.Count([]byte(got), []byte("\n")); n != 2 {
-		t.Fatalf("want exactly 2 plain lines (pack + bundle written), got %d:\n%q", n, got)
+	// Exactly three lines: the pack start line (ratified R1, TUI spec §5),
+	// the pack done line, and the bundle-written line (no image lines — the
+	// fixture's lock pins no Entry.Images).
+	if n := bytes.Count([]byte(got), []byte("\n")); n != 3 {
+		t.Fatalf("want exactly 3 plain lines (pack start + pack + bundle written), got %d:\n%q", n, got)
 	}
 }
 
@@ -68,8 +69,9 @@ func TestVendorImagePlainByteStable(t *testing.T) {
 	if !bytes.Contains([]byte(got), []byte(wantImageLine)) {
 		t.Fatalf("plain projection missing image line %q, got:\n%q", wantImageLine, got)
 	}
-	if n := bytes.Count([]byte(got), []byte("\n")); n != 3 {
-		t.Fatalf("want exactly 3 plain lines (pack + image + bundle written), got %d:\n%q", n, got)
+	// R1 start lines for the pack and image steps double their line count.
+	if n := bytes.Count([]byte(got), []byte("\n")); n != 5 {
+		t.Fatalf("want exactly 5 plain lines (pack start+done, image start+done, bundle written), got %d:\n%q", n, got)
 	}
 }
 

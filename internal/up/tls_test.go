@@ -105,7 +105,13 @@ spec:
 	if !strings.Contains(got, "▸ [ca]") {
 		t.Fatalf("ca step must run before cluster.Ensure is attempted; output:\n%s", got)
 	}
-	if strings.Contains(got, "▸ [cluster]") {
-		t.Fatalf("cluster step must not have completed (Ensure should have failed first); output:\n%s", got)
+	// R1 (TUI spec §5): the cluster stage now prints a "▸ [cluster] msg...\n"
+	// start line before Ensure runs, so its presence no longer disproves the
+	// ordering — what must stay absent is a cluster COMPLETION line (one
+	// without the "..." start suffix).
+	for _, line := range strings.Split(got, "\n") {
+		if strings.HasPrefix(line, "▸ [cluster]") && !strings.HasSuffix(line, "...") {
+			t.Fatalf("cluster step must not have completed (Ensure should have failed first); output:\n%s", got)
+		}
 	}
 }
