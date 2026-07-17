@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/cube-idp/cube-idp/internal/diag"
@@ -21,6 +22,17 @@ import (
 // (the live program exited) before main.go calls this — the diagnosis can
 // never be overwritten by the live region or trapped in a dead screen.
 func RenderError(err error) string {
+	return renderErrorForMode(CurrentMode(), err)
+}
+
+// RenderErrorTo renders err for a SPECIFIC writer, applying the same
+// per-writer downgrade NewFor gives stdout: the styled panel only ever
+// reaches a real terminal; a redirected stderr gets diag.Render verbatim
+// (audit P11 — no more ANSI borders inside `2>file`).
+func RenderErrorTo(w io.Writer, err error) string {
+	if !IsTerminal(w) {
+		return diag.Render(err)
+	}
 	return renderErrorForMode(CurrentMode(), err)
 }
 

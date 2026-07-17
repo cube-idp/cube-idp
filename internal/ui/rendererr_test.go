@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"runtime"
@@ -166,6 +167,26 @@ func TestRenderErrorStyledPanel(t *testing.T) {
 	}
 	if !strings.Contains(got, "╭") { // the rounded border marks the panel shape
 		t.Fatalf("styled RenderError must render a bordered panel:\n%s", got)
+	}
+}
+
+// TestRenderErrorToNonTerminalStaysPlain pins the WP9 writer-aware seam:
+// even under a styled process-wide mode, RenderErrorTo for a non-terminal
+// writer (every `2>file` redirect, every test buffer) is diag.Render
+// byte-for-byte — zero ANSI ever lands in a redirected stderr (audit P11).
+func TestRenderErrorToNonTerminalStaysPlain(t *testing.T) {
+	prev := CurrentMode()
+	SetMode(ModeStyled)
+	defer SetMode(prev)
+
+	err := diag.Wrap(errors.New("docker not running"), diag.Code("CUBE-1001"),
+		"kind cluster create failed", "start docker and re-run `cube-idp up`")
+	var buf bytes.Buffer
+	if got, want := RenderErrorTo(&buf, err), diag.Render(err); got != want {
+		t.Fatalf("RenderErrorTo on a non-terminal writer must be diag.Render verbatim:\ngot:  %q\nwant: %q", got, want)
+	}
+	if got := RenderErrorTo(&buf, err); strings.Contains(got, "\x1b[") {
+		t.Fatalf("RenderErrorTo leaked ANSI into a non-terminal writer:\n%q", got)
 	}
 }
 

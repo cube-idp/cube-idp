@@ -52,3 +52,13 @@ func TestExitCodeForPlainError(t *testing.T) {
 		t.Fatalf("want (1, true) for a plain error, got (%d, %v)", code, render)
 	}
 }
+
+// os.Exit inside RunE skips main.go's cleanup and would leave a future
+// live program's terminal raw (audit P8). The sentinel keeps "exit 1,
+// print nothing" semantics through the normal return path.
+func TestExitCodeForSentinel(t *testing.T) {
+	code, render := ExitCodeFor(errExitCode(1))
+	if code != 1 || render {
+		t.Fatalf("sentinel: got (%d,%v) want (1,false)", code, render)
+	}
+}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -111,12 +110,12 @@ func newDoctorCmd() *cobra.Command {
 
 			if jsonDoc {
 				if writeDoctorJSON(out, findings) {
-					os.Exit(1)
+					return errExitCode(1)
 				}
 				return nil
 			}
 			if doctor.Render(out, findings) {
-				os.Exit(1)
+				return errExitCode(1)
 			}
 			return nil
 		},
@@ -143,7 +142,7 @@ type doctorFinding struct {
 }
 
 // writeDoctorJSON emits the doctor document and reports whether any finding is
-// an error (so cmd keeps the os.Exit(1) semantics unchanged across all modes).
+// an error (so cmd keeps the exit-1 semantics unchanged across all modes).
 func writeDoctorJSON(out io.Writer, findings []diag.Finding) bool {
 	doc := doctorDoc{jsonDocHead: jsonDocHead{V: docSchemaVersion}, Findings: make([]doctorFinding, 0, len(findings))}
 	for _, f := range findings {

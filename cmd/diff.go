@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
 	"github.com/cube-idp/cube-idp/internal/diff"
@@ -19,7 +17,7 @@ func newDiffCmd() *cobra.Command {
 				return err
 			}
 			if changed {
-				os.Exit(1) // kubectl-diff convention; output is already flushed
+				return errExitCode(1) // kubectl-diff convention; output is already flushed
 			}
 			return nil
 		},
