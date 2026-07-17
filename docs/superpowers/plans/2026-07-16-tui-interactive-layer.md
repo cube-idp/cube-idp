@@ -1676,7 +1676,7 @@ Run: `go test ./cmd/ -run TestPackInstall -v -timeout 60s` → PASS; full suite 
 - [ ] **Step 4: Task-level verify + merge + ledger.**
 
 #### Outcome — W2.T11
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T11:34:25Z)`
 - BRANCH: `tui/w2-t11-packmenu` (merged: no)
 - COMMITS: —
 - FINDINGS: —
