@@ -1733,7 +1733,7 @@ Run: `go test ./cmd/ -run 'TestWatch|TestStatus' -v -timeout 60s` → PASS; full
 - [ ] **Step 4: Task-level verify + merge + ledger.**
 
 #### Outcome — W2.T12
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T12:08:23Z)`
 - BRANCH: `tui/w2-t12-watch` (merged: no)
 - COMMITS: —
 - FINDINGS: —
