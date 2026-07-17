@@ -649,13 +649,13 @@ changelog entry required before the D5 freeze (T14 owns the README note).
 - Produces: `event.Epilogue{Cube, GatewayURL, Context, Registry, Hint string}`;
   `Console.Epilogue(e event.Epilogue)`. T05 renders the TE-4 block from it.
 
-- [ ] **Step 1: Pin the blast radius FIRST.**
+- [x] **Step 1: Pin the blast radius FIRST.**
 Run: `grep -rn '✔ cube' --include='*.go' . | grep -v '.claude/'`
 Expected: `internal/up/up.go:385` plus zero-or-more test assertions.
 List every hit in FINDINGS. Any test asserting the `✔ cube %q is up` bytes
 must be updated in step 5's commit (same-commit rule, spec §5).
 
-- [ ] **Step 2: Failing golden test** — in `internal/ui/render/plain_test.go`
+- [x] **Step 2: Failing golden test** — in `internal/ui/render/plain_test.go`
 add (R2: plain bytes differ from today by EXACTLY the leading `✔ `):
 
 ```go
@@ -677,7 +677,7 @@ func TestTE4_PlainBytesR2Only(t *testing.T) {
 
 Run: `go test ./internal/ui/render/ -run TestTE4_PlainBytesR2Only -v` → FAIL (no Epilogue type).
 
-- [ ] **Step 3: Implement.** `event.go`:
+- [x] **Step 3: Implement.** `event.go`:
 
 ```go
 // Epilogue is the post-success "what you actually need" block (TE-4,
@@ -704,7 +704,7 @@ prefix + `th.Dim` hint (content-identical rule). `json.go`: new
 `scrollbackLine`: temporary minimal arm returning the styled headline (T05
 replaces with the full TE-4 block).
 
-- [ ] **Step 4: Producer swap** (`internal/up/up.go` :385) — the Note dies:
+- [x] **Step 4: Producer swap** (`internal/up/up.go` :385) — the Note dies:
 
 ```go
 con.Epilogue(event.Epilogue{
@@ -719,26 +719,26 @@ the import. Context/Registry stay "" here; if the surrounding code has the
 kubeconfig context or zot address in scope, fill them and note it in
 FINDINGS — do not plumb new parameters for them in this task.)
 
-- [ ] **Step 5: Update the pinned substrings found in step 1** (drop the
+- [x] **Step 5: Update the pinned substrings found in step 1** (drop the
 `✔ ` prefix in expectations), run everything:
 Run: `go test ./... 2>&1 | tail -5`
 Expected: PASS. Then verify the one-glyph rule:
 Run: `go test ./internal/ui/render/ -run TestTE4_PlainBytesR2Only -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 `git add -A && git commit -m "feat(ui): structured Epilogue event; R2 — glyph out of event content (ratified, spec §5)"`
 
-- [ ] **Step 7: Task-level verify + merge + ledger.**
+- [x] **Step 7: Task-level verify + merge + ledger.**
 
 #### Outcome — W1.T03
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T05:24:43Z)`
-- BRANCH: `tui/w1-t03-epilogue` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w1-t03-epilogue` (merged: yes)
+- COMMITS: `31bd249` feat(ui): structured Epilogue event; R2 — glyph out of event content (ratified, spec §5) · merge `f482266` · claims `1d6c373` (prior agent, died) + `ae606fa` (this agent)
+- FINDINGS: (1) Taken over from a dead prior claim (claude-fable-agent, 2026-07-16T19:16:08Z) on dispatcher instruction; its worktree held only the uncommitted Step-2 test, verbatim per plan — reused. (2) Producer line drift: the Note was at `up.go:396`, not :385 (W1.T02 shifted lines). (3) Step-1 blast radius (7 hits): `up.go:396`, `pipeline_test.go:30+40`, `render/json_test.go:48`, `rendererr_test.go:104`, `render/plain_test.go:48`, `render/live_test.go:34`; plus one non-`.go` hit the grep filter missed: `render/testdata/plain_up_pretask.golden:15`. (4) Golden kept byte-identical as the historical record; `TestPlainGoldenUpRun` derives want via `strings.Replace(pretask, "✔ ", "", 1)` — the transform IS the ratified R2 diff. (5) `TestStyledContentIdenticalToPlain` now normalizes exactly one `"✔ "` from styled before comparing (the epilogue glyph is presentation — second sanctioned exception alongside Warn's ⚠; documented in the test). (6) Context/Registry WERE in scope in `up.Run` (`conn.Context`, `registry.InClusterURL`) — filled per the plan's conditional, no new parameters plumbed; JSON epilogue record therefore carries all five fields in production. (7) `canonicalUpRun()` fixture: Note → Epilogue{Context:"kind-dev", Registry:"zot.cube-idp-system.svc.cluster.local:5000"}; JSON golden line updated; new `TestJSONEpilogueRecord` pins full-fields + omitempty forms. (8) `live_test.go` noteMsg keeps the Note-verbatim assertion glyph-free; added minimal Epilogue scrollback assertions (✔ + cube + URL). (9) Step 2's expected FAIL manifested as a compile error (`undefined: event.Epilogue`) — matches the plan's "(no Epilogue type)". (10) Out-of-scope observation: `cmd/plugin.go` still emits a glyph-in-content Note ("✔ plugin %q installed and trusted", pinned by `cmd/plugin_test.go:274`) — R2 covers only the up epilogue; flagging for the W1.T09 sweep owner.
+- REVIEW: Step 2 verified failing before implement; `go test ./...` green (29 pkgs, 0 FAIL) after; `go build ./... && go vet ./...` clean; TE gate `go test ./internal/ui/... ./cmd/... -run TE` green (TestTE4_PlainBytesR2Only PASS); post-merge `go test ./...` on main 0 FAIL; worktree removed, branch kept.
+- BLOCKERS: none
+- HANDOFF: T05 replaces live.go's temporary Epilogue arm (headline-only, no hint/rows) with the full TE-4 block + `TestTE4_EpilogueGolden`. Production epilogue now carries Context/Registry — TE-4.2 rows have real data. T04 (R1 start lines) will churn `TestPlainGoldenUpRun`/`TestRunPipelinePlainByteNeutrality`: the canonical fixture contains StepStarted events, so plain expectations must gain `▸ [stage] msg...` lines — extend the same want-transform pattern used for R2.
 
 ---
 
