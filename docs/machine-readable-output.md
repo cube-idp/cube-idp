@@ -51,8 +51,8 @@ Event types section below) also carries `ts`:
    `run_done` + `diagnosis`.
 2. Every `step_started` is resolved by the next `step_done` or
    `step_failed` for the same stage, or implicitly by `run_done`.
-3. Success termination: `… → access? → run_done{ok:true}`. Nothing follows
-   `run_done` on success.
+3. Success termination: `… → epilogue? → access? → run_done{ok:true}`.
+   Nothing follows `run_done` on success.
 4. Failure termination: `… → step_failed? → run_done{ok:false} →
    diagnosis`. **`diagnosis` is always the final event on a failed run** —
    machine consumers (CI annotators, wrappers) may treat it as the
@@ -107,6 +107,8 @@ A stage is now in-flight (the spinner line in a terminal run).
 |---|---|---|
 | `stage` | string | Stage tag (see the stage list above). |
 | `msg` | string | Human-readable in-flight message. |
+| `idx` | number | 1-based n-of-m position for enumerated repeats (the `pack` delivery loop emits `"idx":3,"of":7`). **Omitted** when the step is not enumerated. |
+| `of` | number | The enumeration total. **Omitted** with `idx`. |
 
 #### `step_done`
 
@@ -121,19 +123,24 @@ A stage completed successfully.
 | `stage` | string | Stage tag. |
 | `msg` | string | Completion message. |
 | `dur_ms` | number | Elapsed milliseconds. **Omitted** when 0 (instantaneous steps). |
+| `idx` | number | 1-based n-of-m position for enumerated repeats. **Omitted** when not enumerated. |
+| `of` | number | The enumeration total. **Omitted** with `idx`. |
 
 #### `step_failed`
 
 The in-flight stage failed. The authoritative error arrives later as
-`diagnosis`; this event only marks *which* stage was open.
+`diagnosis`; this event marks *which* stage was open, what it was doing,
+and how long it ran.
 
 ```json
-{"v":1,"ts":"…","type":"step_failed","stage":"engine"}
+{"v":1,"ts":"…","type":"step_failed","stage":"engine","msg":"installing flux","dur_ms":4000}
 ```
 
 | Field | Type | Meaning |
 |---|---|---|
 | `stage` | string | The failed stage. |
+| `msg` | string | The step's in-flight message. **Omitted** when empty (older producers). |
+| `dur_ms` | number | Elapsed milliseconds. **Omitted** when 0. |
 
 #### `health_tick`
 
@@ -165,6 +172,24 @@ An advisory (e.g. a deprecation note).
 ```json
 {"v":1,"ts":"…","type":"warn","msg":"…"}
 ```
+
+#### `epilogue`
+
+The post-success "what you actually need" block, as data (the `✔ cube …
+is up` headline plus key–value rows in a terminal run). The `✔` glyph is
+presentation — renderers add it; the event never carries it (ratified R2).
+
+```json
+{"v":1,"ts":"…","type":"epilogue","cube":"dev","gateway_url":"https://cube-idp.localtest.me:8443","context":"kind-dev","registry":"zot.cube-idp-system:5000","hint":"credentials: cube-idp get secrets"}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `cube` | string | `metadata.name` from `cube.yaml`. |
+| `gateway_url` | string | The gateway URL the cube serves. |
+| `context` | string | The kubeconfig context. **Omitted** when the producer does not know it. |
+| `registry` | string | The in-cluster registry address. **Omitted** when unknown. |
+| `hint` | string | The `next:`/credentials hint line. |
 
 #### `access`
 
