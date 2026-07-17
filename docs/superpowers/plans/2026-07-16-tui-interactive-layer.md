@@ -1189,7 +1189,7 @@ byte-identical fallback path.
 - [ ] **Step 7: Task-level verify + merge + ledger.**
 
 #### Outcome — W1.T06
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T08:34:50Z)`
 - BRANCH: `tui/w1-t06-prompts` (merged: no)
 - COMMITS: —
 - FINDINGS: —
