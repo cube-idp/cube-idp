@@ -16,7 +16,6 @@ import (
 	oras "oras.land/oras-go/v2"
 	ocicontent "oras.land/oras-go/v2/content/oci"
 	"oras.land/oras-go/v2/registry/remote"
-	"oras.land/oras-go/v2/registry/remote/auth"
 
 	"golang.org/x/mod/sumdb/dirhash"
 
@@ -299,7 +298,12 @@ func pullImageTar(ctx context.Context, img, layoutDir string, plat *ocispec.Plat
 		return diag.Wrap(err, diag.CodeVendorPullFail, fmt.Sprintf("invalid image reference %q", img),
 			"check the image reference in cube.lock/pack.cue")
 	}
-	repo.Client = auth.DefaultClient
+	client, err := pack.RegistryClient()
+	if err != nil {
+		return diag.Wrap(err, diag.CodeVendorPullFail, "cannot load docker credential store",
+			"check ~/.docker/config.json (run `docker login <registry>` to create it)")
+	}
+	repo.Client = client
 	if pack.IsLocalRegistryHost(repo.Reference.Registry) {
 		repo.PlainHTTP = true
 	}

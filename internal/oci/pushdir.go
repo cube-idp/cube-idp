@@ -39,9 +39,6 @@ import (
 	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry/remote"
-	"oras.land/oras-go/v2/registry/remote/auth"
-	"oras.land/oras-go/v2/registry/remote/credentials"
-	"oras.land/oras-go/v2/registry/remote/retry"
 
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/pack"
@@ -71,19 +68,17 @@ func PushPackDir(ctx context.Context, dir, ociRef string, alsoTags ...string) (s
 			"use the form oci://host/repo:tag (cube-idp pack push defaults the tag to the pack's version when omitted)")
 	}
 
-	// Ambient docker credential chain: docker login / CI docker/login-action.
-	// A missing or unreadable docker config is not fatal for anonymous-push
-	// registries, but surfacing it early beats a cryptic 401 later.
-	credStore, err := credentials.NewStoreFromDocker(credentials.StoreOptions{})
+	// Ambient docker credential chain (pack.RegistryClient — one client
+	// construction shared with the pull paths): docker login / CI
+	// docker/login-action. A missing or unreadable docker config is not
+	// fatal for anonymous-push registries, but surfacing it early beats a
+	// cryptic 401 later.
+	client, err := pack.RegistryClient()
 	if err != nil {
 		return "", diag.Wrap(err, diag.CodePackPushFail, "cannot load docker credential store",
 			"check ~/.docker/config.json (run `docker login <registry>` to create it)")
 	}
-	repo.Client = &auth.Client{
-		Client:     retry.DefaultClient,
-		Cache:      auth.NewCache(),
-		Credential: credentials.Credential(credStore),
-	}
+	repo.Client = client
 	// Same gate as internal/pack's pullOCI: plain HTTP only for the loopback
 	// registries (zot tunnel, in-process test registries).
 	if pack.IsLocalRegistryHost(repo.Reference.Registry) {
