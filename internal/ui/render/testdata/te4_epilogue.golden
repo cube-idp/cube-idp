@@ -1,0 +1,7 @@
+
+✔ cube "voodoo" is up
+  gateway     https://voodoo.local:8443
+  context     kind-voodoo
+  registry    zot.cube-idp-system:5000
+  next: cube-idp status · credentials: cube-idp get secrets
+✔ up finished in 2m13s

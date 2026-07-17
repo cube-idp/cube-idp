@@ -1,0 +1,9 @@
+✔ [config]    cube "voodoo" loaded and validated
+✔ [cluster]   kind cluster ready (context kind-voodoo)        (28s)
+✔ [registry]  zot ready at zot.cube-idp-system:5000           (6s)
+✔ [engine]    flux installed                                  (2s)
+cube-idp up — cube "voodoo"
+⠋ [packs]     delivering gitea@0.1.0                          3/7
+             ███████████░░░░░░░░░░░░░░  43%
+             │ fetching oci://ghcr.io/cube-idp/packs/gitea:0.1.0
+             │ verifying digest sha256:9f2c…
