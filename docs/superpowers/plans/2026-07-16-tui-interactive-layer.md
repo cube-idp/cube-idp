@@ -1360,7 +1360,7 @@ Run: `go test ./... 2>&1 | tail -5` → PASS.
 R3 is a behavior change for piped `down` (release-note item, T14 README).
 
 #### Outcome — W1.T07
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T09:21:03Z)`
 - BRANCH: `tui/w1-t07-consent` (merged: no)
 - COMMITS: —
 - FINDINGS: —
