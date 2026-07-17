@@ -1607,7 +1607,7 @@ Run: `go test ./cmd/ ./internal/diag/ ./internal/ui/ -run 'Explain|Code|TE2' -v`
 - [ ] **Step 6: Task-level verify + merge + ledger.**
 
 #### Outcome — W2.T10
-- STATUS: `UNCLAIMED`
+- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T11:08:30Z)`
 - BRANCH: `tui/w2-t10-explain` (merged: no)
 - COMMITS: —
 - FINDINGS: —
