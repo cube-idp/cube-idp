@@ -17,7 +17,8 @@ import (
 // golden-stream fixture. Its plain projection must be byte-identical to
 // what the pre-Task-14b code emitted for the same run
 // (testdata/plain_up_pretask.golden, recorded from the pre-task tree)
-// plus ONLY the owner-ratified Access block (§9).
+// plus ONLY the owner-ratified Access block (§9) and the R2 one-glyph
+// change (the epilogue's leading "✔ " moved from content to presentation).
 func canonicalUpRun() []event.Event {
 	return []event.Event{
 		event.RunStarted{Cmd: "up", Cube: "dev"},
@@ -45,7 +46,11 @@ func canonicalUpRun() []event.Event {
 		}},
 		event.StepDone{Stage: "health", Msg: "3 component(s) ready", Dur: 45 * time.Second},
 		event.StepDone{Stage: "packs", Msg: "2 pack records written — try `kubectl get packs`"},
-		event.Note{Msg: "\n✔ cube \"dev\" is up — https://cube.local:8443\n  credentials: cube-idp get secrets"},
+		event.Epilogue{
+			Cube: "dev", GatewayURL: "https://cube.local:8443",
+			Context: "kind-dev", Registry: "zot.cube-idp-system.svc.cluster.local:5000",
+			Hint: "credentials: cube-idp get secrets",
+		},
 		event.Access{
 			Packs: []event.PackAccess{{Name: "gitea", URLs: []string{"https://gitea.cube.local:8443"}}},
 			Hint:  "credentials: cube-idp get secrets",
@@ -92,7 +97,11 @@ func TestPlainGoldenUpRun(t *testing.T) {
 	const accessBlock = "\nAccess\n" +
 		"  gitea        https://gitea.cube.local:8443\n" +
 		"  credentials: cube-idp get secrets\n"
-	want := string(pretask) + accessBlock
+	// R2 (ratified, spec §5): the plain bytes differ from the pre-task
+	// recording by EXACTLY the epilogue's leading "✔ " — the glyph moved
+	// from content to presentation. The golden keeps the historical bytes;
+	// this transform is the entire ratified diff.
+	want := strings.Replace(string(pretask), "✔ ", "", 1) + accessBlock
 
 	var b bytes.Buffer
 	project(t, canonicalUpRun(), Plain(&b))
@@ -146,5 +155,20 @@ func TestPlainSilentEvents(t *testing.T) {
 		if b.Len() != 0 {
 			t.Fatalf("%T must project to zero plain bytes, got %q", ev, b.String())
 		}
+	}
+}
+
+// R2 (spec §5): the epilogue is data; plain projects it WITHOUT the glyph.
+// These bytes are the new frozen contract for event.Epilogue. (Name is
+// normative — spec §6.1 matrix.)
+func TestTE4_PlainBytesR2Only(t *testing.T) {
+	var buf bytes.Buffer
+	Plain(&buf)(event.Epilogue{
+		Cube: "voodoo", GatewayURL: "https://voodoo.local:8443",
+		Hint: "credentials: cube-idp get secrets",
+	})
+	want := "\ncube \"voodoo\" is up — https://voodoo.local:8443\n  credentials: cube-idp get secrets\n"
+	if buf.String() != want {
+		t.Fatalf("epilogue plain bytes:\n got %q\nwant %q", buf.String(), want)
 	}
 }

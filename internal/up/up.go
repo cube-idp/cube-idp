@@ -390,11 +390,16 @@ func Run(ctx context.Context, opts Options) error {
 	// Phase 2: the gateway's websecure listener terminates TLS with a
 	// CA-issued cert (D6/D12), so this URL is genuinely HTTPS. Browsers only
 	// show a green lock once the CA is trusted — `cube-idp trust` does that.
-	// The Note projection adds exactly one trailing newline, so the plain
-	// bytes are unchanged from before Task 15.3 (the format string drops the
-	// old trailing \n on purpose).
-	con.Note("\n✔ cube %q is up — https://%s:%d\n  credentials: cube-idp get secrets",
-		cube.Metadata.Name, cube.Spec.Gateway.Host, cube.Spec.Gateway.Port)
+	// The epilogue is DATA (event.Epilogue, TE-4): the ✔ glyph is
+	// presentation renderers add, so the plain bytes drop exactly that one
+	// glyph (ratified R2, design doc §5).
+	con.Epilogue(event.Epilogue{
+		Cube:       cube.Metadata.Name,
+		GatewayURL: fmt.Sprintf("https://%s:%d", cube.Spec.Gateway.Host, cube.Spec.Gateway.Port),
+		Context:    conn.Context,
+		Registry:   registry.InClusterURL,
+		Hint:       "credentials: cube-idp get secrets",
+	})
 
 	// The "what did I just get" access summary — every delivered pack's
 	// expose URLs (reusing pack.ExposeURLs, the same ${GATEWAY_HOST}

@@ -27,7 +27,8 @@ func TestRunPipelinePlainByteNeutrality(t *testing.T) {
 			pr := con.Progress("cluster", "creating kind cluster")
 			pr.Done("%s cluster ready (context %s)", "kind", "kind-dev")
 			con.Health([]event.ComponentState{{Name: "cube-idp-traefik", Ready: true, Message: "ok"}})
-			con.Note("\n✔ cube %q is up — https://%s:%d\n  credentials: cube-idp get secrets", "dev", "cube.local", 8443)
+			con.Epilogue(event.Epilogue{Cube: "dev", GatewayURL: "https://cube.local:8443",
+				Hint: "credentials: cube-idp get secrets"})
 			con.Access([]event.PackAccess{{Name: "gitea", URLs: []string{"https://gitea.cube.local:8443"}}},
 				"credentials: cube-idp get secrets")
 			return nil
@@ -37,7 +38,8 @@ func TestRunPipelinePlainByteNeutrality(t *testing.T) {
 	}
 	const want = "▸ [config] cube \"dev\" loaded and validated\n" +
 		"▸ [cluster] kind cluster ready (context kind-dev)\n" +
-		"\n✔ cube \"dev\" is up — https://cube.local:8443\n  credentials: cube-idp get secrets\n" +
+		// R2: the epilogue's ✔ left the content — plain projects it bare.
+		"\ncube \"dev\" is up — https://cube.local:8443\n  credentials: cube-idp get secrets\n" +
 		"\nAccess\n" +
 		"  gitea        https://gitea.cube.local:8443\n" +
 		"  credentials: cube-idp get secrets\n"

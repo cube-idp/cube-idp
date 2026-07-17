@@ -31,9 +31,21 @@ func TestScrollbackLineContentIdentical(t *testing.T) {
 		}
 	}
 
-	const noteMsg = "\n✔ cube \"dev\" is up — https://cube.local:8443\n  credentials: cube-idp get secrets"
+	// R2: the epilogue no longer travels as a Note — this sample is just a
+	// neutral passthrough line (glyph-free, like all Note content now).
+	const noteMsg = "\ncube \"dev\" is up — https://cube.local:8443\n  credentials: cube-idp get secrets"
 	if got := scrollbackLine(event.Note{Msg: noteMsg}); got != noteMsg {
 		t.Fatalf("Note must pass through verbatim:\ngot:  %q\nwant: %q", got, noteMsg)
+	}
+
+	// Temporary minimal Epilogue arm (T05 renders the full TE-4 block): the
+	// styled headline — renderer-supplied ✔, cube name, gateway URL.
+	epi := scrollbackLine(event.Epilogue{Cube: "dev", GatewayURL: "https://cube.local:8443",
+		Hint: "credentials: cube-idp get secrets"})
+	for _, want := range []string{"✔", `cube "dev" is up`, "https://cube.local:8443"} {
+		if !strings.Contains(epi, want) {
+			t.Fatalf("Epilogue scrollback missing %q: %q", want, epi)
+		}
 	}
 
 	if warn := scrollbackLine(event.Warn{Msg: "heads up"}); !strings.Contains(warn, "⚠") || !strings.Contains(warn, "heads up") {

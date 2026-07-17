@@ -33,6 +33,12 @@ func Styled(w io.Writer) func(event.Event) {
 				th.Msg.Render(e.Msg))
 		case event.Note:
 			fmt.Fprintln(w, e.Msg)
+		case event.Epilogue:
+			// R2: the ✔ is presentation — Styled re-adds it here; the words
+			// stay identical to Plain's projection (content-identical rule,
+			// glyph excepted like Warn's ⚠). Full TE-4 rows are live/T05.
+			fmt.Fprintf(w, "\n%s cube %q is up — %s\n  %s\n",
+				th.OK.Render(theme.GlyphOK), e.Cube, e.GatewayURL, th.Dim.Render(e.Hint))
 		case event.Warn:
 			// Printer.Warn's ModeStyled branch: amber glyph prefix + styled
 			// message — content (the message text) identical to Plain.

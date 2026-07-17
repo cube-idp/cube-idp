@@ -88,7 +88,7 @@ func TestRunPipelineLiveDiagnosisAfterExit(t *testing.T) {
 // TestRunPipelineLiveSuccessScrollback drives a SUCCESSFUL stream through
 // the live renderer on a non-TTY writer (ModeLive is the explicit-force
 // escape hatch) and asserts the scrollback content survived: step lines,
-// the verbatim success note, and the Access block.
+// the epilogue headline, and the Access block.
 func TestRunPipelineLiveSuccessScrollback(t *testing.T) {
 	prev := CurrentMode()
 	SetMode(ModeLive)
@@ -101,7 +101,8 @@ func TestRunPipelineLiveSuccessScrollback(t *testing.T) {
 			con.Step("config", "cube %q loaded and validated", "dev")
 			pr := con.Progress("cluster", "creating kind cluster")
 			pr.Done("kind cluster ready (context kind-dev)")
-			con.Note("\n✔ cube %q is up — https://%s:%d\n  credentials: cube-idp get secrets", "dev", "cube.local", 8443)
+			con.Epilogue(event.Epilogue{Cube: "dev", GatewayURL: "https://cube.local:8443",
+				Hint: "credentials: cube-idp get secrets"})
 			con.Access([]event.PackAccess{{Name: "gitea", URLs: []string{"https://gitea.cube.local:8443"}}},
 				"credentials: cube-idp get secrets")
 			return nil

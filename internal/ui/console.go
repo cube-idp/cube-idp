@@ -65,6 +65,12 @@ func (c *Console) Note(format string, args ...any) {
 	c.ch <- event.Note{Msg: fmt.Sprintf(format, args...)}
 }
 
+// Epilogue emits the post-success "what you actually need" block (TE-4).
+// R2: the event carries no glyph — renderers add it as presentation.
+func (c *Console) Epilogue(e event.Epilogue) {
+	c.ch <- e
+}
+
 // Warn emits an advisory line.
 func (c *Console) Warn(format string, args ...any) {
 	c.ch <- event.Warn{Msg: fmt.Sprintf(format, args...)}

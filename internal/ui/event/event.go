@@ -8,8 +8,8 @@
 //  2. Every StepStarted is resolved by the next StepDone or StepFailed for
 //     the same stage, or implicitly by RunDone (renderers MUST treat
 //     RunDone/Diagnosis as resolving any still-open step).
-//  3. Success termination: ... → Access? → RunDone{OK:true, Dur}. Nothing
-//     follows RunDone on success.
+//  3. Success termination: ... → Epilogue? → Access? → RunDone{OK:true,
+//     Dur}. Nothing follows RunDone on success.
 //  4. Failure termination: ... → StepFailed? → RunDone{OK:false, Dur} →
 //     Diagnosis. Diagnosis is always the final event on failure — machine
 //     consumers may treat it as the terminal record (Terraform's
@@ -89,10 +89,17 @@ type ComponentState struct {
 // JSON stream from repeating identical lines every 5s.
 type HealthTick struct{ Components []ComponentState }
 
-// Note is a neutral passthrough line (e.g. up's final success block, down's
-// trust-revert messages). Msg carries any embedded newlines; renderers add
-// exactly one trailing newline.
+// Note is a neutral passthrough line (e.g. down's trust-revert messages).
+// Msg carries any embedded newlines; renderers add exactly one trailing
+// newline. (up's final success block is event.Epilogue since R2 — Note is
+// for lines that genuinely have no structure.)
 type Note struct{ Msg string }
+
+// Epilogue is the post-success "what you actually need" block (TE-4,
+// helm-NOTES pattern). Context/Registry may be "" when the producer does
+// not know them; renderers omit empty rows. R2: the ✔ glyph is
+// presentation — renderers add it; this event never carries it.
+type Epilogue struct{ Cube, GatewayURL, Context, Registry, Hint string }
 
 // Warn is an advisory (e.g. get secrets' legacy-label deprecation note).
 type Warn struct{ Msg string }
@@ -135,6 +142,7 @@ func (StepFailed) event()  {}
 func (StepLog) event()     {}
 func (HealthTick) event()  {}
 func (Note) event()        {}
+func (Epilogue) event()    {}
 func (Warn) event()        {}
 func (Access) event()      {}
 func (Diagnosis) event()   {}

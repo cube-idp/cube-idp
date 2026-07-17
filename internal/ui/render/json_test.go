@@ -45,7 +45,7 @@ func TestJSONGoldenUpRun(t *testing.T) {
 		`{"v":1,` + ts + `,"type":"health_tick","components":[{"name":"cube-idp-traefik","ready":true,"message":"Applied revision"},{"name":"cube-idp-gitea","ready":true,"message":"Applied revision"}]}`,
 		`{"v":1,` + ts + `,"type":"step_done","stage":"health","msg":"3 component(s) ready","dur_ms":45000}`,
 		`{"v":1,` + ts + `,"type":"step_done","stage":"packs","msg":"2 pack records written — try ` + "`kubectl get packs`" + `"}`,
-		`{"v":1,` + ts + `,"type":"note","msg":"\n✔ cube \"dev\" is up — https://cube.local:8443\n  credentials: cube-idp get secrets"}`,
+		`{"v":1,` + ts + `,"type":"epilogue","cube":"dev","gateway_url":"https://cube.local:8443","context":"kind-dev","registry":"zot.cube-idp-system.svc.cluster.local:5000","hint":"credentials: cube-idp get secrets"}`,
 		`{"v":1,` + ts + `,"type":"access","packs":[{"name":"gitea","urls":["https://gitea.cube.local:8443"]}],"hint":"credentials: cube-idp get secrets"}`,
 		`{"v":1,` + ts + `,"type":"run_done","ok":true,"dur_ms":180000}`,
 	}
@@ -102,6 +102,34 @@ func TestJSONFailedRunDiagnosisLast(t *testing.T) {
 	}
 	if !strings.Contains(joined, `"ok":false`) {
 		t.Fatalf("run_done must carry ok:false on failure:\n%s", joined)
+	}
+}
+
+// TestJSONEpilogueRecord pins the additive "epilogue" record (ratified R2,
+// TE-4.4) golden-style: all five fields when the producer knows them;
+// context/registry omitted (omitempty) when it does not.
+func TestJSONEpilogueRecord(t *testing.T) {
+	const ts = `"ts":"2026-07-14T12:00:00Z"`
+
+	var full bytes.Buffer
+	JSONWithClock(&full, fixedClock())(event.Epilogue{
+		Cube: "dev", GatewayURL: "https://cube.local:8443",
+		Context: "kind-dev", Registry: "zot.cube-idp-system.svc.cluster.local:5000",
+		Hint: "credentials: cube-idp get secrets",
+	})
+	wantFull := `{"v":1,` + ts + `,"type":"epilogue","cube":"dev","gateway_url":"https://cube.local:8443","context":"kind-dev","registry":"zot.cube-idp-system.svc.cluster.local:5000","hint":"credentials: cube-idp get secrets"}` + "\n"
+	if full.String() != wantFull {
+		t.Fatalf("epilogue record drifted:\ngot:  %swant: %s", full.String(), wantFull)
+	}
+
+	var min bytes.Buffer
+	JSONWithClock(&min, fixedClock())(event.Epilogue{
+		Cube: "dev", GatewayURL: "https://cube.local:8443",
+		Hint: "credentials: cube-idp get secrets",
+	})
+	wantMin := `{"v":1,` + ts + `,"type":"epilogue","cube":"dev","gateway_url":"https://cube.local:8443","hint":"credentials: cube-idp get secrets"}` + "\n"
+	if min.String() != wantMin {
+		t.Fatalf("empty context/registry must be omitted:\ngot:  %swant: %s", min.String(), wantMin)
 	}
 }
 
