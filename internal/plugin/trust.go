@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,9 +8,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 // storeDir returns (creating if needed) os.UserConfigDir()/cube-idp — the
@@ -138,8 +137,9 @@ func isTrusted(path string) bool {
 
 // EnsureTrusted enforces the trust contract for path: a known, matching
 // sha256 passes silently. An unknown or CHANGED hash (an updated binary)
-// re-requires trust — prompted interactively on stderr (default no) when
-// interactive is true, else refused with CUBE-7104.
+// re-requires trust — consented through the ui.Confirm seam (default no)
+// when interactive is true AND the WP4 prompt gate allows it, else refused
+// with CUBE-7104 (the refusal is a security gate — byte-for-byte frozen).
 func EnsureTrusted(name, path string, interactive bool) error {
 	m, err := loadStore()
 	if err != nil {
@@ -155,17 +155,20 @@ func EnsureTrusted(name, path string, interactive bool) error {
 	}
 
 	remediation := fmt.Sprintf("run `cube-idp plugin trust %s`", name)
-	if !interactive {
+	if !interactive || !ui.PromptsAllowed(os.Stdin, os.Stderr) {
 		return diag.New(diag.CodePluginUntrusted,
 			fmt.Sprintf("plugin %q (%s) is not trusted", name, path), remediation)
 	}
 
-	fmt.Fprintf(os.Stderr, "! plugin %q (%s) is not trusted yet.\n", name, path)
-	fmt.Fprintln(os.Stderr, "  cube-idp plugins run with your full user permissions.")
-	fmt.Fprintf(os.Stderr, "  sha256: %s\n", shortSum(sum))
-	fmt.Fprint(os.Stderr, "  Run it and remember this hash? [y/N] ")
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	if strings.ToLower(strings.TrimSpace(line)) != "y" {
+	ok, err := ui.Confirm(os.Stdin, os.Stderr, ui.ConfirmOpts{
+		Title: fmt.Sprintf("plugin %q is not trusted — run it and remember this hash?", name),
+		Description: fmt.Sprintf("path: %s\nsha256: %s\nplugins run with your full user permissions",
+			path, shortSum(sum)),
+	})
+	if err != nil {
+		return err
+	}
+	if !ok {
 		return diag.New(diag.CodePluginUntrusted,
 			fmt.Sprintf("plugin %q (%s) was not trusted", name, path), remediation)
 	}
