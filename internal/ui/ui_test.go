@@ -169,39 +169,6 @@ func TestNewForDowngradeMatrix(t *testing.T) {
 	}
 }
 
-// TestProgressPlainEmitsNothingBeforeDone pins Task 15.3a's hard invariant:
-// in ModePlain (the only mode a bytes.Buffer ever resolves to — it is never
-// a TTY), Progress must not write a single byte until Done, and Done's
-// output must be byte-identical to calling Step directly — no drift from
-// the phase-1 "▸ [%s] %s\n" format just because a Progress call now wraps
-// it.
-func TestProgressPlainEmitsNothingBeforeDone(t *testing.T) {
-	var b bytes.Buffer
-	p := New(&b, true)
-	pr := p.Progress("cluster", "creating kind cluster")
-	if b.Len() != 0 {
-		t.Fatalf("plain Progress must emit nothing before Done, got %q", b.String())
-	}
-	pr.Done("%s cluster ready (context %s)", "kind", "kind-dev")
-	const want = "▸ [cluster] kind cluster ready (context kind-dev)\n"
-	if got := b.String(); got != want {
-		t.Fatalf("plain Done drifted from Step's format:\ngot:  %q\nwant: %q", got, want)
-	}
-}
-
-// TestProgressPlainStopEmitsNothing covers the error path: the phase-1 code
-// printed nothing when a step failed, so Stop (called instead of Done on an
-// error) must also emit nothing in ModePlain.
-func TestProgressPlainStopEmitsNothing(t *testing.T) {
-	var b bytes.Buffer
-	p := New(&b, true)
-	pr := p.Progress("engine", "installing flux")
-	pr.Stop()
-	if b.Len() != 0 {
-		t.Fatalf("plain Stop must emit nothing, got %q", b.String())
-	}
-}
-
 // TestSectionPlainExactLiteral pins Section's ModePlain output to exactly
 // fmt.Fprintln(out, title) — the raw call every migrated command (diff's
 // KERNEL OBJECTS/PACK CONTENT/ORPHANS, upgrade's "Kernel + delivery object
@@ -246,37 +213,6 @@ func TestWarnPlainExactLiteral(t *testing.T) {
 	const want = "note: gitea was found via the legacy label\n"
 	if got := b.String(); got != want {
 		t.Fatalf("Warn plain = %q, want %q", got, want)
-	}
-}
-
-// TestProgressStyledRendersSpinnerAndErases is the deterministic styled-mode
-// smoke test (bytes.Buffer forced into ModeStyled via the &Printer{} literal
-// seam, since a buffer is never a real TTY). It runs the real
-// Progress/Stop/Done code path rather than a ticker: loop() unconditionally
-// renders one frame before it ever selects on stopCh/the ticker (see
-// Progress.loop), so calling Done immediately after Progress is
-// deterministic — exactly one frame is guaranteed to have been written, and
-// Stop's <-doneCh guarantees that write completed before Done goes on to
-// erase and print the final Step line. No time.Sleep, no flakiness.
-func TestProgressStyledRendersSpinnerAndErases(t *testing.T) {
-	var b bytes.Buffer
-	p := &Printer{out: &b, mode: ModeStyled}
-
-	pr := p.Progress("cluster", "creating kind cluster")
-	pr.Done("kind cluster ready (context kind-dev)")
-
-	got := b.String()
-	if !strings.Contains(got, "\x1b[2K") {
-		t.Fatalf("styled Progress must erase its line: %q", got)
-	}
-	if !strings.Contains(got, "[cluster]") {
-		t.Fatalf("styled Progress output missing the stage tag: %q", got)
-	}
-	if !strings.Contains(got, "creating kind cluster") {
-		t.Fatalf("styled Progress output missing the in-flight message: %q", got)
-	}
-	if !strings.Contains(got, "kind cluster ready") {
-		t.Fatalf("Done must still print the final styled Step line: %q", got)
 	}
 }
 

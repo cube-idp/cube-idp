@@ -9,6 +9,12 @@
 // every CI log, every `go test` writer that isn't an *os.File) is therefore
 // always byte-identical to today's output — no e2e assertion ever needs to
 // change because of this package.
+//
+// Printer is the STATIC surface — Step, Section, Glyph, Warn, AccessSummary:
+// whole lines only, no cursor movement, no goroutines. Every animated or
+// multi-step surface goes through RunPipeline/RunPipelineStatic; the
+// bubbles/spinner inside the live renderer (internal/ui/render) is the only
+// animation system.
 package ui
 
 import (
@@ -17,7 +23,6 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"golang.org/x/term"
 
@@ -269,99 +274,6 @@ func (p *Printer) Warn(format string, args ...any) {
 		return
 	}
 	fmt.Fprintf(p.out, "%s %s\n", p.Glyph(GlyphWarn), th.Warn.Render(msg))
-}
-
-// progressTick is the spinner's animation interval.
-const progressTick = 100 * time.Millisecond
-
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
-// eraseLine returns the cursor to column 0 and clears the rest of the line —
-// how a running Progress line is removed before the next frame (or the final
-// Step line) is written in its place.
-const eraseLine = "\r\x1b[2K"
-
-// Progress is a TTY-only animated "still working" line — a spinner, the
-// stage tag, the message, and elapsed time — for `up`'s long waits (cluster
-// create, engine install, health polling) that used to go silent for
-// minutes. It is never a substitute for Step: every Progress is eventually
-// resolved by exactly one call to Done (success) or Stop (abandoned on
-// error, printing nothing — matching how the phase-1 code printed nothing
-// on an error path either).
-type Progress struct {
-	p       *Printer
-	stage   string
-	message string
-	start   time.Time
-	frame   int
-	stopCh  chan struct{}
-	doneCh  chan struct{}
-}
-
-// Progress starts (in ModeStyled only) an animated "<spinner> [stage]
-// message… (elapsed)" line updated on a ticker goroutine. In ModePlain it
-// returns a handle that emits nothing at all — no goroutine, no bytes —
-// until Done, at which point Done behaves exactly like calling Step
-// directly. This is the hard invariant: a plain/CI run of `up` gains zero
-// bytes from the mere existence of a Progress call.
-func (p *Printer) Progress(stage, message string) *Progress {
-	pr := &Progress{p: p, stage: stage, message: message, start: time.Now()}
-	if p.mode != ModeStyled {
-		return pr
-	}
-	pr.stopCh = make(chan struct{})
-	pr.doneCh = make(chan struct{})
-	go pr.loop()
-	return pr
-}
-
-// loop renders one frame immediately (so the line appears without waiting a
-// full tick) and then re-renders every progressTick until stopCh closes.
-func (pr *Progress) loop() {
-	defer close(pr.doneCh)
-	t := time.NewTicker(progressTick)
-	defer t.Stop()
-	pr.render()
-	for {
-		select {
-		case <-pr.stopCh:
-			return
-		case <-t.C:
-			pr.render()
-		}
-	}
-}
-
-// render draws one spinner frame, erasing the previous one first so the
-// line never trails stale characters from a longer earlier message.
-func (pr *Progress) render() {
-	elapsed := time.Since(pr.start).Round(time.Second)
-	frame := spinnerFrames[pr.frame%len(spinnerFrames)]
-	pr.frame++
-	line := fmt.Sprintf("%s [%s] %s… (%s)", frame, pr.stage, pr.message, elapsed)
-	fmt.Fprint(pr.p.out, eraseLine+th.Warn.Render(line))
-}
-
-// Stop erases any running spinner line without printing a step — the error
-// path, matching the phase-1 behavior of printing nothing when a step
-// failed. A no-op in ModePlain (nothing was ever running).
-func (pr *Progress) Stop() {
-	if pr.stopCh == nil {
-		return
-	}
-	close(pr.stopCh)
-	<-pr.doneCh
-	fmt.Fprint(pr.p.out, eraseLine)
-	pr.stopCh = nil // idempotent: a second Stop/Done call is a no-op
-}
-
-// Done stops the animation (erasing its line, if one was running) and prints
-// the normal Step line for stage. In ModePlain, Progress never wrote
-// anything, so this is byte-identical to calling p.Step(stage, format,
-// args...) directly — the phase-1 contract.
-func (pr *Progress) Done(format string, args ...any) {
-	pr.Stop()
-	pr.p.Step(pr.stage, format, args...)
 }
 
 // PackAccess is one delivered pack's access info for up.Run's access
