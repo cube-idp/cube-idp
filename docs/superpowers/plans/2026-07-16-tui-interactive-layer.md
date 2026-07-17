@@ -819,7 +819,7 @@ only via `p.Println`, quit only on `eofMsg`, ctrl-c/`tea.InterruptMsg` →
 - Produces: the TE golden fixtures + a stateful `scrollback` projector
   (replacing the pure `scrollbackLine`) that T10 extends.
 
-- [ ] **Step 1: Restructure scrollback to be stateful.** The forwarding
+- [x] **Step 1: Restructure scrollback to be stateful.** The forwarding
 goroutine in `Live()` is single-threaded — give it state for log tails:
 
 ```go
@@ -863,7 +863,7 @@ with `for _, line := range sb.lines(ev) { p.Println(line) }` where
 `sb := newScrollback(theme.Detect(os.Stdin, outFile(out)))` (helper:
 `outFile` returns `out.(*os.File)` or nil). Keep `p.Send(evMsg{ev})` after.
 
-- [ ] **Step 2: Line layout (TE-1.1/1.2, TE-2.1).** Layout constants + the
+- [x] **Step 2: Line layout (TE-1.1/1.2, TE-2.1).** Layout constants + the
 two line builders:
 
 ```go
@@ -912,7 +912,7 @@ RunDone arm: `✔ up finished in Xs` via th.OK / `✗ up failed after Xs` via
 th.Err (only when the run had a RunStarted — track `started bool` on
 scrollback from RunStarted).
 
-- [ ] **Step 3: Live region (TE-1.3/1.4/1.5).** `liveModel` gains:
+- [x] **Step 3: Live region (TE-1.3/1.4/1.5).** `liveModel` gains:
 
 ```go
 th        theme.Theme
@@ -945,7 +945,7 @@ region line clamped: when `m.width > 0`, truncate to width with
 `lipgloss.Width`-aware cutting and a trailing `…` (write helper
 `clamp(s string, w int) string`) — the region must never wrap (TE-1.5).
 
-- [ ] **Step 4: TE golden tests.** In `live_test.go`, following its
+- [x] **Step 4: TE golden tests.** In `live_test.go`, following its
 existing model-driven pattern (drive `applyEvent`/`View` directly, injectable
 `now`), with a fixed theme (`theme.New(true)`) and ANSI stripped
 (reuse/move the `stripANSI` helper from `styled_test.go`):
@@ -966,30 +966,30 @@ the suite has one, else paste the expected output verbatim; then eyeball
 each golden against the spec §2 frames — the golden IS the frame. Every
 `«dynamic»` span from the spec appears as the fixed test value.
 
-- [ ] **Step 5: Green + invariants intact**
+- [x] **Step 5: Green + invariants intact**
 Run: `go test ./internal/ui/... -v 2>&1 | tail -30` → PASS.
 Run: `grep -n "AltScreen" internal/ui/render/live.go` → zero hits.
 Run: `go test ./internal/ui/render/ -run 'TE' -v` → all TE tests PASS
 (this exact command is the spec §6.1 merge gate).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 `git add -A && git commit -m "feat(ui): live step tree — BuildKit collapse, n/m progress, bounded tails, TE-1/2/4 goldens"`
 
-- [ ] **Step 7: Manual smoke (best-effort, non-gating).** If a TTY is
+- [x] **Step 7: Manual smoke (best-effort, non-gating).** If a TTY is
 available: `go build -o /tmp/cube-idp . && CUBE_IDP_PROGRESS=live /tmp/cube-idp status` —
 confirm no terminal corruption on exit. Record result (or "no TTY in this
 environment") in FINDINGS.
 
-- [ ] **Step 8: Task-level verify + merge + ledger.**
+- [x] **Step 8: Task-level verify + merge + ledger.**
 
 #### Outcome — W1.T05
-- STATUS: `IN_PROGRESS(a68e5830-aa68-47e2-903a-e18b60390fc5, 2026-07-17T08:04:43Z)`
-- BRANCH: `tui/w1-t05-livetree` (merged: no)
-- COMMITS: —
-- FINDINGS: —
-- REVIEW: —
-- BLOCKERS: —
-- HANDOFF: —
+- STATUS: `DONE`
+- BRANCH: `tui/w1-t05-livetree` (merged: yes)
+- COMMITS: `ec44e16` feat(ui): live step tree — BuildKit collapse, n/m progress, bounded tails, TE-1/2/4 goldens · merge `2a619b8` · claim `79ea9c1`
+- FINDINGS: (1) Steps 1–3 implemented with the plan's code verbatim (scrollback struct + lines(), durCol=62, stepLine builders, epilogue/RunDone composition, liveModel fields, clamp). API names checked as instructed: `tea.BackgroundColorMsg.IsDark()` exists; `progress.New(progress.WithWidth(30))` exists; `tea.RequestBackgroundColor` is `func() Msg` and is passed directly as a Cmd to `tea.Batch`. (2) Dependencies — no bumps, Charm pins untouched: importing `bubbles/v2/progress` needed missing go.sum entries for its transitive deps; `go mod tidy` added `github.com/charmbracelet/harmonica v0.2.0 // indirect` and reclassified `github.com/charmbracelet/x/ansi` indirect→direct at its existing v0.11.7 (imported for the ANSI-aware clamp: `ansi.Truncate(s, w-1, "…")`). (3) Composition decision (plan-directed): the TE-4 headline renders WITHOUT the run duration; the RunDone arm prints `✔ up finished in 2m13s` (the frame's «2m13s» lives there). scrollback tracks started/cmd from RunStarted — the summary uses RunStarted.Cmd (not hardcoded "up"); RunDone without a RunStarted stays silent. (4) Presentation decisions: spinner switched to `spinner.MiniDot` (frame's ⠋ is literal, spec §2 glyph rule; bubbles default is Line "|"); progress fill pinned to █/░ via `WithFillCharacters` (v2 default is a half-block ▌); bar+tail lines hang at the plan-literal 13-space regionIndent; the enumerated in-flight line drops the `msg… (elapsed)` suffix for the frame's right-aligned n/m at durCol — non-enumerated steps keep it; `packStage` field added beyond the plan's list (needed to know which stage's completion clears the counters); the dim region header (`cube-idp up — cube "voodoo"`, pre-existing, pinned by the lifecycle test) stays and appears in te1_scrollback.golden between scrollback and the spinner line — it is region-only and never reaches permanent scrollback. (5) Step-5 grep deviation: live.go's View doc comment contained the literal word "AltScreen" ("AltScreen is never set"), so the mechanical zero-hits grep failed on a COMMENT; reworded to "The alt screen is never set" — the invariant itself is enforced by TestLiveRegionLifecycle's `View().AltScreen` assertion and nothing ever sets it. (6) Test churn, all in live_test.go: the two scrollback tests rewritten onto the stateful `sb.lines()` (StepFailed empty-Msg now falls back to "failed"; RunDone left the silent set — prints the run summary after RunStarted, silent without one; StepLog buffers silently); TestLiveRegionLifecycle's health assertion flipped — the snapshot persists after the health stage closes, until RunDone (spec WP3); TestTE1_DurationColumn measures the column with lipgloss.Width, not strings.Index (✔ is 3 bytes/1 cell). (7) Goldens recorded from actual output via a temporary generator test (deleted before commit; the suite has no -update pattern), then eyeballed line-by-line against the §2 frames — every «dynamic» span is the fixed test value. (8) Plain/styled/JSON renderers and their goldens untouched (frozen contracts intact).
+- REVIEW: `go test ./internal/ui/...` all ok; `grep -n "AltScreen" internal/ui/render/live.go` zero hits; TE gate `go test ./internal/ui/... ./cmd/... -run TE` green (render 0.714s, 6 TE tests + TE4_PlainBytesR2Only pass); `go build ./... && go vet ./...` clean; full suite 29 packages ok / 0 FAIL; post-merge `go test ./...` on main 0 FAIL. Step 7 smoke: no TTY in this environment — best-effort pipe runs: from the worktree (no cube.yaml) → clean CUBE-0001 box, exit 1, no corruption; from $ROOT → `CUBE_IDP_PROGRESS=live /tmp/cube-idp status` exit 0, clean output, no region residue.
+- BLOCKERS: none
+- HANDOFF: T06 (prompt seam) is renderer-independent — nothing here blocks it. For later tasks: the stateful `scrollback` projector in live.go is the seam T10 extends (its `lines()` switch); TE goldens live in `internal/ui/render/testdata/te*.golden` and are recorded fresh (not want-transformed); `durCol` (62) and `regionIndent` (13 spaces) are golden-pinned layout constants; the health table now persists until RunDone; the epilogue duration composition (headline bare, RunDone summary carries the total) is pinned by te4_epilogue.golden — TE-2.3's explain footer (T10) is the only TE piece still open in the renderer.
 
 ---
 
