@@ -1,0 +1,4 @@
+Destroying cube "voodoo" will delete:
+  • kind cluster + kubeconfig context kind-voodoo
+  • zot registry volume, generated TLS certs
+  • 7 installed packs

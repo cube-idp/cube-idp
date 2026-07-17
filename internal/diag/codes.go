@@ -11,6 +11,7 @@ const (
 	CodeInitExists          Code = "CUBE-0006" // cube.yaml already exists; refusing overwrite
 	CodeBadFlagValue        Code = "CUBE-0007" // an enum flag (--progress, --output) got an unrecognized value
 	CodeGatewayPackMismatch Code = "CUBE-0008" // gateway.ref points at a pack whose pack.cue name != gateway.pack (F11: ref silently wins over pack)
+	CodeConfirmRequired     Code = "CUBE-0010" // a destructive command refused to run without confirmation (--yes / --confirm)
 )
 
 // 01xx: doctor preflight checks (Phase 2)

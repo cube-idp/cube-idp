@@ -138,7 +138,7 @@ func patchCube(t *testing.T, dir string, mutate func(*config.Cube)) {
 // Never touches any cluster but the named one.
 func cleanupCube(t *testing.T, bin, dir, provider, name string) {
 	t.Helper()
-	down := exec.Command(bin, "down")
+	down := exec.Command(bin, "down", "--yes")
 	down.Dir = dir
 	out, _ := down.CombinedOutput()
 	t.Logf("cleanup: cube-idp down\n%s", out)
@@ -298,7 +298,7 @@ func TestK3dUpDown(t *testing.T) {
 	// serves the cube-idp CA-issued cert (same probe as the kind/traefik leg).
 	assertGatewayTLS(t, "gitea.cube-idp.localtest.me:"+strconv.Itoa(port))
 
-	run(t, dir, bin, "down")
+	run(t, dir, bin, "down", "--yes")
 }
 
 // TestVendorBundleOffline is the air-gap honesty check AND the arbiter for the
@@ -353,7 +353,7 @@ func TestVendorBundleOffline(t *testing.T) {
 	}
 
 	// Tear the cluster down and reinstall from the bundle alone.
-	run(t, dir, bin, "down")
+	run(t, dir, bin, "down", "--yes")
 	guardDeleteCluster(t, provider, name)
 
 	out := run(t, dir, bin, "up", "--bundle", bundlePath)
@@ -364,7 +364,7 @@ func TestVendorBundleOffline(t *testing.T) {
 	// A converged bundle-installed cube is Ready like any other.
 	run(t, dir, bin, "status")
 
-	run(t, dir, bin, "down")
+	run(t, dir, bin, "down", "--yes")
 }
 
 // assertFetchSourcesFromBundle parses every per-pack resolved-fetch-source
@@ -436,7 +436,7 @@ func TestSyncOneShot(t *testing.T) {
 	cs := clusterClientset(t, dir)
 	waitConfigMap(t, cs, "default", cmName, 2*time.Minute)
 
-	run(t, dir, bin, "down")
+	run(t, dir, bin, "down", "--yes")
 }
 
 // TestRepoCreateDeploy is the "empty repo to deployed" acceptance test, end to
@@ -493,7 +493,7 @@ func TestRepoCreateDeploy(t *testing.T) {
 
 	waitConfigMap(t, cs, "default", cmName, 3*time.Minute)
 
-	run(t, dir, bin, "down")
+	run(t, dir, bin, "down", "--yes")
 }
 
 // runGit runs the git CLI in workdir (empty = default) with env, fataling on
@@ -565,7 +565,7 @@ func TestEnvoyGatewaySmoke(t *testing.T) {
 	// talking to the Service directly.
 	assertInClusterHTTP(t, provider, name, dir, "https://gitea.cube-idp.localtest.me:8443")
 
-	run(t, dir, bin, "down")
+	run(t, dir, bin, "down", "--yes")
 }
 
 // assertInClusterHTTP creates a curlimages/curl pod in the default namespace

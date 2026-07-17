@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -9,14 +11,24 @@ import (
 	"github.com/cube-idp/cube-idp/internal/apply"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
 	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
 	"github.com/cube-idp/cube-idp/internal/trust"
 	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
+// seams for tests — the decline/consent paths need a TTY, so tests override
+// these (the trust.go trustInstall pattern) instead of faking a terminal.
+var (
+	downPromptsAllowed = ui.PromptsAllowed
+	downConfirmName    = ui.InputExact
+)
+
 func newDownCmd() *cobra.Command {
 	var file string
 	var keepCluster bool
+	var yes bool
+	var confirmName string
 	c := &cobra.Command{
 		Use:   "down",
 		Short: "Delete everything cube-idp created (inventory-driven cascade), then the cluster",
@@ -25,6 +37,38 @@ func newDownCmd() *cobra.Command {
 		// pins down's full plain output; the substring assertions keep
 		// passing because revertTrust's lines are byte-identical Notes).
 		RunE: func(c *cobra.Command, _ []string) error {
+			// Consent gate (TE-3, ratified R3) runs BEFORE ui.RunPipeline —
+			// a prompt and the pipeline must never share the terminal (spec
+			// Decision 5).
+			if !yes {
+				cube, err := config.Load(file)
+				if err != nil {
+					return err
+				}
+				if confirmName != "" {
+					if confirmName != cube.Metadata.Name {
+						return diag.New(diag.CodeConfirmRequired,
+							fmt.Sprintf("--confirm=%q does not match cube %q", confirmName, cube.Metadata.Name),
+							fmt.Sprintf("pass --confirm=%s (or --yes)", cube.Metadata.Name))
+					}
+				} else if downPromptsAllowed(c.InOrStdin(), c.OutOrStdout()) {
+					printDownPreview(c.OutOrStdout(), cube, keepCluster) // TE-3.1
+					ok, err := downConfirmName(c.InOrStdin(), c.OutOrStdout(),
+						"Type the cube name to confirm:", cube.Metadata.Name)
+					if err != nil {
+						return err
+					}
+					if !ok {
+						fmt.Fprintln(c.OutOrStdout(), "aborted — nothing was changed") // TE-3.3, trust.go's exact wording
+						return nil
+					}
+					fmt.Fprintln(c.OutOrStdout(), "  hint: cube-idp down --yes")
+				} else {
+					return diag.New(diag.CodeConfirmRequired, // TE-3.4 / R3
+						fmt.Sprintf("destroying cube %q requires confirmation", cube.Metadata.Name),
+						"re-run with --yes (or --confirm=<cube-name>) — non-interactive runs never destroy silently")
+				}
+			}
 			return ui.RunPipeline(c.Context(), "down", c.OutOrStdout(),
 				func(ctx context.Context, con *ui.Console) error {
 					return runDown(ctx, con, file, keepCluster)
@@ -33,7 +77,37 @@ func newDownCmd() *cobra.Command {
 	}
 	c.Flags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
 	c.Flags().BoolVar(&keepCluster, "keep-cluster", false, "delete cube-idp resources but keep the cluster")
+	c.Flags().BoolVar(&yes, "yes", false, "skip the consent prompt (required on non-TTY runs)")
+	c.Flags().StringVar(&confirmName, "confirm", "", "confirm by cube name instead of the interactive prompt")
 	return c
+}
+
+// printDownPreview enumerates the REAL deletion set for the active config
+// branch (TE-3.1) — it mirrors runDown's actual paths: kind/k3d delete the
+// whole cluster (registry volume and TLS certs go with it); provider
+// "existing"/--keep-cluster uninstall the engine, revert CoreDNS, and
+// cascade-delete the inventory. The OS trust-store bullet appears only when
+// trust.LoadState reports an installed CA. Bullet rows carry theme styles
+// with plain-text content; the golden test compares ANSI-stripped bytes.
+func printDownPreview(out io.Writer, cube *config.Cube, keepCluster bool) {
+	fmt.Fprintln(out, th.Section.Render(fmt.Sprintf("Destroying cube %q will delete:", cube.Metadata.Name)))
+	bullet := func(format string, a ...any) {
+		fmt.Fprintf(out, "  %s %s\n", th.Err.Render("•"), fmt.Sprintf(format, a...))
+	}
+	if cube.Spec.Cluster.Provider == "existing" || keepCluster {
+		bullet("%s engine install + CoreDNS rewrite (reverted; cluster kept)", cube.Spec.Engine.Type)
+		bullet("all cube-idp inventory objects (cascade delete)")
+	} else {
+		bullet("%s cluster + kubeconfig context %s-%s",
+			cube.Spec.Cluster.Provider, cube.Spec.Cluster.Provider, cube.Metadata.Name)
+		bullet("zot registry volume, generated TLS certs")
+	}
+	bullet("%d installed packs", len(cube.Spec.Packs))
+	if dir, err := trustDir(); err == nil {
+		if st, serr := trust.LoadState(dir); serr == nil && st.Installed {
+			bullet("OS trust-store entry for the cube-idp local CA (reverted)")
+		}
+	}
 }
 
 func runDown(ctx context.Context, con *ui.Console, file string, keepCluster bool) error {

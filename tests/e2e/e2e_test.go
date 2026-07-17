@@ -85,7 +85,7 @@ func TestUpStatusDown(t *testing.T) {
 		// deletes the kind cluster); the kind guard below is a backstop in
 		// case `up` never got far enough to leave a usable cube.yaml/cluster
 		// pairing, or `down` itself failed.
-		downCmd := exec.Command(bin, "down")
+		downCmd := exec.Command(bin, "down", "--yes")
 		downCmd.Dir = dir
 		out, _ := downCmd.CombinedOutput()
 		t.Logf("cleanup: cube-idp down\n%s", out)
@@ -164,7 +164,7 @@ func TestUpStatusDown(t *testing.T) {
 	if !strings.Contains(secrets, "gitea_admin") {
 		t.Fatalf("gitea admin secret not surfaced (D9/D11):\n%s", secrets)
 	}
-	run(t, dir, bin, "down")
+	run(t, dir, bin, "down", "--yes")
 }
 
 // recordUpWallTime is Task 0.5(j)'s tracked CI metric: spec §3's <60s goal
