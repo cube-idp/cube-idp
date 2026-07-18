@@ -1,0 +1,41 @@
+cube-idp cnoe import | Ingest idpbuilder Argo Application/ApplicationSet YAMLs into the running cube (cnoe:// paths become OCI pushes) | 
+cube-idp cnoe | Compatibility tools for CNOE/idpbuilder setups | file=cube.yaml
+cube-idp config render-cluster | Print the final merged provider config that `up` would create (D10) | 
+cube-idp config render-engine | Print the tuned engine install manifests that `up` would apply (GT1) | 
+cube-idp config schema | Print the CUE schema cube.yaml is validated against | 
+cube-idp config | Inspect cube-idp configuration | file=cube.yaml
+cube-idp diff | Show what a re-run of `up` would change; exit 1 if anything would | file=cube.yaml
+cube-idp doctor | Diagnose the host and (if reachable) the cluster; exit 1 on errors | file=cube.yaml,output=
+cube-idp down | Delete everything cube-idp created (inventory-driven cascade), then the cluster | confirm=,file=cube.yaml,keep-cluster=false,yes=false
+cube-idp explain | Explain a cube-idp diagnostic code | list=false
+cube-idp get secrets | List credentials packs exposed for CLI consumption (cube-idp.dev/cli-secret=true) | output=,pack=
+cube-idp get | Read cube-idp-managed resources | file=cube.yaml
+cube-idp init | Write the default cube.yaml (kind + flux + traefik + gitea + argocd, D9) | engine=flux,gateway-pack=traefik,local=,name=dev
+cube-idp pack index build | Build index.json over every pack directory in <packs-dir> | digest=[],from-registry=false,output=index.json,ref-base=oci://ghcr.io/cube-idp/packs
+cube-idp pack index push | Push a built index.json as the catalog index OCI artifact | ref=
+cube-idp pack index | Build and push the pack catalog index artifact | 
+cube-idp pack install | Add packs to cube.yaml (delivered on the next `cube-idp up`) | file=cube.yaml,via=oci
+cube-idp pack list | List packs available from the remote catalog | available=false
+cube-idp pack publish | Validate a pack directory and publish it as an OCI artifact | ref=
+cube-idp pack push | Publish a pack directory as an OCI artifact | also-tag=[]
+cube-idp pack search | Search the pack catalog by name and description | 
+cube-idp pack | Work with cube-idp packs | 
+cube-idp plugin install | Install a plugin from the official index (or a sha256-pinned git index with --index) | index=,yes=false
+cube-idp plugin list | List every cube-idp-<name> plugin discovered on PATH or in the plugin install dir | available=false
+cube-idp plugin search | Search the official plugin index by name or description | 
+cube-idp plugin trust | Trust a discovered plugin: record its current sha256 so it runs without prompting | 
+cube-idp plugin | Discover and manage cube-idp exec-plugins (spec §4.4 tier 2) | 
+cube-idp repo create | Create a Gitea repo, optionally wiring it up as an engine delivery source | deploy=false,file=cube.yaml
+cube-idp repo | Manage git repositories in the cube's built-in Gitea | 
+cube-idp spoke add | Declare a spoke in cube.yaml (applied on the next `cube-idp up`) | context=,file=cube.yaml,provider=kind
+cube-idp spoke list | List spokes declared in cube.yaml (with live hub state when reachable) | file=cube.yaml
+cube-idp spoke remove | Remove a spoke declaration (hub registration prunes on next `up`) | delete-cluster=false,file=cube.yaml,yes=false
+cube-idp spoke | Manage spoke clusters registered with this cube's engine | 
+cube-idp status | Report cluster connectivity, engine-reported component health, and inventory size | compact=false,details=false,exit-status=false,file=cube.yaml,interval=3s,output=,watch=false
+cube-idp sync | Render a directory as a pack and deliver it to the running cube (D7) | file=cube.yaml,watch=false
+cube-idp trust | Add (or remove, --uninstall) the cube-idp local CA to your OS trust stores — opt-in, fully reverted by `down` (D6) | file=cube.yaml,uninstall=false,yes=false
+cube-idp up | Create/ensure the cluster, install the engine, deliver all packs, exit | bundle=,file=cube.yaml
+cube-idp upgrade | Preview available pack updates and pending changes (apply them with `cube-idp up`) | file=cube.yaml,plan=false
+cube-idp vendor | Bundle every artifact and image pinned in cube.lock for air-gapped installs | lock=cube.lock,output=cube-bundle.tar.gz,platform=
+cube-idp version | Print the cube-idp version | 
+cube-idp | cube-idp stands up an internal developer platform on Kubernetes and gets out of the way | color=auto,plain=false,progress=auto
