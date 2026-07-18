@@ -3963,14 +3963,14 @@ must be correct".
   `engine.selfManage`, `packs[].delivery`, `packs[].extraManifests`,
   `spec.spokes`.
 
-- [ ] **Step 1: The fence.** Write `TestCommandTreeGolden` (walk
+- [x] **Step 1: The fence.** Write `TestCommandTreeGolden` (walk
   `newRootCmd()`'s tree recursively; render one line per command:
   `path | Short | flag=default,flag=default…`; sorted, deterministic).
   First run with `-update` (the repo's golden-update convention — check
   how the TE goldens regenerate and reuse that flag; FINDINGS records
   it) writes the golden; second run passes clean.
   Run: `go test ./cmd/ -run TestCommandTreeGolden -v` — Expected: PASS.
-- [ ] **Step 2: Conventions audit** — against the golden, verify and fix
+- [x] **Step 2: Conventions audit** — against the golden, verify and fix
   drift; every row of this table goes to FINDINGS with pass/fixed:
   (a) every config-reading command exposes `-f/--file` defaulting
   `cube.yaml`; (b) every destructive/mutating action has a
@@ -3980,31 +3980,42 @@ must be correct".
   prints raw errors around the diag envelope; (e) new cube.yaml fields
   all appear in the README `cube.yaml` reference table with defaults and
   the cluster-shape caveat marks where applicable.
-- [ ] **Step 3: Docs sweep.** README command table lists every command
+- [x] **Step 3: Docs sweep.** README command table lists every command
   from Consumes; machine-readable-output.md documents the additive
   `status.spokes` and `doctor.checks` fields plus any other field the
   phase added; the "Terminal output & interactivity" contract section
   gains one line each for doctor's tri-state rows and spoke consent
   lines.
-- [ ] **Step 4: The full gate, everything at once:**
+- [x] **Step 4: The full gate, everything at once:**
   `go build ./... && go vet ./... && go test ./...` plus
   `go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence|TestCommandTreeGolden'`
   plus cross-compile smoke:
   `GOOS=linux GOARCH=amd64 go build -o /dev/null . && GOOS=darwin GOARCH=arm64 go build -o /dev/null .`
   Expected: ALL PASS.
-- [ ] **Step 5: Commit** —
+- [x] **Step 5: Commit** —
   `git add cmd/ README.md docs/ && git commit -m "test(cmd)+docs: CLI coherence gate — command-tree golden fence + conventions audit (F1)"`
 
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(f1-coord-636df744, 2026-07-18T22:48:16Z)
-BRANCH: p5/f1-cli-coherence (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/f1-cli-coherence (merged: yes)
+COMMITS: $ROOT 6c25003 test(cmd): command-tree golden fence (F1 step 1); 61d2ae0 test(cmd)+docs: CLI coherence gate — golden fence + conventions audit (F1); 99f6587 merge: p5 F1 cli-coherence (p5/f1-cli-coherence); ledger claim 949ecef
+FINDINGS:
+  VERIFY-API (golden-update convention): the plan's Step 1 says "check how the TE goldens regenerate and REUSE that flag." Reality: THERE IS NO shared golden-update flag in this repo. Every existing golden (internal/ui/render/te*.golden, cmd/testdata/*.golden read via readGolden) is a hand-maintained committed fixture compared READ-ONLY — no `-update`/`-write` flag, no UPDATE_GOLDEN env var (grep of internal/ui + cmd for flag.Bool/os.Getenv/WriteFile in _test.go found only fixture setup, never a golden regenerator). So there is no convention to reuse; TestCommandTreeGolden introduces the idiomatic Go `flag.Bool("update", …)` for its own golden (regenerate: `go test ./cmd/ -run TestCommandTreeGolden -update`). Recorded per the plan's escape hatch.
+  VERIFY-API (symbol name): the plan writes `newRootCmd()` (lowercase); the real exported constructor is `cmd.NewRootCmd()` (cmd/root.go:26). Used the real name. No other drift.
+  Fence design: walks NewRootCmd() recursively, one line `path | Short | flag=default,…` per command, flags = NonInheritedFlags (root carries plain/progress/color; each subcommand only its own), flags sorted by name, lines sorted by path, trailing newline. Hidden commands/flags skipped. `help`/`completion` are NOT in the tree (fang adds them at Execute time, not to NewRootCmd) → deterministic. 41 command rows frozen in cmd/testdata/clitree.golden.
+  Conventions audit (all five rows PASS; only doc drift needed fixing, all in-scope):
+   (a) -f/--file=cube.yaml on config-reading commands — PASS. All config-reading commands carry it: up/down/diff/upgrade/status/doctor/get/sync/trust/cnoe/repo create/pack install/spoke add|list|remove, and config's three subcommands inherit it from config's PersistentFlags (render-cluster/render-engine read the file; schema needs none). Commands WITHOUT it (pack list/search/publish/push/index*, plugin *, explain, version, vendor) genuinely do not read cube.yaml (catalog/OCI/pack-dir/index operations) — correctly absent. No fix.
+   (b) destructive/mutating twin + non-TTY CUBE-0010 — PASS. Phase-5 mutating commands: `spoke remove --delete-cluster` has `--yes` twin and refuses non-TTY with CUBE-0010 (CodeConfirmRequired, spoke.go:201); `plugin install` has `--yes` twin, non-TTY refuses via trust consent (CUBE-7104, the frozen plugin-trust doctrine); `pack install` bare+non-TTY refuses with CUBE-0010 (pack.go:263), refs-as-args are the twin; `spoke add`/`pack install --via` only edit cube.yaml (non-destructive). Pre-existing `down` (--yes/--confirm + CUBE-0010, R3) and `trust` (--yes; non-TTY reads y/N from stdin, never hangs, defaults to abort — a deliberate documented pre-Phase-5 behavior) unchanged. All prompt behavior stays covered by TestPromptFence* (GT13). No code fix needed.
+   (c) Short strings verb-first, no trailing period — PASS with one pre-existing observation (NOT fixed). Zero trailing periods across all 41. All action/leaf commands are verb-first. The single non-verb Short is the `cnoe` GROUP parent tagline "Compatibility tools for CNOE/idpbuilder setups" (noun phrase) vs the other group parents' verb-first ("Work with…", "Manage…", "Discover and manage…", "Inspect…"). cnoe is PRE-EXISTING and OUT of Phase 5's Consumes scope; editing its Short would touch a non-Phase-5 command and move the golden for no phase reason. Left as-is and recorded — not silent scope creep. Root's own Short ("cube-idp stands up an IDP…") is a program tagline, exempt.
+   (d) no raw errors around the diag envelope — PASS. The only non-command-output stderr write in the Phase-5 command set is config.go:56, an advisory `note:` line (not an error). Every Phase-5 command returns typed diag.New/wrapped errors that flow to main.go's single final-error print point; none prints an error itself. No fix.
+   (e) new cube.yaml fields in README reference table — FIXED (drift found + fixed, in-scope). Before F1 the table had only `gateway.httpPort` (added by U2). Added rows for `engine.tuning.components.<name>.replicas` + `.resources` (GT1, CUBE-3009, "preview with config render-engine"), `engine.selfManage` (GT16, zot-sourced), `packs[].values` (GT15 helm-only, CUBE-4016, CUSTOMIZED), `packs[].extraManifests` (GT15, CUBE-4017, CUSTOMIZED), `packs[].delivery` (GT19 oci|repo, CUBE-7304, DELIVERY column), and `spec.spokes` (GT6 kind|existing). Updated the `spec.packs` row shape to `[{ref, values, extraManifests, delivery}]`. httpPort already carried the cluster-shape caveat.
+  Docs sweep (Step 3) — README additions (all in cube.yaml table + topical sections, matching the file's existing compact-table style): new `## Spokes` section (spoke add/list/remove command table + both-engines/provider notes); Pack-sources section gained a catalog-browse table (pack list --available, pack search, pack install --via) + a note that pack publish/index are the CI toolchain; `config render-engine` reference added beside render-cluster/schema; Day-2 `status` bullet notes spoke rows + `-o json` spokes array; a doctor tri-state bullet added under "Watching and explaining" (GT18: green ✔/yellow ⚠/red ✗, passes shown, exit 1 iff red, additive checks array); a spoke-consent bullet added under "Prompts & consent" (spoke remove --delete-cluster: --yes twin, non-TTY CUBE-0010).
+  machine-readable-output.md — NO F1 CHANGE NEEDED (verified already complete): the additive `status.spokes` array (doc lines 279-296) and `doctor.checks` array (doc lines 314-334, GT18, with the stable check-id list) were already documented by the earlier S4/U5 tasks. Phase 5 added no other machine-readable field. The commit therefore did not modify docs/machine-readable-output.md; recorded so a reader is not surprised `git add docs/` produced no doc diff there.
+REVIEW: TDD RED→GREEN observed. Step 1: wrote fence, ran `-update` to author the golden (41 rows), then `go test ./cmd/ -run TestCommandTreeGolden -v` PASS on the second (assert) run. Full gate (Step 4) ALL GREEN in the worktree: `go build ./...` clean, `go vet ./...` clean, `go test ./...` 31 pkg ok / 0 FAIL; fence gate `go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence|TestCommandTreeGolden'` all ok; cross-compile smoke `GOOS=linux GOARCH=amd64` + `GOOS=darwin GOARCH=arm64` both `-o /dev/null` OK. Merge was a clean --no-ff (disjoint files: new cmd/clitree_test.go, cmd/testdata/clitree.golden, README.md — no shared append-only file touched). Post-merge `go test ./...` on $ROOT main: 31 pkg ok, 0 FAIL. Worktree removed; branch p5/f1-cli-coherence kept (not pushed, not deleted). Pre-existing gofmt/markdownlint noise elsewhere in the tree left untouched (not F1's).
+BLOCKERS: none
+HANDOFF: F1 is the phase's final task — with it DONE, all 31 Phase 5 tasks (S1-S4, U1-U5, P1-P10, A1-A11, F1) are complete. The CLI surface is now FROZEN by TestCommandTreeGolden (cmd/clitree_test.go + cmd/testdata/clitree.golden): from here on ANY command/flag/Short/default change must consciously regenerate the golden with `go test ./cmd/ -run TestCommandTreeGolden -update` — the golden IS the CLI contract, alongside the plain-projection and prompt fences. NO live leg was run (F1 is unit/fence/build only — no docker, no port 18443, no tags, no owner gate). go.mod gained no module. One deferred cosmetic: the `cnoe` group-parent Short is the lone non-verb-first group tagline (noun phrase); pre-existing and out of Phase-5 scope, left for a future cnoe-touching change to normalize if desired. Three untracked docs/superpowers drafts in $ROOT (cluster-forprovider*, kind-config-reference) belong to another session — untouched throughout.
 ```
 
 ---
