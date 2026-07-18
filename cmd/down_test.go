@@ -300,3 +300,105 @@ func TestTE3_DeclineAbortsCleanly(t *testing.T) {
 		t.Fatalf("decline must not run the pipeline, got:\n%s", got)
 	}
 }
+
+// TestDownPreviewSpokes pins S3's preview extension: declared spokes are
+// enumerated in the TE-3.1 deletion preview — kind spokes announce their
+// cluster's fate, existing spokes stay untouched — while the spoke-less
+// preview stays byte-identical to the frozen golden
+// (TestTE3_DownPreviewGolden keeps proving that half).
+func TestDownPreviewSpokes(t *testing.T) {
+	stubTrustSeams(t)
+	cube := &config.Cube{}
+	cube.Metadata.Name = "voodoo"
+	cube.Spec.Cluster.Provider = "kind"
+	cube.Spec.Engine.Type = "flux"
+	cube.Spec.Spokes = []config.SpokeSpec{
+		{Name: "staging", Cluster: config.ClusterSpec{Provider: "kind"}},
+		{Name: "prod-eu", Cluster: config.ClusterSpec{Provider: "existing", Context: "eks-prod-eu"}},
+	}
+
+	var out bytes.Buffer
+	printDownPreview(&out, cube, false)
+	got := stripANSI(out.String())
+	for _, want := range []string{
+		"spoke staging (kind) — cluster will be deleted",
+		"spoke prod-eu (existing) — cluster left untouched; hub registration removed",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("preview missing %q:\n%s", want, got)
+		}
+	}
+
+	// --keep-cluster keeps spoke clusters too (consistent with the hub).
+	out.Reset()
+	printDownPreview(&out, cube, true)
+	kept := stripANSI(out.String())
+	if strings.Contains(kept, "cluster will be deleted") {
+		t.Fatalf("keep-cluster preview must not announce spoke cluster deletion:\n%s", kept)
+	}
+	if !strings.Contains(kept, "spoke staging (kind)") {
+		t.Fatalf("keep-cluster preview must still enumerate spokes:\n%s", kept)
+	}
+}
+
+// TestDownSpokesCascade covers S3's post-teardown spoke cascade: kind spoke
+// clusters are deleted best-effort (a failure warns with CUBE-8004 and
+// never fails down), existing spokes get the untouched note with the manual
+// RBAC removal recipe, and --keep-cluster skips deletion entirely.
+func TestDownSpokesCascade(t *testing.T) {
+	cube := &config.Cube{}
+	cube.Metadata.Name = "voodoo"
+	cube.Spec.Engine.Type = "flux"
+	cube.Spec.Spokes = []config.SpokeSpec{
+		{Name: "staging", Cluster: config.ClusterSpec{Provider: "kind"}},
+		{Name: "broken", Cluster: config.ClusterSpec{Provider: "kind"}},
+		{Name: "prod-eu", Cluster: config.ClusterSpec{Provider: "existing", Context: "eks-prod-eu"}},
+	}
+
+	var deleted []string
+	restore := spokeClusterDelete
+	spokeClusterDelete = func(_ context.Context, _ config.SpokeSpec, name string) error {
+		deleted = append(deleted, name)
+		if strings.Contains(name, "broken") {
+			return errors.New("docker hiccup")
+		}
+		return nil
+	}
+	defer func() { spokeClusterDelete = restore }()
+
+	run := func(keepCluster bool) string {
+		var out bytes.Buffer
+		if err := ui.RunPipeline(context.Background(), "down", &out,
+			func(ctx context.Context, con *ui.Console) error {
+				downSpokes(ctx, con, cube, keepCluster)
+				return nil
+			}); err != nil {
+			t.Fatalf("downSpokes must be best-effort, got %v", err)
+		}
+		return out.String()
+	}
+
+	got := run(false)
+	if len(deleted) != 2 || deleted[0] != "voodoo-spoke-staging" || deleted[1] != "voodoo-spoke-broken" {
+		t.Fatalf("kind spoke deletions = %v, want [voodoo-spoke-staging voodoo-spoke-broken]", deleted)
+	}
+	if !strings.Contains(got, "voodoo-spoke-staging deleted") {
+		t.Fatalf("successful deletion must be reported:\n%s", got)
+	}
+	if !strings.Contains(got, "CUBE-8004") || !strings.Contains(got, "broken") {
+		t.Fatalf("failed deletion must warn with CUBE-8004 naming the spoke:\n%s", got)
+	}
+	if !strings.Contains(got, "prod-eu") || !strings.Contains(got, "left untouched") ||
+		!strings.Contains(got, "cube-idp-system") {
+		t.Fatalf("existing spoke must get the untouched note with the RBAC recipe:\n%s", got)
+	}
+
+	deleted = nil
+	got = run(true)
+	if len(deleted) != 0 {
+		t.Fatalf("keep-cluster must not delete spoke clusters, deleted %v", deleted)
+	}
+	if !strings.Contains(got, "kept") {
+		t.Fatalf("keep-cluster run must say the spoke clusters were kept:\n%s", got)
+	}
+}

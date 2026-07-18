@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
+	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/ui"
@@ -134,10 +136,20 @@ func newSpokeRemoveCmd() *cobra.Command {
 	return c
 }
 
-// spokeDeleteCluster deletes a kind spoke's cluster after consent. The
-// provider call arrives in S3; until then the consent path is real and the
-// deletion reports a clear not-yet error so --delete-cluster is never a
-// silent no-op.
+// spokeClusterDelete deletes one kind spoke's cluster — the single seam
+// `spoke remove --delete-cluster` and `down`'s cascade share; tests stub it
+// (the trust.go trustInstall pattern) to observe deletions without a
+// container runtime. A zero GatewaySpec: spoke clusters map no host ports.
+var spokeClusterDelete = func(ctx context.Context, sp config.SpokeSpec, clusterName string) error {
+	prov, err := cluster.New(sp.Cluster, config.GatewaySpec{})
+	if err != nil {
+		return err
+	}
+	return prov.Delete(ctx, clusterName)
+}
+
+// spokeDeleteCluster deletes a kind spoke's cluster after consent (S3 wired
+// the real provider call; S1 shipped the consent path).
 func spokeDeleteCluster(c *cobra.Command, cubeName string, s config.SpokeSpec, yes bool) error {
 	if !yes {
 		// Prompt doctrine: Confirm's Default (false) is returned verbatim on
@@ -153,7 +165,13 @@ func spokeDeleteCluster(c *cobra.Command, cubeName string, s config.SpokeSpec, y
 			return diag.New(diag.CodeConfirmRequired, "spoke cluster deletion not confirmed", "re-run with --yes to skip the prompt")
 		}
 	}
-	return diag.New(diag.CodeSpokeProviderUnsupported,
-		"spoke cluster deletion ships in a later task of this plan (S3)",
-		"delete manually: kind delete cluster --name "+cubeName+"-spoke-"+s.Name)
+	name := cubeName + "-spoke-" + s.Name
+	if err := spokeClusterDelete(c.Context(), s, name); err != nil {
+		return diag.Wrap(err, diag.CodeSpokeEnsureFailed,
+			fmt.Sprintf("kind cluster %s deletion failed", name),
+			"retry, or delete manually: kind delete cluster --name "+name)
+	}
+	p := ui.NewFor(c.OutOrStdout())
+	p.Step("spoke", "kind cluster %s deleted", name)
+	return nil
 }

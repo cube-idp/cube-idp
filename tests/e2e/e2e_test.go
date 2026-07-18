@@ -347,19 +347,34 @@ func mustUserConfigDir(t *testing.T) string {
 // that may be running on this docker host for unrelated projects).
 func deleteLingeringCluster(t *testing.T) {
 	t.Helper()
-	out, err := exec.Command("kind", "get", "clusters").CombinedOutput()
-	if err != nil {
-		// kind not on PATH, or no clusters at all — nothing to clean up.
-		return
-	}
-	if slices.Contains(slices.Collect(strings.FieldsSeq(string(out))), cubeName) {
-		del := exec.Command("kind", "delete", "cluster", "--name", cubeName)
+	deleteLingeringClusterNamed(t, cubeName)
+}
+
+// deleteLingeringClusterNamed is deleteLingeringCluster for an explicit
+// cluster name — the spoke e2e leg guards both the hub ("e2e") and its
+// GT7-named spoke cluster ("e2e-spoke-<name>").
+func deleteLingeringClusterNamed(t *testing.T, name string) {
+	t.Helper()
+	if kindClusterExists(t, name) {
+		del := exec.Command("kind", "delete", "cluster", "--name", name)
 		delOut, delErr := del.CombinedOutput()
-		t.Logf("guard: kind delete cluster --name %s\n%s", cubeName, delOut)
+		t.Logf("guard: kind delete cluster --name %s\n%s", name, delOut)
 		if delErr != nil {
-			t.Logf("guard: kind delete cluster --name %s failed (non-fatal): %v", cubeName, delErr)
+			t.Logf("guard: kind delete cluster --name %s failed (non-fatal): %v", name, delErr)
 		}
 	}
+}
+
+// kindClusterExists reports whether a kind cluster with exactly this name
+// exists; kind absent from PATH (or no clusters) reads as false.
+func kindClusterExists(t *testing.T, name string) bool {
+	t.Helper()
+	out, err := exec.Command("kind", "get", "clusters").CombinedOutput()
+	if err != nil {
+		// kind not on PATH, or no clusters at all — nothing to see.
+		return false
+	}
+	return slices.Contains(slices.Collect(strings.FieldsSeq(string(out))), name)
 }
 
 func build(t *testing.T) string {
@@ -424,4 +439,70 @@ func TestRecordUpWallTimeNoopWithoutStepSummary(t *testing.T) {
 	t.Setenv("GITHUB_STEP_SUMMARY", "") // unset: local runs never have this
 	recordUpWallTime(t, "flux", time.Second)
 	// Only requirement: must not panic or fail the test (t.Logf-only path).
+}
+
+// TestSpokeKindRegistration proves the S3 hub/spoke loop end-to-end on real
+// kind clusters (spec §5, registration only): declare one kind spoke, `up`
+// creates + bootstraps it and registers it with the hub engine (hub secret
+// cube-idp-spoke-<name> with a non-empty engine-native payload), then
+// `down --yes` cascades the spoke cluster away. Gated like TestUpStatusDown
+// (CUBE_IDP_E2E=1, docker required) and honoring CUBE_IDP_E2E_GATEWAY_PORT
+// (GT14). Run locally with:
+//
+//	CUBE_IDP_E2E=1 CUBE_IDP_E2E_GATEWAY_PORT=18443 go test ./tests/e2e/ -run TestSpokeKindRegistration -v -timeout 25m
+func TestSpokeKindRegistration(t *testing.T) {
+	if os.Getenv("CUBE_IDP_E2E") != "1" {
+		t.Skip("set CUBE_IDP_E2E=1 to run")
+	}
+	eng := os.Getenv("CUBE_IDP_E2E_ENGINE")
+	if eng == "" {
+		eng = "flux"
+	}
+	port := gatewayPort(t)
+	const spokeName = "staging"
+	spokeCluster := cubeName + "-spoke-" + spokeName
+
+	deleteLingeringCluster(t)
+	deleteLingeringClusterNamed(t, spokeCluster)
+
+	bin := build(t)
+	dir := t.TempDir()
+	repoRoot, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatalf("resolving repo root: %v", err)
+	}
+	t.Cleanup(func() {
+		downCmd := exec.Command(bin, "down", "--yes")
+		downCmd.Dir = dir
+		out, _ := downCmd.CombinedOutput()
+		t.Logf("cleanup: cube-idp down\n%s", out)
+		deleteLingeringCluster(t)
+		deleteLingeringClusterNamed(t, spokeCluster)
+	})
+
+	run(t, dir, bin, "init", "--name", cubeName, "--local", repoRoot, "--engine", eng)
+	patchGatewayPort(t, dir, port)
+	run(t, dir, bin, "spoke", "add", spokeName, "--provider", "kind")
+
+	run(t, dir, bin, "up")
+
+	// Hub registration: the engine-native secret exists with a non-empty
+	// payload (flux: kubeconfig under `value`; argocd: cluster `config`).
+	ns, key := "flux-system", "value"
+	if eng == "argocd" {
+		ns, key = "argocd", "config"
+	}
+	payload := runKubectl(t, "get", "secret", "cube-idp-spoke-"+spokeName, "-n", ns,
+		"-o", "jsonpath={.data."+key+"}")
+	if strings.TrimSpace(payload) == "" {
+		t.Fatalf("hub secret cube-idp-spoke-%s has an empty %q payload", spokeName, key)
+	}
+
+	// Spoke bootstrap: the RBAC namespace exists on the spoke cluster itself.
+	runKubectl(t, "--context", "kind-"+spokeCluster, "get", "ns", "cube-idp-system")
+
+	run(t, dir, bin, "down", "--yes")
+	if kindClusterExists(t, spokeCluster) {
+		t.Fatalf("spoke kind cluster %s survived down", spokeCluster)
+	}
 }

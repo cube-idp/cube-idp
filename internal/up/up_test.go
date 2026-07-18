@@ -10,13 +10,17 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/rest"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/engine"
+	"github.com/cube-idp/cube-idp/internal/kube"
 	"github.com/cube-idp/cube-idp/internal/lock"
 	"github.com/cube-idp/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/spoke"
 	"github.com/cube-idp/cube-idp/internal/ui"
 	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
@@ -296,5 +300,93 @@ func TestWaitHealthyNarratesUnhealthyWait(t *testing.T) {
 		if !strings.Contains(sl.Line, "waiting on: ") || !strings.Contains(sl.Line, "kustomize-controller") {
 			t.Fatalf("narration line malformed: %q", sl.Line)
 		}
+	}
+}
+
+// fakeInternalProvider satisfies cluster.Provider plus
+// cluster.InternalKubeconfiger — the kind-arm seam for spokeServerURL
+// without a real kind cluster.
+type fakeInternalProvider struct{ kc []byte }
+
+func (f fakeInternalProvider) Ensure(context.Context, string, config.ClusterSpec) (*kube.Conn, error) {
+	return nil, nil
+}
+func (f fakeInternalProvider) Delete(context.Context, string) error         { return nil }
+func (f fakeInternalProvider) Exists(context.Context, string) (bool, error) { return false, nil }
+func (f fakeInternalProvider) Kubeconfig(context.Context, string) ([]byte, error) {
+	return f.kc, nil
+}
+func (f fakeInternalProvider) Diagnose(context.Context, string) []diag.Finding { return nil }
+func (f fakeInternalProvider) InternalKubeconfig(context.Context, string) ([]byte, error) {
+	return f.kc, nil
+}
+
+// TestSpokeClusterName pins GT7's naming: kind spokes are
+// <cube>-spoke-<name>; existing spokes are whatever the context points at
+// (Ensure ignores the name, so the spoke's own name suffices).
+func TestSpokeClusterName(t *testing.T) {
+	cube := &config.Cube{}
+	cube.Metadata.Name = "dev"
+	if got := spokeClusterName(cube, config.SpokeSpec{Name: "staging",
+		Cluster: config.ClusterSpec{Provider: "kind"}}); got != "dev-spoke-staging" {
+		t.Fatalf("kind spoke name: %q", got)
+	}
+	if got := spokeClusterName(cube, config.SpokeSpec{Name: "prod-eu",
+		Cluster: config.ClusterSpec{Provider: "existing", Context: "eks-prod-eu"}}); got != "prod-eu" {
+		t.Fatalf("existing spoke name: %q", got)
+	}
+}
+
+// TestSpokeClusterSpecDefaultsKubernetesVersion pins the spoke node-version
+// inheritance: a kind spoke with no explicit kubernetesVersion takes the
+// hub's pin, and the documented "v1.33.1" default when the hub (provider
+// existing) has none — a bare kind spoke must never render the invalid
+// image "kindest/node:".
+func TestSpokeClusterSpecDefaultsKubernetesVersion(t *testing.T) {
+	cube := &config.Cube{}
+	cube.Spec.Cluster = config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.32.0"}
+	sp := config.SpokeSpec{Name: "staging", Cluster: config.ClusterSpec{Provider: "kind"}}
+	if got := spokeClusterSpec(cube, sp).KubernetesVersion; got != "v1.32.0" {
+		t.Fatalf("spoke must inherit the hub pin, got %q", got)
+	}
+	cube.Spec.Cluster = config.ClusterSpec{Provider: "existing", Context: "eks"}
+	if got := spokeClusterSpec(cube, sp).KubernetesVersion; got != "v1.33.1" {
+		t.Fatalf("existing hub: spoke must take the documented default, got %q", got)
+	}
+	sp.Cluster.KubernetesVersion = "v1.31.0"
+	if got := spokeClusterSpec(cube, sp).KubernetesVersion; got != "v1.31.0" {
+		t.Fatalf("explicit spoke version must win, got %q", got)
+	}
+	ex := config.SpokeSpec{Name: "prod-eu", Cluster: config.ClusterSpec{Provider: "existing", Context: "eks-prod-eu"}}
+	if got := spokeClusterSpec(cube, ex).KubernetesVersion; got != "" {
+		t.Fatalf("existing spokes get no version injected (node-creation field), got %q", got)
+	}
+}
+
+// TestSpokeServerURL covers both arms of the hub-reachable endpoint pick:
+// existing → the connection's own server URL; kind → the internal
+// kubeconfig's server (shared docker network), never the host-published
+// 127.0.0.1 endpoint the hub's pods cannot reach.
+func TestSpokeServerURL(t *testing.T) {
+	sp := config.SpokeSpec{Name: "prod-eu", Cluster: config.ClusterSpec{Provider: "existing", Context: "eks-prod-eu"}}
+	conn := &kube.Conn{REST: &rest.Config{Host: "https://eks.example:443"}}
+	prov, err := cluster.New(sp.Cluster, config.GatewaySpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := spokeServerURL(context.Background(), prov, "prod-eu", sp, conn)
+	if err != nil || got != "https://eks.example:443" {
+		t.Fatalf("existing arm: got %q err %v", got, err)
+	}
+
+	kc, err := spoke.BuildKubeconfig("dev-spoke-staging", "https://dev-spoke-staging-control-plane:6443", []byte("CA"), "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	kindSp := config.SpokeSpec{Name: "staging", Cluster: config.ClusterSpec{Provider: "kind"}}
+	hostConn := &kube.Conn{REST: &rest.Config{Host: "https://127.0.0.1:52123"}}
+	got, err = spokeServerURL(context.Background(), fakeInternalProvider{kc: kc}, "dev-spoke-staging", kindSp, hostConn)
+	if err != nil || got != "https://dev-spoke-staging-control-plane:6443" {
+		t.Fatalf("kind arm: got %q err %v", got, err)
 	}
 }
