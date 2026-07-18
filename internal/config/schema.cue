@@ -16,6 +16,8 @@ package config
 			registry?: {mirrors?: {[string]: string}, insecure?: [...string]}
 			mounts?: [...{hostPath: string, nodePath: string}]
 			providerConfig?: string
+			providerConfigRef?: string & !=""
+			forProvider?: {...}
 		}
 		engine: {
 			type: *"flux" | "argocd"
@@ -50,9 +52,13 @@ package config
 				// reuses ClusterSpec (S2/S3 hand it to cluster.New), whose
 				// non-pointer Registry always marshals as `registry: {}` —
 				// without this the spoke add/remove round-trip is
-				// unwritable. The other node-creation fields stay
-				// deliberately disallowed for spokes in v1 (GT6).
+				// unwritable. extraPorts/mounts stay deliberately
+				// disallowed for spokes in v1 (GT6); providerConfigRef/
+				// forProvider are allowed — spoke parity is the point of
+				// the forProvider design (spec 2026-07-18 §3).
 				registry?: {mirrors?: {[string]: string}, insecure?: [...string]}
+				providerConfigRef?: string & !=""
+				forProvider?: {...}
 			}
 		}]
 	}
