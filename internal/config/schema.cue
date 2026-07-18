@@ -31,6 +31,13 @@ package config
 				provider: *"kind" | "existing"
 				context?: string
 				kubernetesVersion?: string
+				// registry mirrors the hub cluster's field: Go's SpokeSpec
+				// reuses ClusterSpec (S2/S3 hand it to cluster.New), whose
+				// non-pointer Registry always marshals as `registry: {}` —
+				// without this the spoke add/remove round-trip is
+				// unwritable. The other node-creation fields stay
+				// deliberately disallowed for spokes in v1 (GT6).
+				registry?: {mirrors?: {[string]: string}, insecure?: [...string]}
 			}
 		}]
 	}

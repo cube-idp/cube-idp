@@ -9,6 +9,7 @@ import (
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 	"gopkg.in/yaml.v3"
+	sigyaml "sigs.k8s.io/yaml"
 
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
@@ -78,6 +79,29 @@ func Load(path string) (*Cube, error) {
 		c.Spec.Cluster.KubernetesVersion = "v1.33.1"
 	}
 	return &c, nil
+}
+
+// SaveValidated writes cube to file with init's writer shape
+// (sigs.k8s.io/yaml + 0o644), validating the candidate through Load — the
+// exact schema + cross-field checks `up` applies — via a temp file in the
+// same directory before it replaces the original, so a rejected mutation
+// leaves the file untouched. Lifted from cmd's pack-install writer (W2.T11)
+// so every config-mutating command (pack install, spoke add/remove) shares
+// one save path.
+func SaveValidated(file string, cube *Cube) error {
+	raw, err := sigyaml.Marshal(cube)
+	if err != nil {
+		return err
+	}
+	tmp := file + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
+		return err
+	}
+	if _, err := Load(tmp); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, file)
 }
 
 // normalizePackValues rewrites int64 (CUE's default Go type for decoded

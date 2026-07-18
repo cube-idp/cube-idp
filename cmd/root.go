@@ -91,6 +91,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newSyncCmd())
 	root.AddCommand(newRepoCmd())
 	root.AddCommand(newVendorCmd())
+	root.AddCommand(newSpokeCmd())
 	return root
 }
 

@@ -49,6 +49,14 @@ func TestPromptFenceNeverBlocksOnBufferStdin(t *testing.T) {
 			cubeYAMLFixture(t)
 			return []string{"pack", "install"}
 		}},
+		{"spoke remove --delete-cluster", func(t *testing.T) []string {
+			// S1: consent gate is live, deletion itself lands in S3 — the
+			// row pins that the Confirm path refuses (CUBE-0010) on a
+			// buffer stdin instead of blocking.
+			p := writeSpokeFixture(t)
+			mustRunCLI(t, "spoke", "add", "staging", "--provider", "kind", "-f", p)
+			return []string{"spoke", "remove", "staging", "--delete-cluster", "-f", p}
+		}},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
