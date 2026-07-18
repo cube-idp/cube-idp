@@ -1,16 +1,19 @@
 # Reusable dispatch prompt — cube-idp Phase 5
 
 Copy everything below the line into a fresh agent session to execute
-exactly one task. Fill the `Lane:` line (S, U, P, or A) — or a specific
-`Task:` id to override auto-detection. Owner-gate pre-authorization is
-opt-in per dispatch: leave the last line empty unless you mean it.
+exactly one task. Fill the `Lane:` line (S, U, P, A, or F — F is the
+single final gate, claimable only when every S/U/P task is DONE) — or a
+specific `Task:` id to override auto-detection. Owner-gate
+pre-authorization is opt-in per dispatch: leave the last line empty
+unless you mean it.
 
 ---
 
 You are executing exactly ONE task of the cube-idp Phase 5 plan. The main
 repo root (the directory containing go.mod and cube.yaml) is $ROOT; the
-packs repo (exists only after task P2) is $PACKS = $ROOT/../cube-idp-packs.
-Resolve $ROOT before anything else.
+packs repo (exists only after task P2) is $PACKS = $ROOT/../cube-idp-packs;
+the plugins repo (exists only after task P9) is
+$PLUGINS = $ROOT/../cube-idp-plugins. Resolve $ROOT before anything else.
 
 1. Read, in this order:
    - docs/superpowers/specs/2026-07-18-cube-idp-phase5-roadmap-design.md —

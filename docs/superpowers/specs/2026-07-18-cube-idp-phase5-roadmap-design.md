@@ -27,6 +27,10 @@ surface:
 5. Hub/spoke: cube-idp bootstraps spoke clusters so the hub's engine can
    manage a fleet — registration only; workload delivery to spokes is the
    engine's job, not cube-idp's.
+6. Plugins ship from a public attested monorepo mirroring the packs
+   platform (decision 15), doctor becomes a tri-state checklist
+   (decision 14), and a final CLI-coherence gate freezes and documents
+   the whole command surface (decision 16).
 
 Everything is sized for the established execution mode: one
 manually-dispatched agent per task, ledger ticks in the plan file.
@@ -48,6 +52,9 @@ manually-dispatched agent per task, ledger ticks in the plan file.
 | 11 | The values stone | `values:` = **helm values only** (owner, 2026-07-18): chartless `values:` → typed error; extras via **`packs[].extraManifests`** (any pack kind, `${GATEWAY_*}`-substituted, appended); customized installs show **CUSTOMIZED** in `kubectl get packs`. Vocabulary: values→helm, tuning→engine patches, extraManifests→appended objects |
 | 12 | Engine self-management | **Opt-in `engine.selfManage: true`, sourced from zot** (never Gitea): render → push `cube-engine` artifact → engine reconciles itself; direct SSA only on first install and unhealthy-recovery (owner-driven, 2026-07-18) |
 | 13 | Gitea guarantee | Gitea stays an **optional pack**: `delivery: repo` packs validate gitea presence at load (typed error; gitea itself never repo-delivered), gitea hard-ordered right after the gateway, repo delivery gated on gitea API readiness; "gitea as core" parked as a product question |
+| 14 | Doctor UX | **Tri-state checklist** (owner, 2026-07-18): every check renders one green ✔ / yellow ⚠ / red ✗ row — passes shown, not silent; exit 1 iff any red; additive `checks` JSON array |
+| 15 | Plugins platform | **`cube-idp/plugins` public monorepo mirroring packs** (owner, 2026-07-18): dedicated folder per plugin, `<name>/vX.Y.Z` tags, per-platform OCI artifacts + discovery index + keyless GitHub attestations; `plugin install` resolves the index by digest and hands off to the unchanged sha256 trust-consent flow |
+| 16 | CLI coherence gate | A single **final task** (owner, 2026-07-18): command-tree golden fence (`TestCommandTreeGolden`), conventions audit (-f/--yes/prompt-doctrine), README + machine-readable docs sweep — claimed only when all other main-repo tasks are DONE |
 
 ## 3. Workstreams
 
@@ -129,6 +136,7 @@ since kind nodes have no docker socket).
 - **B6 Engine self-management** (decision 12): `engine.selfManage` from
   zot — design in §4, plan task P8 (needs B4 + C1's plumbing era, see
   plan dependencies).
+- **B7 Doctor tri-state checklist** (decision 14) — plan task U5.
 
 ### Wave C — Gitea delivery (after W0)
 
@@ -142,6 +150,23 @@ since kind nodes have no docker socket).
 ### Wave D — spokes v1 (independent of all other waves)
 
 Design in §5.
+
+### Plugin platform (decision 15 — after the pack platform, mirrors it)
+
+- `cube-idp/plugins` public monorepo: dedicated folder per plugin,
+  per-plugin tags, per-platform OCI artifacts + discovery index +
+  keyless attestations — plan task P9 (self-contained CI, no secrets).
+- `plugin install` resolves the official index, pulls by digest, and
+  hands off to the existing sha256 trust-consent flow unchanged — plan
+  task P10.
+
+### Final gate (decision 16)
+
+One last task (plan F1), claimable only when every main-repo task is
+DONE: a command-tree golden fence freezing the CLI surface, a
+conventions audit (`-f` defaults, `--yes` twins, prompt doctrine), and
+the README/machine-readable docs sweep — "after our changes, the CLI is
+correct" made mechanical.
 
 ### Spike (anytime, timeboxed)
 
@@ -273,10 +298,12 @@ W0.T1 ──► W0.T2 ──► { W0.T3, W0.T4, W0.T5 }        (serial gate, the
                        ▼
 Wave A: 11 pack tasks, fully parallel               (after W0)
 Wave C: C1 Gitea delivery                           (after W0)
-Wave B: B1, B2, B4, B5 anytime; B3 after index format; B6 after B4+C1
+Wave B: B1, B2, B4, B5, B7 anytime; B3 after index format; B6 after B4+C1
                                                     (parallel with W0)
 Wave D: spokes v1                                   (anytime, independent)
+Plugins: P9 repo ──► P10 install                    (after pack platform)
 Spike: CNOE stacks harvest                          (anytime, timeboxed)
+Final: F1 CLI coherence gate                        (last, all main-repo tasks DONE)
 ```
 
 Suggested first dispatch batch (max parallelism, no conflicts): W0.T1,

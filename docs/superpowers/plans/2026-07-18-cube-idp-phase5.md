@@ -38,15 +38,18 @@ task cold, with no context beyond this file, the spec, and git history.
 — referred to as `$ROOT`.
 
 **Packs repo root** (exists only after P2; created as a SIBLING of $ROOT):
-`$ROOT/../cube-idp-packs` — referred to as `$PACKS`. Tasks marked
-`[repo: $PACKS]` do their code work there; the ledger (this file) is STILL
+`$ROOT/../cube-idp-packs` — referred to as `$PACKS`. **Plugins repo root**
+(exists only after P9; also a sibling): `$ROOT/../cube-idp-plugins` —
+referred to as `$PLUGINS`. Tasks marked `[repo: $PACKS]` / `[repo:
+$PLUGINS]` do their code work there; the ledger (this file) is STILL
 committed in `$ROOT` on `main`.
 
 ### Lanes and ordering (differs from the TUI plan — read carefully)
 
 Tasks are grouped into parallel **lanes**: `S` (spokes), `U` (CLI UX), `P`
-(pack platform), `A` (pack authoring). Lanes are independent: an S task
-never waits for a U or P task. **Within a lane tasks are strictly serial.**
+(pack + plugin platform), `A` (pack authoring), and `F` (the single final
+coherence gate — claimable only when every S, U, and P task is DONE).
+Lanes are independent: an S task never waits for a U or P task. **Within a lane tasks are strictly serial.**
 Every task's header lists `Depends:` — ALL its dependencies must be `DONE`
 or `DONE_WITH_CONCERNS` before claiming, and they are always within the
 task's own lane except where the header says otherwise (A tasks depend on
@@ -231,6 +234,28 @@ any owner override in FINDINGS of the affected task and update this block.
   fallback of freshly rendered manifests, then resume. Works with gitea
   absent, offline bundles included. (P8 implements; its four-scenario
   semantics are normative.)
+- GT17 (owner, 2026-07-18) Plugins platform mirrors the packs platform:
+  repo **`github.com/cube-idp/plugins`** ($PLUGINS sibling
+  `cube-idp-plugins`), one dedicated folder per plugin
+  (`plugins/<name>/` with source + `plugin.yaml`
+  {name, version, description}), tags **`<name>/vX.Y.Z`**. Plugins are
+  binaries, so artifacts are **per-platform**:
+  `oci://ghcr.io/cube-idp/plugins/<name>:<ver>-<os>-<arch>` (single-layer
+  blob artifact; oras CLI in CI only), plus a discovery index
+  `oci://ghcr.io/cube-idp/plugins/index:latest` —
+  `{schemaVersion: 1, plugins: [{name, version, description, platforms:
+  {"<os>-<arch>": {ref, digest}}}]}`. Provenance = GT10 verbatim
+  (keyless GitHub attestations per digest, `gh attestation verify
+  --owner cube-idp` documented, no in-binary crypto). Binary-side
+  integrity = **digest pinning from the index** + the EXISTING sha256
+  plugin trust-store consent flow (CUBE-71xx doctrine unchanged).
+- GT18 (owner, 2026-07-18) Doctor is a tri-state checklist: EVERY
+  registered check renders exactly one row — green `✔` passed (with a
+  one-line detail), yellow `⚠` warning (+CUBE code), red `✗` error
+  (+CUBE code) — glyph and word always paired (semantic-color doctrine,
+  GT13). Exit semantics preserved: exit 1 iff any red. `-o json` gains an
+  additive `checks` array. Passing checks are SHOWN, not silent — that is
+  the point.
 
 ---
 
@@ -246,6 +271,7 @@ any owner override in FINDINGS of the affected task and update this block.
 | U2 | U | $ROOT | `p5/u2-http-port` | U1 | opt-in `gateway.httpPort` → host mapping of 30080 |
 | U3 | U | $ROOT | `p5/u3-engine-tuning` | U2 | `engine.tuning` knobs + `config render-engine` |
 | U4 | U | $ROOT | `p5/u4-values-stone` | U3 | values stone: helm-only enforcement, `extraManifests`, CUSTOMIZED column |
+| U5 | U | $ROOT | `p5/u5-doctor-checklist` | U4 | doctor tri-state checklist — every check as a green/yellow/red row (GT18) |
 | P1 | P | $ROOT | `p5/p1-pack-contract` | — | pack contract v1 doc + conformance test + `description` field |
 | P2 | P | $PACKS* | `p5/p2-packs-repo` | P1 | packs repo scaffold, `pack publish`/`pack index`, publish CI, signing CI |
 | P3 | P | $PACKS | `p5/p3-conformance` | P2 | per-pack conformance harness (CI + local script) |
@@ -254,7 +280,10 @@ any owner override in FINDINGS of the affected task and update this block.
 | P6 | P | $ROOT | `p5/p6-remote-catalog` | P2 | index-backed catalog: `pack list --available`, wizard, install |
 | P7 | P | $ROOT | `p5/p7-gitea-delivery` | P4 | per-pack `delivery: repo` via SyncOnce + DeliverGit; gitea validation + ordering + readiness gate |
 | P8 | P | $ROOT | `p5/p8-engine-selfmanage` | P7 + U3 | opt-in engine self-management from zot (GT16) |
+| P9 | P | $PLUGINS* | `p5/p9-plugins-repo` | P8 | plugins repo scaffold: per-platform artifacts, index, attestations (GT17) |
+| P10 | P | $ROOT | `p5/p10-plugin-install` | P9 | `plugin install` from the official index → digest pull → existing trust consent |
 | A1–A11 | A | $PACKS | `p5/a<N>-<pack>` | P3 | one new pack each — see Wave A template + parameter table |
+| F1 | F | $ROOT | `p5/f1-cli-coherence` | ALL S+U+P | CLI coherence gate: command-tree golden fence, conventions audit, docs sweep |
 
 \* P2 also adds the `pack publish` / `pack index` commands in $ROOT.
 
@@ -2094,6 +2123,93 @@ HANDOFF: -
 
 ---
 
+### U5: doctor tri-state checklist  `[repo: $ROOT]`
+
+**Branch:** `p5/u5-doctor-checklist` · **Depends:** U4
+
+Implements GT18: doctor shows EVERY check as one green/yellow/red row —
+what was checked, what passed, what didn't. Today `doctor` renders only
+findings (problems); passes are invisible.
+
+**Files:**
+- Modify: `internal/doctor/doctor.go` (Check registry wrapping the
+  existing `CheckRuntime`/`CheckPortFree`/`CheckGitCLI`/disk/inotify
+  funcs — do NOT rewrite the checks, wrap them), `cmd/doctor.go`
+  (checklist render + `-o json` additive `checks`),
+  `docs/machine-readable-output.md`
+- Test: `internal/doctor/doctor_test.go`, `cmd/doctor_test.go`
+
+**Interfaces:**
+- Produces:
+
+```go
+// Check is one named doctor probe. Run returns nil for green; a Finding
+// with SeverityWarning for yellow; SeverityError for red (GT18).
+type Check struct {
+	Name   string           // stable id, e.g. "container-runtime"
+	Detail string           // one-line "what passed looks like", filled by Run on green
+	Run    func() *diag.Finding
+}
+
+// All assembles every check for this cube: container-runtime,
+// gateway-port (and http-port when U2's field is set), disk-space,
+// inotify (linux), git-cli (when git-sourced refs exist),
+// spoke-reachability (when spokes declared — S4's probe).
+func All(cube *config.Cube, clusterExists bool) []Check
+```
+
+  Rendered rows (styled: theme.OK/Warn/Err, glyph+word ALWAYS paired;
+  plain: same rows with `ok`/`warn`/`fail` words, no glyphs):
+
+```text
+✔ ok    container-runtime   docker 27.x on PATH
+✔ ok    gateway-port        8443 free
+⚠ warn  disk-space          cache dir has 3.1G free — CUBE-0103
+✗ fail  spoke-reachability  spoke "staging" unreachable — CUBE-8006
+```
+
+- Consumes: existing check funcs + `Render` exit contract
+  (`internal/doctor/doctor.go:100` — returns hasErrors; VERIFY the
+  doctor command's current exit path and PRESERVE it: exit 1 iff any
+  red; record the current mechanism in FINDINGS), `ui.Printer` static
+  surface, S4's spoke probe.
+
+- [ ] **Step 1: Failing tests.** (a) `internal/doctor/doctor_test.go`:
+  `All(cube, false)` on a minimal cube returns ≥4 checks with unique
+  names; a stubbed all-green run yields zero findings and every Detail
+  non-empty. (b) `cmd/doctor_test.go`: with a stubbed check set (one
+  green, one warn, one fail — seam: a package-level `var doctorChecks =
+  doctor.All` overridable in tests, same pattern as `statusConnect`),
+  output contains all three rows with paired glyph+word (styled) /
+  word-only (plain), and the command exits non-zero (fail present); with
+  green+warn only → exit 0. (c) `-o json` contains
+  `"checks":[{"name":"container-runtime","status":"ok"` — additive.
+  Run: `go test ./internal/doctor/ ./cmd/ -run 'TestDoctor' -v` —
+  Expected: FAIL.
+- [ ] **Step 2: Implement** the registry (wrap existing funcs; green
+  Detail strings come from what each check already knows), the renderer
+  (one row per check, summary line unchanged in meaning), the JSON
+  field, the docs section. Re-run — Expected: PASS.
+- [ ] **Step 3: Gate + fences + commit** — full gate + fences (doctor's
+  human rows are NOT part of the frozen event-mode matrix — verify
+  `TestModeMatrixFence` scope stays green untouched; `-o json` additive
+  only, GT13). Commit:
+  `git add internal/doctor/ cmd/ docs/ && git commit -m "feat(doctor): tri-state checklist — every check as a green/yellow/red row (GT18)"`
+
+#### Outcome
+
+```
+STATUS: UNCLAIMED
+BRANCH: p5/u5-doctor-checklist (merged: -)
+COMMITS: -
+FINDINGS: -
+REVIEW: -
+BLOCKERS: -
+HANDOFF: -
+```
+
+---
+
 ## Lane P — pack platform (W0 → catalog → Gitea)
 
 ### P1: pack contract v1 — normative doc + conformance test + `description`  `[repo: $ROOT]`
@@ -2989,6 +3105,149 @@ HANDOFF: -
 
 ---
 
+### P9: plugins repo scaffold — per-platform artifacts, index, attestations  `[repo: $PLUGINS — creates it]`
+
+**Branch:** `p5/p9-plugins-repo` · **Depends:** P8 (lane order; mirrors
+P2's shape, no code dependency)
+
+Implements GT17. Unlike the packs CI, this repo is self-contained Go —
+no cube-idp checkout, no `CUBE_IDP_READ_TOKEN` needed.
+
+**Files (all created in $PLUGINS):**
+- `README.md`, `CONTRACT-PLUGINS.md` (folder layout, `plugin.yaml`
+  schema, tag/artifact/index conventions, verification section — GT17
+  verbatim), `plugins/hello/` (seed plugin: ~20-line Go `main` that
+  prints its name+version — proves the whole pipeline),
+  `hack/build-matrix.sh`, `hack/genindex.sh`,
+  `.github/workflows/publish.yml`, `.github/workflows/ci.yml`
+
+- [ ] **Step 1: ⚠ OWNER GATE — create the public repo.** STOP and report
+  NEEDS_CONTEXT with exactly:
+  `gh repo create cube-idp/plugins --public --description "cube-idp plugins — official exec plugins, published per-platform as attested OCI artifacts"`
+  No secrets at all (attestations are keyless; the repo builds itself).
+  If not pre-authorized: continue locally (git init, no remote).
+- [ ] **Step 2: Scaffold + seed plugin.** `git init cube-idp-plugins` as
+  $ROOT's sibling. `plugins/hello/main.go` (prints
+  `cube-idp-hello <version>`; version injected via `-ldflags -X`),
+  `plugins/hello/plugin.yaml`:
+
+```yaml
+name: hello
+version: 0.1.0
+description: seed plugin proving the cube-idp plugins pipeline
+```
+
+  `hack/build-matrix.sh <name> <version>`: for GOOS in linux darwin ×
+  GOARCH in amd64 arm64 → `go build -ldflags "-X main.version=<ver>" -o
+  dist/cube-idp-<name>-<os>-<arch> ./plugins/<name>`; smoke:
+  `dist/cube-idp-<name>-$(go env GOOS)-$(go env GOARCH)` runs and prints
+  the version. `hack/genindex.sh`: assemble the GT17 index.json from
+  dist/ + digests (jq).
+- [ ] **Step 3: `.github/workflows/publish.yml`** — on tags `*/v*`:
+  parse `<name>/v<ver>` from the ref; build the matrix; for each
+  platform binary `oras push
+  ghcr.io/cube-idp/plugins/<name>:<ver>-<os>-<arch>` (single-layer,
+  media type `application/vnd.cube-idp.plugin.v1`), capture digests;
+  `actions/attest-build-provenance@v3` per digest (permissions:
+  id-token + attestations + packages write); rebuild index.json via
+  genindex + oras push `plugins/index:latest` + attest its digest.
+  `ci.yml` — on PR: build matrix + run the native-platform smoke.
+  Verify both workflows parse:
+  `python3 -c "import yaml;[yaml.safe_load(open(f)) for f in ['.github/workflows/publish.yml','.github/workflows/ci.yml']]" && echo YAML-OK`
+  Expected: `YAML-OK`. (Live attestation provable only on the first
+  owner-tagged publish — state in FINDINGS/HANDOFF, do not fake.)
+- [ ] **Step 4: Local proof + commit.** Run
+  `bash hack/build-matrix.sh hello 0.1.0` — Expected: 4 binaries in
+  dist/, native smoke prints `cube-idp-hello 0.1.0`; `bash
+  hack/genindex.sh` emits index.json matching GT17's schema (digests
+  computed with `shasum -a 256` locally as stand-ins, noted as such).
+  Commit ($PLUGINS):
+  `git add -A && git commit -m "chore: plugins repo scaffold — per-platform artifacts, index, attestations (GT17)"`
+  Close the ledger in $ROOT; HANDOFF states whether the owner gate ran.
+
+#### Outcome
+
+```
+STATUS: UNCLAIMED
+BRANCH: p5/p9-plugins-repo (merged: -)
+COMMITS: -
+FINDINGS: -
+REVIEW: -
+BLOCKERS: -
+HANDOFF: -
+```
+
+---
+
+### P10: `plugin install` from the official index  `[repo: $ROOT]`
+
+**Branch:** `p5/p10-plugin-install` · **Depends:** P9
+
+The existing trust doctrine does not move an inch: this task only adds a
+RESOLUTION path (official index → platform entry → digest pull). The
+sha256 consent flow, CUBE-7104 non-TTY refusal, and `plugin trust`
+semantics stay byte-identical.
+
+**Files:**
+- Modify: `internal/plugin/index.go` (official-index resolver BESIDE the
+  existing sha256-pinned git index — VERIFY-API the current
+  `plugin install` mechanism there first and INTEGRATE; the git path
+  keeps working unchanged), `internal/oci` (generic single-blob pull for
+  the GT17 media type — mirror `pullOCI`'s auth/cache),
+  `cmd/plugin.go` (`plugin install <name>[@version]` defaults to the
+  official index; `plugin list --available`, `plugin search <term>`),
+  `internal/diag/codes.go` + `registry.go` (one 71xx code for
+  no-platform-match; reuse existing install-failure codes otherwise —
+  FINDINGS justifies)
+- Test: `internal/plugin/index_test.go`, `cmd/plugin_test.go` (ocitest
+  fake serving index + artifact)
+
+**Interfaces:**
+- Produces: `plugin install hello` → fetch
+  `oci://ghcr.io/cube-idp/plugins/index:latest` (override
+  `CUBE_IDP_PLUGIN_INDEX`; 24h cache like P6's catalog) → select
+  `platforms["<GOOS>-<GOARCH>"]` (absent → typed 71xx error naming
+  available platforms) → **pull by digest, never by tag** → write
+  executable to `plugin.InstallDir()` (0755) → hand off to the EXISTING
+  trust-consent flow. `plugin list --available` / `plugin search` read
+  the same index (built-in fallback: none — plugins have no hardcoded
+  catalog; offline → clear typed error + Note pointing at the git-index
+  path).
+- Consumes: GT17 index schema + artifact shape, P6's cache/TTL pattern
+  (`internal/pack/catalog.go` — copy the pattern, do NOT import
+  pack from plugin), existing `plugin.InstallDir()`/trust store.
+
+- [ ] **Step 1: Failing tests** — index resolve (name→platform→digest;
+  missing platform → typed error), install against the ocitest fake
+  writes an executable file and triggers the trust-consent seam (assert
+  via the existing prompt-fence pattern: non-TTY without the trust flag
+  refuses with CUBE-7104 — the fence test EXTENDS
+  `TestPromptFenceNeverBlocksOnBufferStdin`'s table with the new path),
+  `plugin list --available` renders index rows.
+  Run: `go test ./internal/plugin/ ./cmd/ -run 'TestPlugin' -v` —
+  Expected: FAIL on the new paths.
+- [ ] **Step 2: Implement** per Interfaces (resolver + blob pull + cmd
+  wiring). Re-run — Expected: PASS, including the extended prompt fence.
+- [ ] **Step 3: Docs + gate + commit.** README plugin section: install
+  from the official repo + `gh attestation verify
+  oci://ghcr.io/cube-idp/plugins/hello:0.1.0-linux-amd64 --owner
+  cube-idp` snippet. Full gate + fences. Commit:
+  `git add internal/ cmd/ README.md && git commit -m "feat(plugin): install from the official attested index — digest pull + unchanged trust consent"`
+
+#### Outcome
+
+```
+STATUS: UNCLAIMED
+BRANCH: p5/p10-plugin-install (merged: -)
+COMMITS: -
+FINDINGS: -
+REVIEW: -
+BLOCKERS: -
+HANDOFF: -
+```
+
+---
+
 ## Lane A — Wave A pack authoring  `[repo: $PACKS]`
 
 Eleven tasks, one pack each, ALL depending only on P3 (and their `Depends`
@@ -3080,14 +3339,94 @@ A11 STATUS: UNCLAIMED BRANCH: p5/a11-floci-ui         COMMITS: -  FINDINGS: -  R
 
 ---
 
+## Lane F — final gate
+
+### F1: CLI coherence — command-tree fence, conventions audit, docs sweep  `[repo: $ROOT]`
+
+**Branch:** `p5/f1-cli-coherence` · **Depends:** ALL S, U, and P tasks
+DONE (A tasks excluded — they live in $PACKS and add no CLI surface).
+Claim this LAST; it is the phase's answer to "after our changes, the CLI
+must be correct".
+
+**Files:**
+- Create: `cmd/clitree_test.go` + `cmd/testdata/clitree.golden`
+- Modify: `README.md` (command reference), `docs/machine-readable-output.md`
+  (final additive-fields sweep), plus whatever small drift the audit
+  finds (each fix listed in FINDINGS; anything non-trivial → BLOCKED
+  with a proposal, never silent scope creep)
+
+**Interfaces:**
+- Produces: `TestCommandTreeGolden` — a NEW permanent fence: walks the
+  cobra tree (command path, Short, every flag name/default) into a
+  stable text rendering, compared against `cmd/testdata/clitree.golden`.
+  From this task on, ANY CLI-surface change must consciously regenerate
+  the golden — the CLI is frozen the way the plain projection already
+  is.
+- Consumes: every command the phase added or touched: `spoke
+  add/list/remove`, `pack publish`, `pack index build/push`, `pack list
+  --available`, `pack search`, `pack install --via`, `plugin install`
+  (index path), `plugin list --available`, `plugin search`, `config
+  render-engine`, `status` (spokes), `doctor` (checklist), plus the
+  cube.yaml fields `gateway.httpPort`, `engine.tuning`,
+  `engine.selfManage`, `packs[].delivery`, `packs[].extraManifests`,
+  `spec.spokes`.
+
+- [ ] **Step 1: The fence.** Write `TestCommandTreeGolden` (walk
+  `newRootCmd()`'s tree recursively; render one line per command:
+  `path | Short | flag=default,flag=default…`; sorted, deterministic).
+  First run with `-update` (the repo's golden-update convention — check
+  how the TE goldens regenerate and reuse that flag; FINDINGS records
+  it) writes the golden; second run passes clean.
+  Run: `go test ./cmd/ -run TestCommandTreeGolden -v` — Expected: PASS.
+- [ ] **Step 2: Conventions audit** — against the golden, verify and fix
+  drift; every row of this table goes to FINDINGS with pass/fixed:
+  (a) every config-reading command exposes `-f/--file` defaulting
+  `cube.yaml`; (b) every destructive/mutating action has a
+  non-interactive twin (`--yes`/`--confirm`) and refuses on non-TTY with
+  CUBE-0010 (prompt doctrine, GT13); (c) Short strings share one style
+  (verb-first, no trailing period — match the majority); (d) no command
+  prints raw errors around the diag envelope; (e) new cube.yaml fields
+  all appear in the README `cube.yaml` reference table with defaults and
+  the cluster-shape caveat marks where applicable.
+- [ ] **Step 3: Docs sweep.** README command table lists every command
+  from Consumes; machine-readable-output.md documents the additive
+  `status.spokes` and `doctor.checks` fields plus any other field the
+  phase added; the "Terminal output & interactivity" contract section
+  gains one line each for doctor's tri-state rows and spoke consent
+  lines.
+- [ ] **Step 4: The full gate, everything at once:**
+  `go build ./... && go vet ./... && go test ./...` plus
+  `go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence|TestCommandTreeGolden'`
+  plus cross-compile smoke:
+  `GOOS=linux GOARCH=amd64 go build -o /dev/null . && GOOS=darwin GOARCH=arm64 go build -o /dev/null .`
+  Expected: ALL PASS.
+- [ ] **Step 5: Commit** —
+  `git add cmd/ README.md docs/ && git commit -m "test(cmd)+docs: CLI coherence gate — command-tree golden fence + conventions audit (F1)"`
+
+#### Outcome
+
+```
+STATUS: UNCLAIMED
+BRANCH: p5/f1-cli-coherence (merged: -)
+COMMITS: -
+FINDINGS: -
+REVIEW: -
+BLOCKERS: -
+HANDOFF: -
+```
+
+---
+
 ## Dispatch quick-reference
 
 ```text
 Immediately dispatchable in parallel: S1, U1, P1     (three lanes, three agents)
-Then:  S2→S3→S4   U2→U3→U4   P2→{P3, P5, P6}   P3→P4→P7→P8 (P8 also needs U3)
-       P3→A1..A11 (any order, parallel)
-Owner gates: P2 Step 4 (gh repo create + CUBE_IDP_READ_TOKEN),
-             P4 Step 2 (publish 0.2.0), A Step 6 (tags).
+Then:  S2→S3→S4   U2→U3→U4→U5   P2→{P3, P5, P6}   P3→P4→P7→P8→P9→P10
+       (P8 also needs U3)   P3→A1..A11 (any order, parallel)
+Last:  F1 (all S+U+P DONE) — the CLI coherence gate
+Owner gates: P2 Step 4 (gh repo create packs + CUBE_IDP_READ_TOKEN),
+             P4 Step 2 (publish 0.2.0), P9 Step 1 (gh repo create
+             plugins), A Step 6 (tags).
 ```
 
 ## Plan-level completion
@@ -3101,4 +3440,8 @@ owner gates have run, and the two headline proofs hold:
 2. A cube.yaml with one kind spoke: `up` registers it; the engine UI/CLI
    (argocd cluster list or flux kubeconfig secret) shows the spoke;
    `down --yes` removes everything including the spoke cluster.
+3. F1 is DONE: `TestCommandTreeGolden` + the full fence matrix are green
+   on main, `doctor` renders the tri-state checklist, and every command
+   and cube.yaml field the phase added is in the README — the CLI
+   surface is frozen and documented.
 
