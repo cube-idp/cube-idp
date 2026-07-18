@@ -1465,7 +1465,7 @@ HANDOFF: -
   it as the dim log tail; machine modes already project it per the frozen
   matrix).
 
-- [ ] **Step 1: Failing kind adapter test** —
+- [x] **Step 1: Failing kind adapter test** —
   `internal/cluster/kindp/kindlog_test.go`:
 
 ```go
@@ -1495,11 +1495,11 @@ func TestKindLogAdapterForwardsInfoAndWarns(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Verify fail** — Run:
+- [x] **Step 2: Verify fail** — Run:
   `go test ./internal/cluster/kindp/ -run TestKindLog -v`
   Expected: FAIL — `newKindLogger` undefined.
 
-- [ ] **Step 3: Implement `internal/cluster/kindp/kindlog.go`.**
+- [x] **Step 3: Implement `internal/cluster/kindp/kindlog.go`.**
   VERIFY-API first: `go doc sigs.k8s.io/kind/pkg/log Logger` and
   `go doc sigs.k8s.io/kind/pkg/cluster ProviderWithLogger` — the interface
   below matches kind's pinned version at time of writing; use the real
@@ -1602,11 +1602,11 @@ In `internal/up/up.go` right after `cluster.New` (line ~119):
 	}
 ```
 
-- [ ] **Step 4: Verify pass** — Run:
+- [x] **Step 4: Verify pass** — Run:
   `go test ./internal/cluster/... -run 'TestKindLog|TestK3dLog' -v`
   Expected: PASS.
 
-- [ ] **Step 5: waitHealthy ticker.** Failing test in
+- [x] **Step 5: waitHealthy ticker.** Failing test in
   `internal/up/up_test.go`: call `waitHealthy` with a stub engine whose
   `Health` reports one not-ready component for >15s (drive a fake clock
   ONLY if the file already has one; otherwise shrink the ticker via a
@@ -1620,7 +1620,7 @@ In `internal/up/up.go` right after `cluster.New` (line ~119):
   on: %s", strings.Join(notReadyNames, ", "))` and reset. Run:
   `go test ./internal/up/ -run TestWaitHealthy -v` — Expected: PASS.
 
-- [ ] **Step 6: Gate + fences + commit** — full gate + fence run (S3
+- [x] **Step 6: Gate + fences + commit** — full gate + fence run (S3
   Step 11 commands). CRITICAL: `TestModeMatrixFence` must be green —
   StepLog is an existing event type with frozen projections; U1 adds
   emissions, not rendering. Commit:
@@ -1629,13 +1629,13 @@ In `internal/up/up.go` right after `cluster.New` (line ~119):
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(agent-u1-b67ed6f3, 2026-07-18T09:05:51Z)
-BRANCH: p5/u1-provider-logs (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE_WITH_CONCERNS
+BRANCH: p5/u1-provider-logs (merged: yes)
+COMMITS: 6f5e701 feat(up): stream kind/k3d provisioning + engine-wait narration via StepLog; 03bd237 merge: p5 U1 provider-logs (p5/u1-provider-logs)
+FINDINGS: (1) VERIFY-API kind: sigs.k8s.io/kind/pkg/log Logger/InfoLogger and cluster.ProviderWithLogger match the plan's method set exactly — no drift. (2) VERIFY-API k3d: pkg/logger exposes Log() *logrus.Logger; forwarder is a logrus Hook (Levels Info/Warn/Error, Fire → atomic sink pointer, sync.Once AddHook) in k3d.go; sirupsen/logrus v1.9.4 was already pinned (indirect) — direct import adds NO new module, go.mod/go.sum untouched. (3) Deviation: the plan's `type LogSink func(line string)` (defined type) cannot be satisfied structurally from kindp/k3dp — Go needs identical method signatures and a defined func type ≠ func(string). Declared as type ALIAS `type LogSink = func(line string)`; Loggable then equals interface{ SetLogSink(func(line string)) } and both providers satisfy it with plain-signature methods; added `var _ Loggable` assertions in provider.go per the ImageLoader precedent. (4) Deviation: internal/ui/console.go gained exported NewConsole(ch chan<- event.Event) *Console — the step-5 "Console whose event recorder the test can inspect" is unbuildable from package up otherwise (Console.ch unexported, only RunPipeline constructs; StepLog is zero bytes in plain/JSON so rendered output can't be asserted). Additive export; no frozen surface touched. (5) Deviation: healthPoll moved const→package var (value unchanged) beside the new healthLogEvery var so the narration test can shrink both (5ms/30ms); with healthPoll const the test would need >5s wall time. (6) Narration emits after the allReady check and BEFORE the deadline check (a timing-out wait still narrates); lastLog starts at Now, so the first line lands after healthLogEvery (15s) of unhealthiness; an empty component list narrates "waiting on: no components reported yet". (7) CONCERN for owner: the live renderer shows log tails only under an open step of the SAME stage; waitHealthy's open Progress is stage "health" while the narration stage is "engine" (plan-normative), so these lines do not display in today's live tail (the "cluster" narration DOES display — its stage matches the open cluster step). Emissions-not-rendering was U1's contract; if display is wanted, either the narration stage becomes "health" (one word) or the renderer learns cross-stage tails — owner's call, follow-up not self-authorized.
+REVIEW: TDD fail→pass verified for all three test groups (kindlog: undefined newKindLogger → PASS; k3dlog: undefined SetLogSink → PASS incl. hook single-install + sink swap; up: undefined healthLogEvery/ui.NewConsole → PASS asserting ≥1 StepLog{Stage:"engine"} naming kustomize-controller and CUBE-3004 on timeout). Task gate in worktree: go build ./... && go vet ./... && go test ./... all PASS (34 pkgs); fence run go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence' all PASS, TestModeMatrixFence explicitly green. gofmt clean on every touched file; go.mod/go.sum diff empty. Post-merge go test ./... on main: all PASS.
+BLOCKERS: none
+HANDOFF: U2 (p5/u2-http-port) is unblocked — U1 merged at 03bd237. For U2+: kindp/k3dp now expose SetLogSink(func(line string)) and provider.go carries Loggable assertions — kindp.New's provider field is REBUILT by SetLogSink (same DetectNodeProvider dance as New), keep that in sync if RenderConfig/port work touches provider construction. healthPoll is now a var (tests may shrink it). ui.NewConsole is the sanctioned recorder seam for producer-side event assertions from any package. k3d.go imports logrus directly; if a later task runs `go mod tidy` the // indirect marker moves — harmless, same module list.
 ```
 
 ---
