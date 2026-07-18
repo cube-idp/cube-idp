@@ -5,14 +5,18 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	k3dclient "github.com/k3d-io/k3d/v5/pkg/client"
 	k3dconfig "github.com/k3d-io/k3d/v5/pkg/config"
 	v1alpha5 "github.com/k3d-io/k3d/v5/pkg/config/v1alpha5"
+	l "github.com/k3d-io/k3d/v5/pkg/logger"
 	"github.com/k3d-io/k3d/v5/pkg/runtimes"
 	k3dtypes "github.com/k3d-io/k3d/v5/pkg/types"
 	k3dutil "github.com/k3d-io/k3d/v5/pkg/util"
+	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/yaml"
 
@@ -44,6 +48,44 @@ type K3d struct{ gw config.GatewaySpec }
 
 // New returns a K3d provider bound to the given gateway spec.
 func New(gw config.GatewaySpec) *K3d { return &K3d{gw: gw} }
+
+// SetLogSink forwards k3d's global logrus output (Info and above) to sink.
+// The hook is installed once per process; subsequent calls only swap the
+// destination (k3d's logger is global — two concurrent K3d values share it).
+// cluster.Loggable, satisfied structurally: the parameter is a plain
+// `func(line string)` because importing internal/cluster from here would
+// cycle (see the type comment on K3d).
+func (k *K3d) SetLogSink(sink func(line string)) { installK3dHook(sink) }
+
+// k3dSink is the forwarder's current destination. Atomic pointer, not a
+// plain var: SetLogSink swaps it per-run while the hook installed by an
+// earlier run keeps firing on the shared global logger.
+var k3dSink atomic.Pointer[func(line string)]
+
+// k3dHookOnce guards the single AddHook — a second hook on the global
+// logger would forward every line twice.
+var k3dHookOnce sync.Once
+
+func installK3dHook(sink func(line string)) {
+	k3dSink.Store(&sink)
+	k3dHookOnce.Do(func() { l.Log().AddHook(k3dSinkHook{}) })
+}
+
+// k3dSinkHook forwards Info/Warn/Error entries of k3d's global logrus
+// logger to the current k3dSink. Deeper verbosity (Debug/Trace) stays out
+// of the StepLog tail, mirroring kindp's V(0)-only rule.
+type k3dSinkHook struct{}
+
+func (k3dSinkHook) Levels() []logrus.Level {
+	return []logrus.Level{logrus.InfoLevel, logrus.WarnLevel, logrus.ErrorLevel}
+}
+
+func (k3dSinkHook) Fire(e *logrus.Entry) error {
+	if s := k3dSink.Load(); s != nil {
+		(*s)(e.Message)
+	}
+	return nil
+}
 
 // Ensure creates the named k3d cluster if it doesn't already exist, then
 // returns a connection to it.

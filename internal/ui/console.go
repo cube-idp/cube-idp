@@ -24,6 +24,16 @@ type Console struct {
 	lastHealth []event.ComponentState // change filter for Health
 }
 
+// NewConsole returns a Console emitting into ch — the event-recorder seam
+// for producer tests OUTSIDE this package (the W1 recorder pattern
+// pipeline_test uses in-package: buffered event channel in, drive the
+// producer, assert on the recorded events). StepLog is live-only richness —
+// plain and JSON project it as zero bytes — so a producer test that must
+// see StepLog emissions (up's U1 provisioning/wait narration) records raw
+// events through this seam. Production Consoles are constructed by
+// RunPipeline/RunPipelineStatic only.
+func NewConsole(ch chan<- event.Event) *Console { return &Console{ch: ch} }
+
 // Start emits RunStarted. Producers call it immediately after config.Load
 // succeeds (never before — a failed load emits no RunStarted at all).
 func (c *Console) Start(cmd, cube string) {
