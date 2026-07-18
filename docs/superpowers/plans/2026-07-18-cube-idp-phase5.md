@@ -3128,7 +3128,7 @@ func FetchCatalog(ctx context.Context) (*Catalog, error)
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(fable-p6-b67ed6f3, 2026-07-18T10:15:11Z)
 BRANCH: p5/p6-remote-catalog (merged: -)
 COMMITS: -
 FINDINGS: -
