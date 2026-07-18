@@ -1350,7 +1350,7 @@ e2e leg below.
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(s3-agent-b67ed6f3, 2026-07-18T09:38:40Z)
 BRANCH: p5/s3-spoke-register (merged: -)
 COMMITS: -
 FINDINGS: -
