@@ -2430,7 +2430,7 @@ HANDOFF: P2 reads Pack.Description for the index artifact — it is parsed and
   alsoTags...)` returning the digest; docker credential chain for ghcr
   auth (fixed in 3d7f4cd).
 
-- [ ] **Step 1: Failing publish/index tests** ($ROOT) —
+- [x] **Step 1: Failing publish/index tests** ($ROOT) —
   `cmd/pack_publish_test.go`: (a) `pack publish` against the repo's
   ocitest fake registry (`internal/oci/ocitest` — reuse its harness the
   way `internal/oci/pushdir_test.go` does) publishes `packs/gitea` and
@@ -2440,7 +2440,7 @@ HANDOFF: P2 reads Pack.Description for the index artifact — it is parsed and
   pushes index.json to the fake registry and prints its digest.
   Run: `go test ./cmd/ -run TestPackPublish -v` — Expected: FAIL.
 
-- [ ] **Step 2: Implement `cmd/pack_publish.go`** — three cobra commands
+- [x] **Step 2: Implement `cmd/pack_publish.go`** — three cobra commands
   under `pack`; `publish` validates the dir loads as a pack (P1 loader)
   and its version equals the ref tag before pushing (mismatch → CUBE-4001
   with a fix line); `index build` loads every pack dir, requires
@@ -2453,7 +2453,7 @@ HANDOFF: P2 reads Pack.Description for the index artifact — it is parsed and
   `index push` wraps `oci.PushPackDir` over a temp dir containing only
   index.json. Re-run — Expected: PASS.
 
-- [ ] **Step 3: Commit ($ROOT)** —
+- [x] **Step 3: Commit ($ROOT)** —
   `git add cmd/ && git commit -m "feat(pack): publish + index build/push — the packs-repo CI toolchain"`
 
 - [ ] **Step 4: ⚠ OWNER GATE — create the public repo.** STOP and report
@@ -2467,7 +2467,7 @@ HANDOFF: P2 reads Pack.Description for the index artifact — it is parsed and
   dispatch prompt pre-authorized it; otherwise continue with Steps 5-7
   locally (git init, no remote) and leave pushing to the owner.
 
-- [ ] **Step 5: Scaffold $PACKS.** `git init cube-idp-packs` as $ROOT's
+- [x] **Step 5: Scaffold $PACKS.** `git init cube-idp-packs` as $ROOT's
   sibling; commit README.md (what the repo is, how to add a pack —
   pointing at CONTRACT.md and the A-task template in this plan),
   CONTRACT.md (verbatim copy; header notes $ROOT's copy is normative,
@@ -2486,7 +2486,7 @@ echo "published $NAME:$VERSION @ $DIGEST"
 echo "$NAME=$DIGEST" >> digests.env
 ```
 
-- [ ] **Step 6: `.github/workflows/publish.yml`:**
+- [x] **Step 6: `.github/workflows/publish.yml`:**
 
 ```yaml
 name: publish
@@ -2528,7 +2528,7 @@ jobs:
   keeps a committed `digests.lock` — implement the simplest one your Step
   2 chose and make the workflow match; FINDINGS records it.
 
-- [ ] **Step 7: Commit ($PACKS)** —
+- [x] **Step 7: Commit ($PACKS)** —
   `git add -A && git commit -m "chore: packs repo scaffold — contract, publish CI, index"`
   Then in $ROOT close the ledger normally. HANDOFF must state: $PACKS
   path, whether the owner gate ran (repo exists? secrets set?), and the
@@ -2537,13 +2537,87 @@ jobs:
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(b67ed6f3-p2, 2026-07-18T09:22:42Z)
-BRANCH: p5/p2-packs-repo (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE_WITH_CONCERNS
+BRANCH: p5/p2-packs-repo (merged: yes — in BOTH repos: $ROOT 8f10fb2, $PACKS 9a30593)
+COMMITS: $ROOT: 7fad66c feat(pack): publish + index build/push — the
+  packs-repo CI toolchain; 8f10fb2 merge: p5 P2 packs-repo
+  (p5/p2-packs-repo). $PACKS (NEW repo, sibling cube-idp-packs): 0a01aa7
+  chore: repo init (empty root commit so the feature branch had a merge
+  base — a fresh repo cannot branch/merge otherwise); 2f89f85 chore: packs
+  repo scaffold — contract, publish CI, index; 9a30593 merge: p5 P2
+  packs-repo (p5/p2-packs-repo).
+FINDINGS: (1) Step 4 OWNER GATE NOT run (dispatch: not pre-authorized) —
+  its box is deliberately unticked: no GitHub repo created, no secret set,
+  nothing pushed anywhere; Steps 5-7 executed locally per the gate's own
+  fallback. Exact owner commands in HANDOFF. (2) VERIFY-API digest
+  sourcing: internal/oci exports NO offline digest helper (pushPackDirTo
+  is an unexported oras.Target seam, and P2's Files list excludes
+  internal/oci), so per the plan's stated fallback `index build` takes
+  repeatable `--digest name=sha256:…` AND `--from-registry`
+  (pack.ResolveRemote — HEAD, never pull; digest = pin minus its "oci:"
+  prefix). publish.yml's rebuild-index step matches: `--from-registry
+  $(sed 's/^/--digest /' digests.env)`; the plan draft's dead `source <(sed
+  …)` line was dropped (it set unused DIGEST_* vars). No digests.lock. (3)
+  CUBE-4001 = diag.CodePackRefInvalid ("unsupported pack ref scheme")
+  reused per plan text for the version≠tag mismatch; NO new codes minted
+  (none were assigned to P2). Index-build contract violations (missing
+  description, pack.cue name ≠ directory) reuse CUBE-4003
+  CodePackCueInvalid; packs-dir read failures, zero-pack dirs, and
+  index-file read/parse errors reuse CUBE-4004 CodePackManifestErr. (4)
+  `pack publish` defaults a tagless --ref to :<pack.cue version> (mirrors
+  `pack push`); an @digest ref fails the same mismatch check (a digest
+  target cannot satisfy tag==version). Zero-pack `index build` is a typed
+  error, not an empty artifact — an accidental empty index would wipe the
+  published catalog for P6 consumers. (5) Index entries sorted by name;
+  index.json byte-deterministic for identical inputs (republish no-op
+  property preserved end to end). (6) runCLI/mustRunCLI helpers from S1
+  (cmd/spoke_test.go) reused, as the plan's S1 VERIFY-API anticipated. (7)
+  TestPackPublishIndexBuildNeedsDigestSource asserts the fix line via
+  errors.As → diag.Error.Remediation: Error() carries only code+summary,
+  remediations render through diag.Render. (8) $PACKS extras beyond the
+  listed files: .gitignore (.claude/worktrees/ for the P3/A-task worktree
+  protocol; digests.env + index.json publish scratch) and repo-local git
+  identity (fresh repo had none). CONTRACT.md needed no prepended header:
+  P1's doc already opens with the GT12 normativity note — diff-verified
+  verbatim. (9) conformance.yml committed as an explicit stub for P3
+  (pull_request + workflow_dispatch, echo only). No workflow_dispatch added
+  to publish.yml — hack/publish-changed.sh requires a tag-shaped
+  GITHUB_REF_NAME, so a dispatch dry run would always fail. (10) Workflows
+  reviewed against the Actions injection doctrine: the tag name reaches
+  the script only as the quoted GITHUB_REF_NAME default env var, never via
+  ${{ }} interpolation into run:; triggers are tag-push and pull_request
+  (not pull_request_target).
+REVIEW: TDD red→green verified: all 7 TestPackPublish* tests failed
+  (unknown command/flag) before implementation, all PASS after. Round
+  trips proven against the in-process registry: publish → pack.Fetch
+  returns name demo/1.0.0; `index push` → pack.ResolveRemote pin equals
+  the printed digest exactly; --from-registry index digest equals the
+  publish-printed digest. Worktree gate green: go build ./... && go vet
+  ./... && go test ./... (29 pkgs ok, 0 FAIL) plus the fence run
+  (./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|
+  TestPromptFence') green — no frozen surface moved. Post-merge go test
+  ./... on $ROOT main green. $PACKS verified: CONTRACT.md diff-identical
+  to docs/pack-contract-v1.md, bash -n on publish-changed.sh (and +x
+  mode), both workflow YAMLs parse.
+BLOCKERS: none
+HANDOFF: $PACKS exists at the $ROOT sibling path `../cube-idp-packs`,
+  main at 9a30593 (scaffold merged), branch p5/p2-packs-repo kept, git
+  history entirely local — NO remote configured. OWNER GATE STILL OPEN;
+  the owner must run: (a) `gh repo create cube-idp/packs --public
+  --description "cube-idp packs — data-only platform packs, published as
+  attested OCI artifacts"`; (b) mint a read-only PAT that can check out
+  cube-idp/cube-idp and `gh secret set CUBE_IDP_READ_TOKEN --repo
+  cube-idp/packs` (delete the secret when the main repo goes public or a
+  public release exists); (c) `git -C ../cube-idp-packs remote add origin
+  git@github.com:cube-idp/packs.git && git push -u origin main` (plus the
+  branch if wanted). Until then the publish workflow cannot run — but P3
+  proceeds fully locally: repo, hack/, packs/.gitkeep, and the
+  conformance.yml stub are all in place. For P3/P5/P6: index digest modes
+  are `--digest name=sha256:…` (from `pack publish` output — CI writes
+  digests.env) and/or `--from-registry`; index schema is {schemaVersion:1,
+  packs:[{name,version,description,ref,digest}]}, entries sorted by name;
+  `pack index build` REQUIRES contract-v1 descriptions and name==dir.
+  cmd/pack.go's hardcoded packCatalog is untouched (P6 replaces it).
 ```
 
 ---
