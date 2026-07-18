@@ -2,6 +2,7 @@ package diff
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cube-idp/cube-idp/internal/apply"
 	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/engine"
 	"github.com/cube-idp/cube-idp/internal/pack"
 	"github.com/cube-idp/cube-idp/internal/registry"
@@ -318,5 +320,36 @@ func TestDesiredStateSelfManagedEngine(t *testing.T) {
 	off := identitySet(desired, orphanOnly)
 	if off[selfSrc] || off[selfKust] {
 		t.Fatalf("selfManage off must contribute no self-source identities:\n%v", sortedKeys(off))
+	}
+}
+
+// TestDesiredStateFailsOnDepCycle pins p6 DEP2's diff-side wiring: desiredState
+// now calls pack.ResolveOrder (mirroring up.Run's pass 2) over the fetched+
+// rendered pack set, so a cube whose packs.dependsOn forms a cycle must fail
+// desiredState itself with CUBE-4019 — a `cube-idp diff` on such a cube must
+// surface the cycle instead of silently rendering a stale/partial diff.
+func TestDesiredStateFailsOnDepCycle(t *testing.T) {
+	cube := &config.Cube{
+		Metadata: config.Metadata{Name: "test"},
+		Spec: config.Spec{
+			Engine:  config.EngineSpec{Type: "flux"},
+			Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
+			Packs: []config.PackRef{
+				{Ref: "../pack/testdata/demo-kustomize", DependsOn: []string{"demo-helm"}},
+				{Ref: "../pack/testdata/demo-helm", DependsOn: []string{"demo-kustomize"}},
+			},
+		},
+	}
+
+	_, _, _, err := desiredState(context.Background(), cube, fakeEngine{})
+	if err == nil {
+		t.Fatal("want an error for a cube whose packs form a dependency cycle")
+	}
+	var de *diag.Error
+	if !errors.As(err, &de) {
+		t.Fatalf("want a *diag.Error, got %v (%T)", err, err)
+	}
+	if de.Code != diag.CodePackDepCycle {
+		t.Fatalf("want CUBE-4019, got %v", de.Code)
 	}
 }
