@@ -3998,7 +3998,7 @@ must be correct".
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(f1-coord-636df744, 2026-07-18T22:48:16Z)
 BRANCH: p5/f1-cli-coherence (merged: -)
 COMMITS: -
 FINDINGS: -
