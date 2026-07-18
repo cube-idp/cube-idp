@@ -36,8 +36,12 @@ spec:
                   type: object
                   additionalProperties: {type: string}
                 ready: {type: boolean}
+                # GT15 (U4): "yes" when the install carried values and/or
+                # extraManifests, "no" otherwise — always present.
+                customized: {type: string}
       additionalPrinterColumns:
         - {name: VERSION, type: string, jsonPath: .spec.version}
         - {name: URL, type: string, jsonPath: .spec.url}
         - {name: AUTH-SECRET, type: string, jsonPath: .spec.authSecret}
         - {name: READY, type: boolean, jsonPath: .spec.ready}
+        - {name: CUSTOMIZED, type: string, jsonPath: .spec.customized}

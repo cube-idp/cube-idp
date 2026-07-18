@@ -167,7 +167,10 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 			t.Fatal(err)
 		}
 		wantDeliver = append(wantDeliver, deliverObjs...)
-		wantPackRecords = append(wantPackRecords, pack.PackObject(p, cube.Spec.Gateway, false))
+		// customized mirrors up.Run's GT15 record-writer expression; only
+		// the record's identity is compared below, but stay truthful.
+		wantPackRecords = append(wantPackRecords, pack.PackObject(p, cube.Spec.Gateway, false,
+			len(pr.Values) > 0 || pr.ExtraManifests != ""))
 	}
 
 	wantApplied := identitySet(regObjs, []*unstructured.Unstructured{crd}, installObjs,

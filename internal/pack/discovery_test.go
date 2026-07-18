@@ -22,8 +22,18 @@ func TestCRDParsesAndPrintsColumns(t *testing.T) {
 	}
 	vers, _, _ := unstructured.NestedSlice(crd.Object, "spec", "versions")
 	cols, _, _ := unstructured.NestedSlice(vers[0].(map[string]any), "additionalPrinterColumns")
-	if len(cols) < 4 { // VERSION, URL, AUTH-SECRET, READY (NAME is implicit)
+	if len(cols) < 5 { // VERSION, URL, AUTH-SECRET, READY, CUSTOMIZED (NAME is implicit)
 		t.Fatalf("printer columns missing: %v", cols)
+	}
+	// U4 (GT15): customized installs are visible in `kubectl get packs`.
+	var hasCustomized bool
+	for _, c := range cols {
+		if n, _, _ := unstructured.NestedString(c.(map[string]any), "name"); n == "CUSTOMIZED" {
+			hasCustomized = true
+		}
+	}
+	if !hasCustomized {
+		t.Fatalf("CUSTOMIZED printer column missing: %v", cols)
 	}
 }
 
@@ -33,7 +43,7 @@ func TestPackObjectShape(t *testing.T) {
 		AuthSecretRef: &SecretRef{Namespace: "gitea", Name: "gitea-admin"},
 		ImpliedFields: map[string]string{"username": "gitea_admin"},
 	}}
-	o := PackObject(p, config.GatewaySpec{Host: "cube-idp.localtest.me", Port: 8443}, true)
+	o := PackObject(p, config.GatewaySpec{Host: "cube-idp.localtest.me", Port: 8443}, true, false)
 	if o.GetKind() != "Pack" || o.GetName() != "gitea" || o.GetNamespace() != "" {
 		t.Fatalf("Pack object identity: %s %s/%s", o.GetKind(), o.GetNamespace(), o.GetName())
 	}
@@ -51,8 +61,26 @@ func TestPackObjectShape(t *testing.T) {
 	}
 }
 
+// TestPackObjectCustomized pins GT15's operator visibility (U4): a pack
+// installed with non-empty values or extraManifests is CUSTOMIZED. The
+// record ALWAYS carries spec.customized as "yes"/"no" — never absent — so
+// `kubectl get packs` renders the column for stock packs too instead of a
+// blank cell.
+func TestPackObjectCustomized(t *testing.T) {
+	for _, tt := range []struct {
+		customized bool
+		want       string
+	}{{true, "yes"}, {false, "no"}} {
+		o := PackObject(&Pack{Name: "p", Version: "0.1.0"}, config.GatewaySpec{Host: "h", Port: 8443}, true, tt.customized)
+		got, found, _ := unstructured.NestedString(o.Object, "spec", "customized")
+		if !found || got != tt.want {
+			t.Fatalf("customized=%v: spec.customized = %q (found=%v), want %q", tt.customized, got, found, tt.want)
+		}
+	}
+}
+
 func TestPackObjectWithoutExpose(t *testing.T) {
-	o := PackObject(&Pack{Name: "plain", Version: "0.1.0"}, config.GatewaySpec{Host: "h", Port: 8443}, false)
+	o := PackObject(&Pack{Name: "plain", Version: "0.1.0"}, config.GatewaySpec{Host: "h", Port: 8443}, false, false)
 	if o.GetName() != "plain" {
 		t.Fatal("packs without expose still get a record (VERSION/READY are useful alone)")
 	}
@@ -85,7 +113,7 @@ func TestPackObjectGatewayPortSubstitution(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			o := PackObject(newPack(), tt.gw, true)
+			o := PackObject(newPack(), tt.gw, true, false)
 			url, _, _ := unstructured.NestedString(o.Object, "spec", "url")
 			if url != tt.want {
 				t.Fatalf("gw=%+v: got %q, want %q", tt.gw, url, tt.want)

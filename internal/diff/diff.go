@@ -207,7 +207,10 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		rendered, err := p.RenderFor(pr.Values, cube.Spec.Gateway)
+		// GT15 (U4): mirror up.Run — RenderWith enforces the values stone
+		// and appends extraManifests, so diff previews exactly what up
+		// would deliver (including CUBE-4016/4017 failures).
+		rendered, err := p.RenderWith(pr.Values, pr.ExtraManifests, cube.Spec.Gateway)
 		if err != nil {
 			return nil, nil, nil, err
 		}

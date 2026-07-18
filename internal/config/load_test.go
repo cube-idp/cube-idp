@@ -389,3 +389,72 @@ spec:
 		t.Fatalf("nil tuning must marshal as an absent key:\n%s", raw)
 	}
 }
+
+// TestPackExtraManifestsRoundTrip pins GT15's config surface (U4):
+// packs[].extraManifests decodes, survives a SaveValidated round-trip, an
+// explicit empty string is rejected by schema.cue (`string & !=""`), and a
+// cleared field re-marshals as an ABSENT key (omitempty discipline — same
+// nil-round-trip rule as PackRef.Values; an emitted `extraManifests: ""`
+// would make the file unwritable against that same schema).
+func TestPackExtraManifestsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.yaml")
+	base := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: dev}
+spec:
+  engine: {type: flux}
+  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443}
+  packs:
+    - ref: oci://ghcr.io/cube-idp/packs/gitea:0.2.0
+      extraManifests: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata: {name: seed, namespace: gitea}
+`
+	if err := os.WriteFile(p, []byte(base), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatalf("valid extraManifests rejected: %v", err)
+	}
+	if !strings.Contains(c.Spec.Packs[0].ExtraManifests, "kind: ConfigMap") {
+		t.Fatalf("extraManifests not decoded: %+v", c.Spec.Packs[0])
+	}
+	if err := SaveValidated(p, c); err != nil {
+		t.Fatalf("extraManifests does not round-trip through SaveValidated: %v", err)
+	}
+	c, err = Load(p)
+	if err != nil || !strings.Contains(c.Spec.Packs[0].ExtraManifests, "kind: ConfigMap") {
+		t.Fatalf("extraManifests lost on round-trip: %v %+v", err, c.Spec.Packs)
+	}
+
+	// Explicit empty string is rejected (schema.cue: string & !="").
+	bad := strings.Replace(base,
+		`      extraManifests: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata: {name: seed, namespace: gitea}
+`, `      extraManifests: ""
+`, 1)
+	if err := os.WriteFile(p, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); err == nil {
+		t.Fatal("empty extraManifests must be rejected by schema.cue")
+	}
+
+	// Cleared field saves as an absent key, not an explicit "".
+	c.Spec.Packs[0].ExtraManifests = ""
+	if err := SaveValidated(p, c); err != nil {
+		t.Fatalf("cleared extraManifests must save (absent key): %v", err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "extraManifests") {
+		t.Fatalf("empty ExtraManifests must marshal as an absent key:\n%s", raw)
+	}
+}

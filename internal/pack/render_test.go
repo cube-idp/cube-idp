@@ -2,6 +2,7 @@ package pack
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -146,5 +147,50 @@ func TestRenderForSubstitutesGatewayHostKustomize(t *testing.T) {
 	}
 	if got, _, _ := unstructured.NestedString(r0.Objects[0].Object, "data", "host"); got != "${GATEWAY_HOST}" {
 		t.Fatalf("zero-gw kustomize render must not substitute, got %q", got)
+	}
+}
+
+// TestRenderWithValuesOnChartlessPackIsCube4016 pins GT15's values stone:
+// `values:` means helm values, only, always — consumed exclusively by a
+// pack's chart.yaml render. Setting values on a chartless pack is a typed
+// CUBE-4016 error at render time (pack layout is unknowable until the ref
+// is fetched), never a silent ignore. testdata/demo is the chartless
+// manifests-only fixture (pack.cue + manifests/cm.yaml, no chart.yaml).
+func TestRenderWithValuesOnChartlessPackIsCube4016(t *testing.T) {
+	p, err := Fetch(context.Background(), "testdata/demo", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.RenderWith(map[string]any{"x": 1}, "", config.GatewaySpec{})
+	if err == nil || !strings.Contains(err.Error(), "CUBE-4016") {
+		t.Fatalf("values on chartless pack must be CUBE-4016, got: %v", err)
+	}
+}
+
+// TestRenderWithExtraManifestsAppendsAndSubstitutes pins GT15's uniform
+// extras channel: packs[].extraManifests is multi-doc YAML valid for EVERY
+// pack kind — parsed, ${GATEWAY_*}-substituted like the manifests/ walk,
+// and appended after the pack's own objects; invalid YAML is CUBE-4017.
+func TestRenderWithExtraManifestsAppendsAndSubstitutes(t *testing.T) {
+	p, err := Fetch(context.Background(), "testdata/demo", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: seed, namespace: x}\ndata: {URL: \"https://app.${GATEWAY_HOST}\"}\n"
+	r, err := p.RenderWith(nil, extra, config.GatewaySpec{Host: "cube-idp.localtest.me", Port: 8443})
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := r.Objects[len(r.Objects)-1]
+	if last.GetKind() != "ConfigMap" || last.GetName() != "seed" {
+		t.Fatalf("extras not appended: %v", last)
+	}
+	data, _, _ := unstructured.NestedStringMap(last.Object, "data")
+	if !strings.Contains(data["URL"], "cube-idp.localtest.me") {
+		t.Fatalf("extras not substituted: %v", data)
+	}
+	// Invalid YAML → CUBE-4017.
+	if _, err := p.RenderWith(nil, "{not yaml", config.GatewaySpec{}); err == nil || !strings.Contains(err.Error(), "CUBE-4017") {
+		t.Fatalf("bad extras must be CUBE-4017, got: %v", err)
 	}
 }

@@ -163,7 +163,19 @@ type PackRef struct {
 	// see the ClusterSpec comment above — a nil Values map must round-trip
 	// as an absent key, not an explicit YAML null, or re-validation against
 	// schema.cue's `values?: {...}` fails.
+	// GT15 (the values stone): values are HELM values, only, always —
+	// consumed exclusively by the pack's chart.yaml render. Setting them on
+	// a chartless pack is CUBE-4016 at render time.
 	Values map[string]any `yaml:"values,omitempty" json:"values,omitempty"`
+	// ExtraManifests is GT15's uniform extras channel, valid for every pack
+	// kind: a multi-doc YAML string that RenderWith parses,
+	// ${GATEWAY_*}-substitutes, and appends after the pack's own objects
+	// (CUBE-4017 when it is not valid YAML). A pack installed with
+	// non-empty Values or ExtraManifests is CUSTOMIZED in its D11 record
+	// (`kubectl get packs`). omitempty: absent must round-trip as an absent
+	// key — schema.cue's `extraManifests?: string & !=""` rejects an
+	// explicit empty string, same discipline as Values above.
+	ExtraManifests string `yaml:"extraManifests,omitempty" json:"extraManifests,omitempty"`
 }
 
 // SpokeSpec declares a managed spoke cluster (spec §5, Phase 5). cube-idp
