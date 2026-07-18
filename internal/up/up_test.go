@@ -577,6 +577,83 @@ func TestDeliverPackRepoNeverTouchesOCIPusher(t *testing.T) {
 	}
 }
 
+// TestDeliverOrderRespectsDependsOn pins p6 DEP2's pass-3 contract:
+// resolveAndDeliverPacks delivers in pack.ResolveOrder's resolved order, not
+// declared order. Declared order here is gateway, b (dependsOn a), a — the
+// graph must still deliver gateway first (always), then a before b.
+func TestDeliverOrderRespectsDependsOn(t *testing.T) {
+	eng := &fakePackEngine{}
+	ap := &fakePackApplier{}
+	deps := deliverDeps{
+		eng:     eng,
+		applier: ap,
+		pushOCI: func(_ context.Context, r *pack.Rendered, _ string) (engine.ArtifactRef, error) {
+			return engine.ArtifactRef{Repo: "packs/" + r.Name, Tag: r.Version}, nil
+		},
+		gitea: func(context.Context) (giteaPacks, error) {
+			t.Fatal("no repo-delivered pack in this cube")
+			return nil, nil
+		},
+	}
+	refs := []config.PackRef{{Ref: "gw"}, {Ref: "b"}, {Ref: "a"}}
+	packs := []*pack.Pack{
+		{Name: "gateway"},
+		{Name: "b", DependsOn: []string{"a"}},
+		{Name: "a"},
+	}
+	renders := []*pack.Rendered{demoRendered("gateway"), demoRendered("b"), demoRendered("a")}
+
+	con := ui.NewConsole(make(chan event.Event, 256))
+	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, refs, packs, renders); err != nil {
+		t.Fatalf("resolveAndDeliverPacks: %v", err)
+	}
+	want := []string{"gateway", "a", "b"}
+	if !reflect.DeepEqual(eng.delivered, want) {
+		t.Fatalf("delivery order = %v, want %v (gateway, a, b)", eng.delivered, want)
+	}
+}
+
+// TestUpFailsFastOnDepCycle pins the fail-fast half of p6 DEP2 (spec §3.3):
+// a dependency cycle must be caught by the graph pass BEFORE the deliver
+// pass runs at all — resolveAndDeliverPacks must return CUBE-4019 with ZERO
+// deliverPack invocations recorded, not fail mid-delivery after some packs
+// already reached the cluster.
+func TestUpFailsFastOnDepCycle(t *testing.T) {
+	eng := &fakePackEngine{}
+	ap := &fakePackApplier{}
+	deps := deliverDeps{
+		eng:     eng,
+		applier: ap,
+		pushOCI: func(_ context.Context, r *pack.Rendered, _ string) (engine.ArtifactRef, error) {
+			return engine.ArtifactRef{Repo: "packs/" + r.Name, Tag: r.Version}, nil
+		},
+		gitea: func(context.Context) (giteaPacks, error) {
+			t.Fatal("no repo-delivered pack in this cube")
+			return nil, nil
+		},
+	}
+	refs := []config.PackRef{{Ref: "gw"}, {Ref: "a"}, {Ref: "b"}}
+	packs := []*pack.Pack{
+		{Name: "gateway"},
+		{Name: "a", DependsOn: []string{"b"}},
+		{Name: "b", DependsOn: []string{"a"}},
+	}
+	renders := []*pack.Rendered{demoRendered("gateway"), demoRendered("a"), demoRendered("b")}
+
+	con := ui.NewConsole(make(chan event.Event, 256))
+	_, err := resolveAndDeliverPacks(context.Background(), con, deps, refs, packs, renders)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodePackDepCycle {
+		t.Fatalf("want CUBE-4019, got %v", err)
+	}
+	if len(eng.delivered) != 0 || len(eng.gitDelivered) != 0 {
+		t.Fatalf("a cycle must abort BEFORE any delivery: oci=%v git=%v", eng.delivered, eng.gitDelivered)
+	}
+	if len(ap.applied) != 0 || len(ap.recorded) != 0 {
+		t.Fatalf("a cycle must abort before any apply/inventory: applied=%v recorded=%v", ap.applied, ap.recorded)
+	}
+}
+
 // TestRenderedFilesStableNaming pins the repo file layout: order-indexed
 // manifests/NN-<kind>-<name>.yaml — stable names give stable git diffs.
 func TestRenderedFilesStableNaming(t *testing.T) {
@@ -597,33 +674,37 @@ func TestRenderedFilesStableNaming(t *testing.T) {
 	}
 }
 
-// TestOrderPackRefsHoistsGiteaForRepoDelivery pins the gitea guarantee's
-// ordering half: with any delivery: repo pack present, gitea moves
-// directly behind the gateway (refs[0]); without one, order is untouched.
-func TestOrderPackRefsHoistsGiteaForRepoDelivery(t *testing.T) {
+// TestOrderPackRefsPrependsGatewayOnly pins orderPackRefs' shrunk p6 DEP2
+// contract: it only prepends the gateway ref. The gitea-hoist guarantee
+// (decision 13) that this function used to implement moved to
+// pack.ResolveOrder's implicit repo->gitea edge — covered by that package's
+// TestResolveOrderImplicitRepoEdge / TestResolveOrderRepoDeliveryGuaranteeAgainstArgocd
+// (case 9) — so orderPackRefs itself no longer branches on delivery: repo at
+// all; declared order (gitea included) passes through untouched.
+func TestOrderPackRefsPrependsGatewayOnly(t *testing.T) {
 	gw := "oci://ghcr.io/cube-idp/packs/traefik:0.2.0"
 	a := config.PackRef{Ref: "oci://ghcr.io/cube-idp/packs/argocd:0.2.0"}
 	b := config.PackRef{Ref: "oci://ghcr.io/cube-idp/packs/backstage:0.2.0", Delivery: "repo"}
 	g := config.PackRef{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.2.0"}
 
 	got := orderPackRefs(gw, []config.PackRef{a, b, g})
-	want := []string{gw, g.Ref, a.Ref, b.Ref}
+	want := []string{gw, a.Ref, b.Ref, g.Ref}
 	var gotRefs []string
 	for _, r := range got {
 		gotRefs = append(gotRefs, r.Ref)
 	}
 	if !reflect.DeepEqual(gotRefs, want) {
-		t.Fatalf("repo delivery must hoist gitea behind the gateway:\n got %v\nwant %v", gotRefs, want)
+		t.Fatalf("orderPackRefs must only prepend the gateway ref, declared order otherwise untouched:\n got %v\nwant %v", gotRefs, want)
 	}
 
-	// No repo-delivered pack: byte-identical to the pre-P7 order.
+	// No repo-delivered pack: same gateway-prepend-only behavior.
 	got = orderPackRefs(gw, []config.PackRef{a, {Ref: g.Ref}})
 	gotRefs = nil
 	for _, r := range got {
 		gotRefs = append(gotRefs, r.Ref)
 	}
 	if !reflect.DeepEqual(gotRefs, []string{gw, a.Ref, g.Ref}) {
-		t.Fatalf("without repo delivery the order must be untouched: %v", gotRefs)
+		t.Fatalf("gateway-prepend-only: %v", gotRefs)
 	}
 }
 

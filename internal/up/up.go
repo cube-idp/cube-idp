@@ -277,9 +277,10 @@ func Run(ctx context.Context, opts Options) error {
 
 	// Gateway pack goes first — everything else depends on ingress existing.
 	// P7 (the gitea guarantee, decision 13): with any delivery: repo pack
-	// declared, gitea is additionally hoisted directly behind the gateway,
-	// so the repo-delivery readiness gate below waits on a pack that is
-	// already reconciling.
+	// declared, gitea is delivered before it — since p6 DEP2 this is
+	// pack.ResolveOrder's implicit repo->gitea edge (resolveAndDeliverPacks'
+	// graph pass below), not orderPackRefs; either way the repo-delivery
+	// readiness gate below waits on a pack that is already reconciling.
 	refs := orderPackRefs(cube.Spec.Gateway.PackRef(), cube.Spec.Packs)
 	// Deviation 3 (offline): rewrite every ref to its bundle-local source dir
 	// before the loop's pack.Fetch runs, so fetching reads from disk and a
@@ -323,15 +324,16 @@ func Run(ctx context.Context, opts Options) error {
 		},
 	}
 
+	// Pass 1: fetch + render every pack in DECLARED order. No cluster
+	// mutation happens here beyond what pack.Fetch itself may cache to disk —
+	// entries/packs/renders are index-aligned with refs, one append per ref,
+	// so a failure partway through leaves no partial delivery behind.
 	var entries []lock.Entry
 	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
+	var renders []*pack.Rendered
 	for i, pref := range refs {
-		// Each pack delivery is an enumerated open step (pack i+1/len(refs))
-		// so renderers can show n-of-m; the Done message is byte-identical to
-		// the previous con.Step line and plain never prints Dur — zero plain
-		// drift.
 		if err := func() error {
-			pr := con.ProgressN("pack", "delivering "+pref.Ref, i+1, len(refs))
+			pr := con.ProgressN("pack-fetch", "fetching "+pref.Ref, i+1, len(refs))
 			defer pr.Stop() // no-op after Done; resolves the step on any error return
 			// Task 13 review: record the RESOLVED fetch source before Fetch runs.
 			// This is the falsifiable output proof of offline honesty: an online
@@ -377,18 +379,23 @@ func Run(ctx context.Context, opts Options) error {
 				// field comment for why both sources matter.
 				Images: mergeImages(lock.ImagesFrom(rendered.Objects), pk.Images),
 			})
-			// P7: the delivery tail branches on the ref's delivery mode —
-			// deliverPackOCI is the pre-P7 tail moved verbatim; delivery:
-			// repo renders into an engine-watched Gitea repo instead.
-			if err := deliverPack(ctx, deps, pref, rendered); err != nil {
-				return err
-			}
-			pr.Done("%s@%s delivered", rendered.Name, rendered.Version)
+			renders = append(renders, rendered)
+			pr.Done("%s@%s rendered", rendered.Name, rendered.Version)
 			return nil
 		}(); err != nil {
 			return err
 		}
 	}
+
+	// Passes 2+3: resolve the dependency graph, then deliver in that order.
+	// Split out so the fail-fast property (a graph error returns before any
+	// deliverPack call) and the topo delivery order are unit-testable with
+	// the P7 fakes, without a live cluster.
+	packDeps, err := resolveAndDeliverPacks(ctx, con, deps, refs, packs, renders)
+	if err != nil {
+		return err
+	}
+	_ = packDeps // threaded to DEP3's Deliver calls; unused here yet
 
 	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
 		Engine: lock.EngineLock{Type: cube.Spec.Engine.Type}, Packs: entries}
@@ -545,6 +552,47 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	con.Access(access, "credentials: cube-idp get secrets")
 	return nil
+}
+
+// resolveAndDeliverPacks is Run's passes 2+3 (p6 DEP2): resolve the
+// dependency graph over the already fetched+rendered packs (index-aligned
+// with refs/packs/renders, exactly Run's pass-1 output), then deliver each
+// one — via deliverPack, so the P7 OCI/repo branch is unchanged — in the
+// resolved topo order rather than declared order. A graph error (CUBE-4018
+// unknown dep, CUBE-4019 cycle, CUBE-4020 gateway carries a dep) returns
+// BEFORE the delivery loop runs at all: the fail-fast improvement over the
+// old single fetch+render+deliver loop, where a graph problem could only be
+// detected pack-by-pack, after every prior pack in declared order had
+// already been delivered to the cluster. Extracted from Run so this
+// ordering/fail-fast contract is unit-testable with the P7 fakes, without a
+// live cluster (Run itself needs one).
+func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDeps, refs []config.PackRef, packs []*pack.Pack, renders []*pack.Rendered) (map[string][]string, error) {
+	order, packDeps, err := pack.ResolveOrder(packs, refs, renders)
+	if err != nil {
+		return nil, err
+	}
+	for pos, i := range order {
+		pref, rendered := refs[i], renders[i]
+		// Each pack delivery is an enumerated open step (pack i+1/len(refs))
+		// so renderers can show n-of-m; the Done message is byte-identical to
+		// the previous con.Step line and plain never prints Dur — zero plain
+		// drift.
+		if err := func() error {
+			pr := con.ProgressN("pack", "delivering "+pref.Ref, pos+1, len(refs))
+			defer pr.Stop() // no-op after Done; resolves the step on any error return
+			// P7: the delivery tail branches on the ref's delivery mode —
+			// deliverPackOCI is the pre-P7 tail moved verbatim; delivery:
+			// repo renders into an engine-watched Gitea repo instead.
+			if err := deliverPack(ctx, deps, pref, rendered); err != nil {
+				return err
+			}
+			pr.Done("%s@%s delivered", rendered.Name, rendered.Version)
+			return nil
+		}(); err != nil {
+			return nil, err
+		}
+	}
+	return packDeps, nil
 }
 
 // ensureSpoke creates/connects one spoke, bootstraps cube-idp RBAC on it,
@@ -1011,37 +1059,13 @@ func renderedFiles(r *pack.Rendered) (map[string][]byte, error) {
 	return files, nil
 }
 
-// orderPackRefs builds the delivery order: the gateway pack first, as
-// always. With any delivery: repo pack declared, the gitea pack is hoisted
-// directly behind the gateway (the gitea guarantee's ordering half,
-// decision 13) so the repo-delivery readiness gate waits on a pack already
-// reconciling; everything else keeps its declared relative order. Gitea is
-// matched by the same ref-substring convention config's load-time
-// guarantee and cmd/init.go's filterSelectedPacks use.
+// orderPackRefs prepends the gateway pack ref. Ordering beyond that —
+// including decision 13's gitea-before-repo-packs guarantee — moved to
+// pack.ResolveOrder (p6 DEP2): the implicit repo→gitea edge plus the
+// declared-order tie-break keep the guarantee; the giteaSession bounded
+// gate still backstops the wait either way.
 func orderPackRefs(gatewayRef string, packs []config.PackRef) []config.PackRef {
-	refs := make([]config.PackRef, 0, len(packs)+1)
-	refs = append(refs, config.PackRef{Ref: gatewayRef})
-	repoDelivered := false
-	for _, p := range packs {
-		if p.Delivery == "repo" {
-			repoDelivered = true
-			break
-		}
-	}
-	if !repoDelivered {
-		return append(refs, packs...)
-	}
-	for _, p := range packs {
-		if strings.Contains(p.Ref, "gitea") {
-			refs = append(refs, p)
-		}
-	}
-	for _, p := range packs {
-		if !strings.Contains(p.Ref, "gitea") {
-			refs = append(refs, p)
-		}
-	}
-	return refs
+	return append([]config.PackRef{{Ref: gatewayRef}}, packs...)
 }
 
 // giteaSession is the repo-delivery readiness gate (decision 13): engine

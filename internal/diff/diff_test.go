@@ -233,12 +233,19 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 // repo-delivered cube free of false orphans AND of phantom OCI-source
 // drift. The gateway pack (always OCI) keeps its full-spec diff.
 func TestDesiredStateRepoDeliveredPack(t *testing.T) {
+	// pack.ResolveOrder (p6 DEP1/DEP2) requires a "gitea" pack whenever any
+	// delivery: repo pack is declared (decision 13, CUBE-4018 otherwise) —
+	// desiredState now validates the graph, so the test cube must satisfy
+	// that same rule config.Load already enforces in production.
 	cube := &config.Cube{
 		Metadata: config.Metadata{Name: "test"},
 		Spec: config.Spec{
 			Engine:  config.EngineSpec{Type: "flux"},
 			Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
-			Packs:   []config.PackRef{{Ref: "../pack/testdata/demo-kustomize", Delivery: "repo"}},
+			Packs: []config.PackRef{
+				{Ref: "../pack/testdata/demo-kustomize", Delivery: "repo"},
+				{Ref: "../pack/testdata/gitea"},
+			},
 		},
 	}
 
@@ -246,7 +253,7 @@ func TestDesiredStateRepoDeliveredPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("desiredState: %v", err)
 	}
-	if len(entries) != 2 {
+	if len(entries) != 3 {
 		t.Fatalf("repo-delivered packs still get lock entries: %d", len(entries))
 	}
 
