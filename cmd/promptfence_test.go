@@ -57,6 +57,15 @@ func TestPromptFenceNeverBlocksOnBufferStdin(t *testing.T) {
 			mustRunCLI(t, "spoke", "add", "staging", "--provider", "kind", "-f", p)
 			return []string{"spoke", "remove", "staging", "--delete-cluster", "-f", p}
 		}},
+		{"plugin install (official index)", func(t *testing.T) []string {
+			// P10: `plugin install` from the official index writes the binary
+			// then hands off to the sha256 trust-consent seam. On a buffer
+			// stdin (non-TTY) that seam must refuse with CUBE-7104 — never
+			// engage a huh form — so this row pins non-blocking. seedPluginIndex
+			// serves the index + platform blob off an in-process registry.
+			seedPluginIndex(t, []byte("#!/bin/sh\nexit 0\n"))
+			return []string{"plugin", "install", "hello"}
+		}},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
