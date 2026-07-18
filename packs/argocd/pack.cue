@@ -1,5 +1,6 @@
-name:    "argocd"
-version: "0.1.0"
+name:        "argocd"
+version:     "0.1.0"
+description: "delivery UI"
 
 // D11: argocd-initial-admin-secret is created by Argo CD itself on first
 // boot (namespace "argocd" per manifests/00-namespace.yaml) and carries

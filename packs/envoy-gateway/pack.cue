@@ -1,5 +1,6 @@
-name:    "envoy-gateway"
-version: "0.1.0"
+name:        "envoy-gateway"
+version:     "0.1.0"
+description: "Gateway API-native ingress gateway"
 #Values: {}
 
 // D14 (Owner Decisions #3): envoy-gateway's controller spawns Envoy proxy

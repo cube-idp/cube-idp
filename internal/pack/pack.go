@@ -4,7 +4,8 @@
 //
 // Pack format: a directory containing:
 //
-//	pack.cue             required: name, version; optional #Values schema
+//	pack.cue             required: name, version; optional description,
+//	                      #Values schema (see docs/pack-contract-v1.md)
 //	manifests/*.yaml     optional: raw multi-doc YAML manifests
 //	kustomization.yaml   optional: a kustomize overlay rooted at the pack
 //	chart.yaml           optional: a helm chart reference, rendered client-side
@@ -48,6 +49,12 @@ type Pack struct {
 	Name    string
 	Version string
 	Dir     string
+
+	// Description is the pack's optional one-line description (contract v1,
+	// Phase 5 P1: pack.cue `description: "…"`). Empty when the pack declares
+	// none — packs predating the field load exactly as before. The packs-repo
+	// index artifact (P2) and the remote catalog (P6) surface it to users.
+	Description string
 
 	// Pinned records the fetch-time pin for cube.lock, in one of:
 	//   "git+<sha>"   — git pack refs (this task), the full commit SHA
@@ -109,6 +116,13 @@ func loadMeta(dir string) (*Pack, error) {
 	}
 	if err := v.LookupPath(cue.ParsePath("version")).Decode(&p.Version); err != nil || p.Version == "" {
 		return nil, diag.New(diag.CodePackCueInvalid, "pack.cue is missing 'version'", "add: version: \"0.1.0\"")
+	}
+	if dv := v.LookupPath(cue.ParsePath("description")); dv.Exists() {
+		if err := dv.Decode(&p.Description); err != nil {
+			return nil, diag.Wrap(err, diag.CodePackCueInvalid,
+				fmt.Sprintf("pack.cue description: in %s is invalid", dir),
+				`description: must be a string, e.g. description: "in-cluster git server"`)
+		}
 	}
 	expose, err := parseExpose(ctx, v, dir)
 	if err != nil {

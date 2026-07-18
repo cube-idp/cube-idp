@@ -1,5 +1,6 @@
-name:    "cert-manager"
-version: "0.1.0"
+name:        "cert-manager"
+version:     "0.1.0"
+description: "TLS certificate automation"
 #Values: {
 	// top-level "replicaCount" is the chart's real values key (verified
 	// against jetstack/cert-manager 1.16.3's values.schema.json — the brief's

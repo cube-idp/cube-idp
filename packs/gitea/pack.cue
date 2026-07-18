@@ -1,5 +1,6 @@
-name:    "gitea"
-version: "0.1.0"
+name:        "gitea"
+version:     "0.1.0"
+description: "in-cluster git server"
 #Values: {}
 
 // D11: the CLI-consumable admin credential lives in
