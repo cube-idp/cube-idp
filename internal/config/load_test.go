@@ -195,12 +195,28 @@ func TestDefaultProfileIncludesGitea(t *testing.T) { // D9
 	c := Default("dev")
 	found := false
 	for _, p := range c.Spec.Packs {
-		if p.Ref == "oci://ghcr.io/cube-idp/packs/gitea:0.1.0" {
+		if p.Ref == "oci://ghcr.io/cube-idp/packs/gitea:0.2.0" {
 			found = true
 		}
 	}
 	if !found {
 		t.Fatalf("default profile must include gitea (D9): %+v", c.Spec.Packs)
+	}
+}
+
+// TestDefaultGatewayRefIsPublishedOCI pins the P4 standalone-binary contract
+// (F12 CLOSED): the default profile's gateway pack resolves from the
+// published packs monorepo, never from a repo-relative checkout path.
+func TestDefaultGatewayRefIsPublishedOCI(t *testing.T) {
+	c := Default("dev")
+	want := "oci://ghcr.io/cube-idp/packs/traefik:0.2.0"
+	if c.Spec.Gateway.Ref != want {
+		t.Fatalf("default gateway.ref = %q, want %q (F12)", c.Spec.Gateway.Ref, want)
+	}
+	// The fallback for a hand-written cube.yaml WITHOUT ref stays the
+	// documented checkout-only last resort — unchanged by P4.
+	if got := (GatewaySpec{Pack: "traefik"}).PackRef(); got != "packs/traefik" {
+		t.Fatalf("empty-ref fallback must stay packs/<pack>, got %q", got)
 	}
 }
 

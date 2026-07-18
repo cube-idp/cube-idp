@@ -254,7 +254,7 @@ func TestPackInstallMenuAppendsAndHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reloading cube.yaml: %v", err)
 	}
-	ref := "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"
+	ref := "oci://ghcr.io/cube-idp/packs/gitea:0.2.0"
 	if len(cube.Spec.Packs) != 1 || cube.Spec.Packs[0].Ref != ref {
 		t.Fatalf("expected exactly the selected ref appended, got: %+v", cube.Spec.Packs)
 	}
@@ -297,8 +297,8 @@ func TestPackInstallDeclineAborts(t *testing.T) {
 // Duplicate refs are skipped, never appended twice; an all-duplicate run
 // leaves the file unchanged and says so.
 func TestPackInstallDuplicateRefSkipped(t *testing.T) {
-	file := cubeYAMLFixture(t) // default profile already carries gitea:0.1.0
-	ref := "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"
+	file := cubeYAMLFixture(t) // default profile already carries gitea:0.2.0
+	ref := "oci://ghcr.io/cube-idp/packs/gitea:0.2.0"
 
 	root := NewRootCmd()
 	var out bytes.Buffer
@@ -410,8 +410,8 @@ func TestPackListAvailableFallsBackToBuiltin(t *testing.T) {
 		t.Fatalf("expected the fallback notice, got:\n%s", out)
 	}
 	for _, row := range []string{
-		fmt.Sprintf("%-20s %-10s %s\n", "gitea", "0.1.0", "in-cluster git server"),
-		fmt.Sprintf("%-20s %-10s %s\n", "argocd", "0.1.0", "delivery UI"),
+		fmt.Sprintf("%-20s %-10s %s\n", "gitea", "0.2.0", "in-cluster git server"),
+		fmt.Sprintf("%-20s %-10s %s\n", "argocd", "0.2.0", "delivery UI"),
 	} {
 		if !strings.Contains(out, row) {
 			t.Fatalf("expected built-in row %q, got:\n%s", row, out)

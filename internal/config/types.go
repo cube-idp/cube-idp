@@ -136,18 +136,20 @@ type GatewaySpec struct {
 	// at cluster creation (recreate to change). Must differ from Port and
 	// from every cluster.extraPorts hostPort (CUBE-0002 at load).
 	HTTPPort int `yaml:"httpPort,omitempty" json:"httpPort,omitempty"`
-	// Ref overrides the pack source `up` fetches for the gateway pack. When
-	// unset, `up` falls back to "packs/<Pack>" (a repo-local checkout path,
-	// only valid when cube-idp runs from a checkout); `cube-idp init
-	// --local` fills this with an absolute path so `up` works from any cwd.
+	// Ref is the pack source `up` fetches for the gateway pack. `init`
+	// always fills it: the published oci://ghcr.io/cube-idp/packs/<pack>
+	// ref by default (P4, F12 closed), or an absolute path into a local
+	// cube-idp/packs checkout with `init --local`. When unset (hand-written
+	// cube.yaml), `up` falls back to "packs/<Pack>" — a checkout-relative
+	// last resort that only resolves when run from a packs checkout root.
 	Ref string `yaml:"ref,omitempty" json:"ref,omitempty"`
 }
 
 // PackRef resolves the pack source `up`/`diff` fetch for the gateway pack:
 // an explicit g.Ref always wins; otherwise it falls back to
-// "packs/<Pack>", a path that only resolves when cube-idp runs from a
-// checkout of its own repo. `cube-idp init --local <repo>` sets Ref to an
-// absolute path so callers work from any working directory.
+// "packs/<Pack>", a path that only resolves when cube-idp runs from the
+// root of a packs checkout (cube-idp/packs) — the documented last resort
+// for checkout users; anywhere else the fetch fails cleanly.
 func (g GatewaySpec) PackRef() string {
 	if g.Ref != "" {
 		return g.Ref
@@ -197,10 +199,13 @@ func Default(name string) *Cube {
 		Spec: Spec{
 			Cluster: ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1"},
 			Engine:  EngineSpec{Type: "flux"},
-			Gateway: GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443},
+			// P4 (F12 closed): the gateway pack resolves from the published
+			// packs monorepo — the downloaded binary needs no checkout.
+			Gateway: GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443,
+				Ref: "oci://ghcr.io/cube-idp/packs/traefik:0.2.0"},
 			Packs: []PackRef{
-				{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"},
-				{Ref: "oci://ghcr.io/cube-idp/packs/argocd:0.1.0"},
+				{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.2.0"},
+				{Ref: "oci://ghcr.io/cube-idp/packs/argocd:0.2.0"},
 			},
 		},
 	}
