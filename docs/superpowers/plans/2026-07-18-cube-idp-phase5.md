@@ -1867,7 +1867,7 @@ func TestApplyTuningNilIsNoop(t *testing.T) {
   `go test ./internal/engine/ -run TestApplyTuning -v`
   Expected: FAIL — ApplyTuning undefined (config types too).
 
-- [ ] **Step 3: Implement.** config types + CUE exactly per the
+- [x] **Step 3: Implement.** config types + CUE exactly per the
   Interfaces block (CUE:
   `engine: {type: *"flux" | "argocd", tuning?: {components?: {[=~"^[a-z0-9-]+$"]: {replicas?: int & >0, resources?: {...}}}}}`
   — replaces the current single-line `engine: type:` form). Nil-map
@@ -1970,11 +1970,11 @@ to stdout. Test in `cmd/config_test.go`: with `tuning: {components:
 contains `replicas: 2`; with an unknown component the command fails
 mentioning CUBE-3009.
 
-- [ ] **Step 4: Verify pass** — Run:
+- [x] **Step 4: Verify pass** — Run:
   `go test ./internal/engine/... ./internal/config/ ./cmd/ -run 'TestApplyTuning|TestRenderEngine|TestEngineTuning' -v`
   Expected: PASS.
 
-- [ ] **Step 5: Gate + fences + commit** — full gate + fences (factory
+- [x] **Step 5: Gate + fences + commit** — full gate + fences (factory
   signature change touches many packages — the build IS the migration
   checklist). Commit:
   `git add internal/ cmd/ && git commit -m "feat(engine): engine.tuning typed knobs — replicas/resources patched pre-SSA (CUBE-3009)"`
@@ -1982,13 +1982,13 @@ mentioning CUBE-3009.
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(u3-agent-b67ed6f3, 2026-07-18T09:43:50Z)
-BRANCH: p5/u3-engine-tuning (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/u3-engine-tuning (merged: yes)
+COMMITS: ea63c5c feat(engine): engine.tuning typed knobs — replicas/resources patched pre-SSA (CUBE-3009); aeddb36 merge: p5 U3 engine-tuning (p5/u3-engine-tuning)
+FINDINGS: (1) API drift: diag.Error.Error() renders Code+Summary(+Cause) ONLY — remediation is never in Error(), so the plan's tune.go (valid-components list in the remediation arg) cannot satisfy the plan-normative test asserting err.Error() names "source-controller". The test is the contract: the valid list moved into the summary — "engine.tuning.components.<n>: no such engine component (valid: kustomize-controller, source-controller)" — remediation is now the fix line. (2) deepCopyJSON hardened beyond the plan snippet: SetNestedField/SetNestedSlice deep-copy via runtime.DeepCopyJSONValue, which PANICS on Go int; the plan's "config.Load already normalized numbers" is inverted — normalizePackValues turns int64→int, which would panic. Tuning numbers therefore deliberately stay CUE's int64 (normalizePackValues NOT extended to tuning; documented on ComponentTuning), and deepCopyJSON widens int→int64 and walks []any for hand-constructed tunings. TestEngineTuningRoundTripAndValidation pins the int64 discipline. (3) Constructor shape (plan unspecified): flux/argocd keep New() untuned (~25 existing test call sites, none in this task's Files) and gain NewTuned(*config.EngineTuning); factory.New(spec config.EngineSpec) calls NewTuned. (4) Tuning applied in the flux METHOD (f *Flux) InstallManifests, not the package-level func at flux.go:38 — that stays the untuned raw parse per its own "kept for tests" comment; argocd applies at the end of (g *ArgoCD) InstallManifests after the repo-secret append so tuning sees the full stream. Install() applies tuning transitively (it calls the method) — the SSA'd and inventoried objects are tuned. (5) Call sites beyond the plan's grep: internal/engine/factory/factory_test.go calls in-package New( (invisible to an enginefactory.New grep) — migrated; internal/bundle/vendor.go defaultEngineInstallImages keeps its string param and constructs config.EngineSpec{Type: engineType} untuned ON PURPOSE (tuning patches replicas/resources, never image refs — vendored image set is tuning-independent, comment added). (6) Files-list drift: TestEngineTuningRoundTripAndValidation added to internal/config/load_test.go (not in the task's Test list, but Step 4's run pattern targets ./internal/config/ with TestEngineTuning) — pins decode, SaveValidated round-trip, replicas>0 CUE rejection (CUBE-0002), nil→absent-key marshal. (7) OWNER observation, no action taken: at `up` time an unknown tuning component surfaces through flux/argocd Install's PRE-EXISTING wrap as CUBE-3003 "embedded manifests are invalid — report this as a bug" with the CUBE-3009 text nested as cause (Install wraps ALL InstallManifests errors; changing it is outside this task's Files). The inspection path `config render-engine` returns raw CUBE-3009 with the valid list. If the up-path UX matters, a follow-up should pass through *diag.Error unwrapped in both Install()s. (8) gofmt: only the two PRE-EXISTING drift hunks (U2 FINDINGS 8: types.go ClusterSpec tags, status.go statusDoc) remain; verified via gofmt -d that neither intersects U3's added lines and every other touched file is clean. (9) Step 5 commit message verbatim plus the mandated Co-Authored-By trailer; merge waited out S3's ledger-close dirty tree per the claim-serialization discipline (porcelain poll), then merged cleanly over S3's up.go changes — no conflicts anywhere.
+REVIEW: TDD observed fail→pass: Step 2 red = "undefined: config.EngineTuning / ApplyTuning ... FAIL [build failed]"; intermediate red caught the FINDINGS-1 drift (err.Error() lacked the valid list) before green; Step 4 command all PASS (TestApplyTuning x3, TestEngineTuningRoundTripAndValidation, TestRenderEngineAppliesTuning, TestRenderEngineUnknownComponentIsCube3009, TestFactory x3 after factory_test migration). Task gate in worktree: go build ./... && go vet ./... && go test ./... ALL ok (34 pkgs); fence run go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence' ALL ok. End-to-end with the built binary: tuned flux render shows replicas: 3 on the source-controller Deployment + memory: 256Mi in its containers, 21-doc --- stream, pure stdout; argocd render patches argocd-repo-server replicas: 2; unknown component renders "✗ CUBE-3009 ... (valid: kustomize-controller, source-controller)" exit 1. go.mod/go.sum untouched. Post-merge on main: go test ./... zero FAIL lines (S3's spoke reconcile + U3's factory change coexist green).
+BLOCKERS: none
+HANDOFF: U4 (p5/u4-values-stone) is unblocked — U3 merged at aeddb36. For U4+: config.EngineSpec now carries Tuning *EngineTuning and schema.cue's engine block is a struct (append inside it, not a new engine: line); enginefactory.New takes config.EngineSpec — new call sites pass cube.Spec.Engine, never .Type. Both engines' InstallManifests METHODS return TUNED objects; package-level flux.InstallManifests() stays untuned/raw. engine.ApplyTuning(objs, *config.EngineTuning) is exported — P8's render→push path gets tuning for free via eng.InstallManifests() (its four-scenario matrix should assert the pushed artifact carries tuned bytes). CUBE-3009 is taken (next engine code 3010). `config render-engine` prints pure YAML to stdout (no stderr note — unlike render-cluster there is no injection gap); cmd tests reuse spoke_test.go's runCLI/mustRunCLI. Tuning numbers are int64 by contract — do NOT extend normalizePackValues to tuning (unstructured DeepCopyJSONValue panics on int; U4's extraManifests parsing should keep the same awareness). FINDINGS 7 is an open UX wart for the owner (bad tuning at `up` wears a CUBE-3003 bug costume).
 ```
 
 ---
