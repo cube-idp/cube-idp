@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -317,5 +318,139 @@ func TestHTTPPortProbeNamesHTTPPortField(t *testing.T) {
 	// The existing single-port probe keeps blaming spec.gateway.port.
 	if f := CheckPortFree(port, false); f == nil || !strings.Contains(f.Remediation, "spec.gateway.port") {
 		t.Fatalf("CheckPortFree must keep naming spec.gateway.port: %+v", f)
+	}
+}
+
+// checkNames projects a check set onto its stable ids (U5 test helper).
+func checkNames(checks []Check) []string {
+	names := make([]string, 0, len(checks))
+	for _, c := range checks {
+		names = append(names, c.Name)
+	}
+	return names
+}
+
+// TestDoctorAllAssemblesChecklist pins the U5 registry's assembly (GT18)
+// for a minimal (default-profile) cube: at least four uniquely named host
+// checks, the opt-in http-port check present only when
+// spec.gateway.httpPort is set, and the linux-only inotify check
+// registered per GOOS. spoke-reachability is NOT here — it needs a live
+// cluster client, so the doctor command appends it (All has no client).
+func TestDoctorAllAssemblesChecklist(t *testing.T) {
+	cube := config.Default("dev")
+	checks := All(cube, false)
+	if len(checks) < 4 {
+		t.Fatalf("want >= 4 checks on a minimal cube, got %d: %v", len(checks), checkNames(checks))
+	}
+	seen := map[string]bool{}
+	for _, c := range checks {
+		if c.Name == "" || c.Run == nil {
+			t.Fatalf("check with empty name or nil Run: %+v", checkNames(checks))
+		}
+		if seen[c.Name] {
+			t.Fatalf("duplicate check name %q", c.Name)
+		}
+		seen[c.Name] = true
+	}
+	for _, want := range []string{"container-runtime", "gateway-port", "disk-space", "git-cli"} {
+		if !seen[want] {
+			t.Fatalf("check %q missing from %v", want, checkNames(checks))
+		}
+	}
+	if seen["http-port"] {
+		t.Fatalf("http-port must be opt-in — absent field, no check: %v", checkNames(checks))
+	}
+	if seen["inotify"] != (goruntime.GOOS == "linux") {
+		t.Fatalf("inotify check registered=%v on GOOS=%s", seen["inotify"], goruntime.GOOS)
+	}
+
+	cube.Spec.Gateway.HTTPPort = 8080
+	withHTTP := map[string]bool{}
+	for _, c := range All(cube, false) {
+		withHTTP[c.Name] = true
+	}
+	if !withHTTP["http-port"] {
+		t.Fatalf("httpPort set must register the http-port check: %v", checkNames(All(cube, false)))
+	}
+}
+
+// TestDoctorRunChecksAllGreen: a stubbed all-green run yields zero
+// findings and every Detail non-empty — GT18's point: passes are SHOWN,
+// and the detail is what the green row says.
+func TestDoctorRunChecksAllGreen(t *testing.T) {
+	results := RunChecks([]Check{
+		{Name: "a", Run: func() (string, []diag.Finding) { return "a looks fine", nil }},
+		{Name: "b", Run: func() (string, []diag.Finding) { return "b looks fine", nil }},
+	})
+	if len(results) != 2 {
+		t.Fatalf("want one result per check, got %+v", results)
+	}
+	for _, r := range results {
+		if len(r.Findings) != 0 {
+			t.Fatalf("all-green run must yield zero findings: %+v", r)
+		}
+		if r.Detail == "" {
+			t.Fatalf("green result must carry a non-empty Detail: %+v", r)
+		}
+		if r.Status() != "ok" {
+			t.Fatalf("green result must be ok, got %q", r.Status())
+		}
+		if r.Worst() != nil {
+			t.Fatalf("green result has no worst finding, got %+v", r.Worst())
+		}
+	}
+}
+
+// TestDoctorRunChecksSeverityFold: a multi-finding check folds to its
+// worst severity for the row (error beats warning) while preserving every
+// finding for the documented findings array.
+func TestDoctorRunChecksSeverityFold(t *testing.T) {
+	warn := diag.Finding{Code: "CUBE-0103", Severity: diag.SeverityWarning, Message: "low disk", Remediation: "free space"}
+	fail := diag.Finding{Code: "CUBE-0102", Severity: diag.SeverityError, Message: "port busy", Remediation: "free the port"}
+	results := RunChecks([]Check{
+		{Name: "warns", Run: func() (string, []diag.Finding) { return "", []diag.Finding{warn} }},
+		{Name: "fails", Run: func() (string, []diag.Finding) { return "", []diag.Finding{warn, fail} }},
+	})
+	if got := results[0].Status(); got != "warn" {
+		t.Fatalf("warning-only check must be warn, got %q", got)
+	}
+	if w := results[0].Worst(); w == nil || w.Code != "CUBE-0103" {
+		t.Fatalf("warn row's worst finding wrong: %+v", w)
+	}
+	if got := results[1].Status(); got != "fail" {
+		t.Fatalf("check with an error finding must be fail, got %q", got)
+	}
+	if w := results[1].Worst(); w == nil || w.Code != "CUBE-0102" {
+		t.Fatalf("the error finding must color the row: %+v", w)
+	}
+	if len(results[1].Findings) != 2 {
+		t.Fatalf("fold must preserve every finding: %+v", results[1].Findings)
+	}
+}
+
+// TestDoctorAllGreenDetails exercises two real wrappers end-to-end on
+// their green paths: gateway-port on a known-free port names the port,
+// and git-cli over the default profile's oci-only refs reports the
+// vacuous pass honestly (no git-sourced refs — nothing needed git).
+func TestDoctorAllGreenDetails(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	cube := config.Default("dev")
+	cube.Spec.Gateway.Port = port
+	for _, r := range RunChecks(All(cube, false)) {
+		switch r.Name {
+		case "gateway-port":
+			if r.Status() != "ok" || !strings.Contains(r.Detail, fmt.Sprint(port)) {
+				t.Fatalf("free gateway port must be green naming the port: %+v", r)
+			}
+		case "git-cli":
+			if r.Status() != "ok" || !strings.Contains(r.Detail, "no git-sourced") {
+				t.Fatalf("oci-only refs must be a vacuous green: %+v", r)
+			}
+		}
 	}
 }
