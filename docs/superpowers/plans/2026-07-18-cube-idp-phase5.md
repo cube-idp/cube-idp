@@ -943,7 +943,7 @@ unconditionally:
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(b67ed6f3-6188-4eca-ba99-88e5dad89e07, 2026-07-18T09:27:33Z)
 BRANCH: p5/s2-spoke-bootstrap (merged: -)
 COMMITS: -
 FINDINGS: -
