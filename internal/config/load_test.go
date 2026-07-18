@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	sigyaml "sigs.k8s.io/yaml"
@@ -200,5 +201,60 @@ func TestDefaultProfileIncludesGitea(t *testing.T) { // D9
 	}
 	if !found {
 		t.Fatalf("default profile must include gitea (D9): %+v", c.Spec.Packs)
+	}
+}
+
+func TestSpokesRoundTripAndValidation(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.yaml")
+	base := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: dev}
+spec:
+  engine: {type: flux}
+  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443}
+  spokes:
+    - name: staging
+      cluster: {provider: kind}
+    - name: prod-eu
+      cluster: {provider: existing, context: eks-prod-eu}
+`
+	if err := os.WriteFile(p, []byte(base), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cube, err := Load(p)
+	if err != nil {
+		t.Fatalf("valid spokes rejected: %v", err)
+	}
+	if len(cube.Spec.Spokes) != 2 || cube.Spec.Spokes[0].Name != "staging" {
+		t.Fatalf("spokes not decoded: %+v", cube.Spec.Spokes)
+	}
+
+	// k3d spokes are deferred (GT6): must fail with CUBE-8001.
+	bad := strings.Replace(base, "provider: kind", "provider: k3d", 1)
+	if err := os.WriteFile(p, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Load(p)
+	if err == nil || !strings.Contains(err.Error(), "CUBE-8001") {
+		t.Fatalf("k3d spoke must be CUBE-8001, got: %v", err)
+	}
+
+	// existing spoke without context must fail (CUBE-8001 family).
+	bad2 := strings.Replace(base, "context: eks-prod-eu", "", 1)
+	if err := os.WriteFile(p, []byte(bad2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Load(p); err == nil {
+		t.Fatal("existing spoke without context must be rejected")
+	}
+
+	// duplicate spoke names must fail.
+	dup := strings.Replace(base, "prod-eu", "staging", 1)
+	if err := os.WriteFile(p, []byte(dup), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Load(p); err == nil {
+		t.Fatal("duplicate spoke names must be rejected")
 	}
 }

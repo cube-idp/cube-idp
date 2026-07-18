@@ -9,7 +9,6 @@ import (
 
 	huh "charm.land/huh/v2"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
 
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
@@ -193,11 +192,10 @@ func runPackMenu(in io.Reader, out io.Writer) ([]string, error) {
 }
 
 // packInstallRefs appends the non-duplicate refs to file's spec.packs and
-// writes it back with init's writer (sigs.k8s.io/yaml + 0o644). The candidate
-// is validated by config.Load — the exact schema + cross-field checks `up`
-// applies (non-empty ref, argocd-engine redundancy) — via a temp file in the
-// same directory before it replaces the original, so a rejected ref leaves
-// cube.yaml untouched.
+// writes it back through config.SaveValidated (init's writer shape,
+// validate-by-round-trip through config.Load — the exact schema +
+// cross-field checks `up` applies — via a temp file, so a rejected ref
+// leaves cube.yaml untouched).
 func packInstallRefs(out io.Writer, file string, refs []string) error {
 	cube, err := config.Load(file)
 	if err != nil {
@@ -222,20 +220,7 @@ func packInstallRefs(out io.Writer, file string, refs []string) error {
 		fmt.Fprintln(out, "nothing to add — cube.yaml unchanged")
 		return nil
 	}
-	raw, err := yaml.Marshal(cube)
-	if err != nil {
-		return err
-	}
-	tmp := file + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
-		return err
-	}
-	if _, err := config.Load(tmp); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, file); err != nil {
-		os.Remove(tmp)
+	if err := config.SaveValidated(file, cube); err != nil {
 		return err
 	}
 	for _, ref := range added {
