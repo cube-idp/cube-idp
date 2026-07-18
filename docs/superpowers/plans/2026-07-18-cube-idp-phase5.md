@@ -3835,7 +3835,7 @@ semantics stay byte-identical.
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(p10-coord-636df744, 2026-07-18T20:30:00Z)
 BRANCH: p5/p10-plugin-install (merged: -)
 COMMITS: -
 FINDINGS: -
