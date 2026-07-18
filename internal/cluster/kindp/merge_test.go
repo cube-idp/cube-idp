@@ -249,3 +249,25 @@ nodes:
 		t.Fatalf("summary should say no control-plane node, got %q", de.Summary)
 	}
 }
+
+// TestRenderConfigMapsHTTPPortWhenSet pins U2's opt-in gateway.httpPort:
+// set → a second extraPortMapping host httpPort -> the plain-HTTP NodePort
+// (config.GatewayHTTPNodePort) both gateway packs pin; absent → absent,
+// byte-identical output to today (decision 3).
+func TestRenderConfigMapsHTTPPortWhenSet(t *testing.T) {
+	gw := config.GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443, HTTPPort: 8080}
+	cfg, err := RenderConfig("dev", config.ClusterSpec{Provider: "kind"}, gw, CertsD{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(cfg)
+	if !strings.Contains(s, "hostPort: 8080") || !strings.Contains(s, "containerPort: 30080") {
+		t.Fatalf("http mapping missing:\n%s", s)
+	}
+	// And absent → absent (opt-in contract).
+	gw.HTTPPort = 0
+	cfg, _ = RenderConfig("dev", config.ClusterSpec{Provider: "kind"}, gw, CertsD{})
+	if strings.Contains(string(cfg), "30080") {
+		t.Fatalf("httpPort must be opt-in:\n%s", cfg)
+	}
+}

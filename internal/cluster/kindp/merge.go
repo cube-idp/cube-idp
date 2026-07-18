@@ -76,19 +76,43 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, c
 	}
 	cp.Image = image
 
-	// Required injection: gateway port (spec D10 "injects only what it requires").
-	for _, pm := range cp.ExtraPortMappings {
-		if pm.HostPort == int32(gw.Port) && pm.ContainerPort != gatewayContainerPort {
-			return nil, diag.New(diag.CodeKindConfigMerge,
-				fmt.Sprintf("providerConfig maps hostPort %d to containerPort %d, but cube-idp requires %d -> %d for the gateway",
-					gw.Port, pm.ContainerPort, gw.Port, gatewayContainerPort),
-				"remove that extraPortMapping or change spec.gateway.port; inspect with `cube-idp config render-cluster`")
+	// Required injection: gateway port (spec D10 "injects only what it
+	// requires"). Guarded (U2, pre-created for S3): a zero gw.Port means "no
+	// gateway on this cluster" — spoke clusters render with a zero
+	// GatewaySpec — and injects no mapping at all.
+	if gw.Port > 0 {
+		for _, pm := range cp.ExtraPortMappings {
+			if pm.HostPort == int32(gw.Port) && pm.ContainerPort != gatewayContainerPort {
+				return nil, diag.New(diag.CodeKindConfigMerge,
+					fmt.Sprintf("providerConfig maps hostPort %d to containerPort %d, but cube-idp requires %d -> %d for the gateway",
+						gw.Port, pm.ContainerPort, gw.Port, gatewayContainerPort),
+					"remove that extraPortMapping or change spec.gateway.port; inspect with `cube-idp config render-cluster`")
+			}
 		}
-	}
-	if !hasHostPort(cp.ExtraPortMappings, int32(gw.Port)) {
-		cp.ExtraPortMappings = append(cp.ExtraPortMappings, v1alpha4.PortMapping{
-			ContainerPort: gatewayContainerPort, HostPort: int32(gw.Port), Protocol: v1alpha4.PortMappingProtocolTCP,
-		})
+		if !hasHostPort(cp.ExtraPortMappings, int32(gw.Port)) {
+			cp.ExtraPortMappings = append(cp.ExtraPortMappings, v1alpha4.PortMapping{
+				ContainerPort: gatewayContainerPort, HostPort: int32(gw.Port), Protocol: v1alpha4.PortMappingProtocolTCP,
+			})
+		}
+		// U2 opt-in HTTP twin (decision 3): host gw.HTTPPort -> the
+		// plain-HTTP NodePort both gateway packs pin
+		// (config.GatewayHTTPNodePort). Absent = no mapping, byte-identical
+		// output to before.
+		if gw.HTTPPort > 0 {
+			for _, pm := range cp.ExtraPortMappings {
+				if pm.HostPort == int32(gw.HTTPPort) && pm.ContainerPort != config.GatewayHTTPNodePort {
+					return nil, diag.New(diag.CodeKindConfigMerge,
+						fmt.Sprintf("providerConfig maps hostPort %d to containerPort %d, but cube-idp requires %d -> %d for the gateway's HTTP listener",
+							gw.HTTPPort, pm.ContainerPort, gw.HTTPPort, config.GatewayHTTPNodePort),
+						"remove that extraPortMapping or change spec.gateway.httpPort; inspect with `cube-idp config render-cluster`")
+				}
+			}
+			if !hasHostPort(cp.ExtraPortMappings, int32(gw.HTTPPort)) {
+				cp.ExtraPortMappings = append(cp.ExtraPortMappings, v1alpha4.PortMapping{
+					ContainerPort: config.GatewayHTTPNodePort, HostPort: int32(gw.HTTPPort), Protocol: v1alpha4.PortMappingProtocolTCP,
+				})
+			}
+		}
 	}
 
 	// D10 layer-1 typed fields.
@@ -98,6 +122,11 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, c
 				return nil, diag.New(diag.CodeKindConfigMerge,
 					fmt.Sprintf("spec.cluster.extraPorts maps hostPort %d which cube-idp reserves for the gateway", p.HostPort),
 					"remove that entry from spec.cluster.extraPorts or change spec.gateway.port")
+			}
+			if gw.HTTPPort > 0 && p.HostPort == int32(gw.HTTPPort) {
+				return nil, diag.New(diag.CodeKindConfigMerge,
+					fmt.Sprintf("spec.cluster.extraPorts maps hostPort %d which cube-idp reserves for the gateway's HTTP listener", p.HostPort),
+					"remove that entry from spec.cluster.extraPorts or change spec.gateway.httpPort")
 			}
 			return nil, diag.New(diag.CodeKindConfigMerge,
 				fmt.Sprintf("hostPort %d is mapped both in providerConfig and spec.cluster.extraPorts", p.HostPort),

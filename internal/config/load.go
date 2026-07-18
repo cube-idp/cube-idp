@@ -152,6 +152,23 @@ func crossValidate(c *Cube) error {
 			}
 		}
 	}
+	// U2 (decision 3): the opt-in plain-HTTP host port must not collide with
+	// the HTTPS gateway port or any typed extraPorts mapping — each host
+	// port can be bound once.
+	if hp := c.Spec.Gateway.HTTPPort; hp != 0 {
+		if hp == c.Spec.Gateway.Port {
+			return diag.New(diag.CodeConfigInvalid,
+				"gateway.httpPort must differ from gateway.port and extraPorts",
+				fmt.Sprintf("spec.gateway.httpPort (%d) equals spec.gateway.port — pick a distinct host port for the plain-HTTP listener (e.g. 8080)", hp))
+		}
+		for _, ep := range c.Spec.Cluster.ExtraPorts {
+			if int(ep.HostPort) == hp {
+				return diag.New(diag.CodeConfigInvalid,
+					"gateway.httpPort must differ from gateway.port and extraPorts",
+					fmt.Sprintf("spec.gateway.httpPort (%d) is already mapped by spec.cluster.extraPorts — pick a distinct host port or drop that extraPorts entry", hp))
+			}
+		}
+	}
 	return nil
 }
 

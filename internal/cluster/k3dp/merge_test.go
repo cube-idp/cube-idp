@@ -282,3 +282,24 @@ func TestRenderConfigOmitsZotMirrorWhenZero(t *testing.T) {
 		t.Fatalf("zero-value ZotMirror must not inject a mirror entry:\n%s", out)
 	}
 }
+
+// TestRenderConfigMapsHTTPPortWhenSet pins U2's opt-in gateway.httpPort for
+// k3d: set → a second ports entry host httpPort -> the plain-HTTP NodePort
+// (config.GatewayHTTPNodePort, same host:node syntax as the gateway's
+// 8443:30443 mapping); absent → absent, byte-identical output (decision 3).
+func TestRenderConfigMapsHTTPPortWhenSet(t *testing.T) {
+	gw := config.GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443, HTTPPort: 8080}
+	cfg, err := RenderConfig("dev", config.ClusterSpec{Provider: "k3d"}, gw, ZotMirror{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(cfg), "8080:30080") {
+		t.Fatalf("http mapping missing:\n%s", cfg)
+	}
+	// And absent → absent (opt-in contract).
+	gw.HTTPPort = 0
+	cfg, _ = RenderConfig("dev", config.ClusterSpec{Provider: "k3d"}, gw, ZotMirror{})
+	if strings.Contains(string(cfg), "30080") {
+		t.Fatalf("httpPort must be opt-in:\n%s", cfg)
+	}
+}

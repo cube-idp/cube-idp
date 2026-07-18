@@ -61,8 +61,9 @@ separate `upgrade` verb in Phase 1.
 
 **Caveat — cluster-shape fields apply only at cluster creation.** For
 `provider: kind`, the fields that shape the node itself (`extraPorts`,
-`mounts`, `registry`, `providerConfig`, `kubernetesVersion`, and
-`gateway.port`) are baked into the cluster when it is first created;
+`mounts`, `registry`, `providerConfig`, `kubernetesVersion`,
+`gateway.port`, and `gateway.httpPort`) are baked into the cluster when it
+is first created;
 re-running `up` against an existing cluster will not apply changes to them.
 To change any of these, recreate the cluster:
 `cube-idp down && cube-idp up`.
@@ -102,6 +103,7 @@ spec:
 | `spec.gateway.pack` | `traefik` \| `envoy-gateway` (any pack name is accepted when paired with `spec.gateway.ref`) | `traefik` | Gateway API implementation; `cube-idp init --gateway-pack` writes this and `spec.gateway.ref` coherently |
 | `spec.gateway.host` | string | `cube-idp.localtest.me` | routable hostname for delivered packs |
 | `spec.gateway.port` | int | `8443` | host port mapped to the gateway's `websecure` (HTTPS) listener — see the note below |
+| `spec.gateway.httpPort` | int | — | **opt-in** host port mapped to the gateway's plain-HTTP `web` listener (NodePort `30080`, already pinned by both gateway packs); absent = no HTTP exposure (today's behavior). Must differ from `gateway.port` and every `extraPorts.hostPort` (CUBE-0002). Cluster-shape field: recreate the cluster (`down` && `up`) to change it |
 | `spec.gateway.ref` | string | — | overrides the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); falls back to `packs/<pack>` when unset, which only resolves from a checkout — `cube-idp init --local` fills this in |
 | `spec.packs` | `[{ref, values}]` | gitea + argocd (D9) | additional packs delivered after the gateway; `ref` is `oci://` or a local dir (git `github.com/...` refs ship in Phase 2); `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
 
