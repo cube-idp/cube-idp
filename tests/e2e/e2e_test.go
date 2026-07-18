@@ -75,10 +75,7 @@ func TestUpStatusDown(t *testing.T) {
 	bin := build(t)
 	dir := t.TempDir()
 
-	repoRoot, err := filepath.Abs("../..")
-	if err != nil {
-		t.Fatalf("resolving repo root: %v", err)
-	}
+	packsRoot := packsCheckout(t)
 
 	t.Cleanup(func() {
 		// Best-effort: `down` is the primary teardown path (it cascades and
@@ -93,8 +90,10 @@ func TestUpStatusDown(t *testing.T) {
 	})
 
 	// Phase 1 `init` invocation (incl. its --local resolution) kept exactly
-	// as checkpoint 0.12 found it; --engine (Task 2) is appended.
-	run(t, dir, bin, "init", "--name", cubeName, "--local", repoRoot, "--engine", eng)
+	// as checkpoint 0.12 found it; --engine (Task 2) is appended. P4: the
+	// packs live in the cube-idp/packs monorepo, so --local points at a
+	// packs checkout (tests/e2e/PACKS.md), not this repo.
+	run(t, dir, bin, "init", "--name", cubeName, "--local", packsRoot, "--engine", eng)
 	patchGatewayPort(t, dir, port)
 
 	run(t, dir, bin, "doctor") // preflights must pass on a clean runner
@@ -109,7 +108,7 @@ func TestUpStatusDown(t *testing.T) {
 	// see internal/trust/certsd.go). Engine-independent (kind provider +
 	// containerd config), so checked once on the flux leg only.
 	if eng == "flux" {
-		assertNodeCanPullFromRegistry(t, "packs/traefik:0.1.0")
+		assertNodeCanPullFromRegistry(t, "packs/traefik:0.2.0")
 	}
 
 	run(t, dir, bin, "up") // idempotency: re-run is the upgrade command
@@ -342,6 +341,37 @@ func mustUserConfigDir(t *testing.T) string {
 	return d
 }
 
+// packsCheckout resolves the local cube-idp/packs checkout the e2e suite
+// feeds to `init --local` (P4: the packs no longer live in this repo).
+// CUBE_IDP_E2E_PACKS_DIR points at the checkout's packs/ directory; unset,
+// it defaults to the sibling checkout's ../cube-idp-packs/packs (relative
+// to this repo's root). Returns the checkout ROOT — the packs dir's parent,
+// the shape `init --local` expects (it joins <root>/packs/<name>). The
+// calling test SKIPS with a clone hint when the directory is missing — see
+// tests/e2e/PACKS.md.
+func packsCheckout(t *testing.T) string {
+	t.Helper()
+	dir := os.Getenv("CUBE_IDP_E2E_PACKS_DIR")
+	if dir == "" {
+		repoRoot, err := filepath.Abs("../..")
+		if err != nil {
+			t.Fatalf("resolving repo root: %v", err)
+		}
+		dir = filepath.Join(repoRoot, "..", "cube-idp-packs", "packs")
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatalf("resolving packs dir %q: %v", dir, err)
+	}
+	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
+		t.Skipf("no cube-idp/packs checkout at %s — clone it "+
+			"(git clone https://github.com/cube-idp/packs ../cube-idp-packs) "+
+			"or set CUBE_IDP_E2E_PACKS_DIR to a checkout's packs/ directory "+
+			"(see tests/e2e/PACKS.md)", abs)
+	}
+	return filepath.Dir(abs)
+}
+
 // deleteLingeringCluster removes a kind cluster literally named cubeName if
 // one exists. It never touches any other cluster (e.g. other kind clusters
 // that may be running on this docker host for unrelated projects).
@@ -467,10 +497,7 @@ func TestSpokeKindRegistration(t *testing.T) {
 
 	bin := build(t)
 	dir := t.TempDir()
-	repoRoot, err := filepath.Abs("../..")
-	if err != nil {
-		t.Fatalf("resolving repo root: %v", err)
-	}
+	packsRoot := packsCheckout(t)
 	t.Cleanup(func() {
 		downCmd := exec.Command(bin, "down", "--yes")
 		downCmd.Dir = dir
@@ -480,7 +507,7 @@ func TestSpokeKindRegistration(t *testing.T) {
 		deleteLingeringClusterNamed(t, spokeCluster)
 	})
 
-	run(t, dir, bin, "init", "--name", cubeName, "--local", repoRoot, "--engine", eng)
+	run(t, dir, bin, "init", "--name", cubeName, "--local", packsRoot, "--engine", eng)
 	patchGatewayPort(t, dir, port)
 	run(t, dir, bin, "spoke", "add", spokeName, "--provider", "kind")
 
@@ -505,4 +532,62 @@ func TestSpokeKindRegistration(t *testing.T) {
 	if kindClusterExists(t, spokeCluster) {
 		t.Fatalf("spoke kind cluster %s survived down", spokeCluster)
 	}
+}
+
+// TestPublishedPacksByDigest is decision 2's digest-pin leg (P4): the e2e
+// consumes the PUBLISHED packs repo pinned by digest, never by mutable tag.
+// Gated on CUBE_IDP_E2E_ONLINE=1 (it pulls from ghcr.io — network + docker
+// required) and on tests/e2e/packs.lock, the committed JSON map of
+// name -> oci://…@sha256:… refs seeded by the owner after each publish
+// (tests/e2e/PACKS.md). While the lock file is absent the test SKIPS.
+func TestPublishedPacksByDigest(t *testing.T) {
+	if os.Getenv("CUBE_IDP_E2E_ONLINE") != "1" {
+		t.Skip("set CUBE_IDP_E2E_ONLINE=1 to run the online digest-pinned leg")
+	}
+	raw, err := os.ReadFile("packs.lock")
+	if err != nil {
+		t.Skipf("tests/e2e/packs.lock not present — seed it from the published digests "+
+			"(name -> oci://…@sha256:… JSON; see tests/e2e/PACKS.md): %v", err)
+	}
+	lock := map[string]string{}
+	if err := yaml.Unmarshal(raw, &lock); err != nil { // YAML superset: parses the JSON lock
+		t.Fatalf("parsing packs.lock: %v", err)
+	}
+	for _, name := range []string{"traefik", "gitea"} {
+		ref, ok := lock[name]
+		if !ok {
+			t.Fatalf("packs.lock missing %q (the online leg ups gateway+gitea)", name)
+		}
+		if !strings.Contains(ref, "@sha256:") {
+			t.Fatalf("packs.lock[%q] = %q is not digest-pinned (decision 2)", name, ref)
+		}
+	}
+	port := gatewayPort(t)
+
+	deleteLingeringCluster(t)
+	bin := build(t)
+	dir := t.TempDir()
+	t.Cleanup(func() {
+		downCmd := exec.Command(bin, "down", "--yes")
+		downCmd.Dir = dir
+		out, _ := downCmd.CombinedOutput()
+		t.Logf("cleanup: cube-idp down\n%s", out)
+		deleteLingeringCluster(t)
+	})
+
+	run(t, dir, bin, "init", "--name", cubeName)
+	patchCube(t, dir, func(c *config.Cube) {
+		c.Spec.Gateway.Ref = lock["traefik"]
+		c.Spec.Packs = []config.PackRef{{Ref: lock["gitea"]}}
+	})
+	patchGatewayPort(t, dir, port)
+
+	run(t, dir, bin, "up")
+	out := run(t, dir, bin, "status") // exits 1 iff any component is unhealthy
+	for _, comp := range []string{"traefik", "gitea"} {
+		if !strings.Contains(out, comp) {
+			t.Fatalf("status missing %s on the digest-pinned leg:\n%s", comp, out)
+		}
+	}
+	run(t, dir, bin, "down", "--yes")
 }

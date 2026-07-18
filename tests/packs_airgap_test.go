@@ -17,7 +17,7 @@ import (
 // which ships Always on most control-plane containers) cannot regress it.
 // Pure filesystem scan — no network, runs under -short.
 func TestPackManifestsNoAlwaysPull(t *testing.T) {
-	manifests, err := filepath.Glob("../packs/*/manifests/*.yaml")
+	manifests, err := filepath.Glob(filepath.Join(packsTree(t), "*", "manifests", "*.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

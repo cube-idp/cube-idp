@@ -87,19 +87,16 @@ func requireDocker(t *testing.T) {
 	}
 }
 
-// initCube runs `init --name <name> --local <repoRoot> --engine <engine>` in
-// dir, then patches the just-written cube.yaml to the requested provider and
-// gateway port. `init` has no --provider flag (it always writes kind), so a
-// non-kind leg is applied here via the same config.Cube round-trip
-// patchGatewayPort uses — schema-valid because config.Load re-validates it on
-// the next `up`.
+// initCube runs `init --name <name> --local <packs-checkout> --engine
+// <engine>` in dir, then patches the just-written cube.yaml to the requested
+// provider and gateway port (P4: --local points at a cube-idp/packs checkout
+// — packsCheckout, tests/e2e/PACKS.md). `init` has no --provider flag (it
+// always writes kind), so a non-kind leg is applied here via the same
+// config.Cube round-trip patchGatewayPort uses — schema-valid because
+// config.Load re-validates it on the next `up`.
 func initCube(t *testing.T, dir, bin, name, provider string, port int) {
 	t.Helper()
-	repoRoot, err := filepath.Abs("../..")
-	if err != nil {
-		t.Fatalf("resolving repo root: %v", err)
-	}
-	run(t, dir, bin, "init", "--name", name, "--local", repoRoot, "--engine", engineName())
+	run(t, dir, bin, "init", "--name", name, "--local", packsCheckout(t), "--engine", engineName())
 	if provider != "kind" {
 		patchCube(t, dir, func(c *config.Cube) { c.Spec.Cluster.Provider = provider })
 	}
@@ -528,21 +525,18 @@ func TestEnvoyGatewaySmoke(t *testing.T) {
 	port := gatewayPort(t)
 	dir := t.TempDir()
 	bin := build(t)
-	repoRoot, err := filepath.Abs("../..")
-	if err != nil {
-		t.Fatalf("resolving repo root: %v", err)
-	}
+	packsRoot := packsCheckout(t)
 
 	guardDeleteCluster(t, provider, name)
 	t.Cleanup(func() { cleanupCube(t, bin, dir, provider, name) })
 
 	initCube(t, dir, bin, name, provider, port)
 	// Swap the gateway pack from traefik to envoy-gateway. init --local set
-	// Ref to the checkout's packs/traefik; repoint both Pack and Ref so `up`
-	// fetches the envoy-gateway pack from the local checkout.
+	// Ref to the packs checkout's packs/traefik; repoint both Pack and Ref
+	// so `up` fetches the envoy-gateway pack from the same checkout.
 	patchCube(t, dir, func(c *config.Cube) {
 		c.Spec.Gateway.Pack = "envoy-gateway"
-		c.Spec.Gateway.Ref = filepath.Join(repoRoot, "packs", "envoy-gateway")
+		c.Spec.Gateway.Ref = filepath.Join(packsRoot, "packs", "envoy-gateway")
 	})
 
 	run(t, dir, bin, "up")

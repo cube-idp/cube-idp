@@ -76,8 +76,8 @@ func newPackCmd() *cobra.Command {
 var packCatalog = []struct {
 	Name, Version, Desc string
 }{
-	{"gitea", "0.1.0", "in-cluster git server"},
-	{"argocd", "0.1.0", "delivery UI"},
+	{"gitea", "0.2.0", "in-cluster git server"},
+	{"argocd", "0.2.0", "delivery UI"},
 }
 
 // packCatalogNames lists the BUILT-IN catalog names — the substring

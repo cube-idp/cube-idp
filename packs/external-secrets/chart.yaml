@@ -1,9 +1,0 @@
-# external-secrets: syncs Kubernetes Secrets from external secret stores.
-# CRDs installed via the chart's own installCRDs flag.
-chart: external-secrets
-repo: https://charts.external-secrets.io
-version: "0.12.1"          # pin; bump deliberately
-releaseName: external-secrets
-namespace: external-secrets
-values:
-  installCRDs: true

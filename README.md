@@ -37,12 +37,11 @@ provenance attestation — verify one with `gh attestation verify
 oci://ghcr.io/cube-idp/packs/<name>:<version> --owner cube-idp` (see
 [docs/pack-contract-v1.md](docs/pack-contract-v1.md), "Verifying pack provenance").
 
-> **Known limitation (v0.1.0, F12):** the default profile resolves the gateway
-> pack from the repo-relative path `packs/traefik`, so `cube-idp init && cube-idp up`
-> must currently run from a cube-idp checkout (clone the repo, run the binary at
-> its root). Outside a checkout, point `spec.gateway.ref` at a gateway pack
-> directory you provide. A future release publishes the gateway packs as
-> `oci://` refs so the downloaded binary works standalone.
+All packs — the gateway included — come from the public
+[cube-idp/packs](https://github.com/cube-idp/packs) monorepo by default
+(`oci://ghcr.io/cube-idp/packs/...`), so the downloaded binary works
+standalone from any directory. For offline or pack development use
+`init --local <packs-checkout>` with a clone of that repo.
 
 ## Quickstart
 
@@ -73,11 +72,12 @@ re-running `up` against an existing cluster will not apply changes to them.
 To change any of these, recreate the cluster:
 `cube-idp down && cube-idp up`.
 
-Developing against an unreleased checkout (no published OCI packs yet)?
-Use `init --local <path-to-this-repo>` instead of `init --name dev`, which
-writes `gateway.ref` and pack `ref`s as absolute local paths into this
-checkout's `packs/` directory rather than `oci://ghcr.io/cube-idp/packs/...`
-refs (see `tests/e2e/e2e_test.go` for a full example).
+Developing packs, or working offline? Use
+`init --local <path-to-a-cube-idp/packs-checkout>` (clone
+[cube-idp/packs](https://github.com/cube-idp/packs)), which writes
+`gateway.ref` and pack `ref`s as absolute local paths into that checkout's
+`packs/` directory rather than `oci://ghcr.io/cube-idp/packs/...` refs
+(see `tests/e2e/PACKS.md` for how the e2e suite wires this).
 
 ## `cube.yaml` reference
 
@@ -109,7 +109,7 @@ spec:
 | `spec.gateway.host` | string | `cube-idp.localtest.me` | routable hostname for delivered packs |
 | `spec.gateway.port` | int | `8443` | host port mapped to the gateway's `websecure` (HTTPS) listener — see the note below |
 | `spec.gateway.httpPort` | int | — | **opt-in** host port mapped to the gateway's plain-HTTP `web` listener (NodePort `30080`, already pinned by both gateway packs); absent = no HTTP exposure (today's behavior). Must differ from `gateway.port` and every `extraPorts.hostPort` (CUBE-0002). Cluster-shape field: recreate the cluster (`down` && `up`) to change it |
-| `spec.gateway.ref` | string | — | overrides the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); falls back to `packs/<pack>` when unset, which only resolves from a checkout — `cube-idp init --local` fills this in |
+| `spec.gateway.ref` | string | `oci://ghcr.io/cube-idp/packs/traefik:0.2.0` | the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); `init` always writes it — the published oci ref by default, an absolute path with `--local`. Falls back to `packs/<pack>` when unset (hand-written config), which only resolves from a cube-idp/packs checkout root |
 | `spec.packs` | `[{ref, values}]` | gitea + argocd (D9) | additional packs delivered after the gateway; `ref` is `oci://` or a local dir (git `github.com/...` refs ship in Phase 2); `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
 
 **Precedence:** when both `spec.gateway.ref` and `spec.gateway.pack` are
@@ -480,7 +480,7 @@ A pack ref (`spec.gateway.ref` / `spec.packs[].ref`) accepts:
 | Form | Example | Pin behavior |
 | --- | --- | --- |
 | local directory | `./mypack`, `packs/gitea` | content dirhash |
-| OCI | `oci://ghcr.io/cube-idp/packs/gitea:0.1.0` | digest |
+| OCI | `oci://ghcr.io/cube-idp/packs/gitea:0.2.0` | digest |
 | bare git grammar | `github.com/org/repo//path@v1.2.3` | tag/branch resolved to a commit SHA, or a full SHA passed through |
 | explicit go-getter URL | `git::https://example.com/repo.git//path?ref=v1`, `s3::https://s3.amazonaws.com/bucket/pack.tar.gz`, `https://example.com/pack.tar.gz` | dirhash of the fetched tree |
 
@@ -488,12 +488,13 @@ Remote refs must be pinned (a tag, a full commit SHA, or an explicit
 `?ref=`) — `HEAD`, a bare branch name with no `@rev`, or a wildcard is
 rejected (CUBE-4007) so `cube.lock` always records something reproducible.
 
-The catalog packs under `packs/` are published to
-`ghcr.io/cube-idp/packs/<name>` by `.github/workflows/release-packs.yaml`
-on every push to `main` that touches `packs/**`: it runs `cube-idp pack push
---also-tag latest <dir> oci://ghcr.io/cube-idp/packs/<name>` for each
-pack directory, tagging the pushed artifact with both the pack's
-`pack.cue` version and a moving `latest`.
+The catalog packs live in the public
+[cube-idp/packs](https://github.com/cube-idp/packs) monorepo and are
+published to `ghcr.io/cube-idp/packs/<name>` by its tag-triggered publish
+workflow: pushing a `<name>/vX.Y.Z` tag validates that the tag version
+equals the pack's `pack.cue` version, pushes the artifact, attests its
+digest, and rebuilds the catalog index
+(`oci://ghcr.io/cube-idp/packs/index:latest`).
 
 Git-sourced packs (the bare grammar and `git::` URLs) shell out to the
 system `git` binary (go-getter's `GitGetter`) — every other source form is
@@ -511,7 +512,7 @@ tooling on the query path:
 ```console
 $ kubectl get packs
 NAME     VERSION   URL                                         AUTH-SECRET             READY
-gitea    0.1.0     https://gitea.cube-idp.localtest.me:8443   gitea/gitea-admin-cube-idp   true
+gitea    0.2.0     https://gitea.cube-idp.localtest.me:8443   gitea/gitea-admin-cube-idp   true
 ```
 
 The columns come straight from the pack's own `pack.cue` **`expose:`**

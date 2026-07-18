@@ -39,6 +39,11 @@ jobs:
       # ubuntu-latest.
       - run: go install sigs.k8s.io/kind@latest
       - run: curl -sfL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+      # P4: the packs live in the public cube-idp/packs monorepo — the e2e
+      # suite resolves pack dirs from a checkout of it (tests/e2e/PACKS.md),
+      # wired below via CUBE_IDP_E2E_PACKS_DIR.
+      - uses: actions/checkout@v4
+        with: {repository: cube-idp/packs, path: cube-idp-packs}
       # GitHub-hosted runners are amd64 and include docker; kind and k3d work
       # out of the box. The zot registry image is a multi-arch manifest list
       # (internal/registry/manifests/zot.yaml), so it resolves correctly
@@ -46,7 +51,7 @@ jobs:
       # suite reads CUBE_IDP_E2E_PROVIDER to pick the provider it writes into
       # cube.yaml (TestK3dUpDown always forces k3d, being the dedicated k3d
       # leg).
-      - run: CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=${{ matrix.provider }} CUBE_IDP_E2E_ENGINE=${{ matrix.engine }} go test ./tests/e2e/ -v -timeout 35m
+      - run: CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=${{ matrix.provider }} CUBE_IDP_E2E_ENGINE=${{ matrix.engine }} CUBE_IDP_E2E_PACKS_DIR="$GITHUB_WORKSPACE/cube-idp-packs/packs" go test ./tests/e2e/ -v -timeout 35m
   release-snapshot:
     runs-on: ubuntu-latest
     steps:

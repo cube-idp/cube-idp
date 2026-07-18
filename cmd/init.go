@@ -37,6 +37,18 @@ var optionalPacks = packCatalogNames()
 // value is a CUBE-0007 preflight error, the existing enum-flag pattern.
 var gatewayPacks = []string{"traefik", "envoy-gateway"}
 
+// publishedGatewayVersion is the packs-monorepo release line the published
+// gateway refs pin (P4). Both gateway packs release in lockstep; keep this in
+// sync with what cube-idp/packs actually tags (packCatalog discipline, P6).
+const publishedGatewayVersion = "0.2.0"
+
+// publishedGatewayRef derives the published oci ref for a gateway pack —
+// init's published-mode twin of the --local path join, so the §5.7a
+// coherence rule (ref follows the final chosen pack) holds in both modes.
+func publishedGatewayRef(pack string) string {
+	return "oci://ghcr.io/cube-idp/packs/" + pack + ":" + publishedGatewayVersion
+}
+
 // validateGatewayPackFlag rejects an unrecognized --gateway-pack value with
 // the same CUBE-0007 code addOutputFlag/validateProgressFlag use for other
 // enum flags.
@@ -96,7 +108,7 @@ func newInitCmd() *cobra.Command {
 			// the argocd pack would trip CUBE-0005 (redundant pack).
 			if engineType == "argocd" {
 				cube.Spec.Packs = []config.PackRef{
-					{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"},
+					{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.2.0"},
 				}
 			}
 			var localAbs string
@@ -121,12 +133,16 @@ func newInitCmd() *cobra.Command {
 			} else {
 				cube.Spec.Gateway.Pack = gatewayPack
 			}
-			// Coherence rule (spec §5.7a): the gateway.ref, when written, is
-			// ALWAYS derived from the final chosen pack (flag or wizard),
-			// never from a --local assignment made before the wizard ran —
-			// that ordering is exactly the F11 trap (ref traefik, pack envoy).
+			// Coherence rule (spec §5.7a): the gateway.ref is ALWAYS derived
+			// from the final chosen pack (flag or wizard), never from an
+			// assignment made before the wizard ran — that ordering is
+			// exactly the F11 trap (ref traefik, pack envoy). P4 (F12
+			// closed): published mode derives the oci ref the same way, so
+			// init always writes a gateway source that works from any cwd.
 			if localAbs != "" {
 				cube.Spec.Gateway.Ref = filepath.Join(localAbs, "packs", cube.Spec.Gateway.Pack)
+			} else {
+				cube.Spec.Gateway.Ref = publishedGatewayRef(cube.Spec.Gateway.Pack)
 			}
 			out, err := yaml.Marshal(cube)
 			if err != nil {
@@ -140,7 +156,7 @@ func newInitCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&name, "name", "dev", "cube name")
-	c.Flags().StringVar(&local, "local", "", "use repo-local pack paths instead of published OCI refs")
+	c.Flags().StringVar(&local, "local", "", "use pack dirs from a local cube-idp/packs checkout (path containing packs/<name>) instead of published OCI refs")
 	c.Flags().StringVar(&engineType, "engine", "flux", "gitops engine: flux | argocd")
 	c.Flags().StringVar(&gatewayPack, "gateway-pack", "traefik", "gateway implementation pack: traefik | envoy-gateway")
 	return c

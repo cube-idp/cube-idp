@@ -1,12 +1,16 @@
 // Package tests holds cross-package smoke tests that don't belong to any
-// single internal package: this file renders every starter pack shipped in
-// packs/ end-to-end (pack.Fetch -> Render), the same path cube-idp's `up`
-// orchestration exercises for a real cluster.
+// single internal package: this file renders every starter pack end-to-end
+// (pack.Fetch -> Render), the same path cube-idp's `up` orchestration
+// exercises for a real cluster. P4: the starter packs live in the
+// cube-idp/packs monorepo — these tests scan a local checkout of it
+// (packsTree) and SKIP when none is present; the authoritative per-pack
+// gate is the packs repo's own conformance harness.
 package tests
 
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,6 +19,30 @@ import (
 	"github.com/cube-idp/cube-idp/internal/apply"
 	"github.com/cube-idp/cube-idp/internal/pack"
 )
+
+// packsTree resolves the cube-idp/packs checkout's packs/ directory the
+// pack-content smoke tests in this package scan. CUBE_IDP_E2E_PACKS_DIR
+// (the same knob the e2e suite uses — tests/e2e/PACKS.md) overrides; unset,
+// it defaults to the sibling checkout ../cube-idp-packs/packs. Tests SKIP
+// when no checkout is present.
+func packsTree(t *testing.T) string {
+	t.Helper()
+	dir := os.Getenv("CUBE_IDP_E2E_PACKS_DIR")
+	if dir == "" {
+		dir = filepath.Join("..", "..", "cube-idp-packs", "packs")
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatalf("resolving packs dir %q: %v", dir, err)
+	}
+	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
+		t.Skipf("no cube-idp/packs checkout at %s — clone "+
+			"https://github.com/cube-idp/packs as ../cube-idp-packs or set "+
+			"CUBE_IDP_E2E_PACKS_DIR to a checkout's packs/ directory "+
+			"(tests/e2e/PACKS.md)", abs)
+	}
+	return abs
+}
 
 // namespacedKinds are kinds we know are namespace-scoped and that appear
 // in the starter packs. cube-idp's delivery path (rendered objects -> OCI
@@ -49,11 +77,13 @@ func TestStarterPacksRender(t *testing.T) {
 	if testing.Short() {
 		t.Skip("helm renders hit the network")
 	}
-	for _, dir := range []string{
-		"../packs/traefik", "../packs/gitea", "../packs/argocd",
-		"../packs/backstage", "../packs/cert-manager",
-		"../packs/external-secrets", "../packs/envoy-gateway",
+	root := packsTree(t)
+	for _, name := range []string{
+		"traefik", "gitea", "argocd",
+		"backstage", "cert-manager",
+		"external-secrets", "envoy-gateway",
 	} {
+		dir := filepath.Join(root, name)
 		p, err := pack.Fetch(context.Background(), dir, t.TempDir())
 		if err != nil {
 			t.Fatalf("%s: %v", dir, err)
@@ -81,7 +111,7 @@ func TestStarterPacksRender(t *testing.T) {
 		// render silently lacked them: `up` timed out waiting for the
 		// HTTPRoute CRD, and once that was fixed, the controller pod hung on
 		// FailedMount of the missing certs secret. Assert both are back.
-		if dir == "../packs/envoy-gateway" {
+		if name == "envoy-gateway" {
 			crds := map[string]bool{}
 			var certgenJob *unstructured.Unstructured
 			for _, o := range r.Objects {
@@ -181,7 +211,7 @@ func envoyProxyServiceName(t *testing.T, packDir string) string {
 //  3. The StrategicMerge patch still pins the cube-idp NodePorts
 //     (30443/30080) the kind host-port mapping relies on.
 func TestEnvoyGatewayPackProxyService(t *testing.T) {
-	raw, err := os.ReadFile("../packs/envoy-gateway/manifests/10-gatewayclass.yaml")
+	raw, err := os.ReadFile(filepath.Join(packsTree(t), "envoy-gateway", "manifests", "10-gatewayclass.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

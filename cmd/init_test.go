@@ -27,10 +27,12 @@ func TestInitWritesDefaultOCIRefs(t *testing.T) {
 	}
 
 	cube := readCube(t, "cube.yaml")
-	if cube.Spec.Gateway.Ref != "" {
-		t.Fatalf("gateway.ref should be unset without --local, got %q", cube.Spec.Gateway.Ref)
+	// P4 (F12 closed): the default profile is fully standalone — the gateway
+	// pack resolves from the published oci ref, never a repo-relative path.
+	if cube.Spec.Gateway.Ref != "oci://ghcr.io/cube-idp/packs/traefik:0.2.0" {
+		t.Fatalf("gateway.ref must be the published oci ref (F12), got %q", cube.Spec.Gateway.Ref)
 	}
-	if len(cube.Spec.Packs) != 2 || cube.Spec.Packs[0].Ref != "oci://ghcr.io/cube-idp/packs/gitea:0.1.0" {
+	if len(cube.Spec.Packs) != 2 || cube.Spec.Packs[0].Ref != "oci://ghcr.io/cube-idp/packs/gitea:0.2.0" {
 		t.Fatalf("expected default OCI pack refs, got %+v", cube.Spec.Packs)
 	}
 }
@@ -79,7 +81,7 @@ func TestInitEngineArgoCDDropsArgoPack(t *testing.T) { // CUBE-0005 avoidance
 	if cube.Spec.Engine.Type != "argocd" {
 		t.Fatalf("engine.type = %q, want argocd", cube.Spec.Engine.Type)
 	}
-	if len(cube.Spec.Packs) != 1 || cube.Spec.Packs[0].Ref != "oci://ghcr.io/cube-idp/packs/gitea:0.1.0" {
+	if len(cube.Spec.Packs) != 1 || cube.Spec.Packs[0].Ref != "oci://ghcr.io/cube-idp/packs/gitea:0.2.0" {
 		t.Fatalf("expected only the gitea pack (argocd pack would trip CUBE-0005), got %+v", cube.Spec.Packs)
 	}
 }
@@ -201,8 +203,8 @@ func TestApplyWizardAppendsRemoteCatalogPacks(t *testing.T) {
 		refs = append(refs, p.Ref)
 	}
 	want := []string{
-		"oci://ghcr.io/cube-idp/packs/gitea:0.1.0",  // default profile, kept
-		"oci://ghcr.io/cube-idp/packs/argocd:0.1.0", // default profile, kept
+		"oci://ghcr.io/cube-idp/packs/gitea:0.2.0",  // default profile, kept
+		"oci://ghcr.io/cube-idp/packs/argocd:0.2.0", // default profile, kept
 		"oci://ghcr.io/cube-idp/packs/kargo:1.0.0",  // remote-discovered, appended
 	}
 	if len(refs) != len(want) {
@@ -266,7 +268,10 @@ func TestInitLocalGatewayRefFollowsPack(t *testing.T) {
 }
 
 // TestInitPublishedGatewayPackOnly: without --local, choosing a gateway pack
-// sets pack only — ref stays empty (published mode writes ONE source).
+// writes the published oci ref DERIVED FROM THAT PACK (P4/F12: the default
+// profile is standalone; the §5.7a coherence rule — ref always follows the
+// final chosen pack — holds in published mode too, so the F11 trap of ref
+// traefik + pack envoy cannot be authored by init).
 func TestInitPublishedGatewayPackOnly(t *testing.T) {
 	t.Chdir(t.TempDir())
 	root := NewRootCmd()
@@ -279,8 +284,8 @@ func TestInitPublishedGatewayPackOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cube.Spec.Gateway.Pack != "envoy-gateway" || cube.Spec.Gateway.Ref != "" {
-		t.Fatalf("published mode must write pack only: pack=%q ref=%q", cube.Spec.Gateway.Pack, cube.Spec.Gateway.Ref)
+	if cube.Spec.Gateway.Pack != "envoy-gateway" || cube.Spec.Gateway.Ref != "oci://ghcr.io/cube-idp/packs/envoy-gateway:0.2.0" {
+		t.Fatalf("published mode must derive the oci ref from the final pack: pack=%q ref=%q", cube.Spec.Gateway.Pack, cube.Spec.Gateway.Ref)
 	}
 }
 
