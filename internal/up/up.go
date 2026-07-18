@@ -541,12 +541,15 @@ func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, con *
 		// Live-only richness (dim log tail); plain and JSON project StepLog
 		// as zero bytes per the frozen mode matrix. Checked before the
 		// deadline so even a timing-out wait narrates its last state.
+		// Stage "health" (U2 Step 0): the live tail follows the OPEN step's
+		// stage, and the step open here is the "health" Progress above — a
+		// mismatched stage would emit but never display.
 		if time.Since(lastLog) >= healthLogEvery {
 			waitingOn := strings.Join(notReadyNames(health), ", ")
 			if waitingOn == "" {
 				waitingOn = "no components reported yet"
 			}
-			con.Log("engine", "waiting on: %s", waitingOn)
+			con.Log("health", "waiting on: %s", waitingOn)
 			lastLog = time.Now()
 		}
 		if time.Now().After(deadline) {
