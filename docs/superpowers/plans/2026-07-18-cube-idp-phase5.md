@@ -2195,7 +2195,7 @@ func All(cube *config.Cube, clusterExists bool) []Check
   red; record the current mechanism in FINDINGS), `ui.Printer` static
   surface, S4's spoke probe.
 
-- [ ] **Step 1: Failing tests.** (a) `internal/doctor/doctor_test.go`:
+- [x] **Step 1: Failing tests.** (a) `internal/doctor/doctor_test.go`:
   `All(cube, false)` on a minimal cube returns ≥4 checks with unique
   names; a stubbed all-green run yields zero findings and every Detail
   non-empty. (b) `cmd/doctor_test.go`: with a stubbed check set (one
@@ -2207,11 +2207,11 @@ func All(cube *config.Cube, clusterExists bool) []Check
   `"checks":[{"name":"container-runtime","status":"ok"` — additive.
   Run: `go test ./internal/doctor/ ./cmd/ -run 'TestDoctor' -v` —
   Expected: FAIL.
-- [ ] **Step 2: Implement** the registry (wrap existing funcs; green
+- [x] **Step 2: Implement** the registry (wrap existing funcs; green
   Detail strings come from what each check already knows), the renderer
   (one row per check, summary line unchanged in meaning), the JSON
   field, the docs section. Re-run — Expected: PASS.
-- [ ] **Step 3: Gate + fences + commit** — full gate + fences (doctor's
+- [x] **Step 3: Gate + fences + commit** — full gate + fences (doctor's
   human rows are NOT part of the frozen event-mode matrix — verify
   `TestModeMatrixFence` scope stays green untouched; `-o json` additive
   only, GT13). Commit:
@@ -2220,13 +2220,13 @@ func All(cube *config.Cube, clusterExists bool) []Check
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(b67ed6f3-6188-4eca-ba99-88e5dad89e07, 2026-07-18T10:36:51Z)
-BRANCH: p5/u5-doctor-checklist (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/u5-doctor-checklist (merged: yes)
+COMMITS: 32b2f11 feat(doctor): tri-state checklist — every check as a green/yellow/red row (GT18); 55bed7c merge: p5 U5 doctor-checklist (p5/u5-doctor-checklist)
+FINDINGS: (1) Interface drift, Go-forced: the plan's `Check{Name, Detail string; Run func() *diag.Finding}` is unimplementable as sketched — a value-slice element cannot be mutated by its own closure ("Detail filled by Run"), and inotify + spoke-reachability are MULTI-finding, so a single-pointer Run would drop entries from the documented findings array. Implemented `Check{Name string; Run func() (detail string, findings []diag.Finding)}` + `CheckResult{Name, Detail, Findings}` with `Status() "ok"|"warn"|"fail"` and `Worst()`; `RunChecks(checks)` executes in order. Step 1's test contract kept verbatim (all-green run: zero findings, every Detail non-empty). (2) `All(cube, clusterExists)` has no cluster client (plan's own signature), so spoke-reachability is assembled in cmd's probeDoctorCluster with the live client — registered only when spokes are declared AND the hub connection succeeded; green detail "N spoke(s) registered and reachable". (3) Not-applicable-check doctrine (the S4-handoff decision): CONDITIONAL REGISTRATION — no row when a check cannot be probed for this cube/host (http-port unset, non-linux inotify, spokes undeclared or hub unreachable, container-runtime on non-kind providers — the pre-U5 kind-only gate preserved); a row always means "this was probed now", so a green "no spokes configured" row would claim a pass on something never exercised. Vacuous passes that WERE probed stay registered with an honest detail: git-cli is registered unconditionally (plan's parenthetical said "when git-sourced refs exist") reporting "no git-sourced pack refs — git not needed" — needed for the Step-1 ">=4 checks on a minimal cube" contract on darwin (runtime+port+disk = only 3) and CheckGitCLI genuinely runs either way. Owner note: container-runtime is skipped for k3d cubes (pre-existing cmd gate, wrapped not rewritten) though k3d also needs docker — flagging, not fixing. (4) Second seam beyond the plan's doctorChecks: `doctorProbeCluster` (= probeDoctorCluster) — the entire cluster-side block (provider resolve, Exists, Diagnose, engine health, spoke check) moved verbatim into a seamed func, else every doctor command test would touch docker/kubeconfigs (statusConnect precedent; existing provider's Diagnose errors on any absent kubeconfig, so no fixture could keep tests hermetic). Arm-for-arm behavior preserved incl. Ensure-error finding and silent apply/factory/health-error arms. (5) Exit mechanism (task's VERIFY note): RunE returns errExitCode(1) (cmd/exit.go exitStatus sentinel; ExitCodeFor → code 1, render=false) when doctor.Render / writeDoctorJSON reports any SeverityError finding — unchanged; red rows ARE error findings so "exit 1 iff any red" holds, and non-check error findings (config-load, Diagnose, engine health) keep exiting 1 as before. (6) Findings array order preserved exactly (documented surface): config-load → host checks (runtime, gateway-port, http-port, disk, inotify, git-cli) → Diagnose → engine-health → spoke. Human render = checklist rows + blank line + the UNTOUCHED doctor.Render (fix: lines + verdict, TestRenderPlainByteStable intact); warn/fail rows repeat message—code by design, remediation lives only in the findings block. Plain rows are word-only (no glyph) per the task's row spec; styled rows glyph+word paired. (7) Wrapper support: CheckRuntime's inline bin list extracted to package var runtimeBins (behavior identical) so the green row names the found binary; disk min 5<<30 moved from cmd inline to doctor.diskMinBytes and trust.Dir() resolved inside All — doctor now imports internal/trust (no cycle: trust imports diag only) and cmd/doctor.go dropped its trust import. (8) Step-1c raw substring `"checks":[{"name":...` can never match — writeJSONDoc pretty-prints (MarshalIndent), same drift S4 recorded; asserted `"checks": [` + unmarshal-and-check-fields. (9) writeDoctorJSON gained the results param; its two pre-existing direct tests updated with nil — checks marshals [] (never null), mirroring findings. (10) gofmt -l on touched dirs flags only pre-existing cmd/init.go + cmd/status.go (the U2-FINDINGS-8/S4-FINDINGS-10 baseline set); all U5-added code gofmt-clean; go.mod/go.sum untouched.
+REVIEW: TDD red→green observed: Step 1 red = build failure naming every new symbol (undefined: All, RunChecks, doctor.Check, doctorChecks, doctorProbeCluster, doctor.CheckResult — FAIL [build failed] both packages); green = 9 new tests pass (internal: TestDoctorAllAssemblesChecklist incl. http-port opt-in + GOOS-gated inotify + no-spoke-row, TestDoctorRunChecksAllGreen, TestDoctorRunChecksSeverityFold, TestDoctorAllGreenDetails real-wrapper green paths; cmd: TestDoctorChecklistRowsPlainAndExit, TestDoctorChecklistGreenWarnExitsZero, TestDoctorChecklistStyledPairsGlyphWithWord via --progress live, TestDoctorJSONChecksArrayAdditive, TestDoctorRowTextFoldsMultiFinding). Live binary on this machine (GT14 squatter on 8443): plain = word-only rows "ok container-runtime docker on PATH / fail gateway-port port 8443 is already in use — CUBE-0102 / ok disk-space / ok git-cli" + findings block + exit 1; --progress live = themed glyph+word rows + panels; -o json = additive checks[] beside byte-identical findings[] semantics. Task gate in worktree: go build ./... && go vet ./... && go test ./... ALL ok (31 pkgs, 0 FAIL); fence run go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence' ALL ok (TestModeMatrixFence untouched-green — doctor rows are outside the frozen event-mode matrix; no new prompts). Post-merge on main: go test ./... 31 ok, 0 FAIL.
+BLOCKERS: none
+HANDOFF: Lane U is COMPLETE (U1–U5 all DONE) — F1's Depends gains the whole U column. For F1/doctor-touching tasks: doctor.Check/CheckResult/RunChecks/All (end of internal/doctor/doctor.go) are the GT18 registry; check ids are a documented JSON contract (docs/machine-readable-output.md): container-runtime, gateway-port, http-port, disk-space, inotify, git-cli, spoke-reachability — add host checks in doctor.All, cluster-side ones in cmd/doctor.go's probeDoctorCluster (it owns the live client and the spoke row). Two cmd seams for hermetic tests: doctorChecks + doctorProbeCluster (stub helpers stubDoctorChecks/stubDoctorCluster in cmd/doctor_test.go). doctor.Render is untouched and still renders remediations + verdict AFTER the checklist — new checks need no render work, only a Run wrapper returning (detail, findings). Wave-A packs' doctor coverage should surface as findings from existing check funcs or new cluster-side checks in probeDoctorCluster. No new CUBE codes taken (next: spoke 8007, pack 4018, engine 3010). Doctor JSON consumers: treat absent check rows as "not applicable", not "passed" (documented).
 ```
 
 ---
