@@ -64,6 +64,7 @@ var registry = map[Code]Desc{
 	CodeK3dCreateFailed:  {Summary: "k3d cluster creation failed / runtime unreachable"},
 	CodeK3dKubeconfigGet: {Summary: "cannot get kubeconfig from k3d"},
 	CodeK3dDeleteFailed:  {Summary: "k3d cluster deletion failed"},
+	CodeK3dCoreOverride:  {Summary: "k3d core injection overrode a user providerConfigRef/forProvider field (warning)"},
 
 	// 2xxx: apply
 	CodeApplyWaitTimeout: {Summary: "timed out waiting for resources to become ready"},

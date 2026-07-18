@@ -44,7 +44,7 @@ func newConfigCmd() *cobra.Command {
 			case "kind":
 				out, _, err = kindp.RenderConfig(c.Context(), cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, kindp.CertsD{})
 			case "k3d":
-				out, err = k3dp.RenderConfig(cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, k3dp.ZotMirror{})
+				out, _, err = k3dp.RenderConfig(c.Context(), cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, k3dp.ZotMirror{})
 			default:
 				return diag.New(diag.CodeProviderMiss,
 					fmt.Sprintf("render-cluster applies to cluster-creating providers (kind, k3d), not %q", cube.Spec.Cluster.Provider),

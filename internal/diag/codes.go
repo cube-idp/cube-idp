@@ -55,6 +55,7 @@ const (
 	CodeK3dCreateFailed  Code = "CUBE-1303" // k3d cluster creation failed / runtime unreachable
 	CodeK3dKubeconfigGet Code = "CUBE-1304" // cannot get kubeconfig from k3d
 	CodeK3dDeleteFailed  Code = "CUBE-1305" // k3d cluster deletion failed
+	CodeK3dCoreOverride  Code = "CUBE-1306" // k3d core injection overrode a user providerConfigRef/forProvider field (warning)
 )
 
 // 2xxx: apply
