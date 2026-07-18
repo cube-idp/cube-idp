@@ -3551,7 +3551,7 @@ DeliverSelf(ctx context.Context, ref engine.ArtifactRef) ([]*unstructured.Unstru
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(b67ed6f3-6188, 2026-07-18T13:17:10Z)
 BRANCH: p5/p8-engine-selfmanage (merged: -)
 COMMITS: -
 FINDINGS: -
