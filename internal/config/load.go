@@ -54,6 +54,34 @@ func Load(path string) (*Cube, error) {
 		}
 	}
 
+	// Migration guard (decision 3, spec 2026-07-18-cluster-forprovider-design
+	// §3): providerConfig was replaced in this release. Probed pre-CUE like
+	// the spoke checks — the closed schema would otherwise reject the key
+	// with a generic CUBE-0002 instead of the migration recipe.
+	var legacy struct {
+		Spec struct {
+			Cluster struct {
+				ProviderConfig string `yaml:"providerConfig"`
+			} `yaml:"cluster"`
+			Spokes []struct {
+				Cluster struct {
+					ProviderConfig string `yaml:"providerConfig"`
+				} `yaml:"cluster"`
+			} `yaml:"spokes"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(raw, &legacy); err == nil {
+		found := legacy.Spec.Cluster.ProviderConfig != ""
+		for _, s := range legacy.Spec.Spokes {
+			found = found || s.Cluster.ProviderConfig != ""
+		}
+		if found {
+			return nil, diag.New(diag.CodeProviderConfigRemoved,
+				"cluster.providerConfig has been replaced by providerConfigRef and forProvider",
+				"a file path becomes providerConfigRef: <path>; an inline YAML blob becomes structured fields under forProvider:; run `cube-idp config schema` for the shape")
+		}
+	}
+
 	ctx := cuecontext.New()
 	schema := ctx.CompileString(schemaCUE).LookupPath(cuePath("#Cube"))
 	val := schema.Unify(ctx.Encode(doc))
@@ -137,10 +165,10 @@ func normalizeAny(v any) any {
 func crossValidate(c *Cube) error {
 	cl := c.Spec.Cluster
 	if cl.Provider == "existing" {
-		if len(cl.ExtraPorts) > 0 || len(cl.Mounts) > 0 || cl.ProviderConfig != "" ||
+		if len(cl.ExtraPorts) > 0 || len(cl.Mounts) > 0 ||
 			cl.ProviderConfigRef != "" || len(cl.ForProvider) > 0 || cl.KubernetesVersion != "" {
 			return diag.New(diag.CodeClusterFieldsConflict,
-				"cluster.extraPorts/mounts/providerConfig/providerConfigRef/forProvider/kubernetesVersion imply node creation and are not valid with provider: existing",
+				"cluster.extraPorts/mounts/providerConfigRef/forProvider/kubernetesVersion imply node creation and are not valid with provider: existing",
 				"remove those fields, or switch to provider: kind or k3d")
 		}
 	}

@@ -15,7 +15,6 @@ package config
 			extraPorts?: [...{hostPort: int & >0 & <65536, nodePort: int & >0 & <65536}]
 			registry?: {mirrors?: {[string]: string}, insecure?: [...string]}
 			mounts?: [...{hostPath: string, nodePath: string}]
-			providerConfig?: string
 			providerConfigRef?: string & !=""
 			forProvider?: {...}
 		}

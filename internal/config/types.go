@@ -45,14 +45,13 @@ type ClusterSpec struct {
 	// the next Load rejects an explicit null against a `[...]`/`{...}`-typed
 	// optional field (mismatched types list/map and null) — every `cube-idp
 	// init`-generated cube.yaml would fail to load. Optional strings
-	// (Context, KubernetesVersion, ProviderConfig) marshal as "" rather than
+	// (Context, KubernetesVersion) marshal as "" rather than
 	// null, so their omitempty is cosmetic only. Registry carries no
 	// omitempty: it is a non-pointer struct, on which the tag is a no-op —
 	// the real fix lives on RegistrySpec's own fields.
-	ExtraPorts     []PortMapping `yaml:"extraPorts,omitempty" json:"extraPorts,omitempty"`         // D10 layer 1
-	Registry       RegistrySpec  `yaml:"registry" json:"registry"`                                 // D10 layer 1
-	Mounts         []Mount       `yaml:"mounts,omitempty" json:"mounts,omitempty"`                 // D10 layer 1
-	ProviderConfig string        `yaml:"providerConfig,omitempty" json:"providerConfig,omitempty"` // D10 layer 2: file path or inline YAML
+	ExtraPorts []PortMapping `yaml:"extraPorts,omitempty" json:"extraPorts,omitempty"` // D10 layer 1
+	Registry   RegistrySpec  `yaml:"registry" json:"registry"`                         // D10 layer 1
+	Mounts     []Mount       `yaml:"mounts,omitempty" json:"mounts,omitempty"`         // D10 layer 1
 	// ProviderConfigRef is the D10-successor layer 1 (spec
 	// 2026-07-18-cluster-forprovider-design.md §3): a base provider-native
 	// config fetched by pack ref grammar (local path, oci://, git, s3,

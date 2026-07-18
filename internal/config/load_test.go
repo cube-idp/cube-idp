@@ -664,3 +664,34 @@ spec:
 		t.Fatalf("spoke ProviderConfigRef = %q", c.Spec.Spokes[0].Cluster.ProviderConfigRef)
 	}
 }
+
+func TestLoadProviderConfigMigrationError(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.yaml")
+	doc := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata:
+  name: dev
+spec:
+  cluster:
+    provider: kind
+    providerConfig: ./my-kind.yaml
+  engine:
+    type: flux
+  gateway:
+    pack: traefik
+    host: cube-idp.localtest.me
+    port: 8443
+`
+	if err := os.WriteFile(p, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(p)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeProviderConfigRemoved {
+		t.Fatalf("want CUBE-0011, got %v", err)
+	}
+	if !strings.Contains(de.Remediation, "providerConfigRef") || !strings.Contains(de.Remediation, "forProvider") {
+		t.Fatalf("remediation must name both replacement fields: %q", de.Remediation)
+	}
+}

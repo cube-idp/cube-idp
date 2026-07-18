@@ -22,16 +22,17 @@ type Desc struct {
 // other direction (a code cannot ship without an entry).
 var registry = map[Code]Desc{
 	// 0xxx: preflight/config
-	CodeConfigRead:          {Summary: "cannot read cube.yaml"},
-	CodeConfigInvalid:       {Summary: "cube.yaml YAML syntax or schema validation error"},
-	CodeLockCorrupt:         {Summary: "cube.lock unreadable or corrupt (Phase 2)"},
-	CodeProviderMiss:        {Summary: "cluster provider config mismatch (e.g., render-cluster for non-kind)"},
-	CodeArgoPackRedun:       {Summary: "argocd pack listed while engine.type: argocd (Phase 2)"},
-	CodeInitExists:          {Summary: "cube.yaml already exists; refusing overwrite"},
-	CodeBadFlagValue:        {Summary: "an enum flag (--progress, --output) got an unrecognized value"},
-	CodeGatewayPackMismatch: {Summary: "gateway.ref points at a pack whose pack.cue name != gateway.pack (F11: ref silently wins over pack)"},
-	CodeUpgradeGuard:        {Summary: "upgrade refused: see summary (was the last un-coded user-facing error)"},
-	CodeConfirmRequired:     {Summary: "a destructive command refused to run without confirmation (--yes / --confirm)"},
+	CodeConfigRead:            {Summary: "cannot read cube.yaml"},
+	CodeConfigInvalid:         {Summary: "cube.yaml YAML syntax or schema validation error"},
+	CodeLockCorrupt:           {Summary: "cube.lock unreadable or corrupt (Phase 2)"},
+	CodeProviderMiss:          {Summary: "cluster provider config mismatch (e.g., render-cluster for non-kind)"},
+	CodeArgoPackRedun:         {Summary: "argocd pack listed while engine.type: argocd (Phase 2)"},
+	CodeInitExists:            {Summary: "cube.yaml already exists; refusing overwrite"},
+	CodeBadFlagValue:          {Summary: "an enum flag (--progress, --output) got an unrecognized value"},
+	CodeGatewayPackMismatch:   {Summary: "gateway.ref points at a pack whose pack.cue name != gateway.pack (F11: ref silently wins over pack)"},
+	CodeUpgradeGuard:          {Summary: "upgrade refused: see summary (was the last un-coded user-facing error)"},
+	CodeConfirmRequired:       {Summary: "a destructive command refused to run without confirmation (--yes / --confirm)"},
+	CodeProviderConfigRemoved: {Summary: "cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)"},
 
 	// 01xx: doctor preflight checks (Phase 2)
 	CodeDoctorRuntime: {Summary: "container runtime not found"},
