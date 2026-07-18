@@ -1662,7 +1662,7 @@ HANDOFF: U2 (p5/u2-http-port) is unblocked — U1 merged at 03bd237. For U2+: ki
   `packs/envoy-gateway/manifests/10-gatewayclass.yaml:83`) — NO pack
   change is needed or allowed in this task.
 
-- [ ] **Step 0: U1 follow-up (orchestrator amendment, 2026-07-18) — make
+- [x] **Step 0: U1 follow-up (orchestrator amendment, 2026-07-18) — make
   the engine-wait narration visible live.** U1 landed `waitHealthy`
   narration with stage `"engine"`, but the live renderer shows log tails
   only under an open step of the SAME stage, and the step open during
@@ -1675,7 +1675,7 @@ HANDOFF: U2 (p5/u2-http-port) is unblocked — U1 merged at 03bd237. For U2+: ki
   frozen), plain/JSON unaffected (StepLog renders zero bytes there).
   Commit: `git add internal/ && git commit -m "fix(up): engine-wait narration uses the open health step's stage"`
 
-- [ ] **Step 1: Failing tests.** (a) `internal/config/load_test.go`:
+- [x] **Step 1: Failing tests.** (a) `internal/config/load_test.go`:
   cube.yaml with `gateway: {…, httpPort: 8080}` loads and round-trips;
   `httpPort: 8443` equal to `port` fails validation; omitted → zero. (b)
   `internal/cluster/kindp/kind_test.go`:
@@ -1703,7 +1703,7 @@ func TestRenderConfigMapsHTTPPortWhenSet(t *testing.T) {
   (c) equivalent k3d test asserting the `30080:8080` port map in the
   rendered SimpleConfig. Run all three — Expected: FAIL.
 
-- [ ] **Step 2: Implement.** `types.go`: add `HTTPPort int
+- [x] **Step 2: Implement.** `types.go`: add `HTTPPort int
   `yaml:"httpPort,omitempty" json:"httpPort,omitempty"`` to GatewaySpec
   and `const GatewayHTTPNodePort = 30080` next to `GatewayNodePort`
   (`internal/config/types.go:86`) with a comment naming both gateway
@@ -1722,23 +1722,23 @@ func TestRenderConfigMapsHTTPPortWhenSet(t *testing.T) {
   probes `httpPort` when set. README: add the `gateway.httpPort` row to
   the cluster-shape caveat table.
 
-- [ ] **Step 3: Verify pass** — Run:
+- [x] **Step 3: Verify pass** — Run:
   `go test ./internal/config/ ./internal/cluster/... ./internal/doctor/ -v -run 'HTTP|TestRenderConfig|TestDoctor'`
   Expected: PASS.
 
-- [ ] **Step 4: Gate + commit** — full gate + fences. Commit:
+- [x] **Step 4: Gate + commit** — full gate + fences. Commit:
   `git add internal/ README.md && git commit -m "feat(gateway): opt-in httpPort — host mapping onto pinned NodePort 30080"`
 
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(b67ed6f3-6188-4eca-ba99-88e5dad89e07, 2026-07-18T09:25:28Z)
-BRANCH: p5/u2-http-port (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/u2-http-port (merged: yes)
+COMMITS: 1f5cb82 fix(up): engine-wait narration uses the open health step's stage; 0a07936 feat(gateway): opt-in httpPort — host mapping onto pinned NodePort 30080; 908db34 merge: p5 U2 http-port (p5/u2-http-port)
+FINDINGS: (1) Step 0 executed as amended: TestWaitHealthyNarratesUnhealthyWait now asserts StepLog{Stage:"health"}; the one-word change in waitHealthy resolves U1's display concern (narration renders under the open "health" Progress step). Verified no other StepLog site used stage "engine" — the render tests use StepStarted/StepDone/StepFailed, untouched. (2) VERIFY-API: kindp.RenderConfig(name, spec, gw, CertsD{}) matches the plan's test snippet exactly; the k3d twin takes ZotMirror{} as its 4th arg. (3) Plan drift: the plan's k3d assertion "30080:8080" is transposed — k3d SimpleConfig ports are host:node (existing gateway golden `port: 8443:30443`), so the rendered HTTP mapping is `8080:30080`; the test asserts that. (4) Insertion point: RenderConfig tests live in merge_test.go for BOTH providers, not kind_test.go/k3d_test.go as the task header lists — new tests placed beside the existing RenderConfig suite. (5) The `if gw.Port > 0` guard did not exist (S3 unmerged at branch time): created in BOTH renderers per the step text, HTTP twin nested inside; zero gw.Port now injects no gateway mapping at all (what S3's spoke rendering needs; S3 branched from a main that includes it). (6) Doctor: kept CheckPortFree for existing call sites (cmd/init.go wizard + doctor's HTTPS probe) and added CheckHostPortFree(port, clusterExists, field) it delegates to, so the httpPort probe's CUBE-0102 remediation blames spec.gateway.httpPort not spec.gateway.port; cmd/doctor.go (not in the task's Files list) gained the opt-in probe wiring — the preflight is caller-driven — and the Step 4 add-list was extended to cmd/ accordingly. (7) Load-level rejection uses the mandated exact summary "gateway.httpPort must differ from gateway.port and extraPorts" (CUBE-0002) for both the ==port and extraPorts-collision cases; the renderers additionally special-case extraPorts∩httpPort as the reserved-for-gateway CUBE-1201/1301 ("gateway's HTTP listener" wording) mirroring the gw.Port treatment. (8) Pre-existing gofmt drift on main (7 files: internal/bundle/bundle.go, internal/config/types.go ClusterSpec tag alignment, internal/syncer/synconce_test.go, internal/ui/render/live.go, internal/ui/ui_test.go, cmd/init.go, cmd/status.go) predates U2 and was left untouched (append-only discipline on shared files); every U2-touched file verified gofmt-clean except that pre-existing types.go hunk, which is outside U2's added lines. (9) go.mod/go.sum untouched; both gateway packs' 30080 pins verified in-tree (packs/traefik/chart.yaml ports.web.nodePort, packs/envoy-gateway/manifests/10-gatewayclass.yaml:83) — no pack change, as the task requires.
+REVIEW: TDD fail→pass on every step: Step 0 asserted-stage change FAILED first (`no StepLog{Stage:"health"} events emitted`) then PASSED after the one-word fix; Step 1 verified FAIL at compile level (HTTPPort undefined in config/kindp/k3dp tests; CheckHostPortFree undefined in doctor); Step 3 command `go test ./internal/config/ ./internal/cluster/... ./internal/doctor/ -v -run 'HTTP|TestRenderConfig|TestDoctor'` all PASS (TestLoadGatewayHTTPPortRoundTripAndCollisions, TestRenderConfigMapsHTTPPortWhenSet x2, TestHTTPPortProbeNamesHTTPPortField). Opt-in contract pinned both ways: absent httpPort renders zero occurrences of 30080 in both providers, and the untouched golden suites (merged-typed/merged-with-user) stayed byte-identical green. Task gate in worktree: go build ./... && go vet ./... && go test ./... ALL PASS; fence run go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence' ALL PASS. Merge to main clean (no conflicts, ort); post-merge `go test ./...` on main exit 0 with zero FAIL lines.
+BLOCKERS: none
+HANDOFF: U3 (p5/u3-engine-tuning) is unblocked — U2 merged at 908db34. For U3+: GatewaySpec now carries HTTPPort (yaml/json httpPort,omitempty — keep the omitempty round-trip discipline) and config exports GatewayHTTPNodePort=30080 beside GatewayNodePort; schema.cue gateway block gained `httpPort?: int & >0 & <65536`; crossValidate ends with the httpPort collision checks (append after them). Both renderers now guard ALL gateway injection behind `if gw.Port > 0` — S3 gets its spoke guard for free, but note internal/cluster/{kindp,k3dp}/merge.go are NOT on the sanctioned append-only conflict list: if S3 independently adds the same guard, a conflict there is STOP-and-BLOCKED territory, so S3 should diff against main first (S3's worktree already branched post-U2). doctor.CheckHostPortFree(port, clusterExists, field) is the field-aware probe; CheckPortFree delegates with "spec.gateway.port". The engine-wait narration stage is now "health" — any future test on waitHealthy narration must assert that stage. Pre-existing gofmt drift (FINDINGS 8) is repo-wide, owner-visible, not U2's to fix.
 ```
 
 ---
