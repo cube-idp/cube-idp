@@ -271,3 +271,16 @@ func TestRenderConfigMapsHTTPPortWhenSet(t *testing.T) {
 		t.Fatalf("httpPort must be opt-in:\n%s", cfg)
 	}
 }
+
+// TestRenderConfigZeroGatewaySkipsHostPorts pins the S3 spoke contract: a
+// zero GatewaySpec (spoke clusters — the hub owns the host ports) renders a
+// kind config with no host port mapping at all.
+func TestRenderConfigZeroGatewaySkipsHostPorts(t *testing.T) {
+	cfg, err := RenderConfig("dev-spoke-staging", config.ClusterSpec{Provider: "kind"}, config.GatewaySpec{}, CertsD{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(cfg), "hostPort") {
+		t.Fatalf("spoke render must not map host ports (hub owns them):\n%s", cfg)
+	}
+}
