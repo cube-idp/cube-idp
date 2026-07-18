@@ -17,7 +17,7 @@ surface:
 
 1. Packs live in a public monorepo and ship as signed OCI artifacts — the
    downloaded binary needs nothing else (closes F12).
-2. The pack fleet grows from 7 to ~18 (11 confirmed new packs across 10
+2. The pack fleet grows from 7 to ~17 (10 confirmed new packs across 9
    Wave A tasks), each with CI conformance and doctor coverage.
 3. CLI UX gaps close: visible cluster provisioning, opt-in HTTP gateway
    port, remote pack catalog, engine install knobs.
@@ -87,7 +87,7 @@ Confirmed: `crossplane-core` · `kyverno` · `kyverno-policies` (curated
 default policies, separate so they stay optional) · `cloudnativepg` ·
 `argo-rollouts` (plain install first; per-gateway traffic-shifting is a
 follow-up) · `argo-events` · `argo-workflows` · `prometheus-stack` +
-`grafana` · `kargo` · `localstack`.
+`grafana` · `kargo`.
 
 Candidates pending owner review of the OpenChoreo spike plan: `kgateway`
 (third gateway pack), `openbao`.
@@ -170,10 +170,19 @@ user-authored engine content (Applications/Kustomizations, possibly in
 Gitea repos) — **not** cube-idp packs. There is no per-spoke pack list and
 no cross-cluster registry plumbing in this design.
 
-- **Config:** `spec.spokes: [{name, cluster: {provider: kind|k3d|existing,
-  context?, kubernetesVersion?}}]` in the hub's cube.yaml. Declarative so
-  re-running `up` reconciles spokes like everything else and `down` can
-  cascade truthfully.
+- **Config:** spokes are first-class, declarative cube.yaml content —
+  `cube-idp spoke add` writes the block below, and hand-editing cube.yaml
+  directly is equally valid; either way, re-running `up` reconciles spokes
+  like everything else and `down` cascades truthfully.
+
+  ```yaml
+  spec:
+    spokes:
+      - name: staging
+        cluster: {provider: kind}
+      - name: prod-eu
+        cluster: {provider: existing, context: eks-prod-eu}
+  ```
 - **Commands:** `cube-idp spoke add|list|remove` — config-mutating in the
   `pack install` mold (mutate cube.yaml, validate by round-trip, `up`
   applies). `down` deletes cube-created spoke clusters and deregisters
@@ -195,9 +204,11 @@ no cross-cluster registry plumbing in this design.
   per-cluster network by default — spoke creation must join a shared
   network (cluster-shape field, recreate caveat). `existing`: reachability
   is the user's responsibility; `doctor` probes it.
-- **Observability:** spoke rows in `status`, doctor reachability checks,
-  inventory records for the `down` cascade, a new CUBE code range for
-  spoke diagnostics (registered in the explain registry).
+- **Representation once added:** a registered spoke is visible everywhere
+  state is shown — its own row in `status` (provider, reachability,
+  engine-registration health), `spoke list` output, an inventory record
+  driving the `down` cascade, and doctor reachability checks backed by a
+  new CUBE code range (registered in the explain registry).
 
 ## 6. Adopted gaps and parking lot
 
@@ -217,7 +228,7 @@ public, scheduled when the org flips the main repo public.
 W0.T1 ──► W0.T2 ──► { W0.T3, W0.T4, W0.T5 }        (serial gate, then 3-wide)
                        │
                        ▼
-Wave A: 10-12 pack tasks, fully parallel            (after W0)
+Wave A: 9-11 pack tasks, fully parallel             (after W0)
 Wave C: C1 Gitea delivery                           (after W0)
 Wave B: B1, B2, B4 anytime; B3 after index format   (parallel with W0)
 Wave D: spokes v1                                   (anytime, independent)
