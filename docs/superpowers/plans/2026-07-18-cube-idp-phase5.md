@@ -2238,7 +2238,7 @@ HANDOFF: -
 - Consumes: current pack.cue semantics (`internal/pack/pack.go` parse,
   `expose.go`, D15 values order in `internal/pack/helm.go:138`).
 
-- [ ] **Step 1: Failing description test** — in
+- [x] **Step 1: Failing description test** — in
   `internal/pack/pack_test.go` add a fixture pack.cue containing
   `description: "in-cluster git server"` and assert the parsed
   `Pack.Description` matches; a pack.cue WITHOUT description parses with
@@ -2246,12 +2246,12 @@ HANDOFF: -
   Run: `go test ./internal/pack/ -run TestPack.*Description -v`
   Expected: FAIL.
 
-- [ ] **Step 2: Implement + pass.** Add the field to the pack.cue schema
+- [x] **Step 2: Implement + pass.** Add the field to the pack.cue schema
   the loader compiles (find where `name`/`version` are read in
   `internal/pack/pack.go`; description is read the same way, optional).
   Re-run — Expected: PASS.
 
-- [ ] **Step 3: Write `docs/pack-contract-v1.md`** — normative, complete,
+- [x] **Step 3: Write `docs/pack-contract-v1.md`** — normative, complete,
   no TBDs. Sections, each stating today's ACTUAL behavior (verify each
   claim in code as you write; FINDINGS records any surprise):
   1. **Layout** — `pack.cue` (required) + exactly one of `manifests/`
@@ -2283,7 +2283,7 @@ HANDOFF: -
      immutability, `<name>/vX.Y.Z` git-tag convention (GT9).
   6. **Compatibility** — additive-only within v1; any breaking change
      bumps the contract version and the consuming cube-idp minor.
-- [ ] **Step 4: Conformance test** — create
+- [x] **Step 4: Conformance test** — create
   `internal/pack/contract_conformance_test.go`:
 
 ```go
@@ -2330,19 +2330,58 @@ func TestReposPacksSatisfyContractV1(t *testing.T) {
   for the rest). Run: `go test ./internal/pack/ -run Contract -v` —
   Expected: PASS with all 7 packs green.
 
-- [ ] **Step 5: Gate + commit** — full gate. Commit:
+- [x] **Step 5: Gate + commit** — full gate. Commit:
   `git add docs/pack-contract-v1.md internal/pack/ packs/ && git commit -m "docs+feat(pack): contract v1 frozen — description field + mechanical conformance"`
 
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(fable-b67ed6f3, 2026-07-18T09:06:12Z)
-BRANCH: p5/p1-pack-contract (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/p1-pack-contract (merged: yes)
+COMMITS: 95e9e2c docs+feat(pack): contract v1 frozen — description field + mechanical
+  conformance; 8ee519e merge: p5 P1 pack-contract (p5/p1-pack-contract)
+FINDINGS: (1) claim commit rode 66d63f1 ("claim S1") — the sibling's git add
+  picked up my staged plan edit; HEAD verified showing P1 IN_PROGRESS per the
+  dispatch note, so no separate "claim P1" commit exists in history. (2)
+  VERIFY-API: the plan snippet's Load(dir) does not exist — the real
+  single-pack loader is unexported loadMeta(dir) in pack.go (Fetch is the
+  exported ref-resolving wrapper); the conformance test is in package pack and
+  calls loadMeta directly. (3) The conformance test also asserts the name
+  pattern ^[a-z0-9][a-z0-9-]{0,30}$ and semver version — named by the
+  snippet's own comment and doc §2; all 7 packs pass. (4) Doc §1 states
+  ACTUAL layout semantics: raw-manifest source is exactly one of
+  kustomization.yaml (sole source, governs manifests/) OR the manifests/
+  walk; chart.yaml is orthogonal and APPENDED in both cases — the plan
+  sketch's "exactly one of manifests/ or chart.yaml or kustomize" is not
+  today's behavior. Also documented: the third substitution token
+  ${GATEWAY_PACK} (F9), and the optional #Values/images/gatewayService
+  pack.cue fields (completeness). (5) description is loader-OPTIONAL
+  (backward compat, Description=="" when absent) but conformance-REQUIRED
+  for repo packs — doc §2 states the split. (6) "numbers normalized
+  int/float64" verified: config.Load normalizePackValues (load.go:65)
+  rewrites CUE's int64. (7) No new CUBE codes in P1; CUBE-4016/4017 appear
+  in the doc as GT15 contract statements — U4 implements them. (8) pack.cue
+  name/version/description lines are column-aligned (cue fmt style) in all
+  7 packs.
+REVIEW: TDD red→green verified for both steps: description tests failed
+  compile (p.Description undefined) then passed; conformance test failed red
+  on all 7 packs missing description, green after adding them. Every doc
+  claim checked against source while writing: render.go (precedence, sorted
+  walk, zero-object error, namespace injection), helm.go (D15 merge order
+  L138-142, hook flattening), expose.go (3 tokens, port-omit-on-443),
+  pushdir.go (media types, fixed-epoch annotation, tar layout), load.go
+  (int64 normalization). Worktree gate: go build && go vet && go test ./...
+  all green; post-merge go test ./... on main all green (cmd + ui fence
+  suites included in both full runs).
+BLOCKERS: none
+HANDOFF: P2 reads Pack.Description for the index artifact — it is parsed and
+  populated for all 7 packs. docs/pack-contract-v1.md in $ROOT is normative
+  (GT12): copy VERBATIM to $PACKS/CONTRACT.md. TestReposPacksSatisfyContractV1
+  (internal/pack/contract_conformance_test.go) walks ../../packs and
+  t.Skip()s once packs/ leaves the main repo (post-P4) — P3's harness must
+  run it in $PACKS. cmd/pack.go packCatalog descriptions (gitea "in-cluster
+  git server", argocd "delivery UI") match the pack.cue descriptions
+  verbatim — keep them in sync until P6 replaces the hardcoded catalog.
 ```
 
 ---
