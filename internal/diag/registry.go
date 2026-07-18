@@ -144,6 +144,7 @@ var registry = map[Code]Desc{
 	CodeSpokeTokenFailed:         {Summary: "spoke ServiceAccount token issuance failed"},
 	CodeSpokeEnsureFailed:        {Summary: "spoke cluster create/connect failed"},
 	CodeSpokeRegisterFailed:      {Summary: "hub registration secret build/apply failed"},
+	CodeSpokeUnreachable:         {Summary: "spoke hub registration missing, or spoke API server unreachable from this machine"},
 }
 
 // ranges carries the documented meaning of each numeric range, verbatim

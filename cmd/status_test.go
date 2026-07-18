@@ -204,7 +204,7 @@ func TestRenderStatusStyledIncludesAccess(t *testing.T) {
 	ui.SetMode(ui.ModeLive)
 	var b bytes.Buffer
 	p := ui.NewFor(&b)
-	renderStatusStyled(&b, p, []engine.ComponentHealth{{Name: "flux", Ready: true}}, nil, false,
+	renderStatusStyled(&b, p, []engine.ComponentHealth{{Name: "flux", Ready: true}}, nil, nil, false,
 		[]ui.PackAccess{{Name: "gitea", URLs: []string{"https://gitea.cube.local:8443"}}})
 	got := b.String()
 	for _, want := range []string{"Components", "flux", "Access", "https://gitea.cube.local:8443"} {
@@ -214,7 +214,7 @@ func TestRenderStatusStyledIncludesAccess(t *testing.T) {
 	}
 	// And with no access rows the section is omitted entirely.
 	b.Reset()
-	renderStatusStyled(&b, p, nil, nil, false, nil)
+	renderStatusStyled(&b, p, nil, nil, nil, false, nil)
 	if strings.Contains(b.String(), "Access") {
 		t.Fatalf("Access section must be omitted when no pack carries URLs:\n%s", b.String())
 	}
@@ -233,7 +233,7 @@ func TestStatusPlainByteStable(t *testing.T) {
 		{Name: "flux", Ready: true},
 		{Name: "traefik", Ready: false, Message: "reconciling"},
 	}
-	renderStatusPlain(&b, p, health, nil, false)
+	renderStatusPlain(&b, p, health, nil, nil, false)
 	const want = "✔ flux Ready\n" +
 		"✗ traefik reconciling\n" +
 		"\n0 object(s) in inventory\n"
@@ -258,7 +258,7 @@ func TestStatusJSONDocument(t *testing.T) {
 		{GroupKind: schema.GroupKind{Kind: "ConfigMap"}, Namespace: "default", Name: "cm"},
 	}
 	var b bytes.Buffer
-	if err := writeStatusJSON(&b, "dev", health, inv, true, false); err != nil {
+	if err := writeStatusJSON(&b, "dev", health, nil, inv, true, false); err != nil {
 		t.Fatal(err)
 	}
 	var doc statusDoc
@@ -285,11 +285,67 @@ func TestStatusJSONDocument(t *testing.T) {
 func TestStatusJSONDocumentNoDetails(t *testing.T) {
 	var b bytes.Buffer
 	inv := []object.ObjMetadata{{GroupKind: schema.GroupKind{Kind: "ConfigMap"}, Name: "cm"}}
-	if err := writeStatusJSON(&b, "dev", nil, inv, false, true); err != nil {
+	if err := writeStatusJSON(&b, "dev", nil, nil, inv, false, true); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(b.String(), "\"objects\"") {
 		t.Fatalf("objects must be omitted without --details: %s", b.String())
+	}
+}
+
+// TestStatusSpokeRows (S4): a snapshot carrying spokes renders a spokes
+// section after the components — every state a paired glyph+word cell
+// (semantic-color doctrine, GT13: the word always accompanies the glyph) —
+// and `-o json` gains the additive top-level spokes array.
+func TestStatusSpokeRows(t *testing.T) {
+	snap := statusSnapshot{
+		Health: []engine.ComponentHealth{{Name: "flux", Ready: true}},
+		Spokes: []spokeStatus{{Name: "staging", Provider: "kind", Registered: true, Reachable: false}},
+	}
+
+	stubStatusConnect(t, snap)
+	out, err := runCLI(t, "status")
+	if err != nil {
+		t.Fatalf("status with all components ready must exit 0: %v\n%s", err, out)
+	}
+	for _, want := range []string{"spokes", "staging", "✔ registered", "✗ unreachable"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("status missing %q:\n%s", want, out)
+		}
+	}
+
+	// JSON document: additive "spokes" array (GT13 allows additive fields).
+	stubStatusConnect(t, snap)
+	out, err = runCLI(t, "status", "-o", "json")
+	if err != nil {
+		t.Fatalf("status -o json: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, `"spokes": [`) {
+		t.Fatalf("JSON document missing the spokes array:\n%s", out)
+	}
+	var doc statusDoc
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("document is not valid JSON: %v\n%s", err, out)
+	}
+	if len(doc.Spokes) != 1 {
+		t.Fatalf("want 1 spoke row, got %+v", doc.Spokes)
+	}
+	s := doc.Spokes[0]
+	if s.Name != "staging" || s.Provider != "kind" || !s.Registered || s.Reachable {
+		t.Fatalf("spoke row wrong: %+v", s)
+	}
+}
+
+// TestStatusJSONOmitsSpokesWhenNone: a spoke-less snapshot keeps the JSON
+// document byte-identical to the pre-S4 shape (additive-only means the new
+// key appears only when spokes are declared).
+func TestStatusJSONOmitsSpokesWhenNone(t *testing.T) {
+	var b bytes.Buffer
+	if err := writeStatusJSON(&b, "dev", nil, nil, nil, false, true); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "\"spokes\"") {
+		t.Fatalf("spokes key must be absent for a spoke-less cube: %s", b.String())
 	}
 }
 

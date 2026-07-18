@@ -1,14 +1,27 @@
 package doctor
 
 import (
+	"context"
+	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"math"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/spoke"
 	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
@@ -156,6 +169,129 @@ func TestNonGitSourceNeverWarnsEvenWithoutGitCLI(t *testing.T) {
 	refs := []string{"oci://ghcr.io/cube-idp/packs/gitea:0.1.0", "./packs/local", filepath.Join("packs", "traefik")}
 	if f := CheckGitCLI(refs); f != nil {
 		t.Fatalf("no git-sourced ref present, want no finding, got %+v", f)
+	}
+}
+
+// spokeProbeServer stands in for a spoke API server: a TLS endpoint whose
+// /readyz answers 200 only with the bearer token the hub secret carries
+// (so a pass proves the payload's credentials actually flowed). Returns
+// the server URL and the PEM CA that verifies it (the self-signed leaf is
+// its own root).
+func spokeProbeServer(t *testing.T) (string, []byte) {
+	t.Helper()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/readyz" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer tok" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		fmt.Fprint(w, "ok")
+	}))
+	t.Cleanup(srv.Close)
+	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	return srv.URL, ca
+}
+
+// deadEndpoint returns a URL nothing listens on (bind, read the port,
+// close) so probes fail fast with connection refused.
+func deadEndpoint(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := l.Addr().String()
+	l.Close()
+	return "https://" + addr
+}
+
+func spokeFakeClient(t *testing.T, objs ...client.Object) client.Client {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+}
+
+func fluxSpokeSecret(t *testing.T, name, server string, ca []byte) *corev1.Secret {
+	t.Helper()
+	kc, err := spoke.BuildKubeconfig(name, server, ca, "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "cube-idp-spoke-" + name, Namespace: "flux-system"},
+		Data:       map[string][]byte{"value": kc},
+	}
+}
+
+// TestCheckSpokeReachabilityNoSpokes: no spokes declared — the check skips
+// silently (nil findings, no cluster reads beyond none).
+func TestCheckSpokeReachabilityNoSpokes(t *testing.T) {
+	if fs := CheckSpokeReachability(context.Background(), spokeFakeClient(t), "flux", nil); fs != nil {
+		t.Fatalf("no spokes declared must yield no findings, got %+v", fs)
+	}
+}
+
+// TestCheckSpokeReachabilityFluxArms exercises all three states against the
+// flux payload (the `value` kubeconfig): a reachable spoke yields no
+// finding, an unreachable one warns CUBE-8006 naming it, a declared-but-
+// unregistered one warns CUBE-8006 naming the missing hub secret.
+func TestCheckSpokeReachabilityFluxArms(t *testing.T) {
+	url, ca := spokeProbeServer(t)
+	c := spokeFakeClient(t,
+		fluxSpokeSecret(t, "healthy", url, ca),
+		fluxSpokeSecret(t, "dead", deadEndpoint(t), ca),
+	)
+	spokes := []config.SpokeSpec{
+		{Name: "healthy", Cluster: config.ClusterSpec{Provider: "kind"}},
+		{Name: "dead", Cluster: config.ClusterSpec{Provider: "existing", Context: "x"}},
+		{Name: "ghost", Cluster: config.ClusterSpec{Provider: "kind"}},
+	}
+	fs := CheckSpokeReachability(context.Background(), c, "flux", spokes)
+	if len(fs) != 2 {
+		t.Fatalf("want findings for dead+ghost only, got %+v", fs)
+	}
+	for _, f := range fs {
+		if f.Code != diag.CodeSpokeUnreachable || f.Severity != diag.SeverityWarning {
+			t.Fatalf("spoke findings must be CUBE-8006 warnings, got %+v", f)
+		}
+	}
+	if !strings.Contains(fs[0].Message, "dead") || !strings.Contains(fs[1].Message, "ghost") {
+		t.Fatalf("findings must name each unreachable spoke in declaration order: %+v", fs)
+	}
+	if !strings.Contains(fs[1].Message, "cube-idp-spoke-ghost") {
+		t.Fatalf("the unregistered arm must name the missing hub secret: %+v", fs[1])
+	}
+}
+
+// TestProbeSpokesArgocdPayload: the argocd cluster-secret payload (server +
+// config JSON with bearerToken and caData) rebuilds a working REST config —
+// the probe authenticates with the payload's own token.
+func TestProbeSpokesArgocdPayload(t *testing.T) {
+	url, ca := spokeProbeServer(t)
+	cc := spokeArgocdConfig{BearerToken: "tok"}
+	cc.TLSClientConfig.CAData = ca
+	cj, err := json.Marshal(cc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "cube-idp-spoke-prod", Namespace: "argocd"},
+		Data:       map[string][]byte{"server": []byte(url), "config": cj},
+	}
+	states := ProbeSpokes(context.Background(), spokeFakeClient(t, sec), "argocd",
+		[]config.SpokeSpec{{Name: "prod", Cluster: config.ClusterSpec{Provider: "existing", Context: "x"}}})
+	if len(states) != 1 {
+		t.Fatalf("want one state, got %+v", states)
+	}
+	s := states[0]
+	if s.Name != "prod" || s.Provider != "existing" || !s.Registered || !s.Reachable {
+		t.Fatalf("argocd payload must probe reachable: %+v", s)
 	}
 }
 

@@ -276,6 +276,9 @@ behavior is identical to text mode.
   "components": [
     {"name": "cube-idp-traefik", "ready": true, "message": ""}
   ],
+  "spokes": [
+    {"name": "staging", "provider": "kind", "registered": true, "reachable": false}
+  ],
   "inventory": {
     "count": 42,
     "objects": [
@@ -290,6 +293,7 @@ behavior is identical to text mode.
 |---|---|---|
 | `cube` | string | `metadata.name` from `cube.yaml`. |
 | `components` | array | Engine-reported health: `name`, `ready`, `message`. |
+| `spokes` | array | One row per declared spoke (Phase 5): `name`, `provider`, `registered` (the hub registration secret exists), `reachable` (the spoke API server answered `/readyz` using that secret's payload, probed from the CLI's machine — kind spokes carry a docker-network-internal URL, so the hub engine may reach them when this probe cannot). **Additive; only present when `spec.spokes` is non-empty.** |
 | `inventory.count` | number | Objects tracked in the cube's inventory. |
 | `inventory.objects` | array | `kind`/`namespace`/`name` rows, sorted. **Only present with `--details`.** |
 | `ready` | bool | Overall verdict; `false` also makes the command exit 1 (CUBE-3004). |

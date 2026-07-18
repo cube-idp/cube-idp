@@ -105,6 +105,10 @@ func newDoctorCmd() *cobra.Command {
 								}
 							}
 						}
+						// S4: spoke reachability (check id spoke-reachability) —
+						// each declared spoke probed via its S3 hub registration
+						// payload; silent when no spokes are declared.
+						findings = append(findings, doctor.CheckSpokeReachability(ctx, a.Client(), cube.Spec.Engine.Type, cube.Spec.Spokes)...)
 					}
 				} else {
 					var de *diag.Error

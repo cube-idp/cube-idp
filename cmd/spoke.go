@@ -63,7 +63,7 @@ func newSpokeListCmd() *cobra.Command {
 	var file string
 	c := &cobra.Command{
 		Use:   "list",
-		Short: "List spokes declared in cube.yaml",
+		Short: "List spokes declared in cube.yaml (with live hub state when reachable)",
 		RunE: func(c *cobra.Command, args []string) error {
 			cube, err := config.Load(file)
 			if err != nil {
@@ -74,18 +74,54 @@ func newSpokeListCmd() *cobra.Command {
 				fmt.Fprintln(out, "no spokes declared")
 				return nil
 			}
+			// S4: live Registered/Reachable columns from the same collector
+			// `status` uses (the statusConnect seam). Graceful degradation:
+			// any failure — missing cluster, dead apiserver — falls back to
+			// the declared-config-only table with a trailing note, never an
+			// error. `spoke list` must always answer.
+			live, ok := spokeListLive(c.Context(), file)
+			p := ui.NewFor(out)
 			for _, s := range cube.Spec.Spokes {
-				ctx := s.Cluster.Context
-				if ctx == "" {
-					ctx = "-"
+				kctx := s.Cluster.Context
+				if kctx == "" {
+					kctx = "-"
 				}
-				fmt.Fprintf(out, "%-20s %-10s %s\n", s.Name, s.Cluster.Provider, ctx)
+				if !ok {
+					fmt.Fprintf(out, "%-20s %-10s %s\n", s.Name, s.Cluster.Provider, kctx)
+					continue
+				}
+				st := live[s.Name]
+				fmt.Fprintf(out, "%-20s %-10s %-20s %s  %s\n", s.Name, s.Cluster.Provider, kctx,
+					spokeStateCell(p, st.Registered, "registered", "unregistered"),
+					spokeStateCell(p, st.Reachable, "reachable", "unreachable"))
+			}
+			if !ok {
+				fmt.Fprintln(out, "hub unreachable — showing declared config only")
 			}
 			return nil
 		},
 	}
 	c.Flags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
 	return c
+}
+
+// spokeListLive attempts one status collection through the statusConnect
+// seam and indexes the spoke rows by name. ok=false on any failure — the
+// caller degrades to declared config, it never errors.
+func spokeListLive(ctx context.Context, file string) (map[string]spokeStatus, bool) {
+	_, collect, err := statusConnect(ctx, file, false)
+	if err != nil {
+		return nil, false
+	}
+	snap, err := collect(ctx)
+	if err != nil {
+		return nil, false
+	}
+	live := make(map[string]spokeStatus, len(snap.Spokes))
+	for _, s := range snap.Spokes {
+		live[s.Name] = s
+	}
+	return live, true
 }
 
 func newSpokeRemoveCmd() *cobra.Command {

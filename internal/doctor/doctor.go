@@ -6,16 +6,25 @@
 package doctor
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	lipgloss "charm.land/lipgloss/v2"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/pack"
 	"github.com/cube-idp/cube-idp/internal/ui"
@@ -188,3 +197,147 @@ func renderStyled(p *ui.Printer, findings []diag.Finding, hasErrors bool) {
 // ClusterProbeTimeout bounds the cluster-side portion of doctor (provider
 // Diagnose + engine Health) — doctor must never hang on a dead apiserver.
 const ClusterProbeTimeout = 15 * time.Second
+
+// SpokeState is one declared spoke's observed hub-side state (S4):
+// Registered — the S3 hub registration secret exists in the engine's
+// namespace; Reachable — the spoke API server answered GET /readyz using
+// that secret's own payload, i.e. exactly the URL and credentials the hub
+// engine would use. For kind spokes the payload's server URL is
+// docker-network-internal (GT7), so a probe from outside that network can
+// truthfully report unreachable while the hub engine still reconciles.
+type SpokeState struct {
+	Name       string
+	Provider   string
+	Registered bool
+	Reachable  bool
+}
+
+// spokeProbeTimeout bounds each spoke's /readyz GET (S4: 2 seconds per
+// spoke; spokes probe in parallel so a fleet never stalls status).
+const spokeProbeTimeout = 2 * time.Second
+
+// spokeHubSecretRef returns the hub registration secret coordinates for one
+// spoke — the S3 internal/spoke.HubSecrets contract: cube-idp-spoke-<name>
+// in ns "argocd" (engine argocd) or "flux-system" (engine flux).
+func spokeHubSecretRef(engineType, spokeName string) (namespace, name string) {
+	ns := "flux-system"
+	if engineType == "argocd" {
+		ns = "argocd"
+	}
+	return ns, "cube-idp-spoke-" + spokeName
+}
+
+// spokeArgocdConfig mirrors the argocd cluster-secret `config` JSON payload
+// S3 writes (internal/spoke's unexported argocdClusterConfig — fields
+// copied per its handoff).
+type spokeArgocdConfig struct {
+	BearerToken     string `json:"bearerToken"`
+	TLSClientConfig struct {
+		CAData []byte `json:"caData"`
+	} `json:"tlsClientConfig"`
+}
+
+// spokeRESTConfig rebuilds the REST config the hub engine would use from the
+// registration secret's own payload: argocd → server + config JSON; flux →
+// the `value` kubeconfig.
+func spokeRESTConfig(engineType string, sec *corev1.Secret) (*rest.Config, error) {
+	if engineType == "argocd" {
+		var cc spokeArgocdConfig
+		if err := json.Unmarshal(sec.Data["config"], &cc); err != nil {
+			return nil, err
+		}
+		server := string(sec.Data["server"])
+		if server == "" {
+			return nil, fmt.Errorf("argocd cluster secret %s/%s has no server", sec.Namespace, sec.Name)
+		}
+		return &rest.Config{
+			Host:            server,
+			BearerToken:     cc.BearerToken,
+			TLSClientConfig: rest.TLSClientConfig{CAData: cc.TLSClientConfig.CAData},
+		}, nil
+	}
+	return clientcmd.RESTConfigFromKubeConfig(sec.Data["value"])
+}
+
+// ProbeSpokes observes every declared spoke: Registered from the hub
+// registration secret, Reachable from a GET /readyz built from that
+// secret's payload — spokeProbeTimeout per spoke, all spokes in parallel.
+// A probe failure is a state, never an error: status must render a dead
+// spoke, not fail on it.
+func ProbeSpokes(ctx context.Context, c client.Client, engineType string, spokes []config.SpokeSpec) []SpokeState {
+	states := make([]SpokeState, len(spokes))
+	var wg sync.WaitGroup
+	for i, sp := range spokes {
+		states[i] = SpokeState{Name: sp.Name, Provider: sp.Cluster.Provider}
+		ns, name := spokeHubSecretRef(engineType, sp.Name)
+		var sec corev1.Secret
+		if err := c.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &sec); err != nil {
+			continue // not registered — nothing to probe
+		}
+		states[i].Registered = true
+		cfg, err := spokeRESTConfig(engineType, &sec)
+		if err != nil {
+			continue // malformed payload probes as unreachable
+		}
+		wg.Add(1)
+		go func(st *SpokeState) {
+			defer wg.Done()
+			st.Reachable = spokeReadyz(ctx, cfg)
+		}(&states[i])
+	}
+	wg.Wait()
+	return states
+}
+
+// spokeReadyz reports whether the API server behind cfg answers GET /readyz
+// within spokeProbeTimeout.
+func spokeReadyz(ctx context.Context, cfg *rest.Config) bool {
+	hc, err := rest.HTTPClientFor(cfg)
+	if err != nil {
+		return false
+	}
+	pctx, cancel := context.WithTimeout(ctx, spokeProbeTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(pctx, http.MethodGet, strings.TrimSuffix(cfg.Host, "/")+"/readyz", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+// CheckSpokeReachability is doctor's spoke probe (check id:
+// spoke-reachability — U5's tri-state checklist will wrap it like the other
+// Check* functions): silent when no spokes are declared; every declared
+// spoke whose hub registration secret is missing, or whose API server does
+// not answer /readyz from this machine, yields one CUBE-8006 warning naming
+// it. Warnings, never errors: for kind spokes the registered URL is
+// docker-network-internal (GT7), so the hub engine can reconcile a spoke
+// this machine cannot connect to.
+func CheckSpokeReachability(ctx context.Context, c client.Client, engineType string, spokes []config.SpokeSpec) []diag.Finding {
+	if len(spokes) == 0 {
+		return nil
+	}
+	var findings []diag.Finding
+	for _, st := range ProbeSpokes(ctx, c, engineType, spokes) {
+		switch {
+		case !st.Registered:
+			findings = append(findings, diag.Finding{Code: diag.CodeSpokeUnreachable, Severity: diag.SeverityWarning,
+				Message:     fmt.Sprintf("spoke %q is declared but not registered (hub secret cube-idp-spoke-%s missing)", st.Name, st.Name),
+				Remediation: "run `cube-idp up` to bootstrap and register the spoke"})
+		case !st.Reachable:
+			rem := "check the spoke cluster and the network path to it; `cube-idp up` re-issues credentials"
+			if st.Provider == "kind" {
+				rem = fmt.Sprintf("kind spokes register a docker-network-internal URL for the hub engine — verify the spoke itself with: kubectl --context kind-<cube>-spoke-%s get ns", st.Name)
+			}
+			findings = append(findings, diag.Finding{Code: diag.CodeSpokeUnreachable, Severity: diag.SeverityWarning,
+				Message:     fmt.Sprintf("spoke %q did not answer /readyz from this machine", st.Name),
+				Remediation: rem})
+		}
+	}
+	return findings
+}
