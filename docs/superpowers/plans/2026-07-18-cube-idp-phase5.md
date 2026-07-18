@@ -774,7 +774,7 @@ func Bootstrap(ctx context.Context, conn *kube.Conn, engineType string, timeout 
   idempotency for free. New codes: `CodeSpokeBootstrapFailed = "CUBE-8002"`,
   `CodeSpokeTokenFailed = "CUBE-8003"`.
 
-- [ ] **Step 1: Failing envtest** — `internal/spoke/bootstrap_test.go`
+- [x] **Step 1: Failing envtest** — `internal/spoke/bootstrap_test.go`
   (same build tag the existing envtest files use — check the first line of
   `internal/up/crd_wait_envtest_test.go` and copy it verbatim):
 
@@ -815,13 +815,13 @@ func TestBootstrapIdempotentAndTokenIssued(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Verify fail** — Run (with the envtest env the repo's
+- [x] **Step 2: Verify fail** — Run (with the envtest env the repo's
   Makefile/CI uses for the other envtest suites — check `Makefile` for the
   `KUBEBUILDER_ASSETS`/setup-envtest incantation and reuse it):
   `go test ./internal/spoke/ -v`
   Expected: FAIL — package does not exist.
 
-- [ ] **Step 3: Implement `internal/spoke/bootstrap.go`:**
+- [x] **Step 3: Implement `internal/spoke/bootstrap.go`:**
 
 ```go
 // Package spoke bootstraps and registers spoke clusters (Phase 5 spec §5).
@@ -933,23 +933,23 @@ unconditionally:
 	return &Credential{Token: tr.Status.Token, CAData: ca}, nil
 ```
 
-- [ ] **Step 4: Verify pass** — Run: `go test ./internal/spoke/ -v`
+- [x] **Step 4: Verify pass** — Run: `go test ./internal/spoke/ -v`
   Expected: PASS both bootstrap runs; token non-empty.
 
-- [ ] **Step 5: Gate + commit** —
+- [x] **Step 5: Gate + commit** —
   `go build ./... && go vet ./... && go test ./...` → all PASS, then
   `git add internal/spoke/ internal/diag/ && git commit -m "feat(spoke): bootstrap RBAC + TokenRequest credential (CUBE-8002/8003)"`
 
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(b67ed6f3-6188-4eca-ba99-88e5dad89e07, 2026-07-18T09:27:33Z)
-BRANCH: p5/s2-spoke-bootstrap (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/s2-spoke-bootstrap (merged: yes)
+COMMITS: 5b1c0b5 feat(spoke): bootstrap RBAC + TokenRequest credential (CUBE-8002/8003); bd0e512 merge: p5 S2 spoke-bootstrap (p5/s2-spoke-bootstrap)
+FINDINGS: (1) Plan Step 1 says "same build tag the existing envtest files use" — internal/up/crd_wait_envtest_test.go has NO build tag: its gate is a per-test KUBEBUILDER_ASSETS-unset t.Skip plus its own env.Start; copied that exact pattern (startEnv helper local to bootstrap_test.go returning kube.Conn{REST: cfg} + stop func). (2) VERIFY-API (a) confirmed: apply.New(cfg *rest.Config, cubeName string) at applier.go:39; Apply (applier.go:91) only labels + ApplyAllStaged + optional WaitForSet — inventory is written solely by the separate RecordInventory (inventory.go:27), so Bootstrap's constant cube name "spoke-bootstrap" creates no inventory ConfigMap. (3) VERIFY-API (b): unconditional CAFile fallback implemented; under envtest CAData was already embedded (test asserts non-empty CAData and passed), so the fallback serves file-referencing kubeconfigs (existing-provider spokes). (4) Makefile test-apply's package list does not include ./internal/spoke/ and this task's Files don't sanction a Makefile edit — left untouched; the spoke envtest leg runs via KUBEBUILDER_ASSETS=$(setup-envtest use 1.33 -p path) go test ./internal/spoke/. (5) spoke.Namespace duplicates apply.SystemNamespace's "cube-idp-system" value by design (plan-specified local const; package stays self-describing). (6) Step 5 commit message verbatim plus the mandated Co-Authored-By trailer. (7) Ledger close waited out P2's uncommitted plan-file edit per the claim-serialization discipline (background poll until porcelain-clean, then re-read).
+REVIEW: TDD observed: Step 2 red = "undefined: Bootstrap ... FAIL [build failed]" (package absent); Step 4 green = TestBootstrapIdempotentAndTokenIssued PASS (4.66s) against a real envtest API server — both bootstrap runs succeed (SSA idempotency), token and CAData non-empty, re-issued token non-empty. Task gate in worktree: go build ./... && go vet ./... && go test ./... exit 0 (30 test packages ok, incl. cmd + ui fences). Merge --no-ff clean, no conflicts (P2's merge on main touched disjoint files); post-merge go test ./... exit 0.
+BLOCKERS: none
+HANDOFF: S3 consumes spoke.Bootstrap(ctx, *kube.Conn, engineType, timeout) → *Credential{Token string; CAData []byte}; the server URL is deliberately NOT in Credential — S3 chooses it (kind internal kubeconfig URL vs existing context URL). spoke.Namespace ("cube-idp-system") is exported. CUBE-8002/8003 are taken; S3's 8004/8005 append inside the same codes.go 8xxx block + registry section (ranges["8"] already exists). bootstrap_test.go's startEnv is the package envtest harness — reuse it for register tests needing an API server (KUBEBUILDER_ASSETS skip semantics included). Bootstrap's Applier is throwaway (cube name "spoke-bootstrap", never RecordInventory); S3's hub secrets must go through the HUB applier + RecordInventory so removal prunes. ./internal/spoke/ is not in Makefile test-apply — owner may want it added once S3/S4 grow the suite.
 ```
 
 ---
