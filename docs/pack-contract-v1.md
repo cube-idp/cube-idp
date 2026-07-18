@@ -213,3 +213,15 @@ input side — not rendered manifests):
 - Loader compatibility promise: every pack valid under this document
   loads and renders identically under every cube-idp release that
   declares contract v1.
+
+## Verifying pack provenance
+
+Every artifact under `ghcr.io/cube-idp/packs/` is published by the
+`cube-idp/packs` GitHub workflow and carries a GitHub-native provenance
+attestation. To verify one (requires `gh` ≥ 2.49, logged in):
+
+    gh attestation verify oci://ghcr.io/cube-idp/packs/gitea:0.2.0 --owner cube-idp
+
+Expected: `✓ Verification succeeded!` naming the cube-idp/packs workflow
+as the builder. cube-idp itself pins digests (catalog index, e2e
+packs.lock) and does not re-verify attestations at pull time.
