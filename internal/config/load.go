@@ -152,6 +152,31 @@ func crossValidate(c *Cube) error {
 			}
 		}
 	}
+	// P7 (the gitea guarantee, decision 13): a delivery: repo pack needs
+	// gitea present, and gitea itself can never be repo-delivered — its
+	// repo would have to be served by the very pack being delivered. Gitea
+	// presence is matched by the same ref-substring convention
+	// cmd/init.go's filterSelectedPacks/packCatalogName use (a ref
+	// containing the catalog name — OCI refs and --local checkout paths
+	// both carry "gitea" as the pack directory/image name).
+	hasGitea := false
+	for _, p := range c.Spec.Packs {
+		if strings.Contains(p.Ref, "gitea") {
+			hasGitea = true
+			if p.Delivery == "repo" {
+				return diag.New(diag.CodeRepoDeliveryConfig,
+					"the gitea pack cannot use delivery: repo (its repo would live in the gitea it is itself delivering)",
+					"remove delivery: repo from the gitea pack — it always delivers as an OCI artifact")
+			}
+		}
+	}
+	for _, p := range c.Spec.Packs {
+		if p.Delivery == "repo" && !hasGitea {
+			return diag.New(diag.CodeRepoDeliveryConfig,
+				fmt.Sprintf("pack %q has delivery: repo but the gitea pack is not in spec.packs", p.Ref),
+				"add the gitea pack or use delivery: oci")
+		}
+	}
 	// U2 (decision 3): the opt-in plain-HTTP host port must not collide with
 	// the HTTPS gateway port or any typed extraPorts mapping — each host
 	// port can be bound once.

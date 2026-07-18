@@ -178,6 +178,18 @@ type PackRef struct {
 	// key — schema.cue's `extraManifests?: string & !=""` rejects an
 	// explicit empty string, same discipline as Values above.
 	ExtraManifests string `yaml:"extraManifests,omitempty" json:"extraManifests,omitempty"`
+	// Delivery selects how `up` hands this pack to the engine (P7, decision
+	// 4/13): "" or "oci" (the default) pushes the render to zot and
+	// registers an OCI source; "repo" pushes the render into a Gitea repo
+	// (cube-pack-<name>) and registers a git source instead — the payoff is
+	// an editable, in-cluster fork (edit in the Gitea UI, the engine
+	// reconciles; cube.yaml stays the source of truth and a re-run `up`
+	// re-syncs the repo's manifests/ to the render). Guarded at load: repo
+	// delivery requires the gitea pack in spec.packs, and gitea itself can
+	// never be repo-delivered (CUBE-7304). omitempty: absent must
+	// round-trip as an absent key — schema.cue's `delivery?: "oci"|"repo"`
+	// rejects an explicit "" (same discipline as Values/ExtraManifests).
+	Delivery string `yaml:"delivery,omitempty" json:"delivery,omitempty"`
 }
 
 // SpokeSpec declares a managed spoke cluster (spec §5, Phase 5). cube-idp

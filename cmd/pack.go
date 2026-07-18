@@ -237,15 +237,24 @@ var (
 )
 
 func newPackInstallCmd() *cobra.Command {
-	var file string
+	var file, via string
 	c := &cobra.Command{
 		Use:   "install [pack-ref...]",
 		Short: "Add packs to cube.yaml (delivered on the next `cube-idp up`)",
 		Long: "Append pack refs to cube.yaml's spec.packs. This command only edits the\n" +
 			"config file — nothing touches the cluster until the next `cube-idp up`.\n" +
 			"With refs as arguments it never prompts (script/CI safe). Bare on a real\n" +
-			"terminal it offers a filterable multi-select over the pack catalog.",
+			"terminal it offers a filterable multi-select over the pack catalog.\n" +
+			"--via repo (P7) delivers the pack as an editable Gitea repo\n" +
+			"(cube-pack-<name>) instead of an OCI artifact — requires the gitea pack.",
 		RunE: func(c *cobra.Command, args []string) error {
+			// P7 (decision 4): per-pack delivery flag. Validated up front so
+			// a bogus value refuses before any prompt or file touch.
+			if via != "oci" && via != "repo" {
+				return diag.New(diag.CodeBadFlagValue,
+					fmt.Sprintf("--via must be oci or repo, got %q", via),
+					"run `cube-idp pack install <ref> --via repo` for Gitea delivery, or drop the flag for the OCI default")
+			}
 			refs := args
 			if len(refs) == 0 {
 				// gh doctrine (spec Decision 4): bare + non-interactive must
@@ -285,7 +294,7 @@ func newPackInstallCmd() *cobra.Command {
 					return nil
 				}
 			}
-			if err := packInstallRefs(c.OutOrStdout(), file, refs); err != nil {
+			if err := packInstallRefs(c.OutOrStdout(), file, refs, via); err != nil {
 				return err
 			}
 			if len(args) == 0 {
@@ -296,6 +305,7 @@ func newPackInstallCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
+	c.Flags().StringVar(&via, "via", "oci", "delivery mode for the installed packs: oci (default) or repo (editable Gitea repo; needs the gitea pack)")
 	return c
 }
 
@@ -323,11 +333,18 @@ func runPackMenu(in io.Reader, out io.Writer, opts []huh.Option[string]) ([]stri
 // writes it back through config.SaveValidated (init's writer shape,
 // validate-by-round-trip through config.Load — the exact schema +
 // cross-field checks `up` applies — via a temp file, so a rejected ref
-// leaves cube.yaml untouched).
-func packInstallRefs(out io.Writer, file string, refs []string) error {
+// leaves cube.yaml untouched). via "repo" (P7) marks each written ref for
+// Gitea delivery; "oci" writes no delivery key at all — byte-compatible
+// with pre-P7 files. The gitea guarantee (CUBE-7304) rides the round-trip:
+// --via repo on a gitea-less cube is refused with the file untouched.
+func packInstallRefs(out io.Writer, file string, refs []string, via string) error {
 	cube, err := config.Load(file)
 	if err != nil {
 		return err
+	}
+	delivery := ""
+	if via == "repo" {
+		delivery = "repo"
 	}
 	p := ui.NewFor(out)
 	existing := make(map[string]bool, len(cube.Spec.Packs))
@@ -340,7 +357,7 @@ func packInstallRefs(out io.Writer, file string, refs []string) error {
 			p.Warn("already in cube.yaml: %s — skipped", ref)
 			continue
 		}
-		cube.Spec.Packs = append(cube.Spec.Packs, config.PackRef{Ref: ref})
+		cube.Spec.Packs = append(cube.Spec.Packs, config.PackRef{Ref: ref, Delivery: delivery})
 		existing[ref] = true
 		added = append(added, ref)
 	}

@@ -28,7 +28,11 @@ package e2e
 
 import (
 	"context"
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,7 +43,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/yaml"
 
 	"github.com/cube-idp/cube-idp/internal/cluster"
@@ -668,4 +676,168 @@ func podLogs(t *testing.T, cs *kubernetes.Clientset, ns, name string) string {
 		return fmt.Sprintf("(failed to fetch logs: %v)", err)
 	}
 	return string(raw)
+}
+
+// clusterRESTConfig connects to the already-`up` cluster exactly like
+// clusterClientset and returns the raw REST config — the P7 leg builds a
+// dynamic client from it for engine CRs and Pack records.
+func clusterRESTConfig(t *testing.T, dir string) *rest.Config {
+	t.Helper()
+	cube, err := config.Load(filepath.Join(dir, "cube.yaml"))
+	if err != nil {
+		t.Fatalf("loading cube.yaml: %v", err)
+	}
+	prov, err := cluster.New(cube.Spec.Cluster, cube.Spec.Gateway)
+	if err != nil {
+		t.Fatalf("building provider: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	conn, err := prov.Ensure(ctx, cube.Metadata.Name, cube.Spec.Cluster)
+	if err != nil {
+		t.Fatalf("connecting to cluster: %v", err)
+	}
+	return conn.REST
+}
+
+// giteaGatewayAPI issues a GET against the cube's gitea over the HTTPS
+// gateway (the way the repo tests reach it: gitea.<host>:<port>, cube-CA
+// cert — verification disabled for the local test, admin basic auth) and
+// returns the status code and body.
+func giteaGatewayAPI(t *testing.T, port int, user, pass, path string) (int, []byte) {
+	t.Helper()
+	client := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}, Timeout: 30 * time.Second}
+	url := fmt.Sprintf("https://gitea.cube-idp.localtest.me:%d%s", port, path)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.SetBasicAuth(user, pass)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, body
+}
+
+// TestRepoDeliveredPack is P7's acceptance leg (decision 4/13, GT19):
+// `up` with one delivery: repo pack must (1) create the Gitea repo
+// cube-pack-<name> with the rendered manifests/ in it — asserted over the
+// gateway API the way the repo tests reach gitea; (2) register a GIT
+// engine source for that pack (flux GitRepository / argocd Application
+// with spec.source.repoURL) pointing at the in-cluster clone URL; and
+// (3) write a Pack record reporting delivery: repo (the DELIVERY printer
+// column's field). The pack still reaches Ready through the engine's own
+// reconcile of the git source.
+func TestRepoDeliveredPack(t *testing.T) {
+	requireE2E(t)
+	requireDocker(t)
+
+	provider := providerName()
+	name := "e2e-repodeliv"
+	port := gatewayPort(t)
+	dir := t.TempDir()
+	bin := build(t)
+	packsRoot := packsCheckout(t)
+
+	guardDeleteCluster(t, provider, name)
+	t.Cleanup(func() { cleanupCube(t, bin, dir, provider, name) })
+
+	initCube(t, dir, bin, name, provider, port)
+
+	// Pick the repo-delivered pack: the default (flux) profile carries the
+	// argocd pack — flip it to delivery: repo. The argocd-ENGINE leg has no
+	// argocd pack (init drops it, CUBE-0005), so it appends cert-manager
+	// from the same checkout instead.
+	repoPack := "argocd"
+	patchCube(t, dir, func(c *config.Cube) {
+		if engineName() == "argocd" {
+			repoPack = "cert-manager"
+			c.Spec.Packs = append(c.Spec.Packs, config.PackRef{
+				Ref: filepath.Join(packsRoot, "packs", "cert-manager"), Delivery: "repo"})
+			return
+		}
+		for i := range c.Spec.Packs {
+			if strings.Contains(c.Spec.Packs[i].Ref, "argocd") {
+				c.Spec.Packs[i].Delivery = "repo"
+			}
+		}
+	})
+
+	run(t, dir, bin, "up")
+	pollStatusReady(t, bin, dir, repoPack, 3*time.Minute)
+
+	// (1) The Gitea repo exists and carries the render, over the gateway.
+	cs := clusterClientset(t, dir)
+	user, pass := giteaAdminCreds(t, cs)
+	repoName := "cube-pack-" + repoPack
+	code, _ := giteaGatewayAPI(t, port, user, pass, fmt.Sprintf("/api/v1/repos/%s/%s", user, repoName))
+	if code != http.StatusOK {
+		t.Fatalf("gitea repo %s not found over the gateway API: HTTP %d", repoName, code)
+	}
+	code, body := giteaGatewayAPI(t, port, user, pass, fmt.Sprintf("/api/v1/repos/%s/%s/contents/manifests?ref=main", user, repoName))
+	if code != http.StatusOK {
+		t.Fatalf("gitea repo %s has no manifests/ dir: HTTP %d", repoName, code)
+	}
+	var listing []map[string]any
+	if err := json.Unmarshal(body, &listing); err != nil || len(listing) == 0 {
+		t.Fatalf("manifests/ listing empty or unparsable (%v):\n%s", err, body)
+	}
+
+	// (2) The engine source object is a GIT one over the in-cluster URL.
+	dyn, err := dynamic.NewForConfig(clusterRESTConfig(t, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	wantURL := fmt.Sprintf("http://gitea-http.gitea.svc.cluster.local:3000/%s/%s.git", user, repoName)
+	if engineName() == "argocd" {
+		app, err := dyn.Resource(schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}).
+			Namespace("argocd").Get(ctx, "cube-idp-"+repoPack, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("argocd Application for the repo-delivered pack: %v", err)
+		}
+		gotURL, _, _ := unstructured.NestedString(app.Object, "spec", "source", "repoURL")
+		if gotURL != wantURL {
+			t.Fatalf("Application source is not the gitea repo: %q, want %q", gotURL, wantURL)
+		}
+	} else {
+		gitRepo, err := dyn.Resource(schema.GroupVersionResource{Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "gitrepositories"}).
+			Namespace("flux-system").Get(ctx, "cube-idp-"+repoPack, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("flux GitRepository for the repo-delivered pack: %v", err)
+		}
+		gotURL, _, _ := unstructured.NestedString(gitRepo.Object, "spec", "url")
+		if gotURL != wantURL {
+			t.Fatalf("GitRepository url is not the gitea repo: %q, want %q", gotURL, wantURL)
+		}
+	}
+
+	// (3) The Pack record reports delivery: repo (GT19); a stock pack
+	// reports oci — the DELIVERY column always shows a value.
+	packGVR := schema.GroupVersionResource{Group: "cube-idp.dev", Version: "v1alpha1", Resource: "packs"}
+	rec, err := dyn.Resource(packGVR).Get(ctx, repoPack, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Pack record %q: %v", repoPack, err)
+	}
+	if got, _, _ := unstructured.NestedString(rec.Object, "spec", "delivery"); got != "repo" {
+		t.Fatalf("Pack record delivery = %q, want repo", got)
+	}
+	gwRec, err := dyn.Resource(packGVR).Get(ctx, "gitea", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Pack record gitea: %v", err)
+	}
+	if got, _, _ := unstructured.NestedString(gwRec.Object, "spec", "delivery"); got != "oci" {
+		t.Fatalf("stock pack record delivery = %q, want oci", got)
+	}
+
+	run(t, dir, bin, "down", "--yes")
 }
