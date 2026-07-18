@@ -84,9 +84,17 @@ func ExposeURLs(p *Pack, gw config.GatewaySpec) []string {
 }
 
 // PackObject builds the cluster-scoped Pack record `up` writes (and `down`,
-// via the inventory, deletes).
-func PackObject(p *Pack, gw config.GatewaySpec, ready bool) *unstructured.Unstructured {
-	spec := map[string]any{"version": p.Version, "ready": ready}
+// via the inventory, deletes). customized is GT15's operator-visibility
+// bit (U4): true when the pack's PackRef carried non-empty values or
+// extraManifests — the caller decides, since only it holds the ref. The
+// record always carries spec.customized as "yes"/"no" (never absent) so
+// the CUSTOMIZED printer column renders for stock packs too.
+func PackObject(p *Pack, gw config.GatewaySpec, ready, customized bool) *unstructured.Unstructured {
+	customizedStr := "no"
+	if customized {
+		customizedStr = "yes"
+	}
+	spec := map[string]any{"version": p.Version, "ready": ready, "customized": customizedStr}
 	if urls := ExposeURLs(p, gw); len(urls) > 0 {
 		anyURLs := make([]any, len(urls))
 		for i, u := range urls {

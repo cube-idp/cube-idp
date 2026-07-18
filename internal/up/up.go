@@ -300,7 +300,10 @@ func Run(ctx context.Context, opts Options) error {
 				}
 			}
 			packs = append(packs, pk)
-			rendered, err := pk.RenderFor(pref.Values, cube.Spec.Gateway)
+			// GT15 (U4): RenderWith is RenderFor plus the values stone —
+			// values on a chartless pack is CUBE-4016, and extraManifests
+			// (any pack kind) are substituted + appended (CUBE-4017).
+			rendered, err := pk.RenderWith(pref.Values, pref.ExtraManifests, cube.Spec.Gateway)
 			if err != nil {
 				return err
 			}
@@ -397,9 +400,15 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	// "cube-idp-"+name is the Deliver object name convention both engines
 	// use (internal/engine/flux/deliver.go, internal/engine/argocd/deliver.go).
+	// D11 record-writer fields (append-only shared surface): U4 CUSTOMIZED
+	// here; P7 adds DELIVERY. packs is index-aligned with refs (exactly one
+	// append per ref in the delivery loop above, any failure aborts Run), so
+	// refs[i] is the PackRef whose values/extraManifests decide GT15's
+	// CUSTOMIZED column for packs[i].
 	packObjs := make([]*unstructured.Unstructured, 0, len(packs))
-	for _, pk := range packs {
-		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name]))
+	for i, pk := range packs {
+		customized := len(refs[i].Values) > 0 || refs[i].ExtraManifests != ""
+		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name], customized))
 	}
 	if err := a.Apply(ctx, packObjs, false, applyTimeout); err != nil {
 		return err

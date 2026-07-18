@@ -98,6 +98,9 @@ var registry = map[Code]Desc{
 	CodePackCacheDirErr:  {Summary: "cache directory access/creation error"},
 	CodePackGuardTrip:    {Summary: "extraction guard tripped (path traversal/symlink) (Phase 2)"},
 	CodePackPushFail:     {Summary: "pack push (directory archive, OCI push, or tag) failed"},
+	// GT15 values stone (Phase 5 U4):
+	CodePackValuesChartless: {Summary: "values: set on a pack without chart.yaml — values are helm values only (GT15); use packs[].extraManifests for raw resources"},
+	CodePackExtraManifests:  {Summary: "packs[].extraManifests is not valid multi-doc YAML"},
 
 	// 5xxx: registry
 	CodeZotManifestsInv:         {Summary: "embedded zot manifests invalid"},

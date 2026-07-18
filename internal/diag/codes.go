@@ -95,6 +95,10 @@ const (
 	CodePackCacheDirErr  Code = "CUBE-4013" // cache directory access/creation error
 	CodePackGuardTrip    Code = "CUBE-4014" // extraction guard tripped (path traversal/symlink) (Phase 2)
 	CodePackPushFail     Code = "CUBE-4015" // pack push (directory archive, OCI push, or tag) failed
+	// GT15 values stone (Phase 5 U4): values: are helm values only; the
+	// uniform extras channel for every pack kind is packs[].extraManifests.
+	CodePackValuesChartless Code = "CUBE-4016" // values: set on a pack without chart.yaml (values are helm-only, GT15)
+	CodePackExtraManifests  Code = "CUBE-4017" // packs[].extraManifests is not valid multi-doc YAML
 )
 
 // 5xxx: registry

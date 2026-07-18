@@ -1,6 +1,7 @@
 package pack
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -100,6 +101,48 @@ func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendere
 	if len(r.Objects) == 0 {
 		return nil, diag.New(diag.CodePackManifestErr, "pack "+p.Name+" rendered zero objects",
 			"a pack needs manifests/ and/or chart.yaml")
+	}
+	return r, nil
+}
+
+// HasChart reports whether the pack carries a chart.yaml — the GT15 stone
+// guard: values: are helm values, so only chart-bearing packs may take
+// them. A stat error other than not-exist reads as "no chart" here; the
+// render path itself (RenderFor's chart.yaml stat) still surfaces such
+// errors loudly, so nothing is silently swallowed.
+func (p *Pack) HasChart() bool {
+	_, err := os.Stat(filepath.Join(p.Dir, "chart.yaml"))
+	return err == nil
+}
+
+// RenderWith is RenderFor plus the GT15 values stone (spec decision 11,
+// Phase 5 U4): non-empty values on a pack without chart.yaml is a typed
+// CUBE-4016 error — `values:` means helm values, only, always, and the
+// check can only happen at render time because the pack layout is
+// unknowable until the ref is fetched. extraManifests is the uniform
+// extras channel valid for EVERY pack kind: parsed as multi-doc YAML,
+// ${GATEWAY_*}-substituted on the raw text exactly like the manifests/
+// walk (substitute in expose.go), and appended after the pack's own
+// objects so they ride the same OCI artifact and engine delivery
+// (CUBE-4017 on invalid YAML). RenderFor and Render keep their exact
+// pre-stone behavior for existing callers and tests.
+func (p *Pack) RenderWith(values map[string]any, extraManifests string, gw config.GatewaySpec) (*Rendered, error) {
+	if len(values) > 0 && !p.HasChart() {
+		return nil, diag.New(diag.CodePackValuesChartless,
+			fmt.Sprintf("pack %s has no chart.yaml — values: are helm values only (GT15)", p.Name),
+			"use extraManifests to add raw resources, or remove values")
+	}
+	r, err := p.RenderFor(values, gw)
+	if err != nil {
+		return nil, err
+	}
+	if extraManifests != "" {
+		objs, err := apply.ParseMultiDoc([]byte(substitute(extraManifests, gw)))
+		if err != nil {
+			return nil, diag.Wrap(err, diag.CodePackExtraManifests,
+				fmt.Sprintf("pack %s: extraManifests is not valid YAML", p.Name), "fix the extraManifests block in cube.yaml")
+		}
+		r.Objects = append(r.Objects, objs...)
 	}
 	return r, nil
 }
