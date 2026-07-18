@@ -150,4 +150,6 @@ const (
 // 8xxx: spoke (Phase 5)
 const (
 	CodeSpokeProviderUnsupported Code = "CUBE-8001" // spoke cluster.provider invalid for spokes (k3d deferred; existing needs context; duplicate name)
+	CodeSpokeBootstrapFailed     Code = "CUBE-8002" // spoke RBAC bootstrap apply failed
+	CodeSpokeTokenFailed         Code = "CUBE-8003" // spoke ServiceAccount token issuance failed
 )
