@@ -3578,12 +3578,12 @@ no cube-idp checkout, no `CUBE_IDP_READ_TOKEN` needed.
   `hack/build-matrix.sh`, `hack/genindex.sh`,
   `.github/workflows/publish.yml`, `.github/workflows/ci.yml`
 
-- [ ] **Step 1: ⚠ OWNER GATE — create the public repo.** STOP and report
+- [x] **Step 1: ⚠ OWNER GATE — create the public repo.** STOP and report
   NEEDS_CONTEXT with exactly:
   `gh repo create cube-idp/plugins --public --description "cube-idp plugins — official exec plugins, published per-platform as attested OCI artifacts"`
   No secrets at all (attestations are keyless; the repo builds itself).
   If not pre-authorized: continue locally (git init, no remote).
-- [ ] **Step 2: Scaffold + seed plugin.** `git init cube-idp-plugins` as
+- [x] **Step 2: Scaffold + seed plugin.** `git init cube-idp-plugins` as
   $ROOT's sibling. `plugins/hello/main.go` (prints
   `cube-idp-hello <version>`; version injected via `-ldflags -X`),
   `plugins/hello/plugin.yaml`:
@@ -3600,7 +3600,7 @@ description: seed plugin proving the cube-idp plugins pipeline
   `dist/cube-idp-<name>-$(go env GOOS)-$(go env GOARCH)` runs and prints
   the version. `hack/genindex.sh`: assemble the GT17 index.json from
   dist/ + digests (jq).
-- [ ] **Step 3: `.github/workflows/publish.yml`** — on tags `*/v*`:
+- [x] **Step 3: `.github/workflows/publish.yml`** — on tags `*/v*`:
   parse `<name>/v<ver>` from the ref; build the matrix; for each
   platform binary `oras push
   ghcr.io/cube-idp/plugins/<name>:<ver>-<os>-<arch>` (single-layer,
@@ -3613,7 +3613,7 @@ description: seed plugin proving the cube-idp plugins pipeline
   `python3 -c "import yaml;[yaml.safe_load(open(f)) for f in ['.github/workflows/publish.yml','.github/workflows/ci.yml']]" && echo YAML-OK`
   Expected: `YAML-OK`. (Live attestation provable only on the first
   owner-tagged publish — state in FINDINGS/HANDOFF, do not fake.)
-- [ ] **Step 4: Local proof + commit.** Run
+- [x] **Step 4: Local proof + commit.** Run
   `bash hack/build-matrix.sh hello 0.1.0` — Expected: 4 binaries in
   dist/, native smoke prints `cube-idp-hello 0.1.0`; `bash
   hack/genindex.sh` emits index.json matching GT17's schema (digests
@@ -3625,13 +3625,111 @@ description: seed plugin proving the cube-idp plugins pipeline
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(b67ed6f3-6188-p9, 2026-07-18T18:39:34Z)
-BRANCH: p5/p9-plugins-repo (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/p9-plugins-repo (merged: yes — $PLUGINS 7f6a79f; branch kept, local only)
+COMMITS: $PLUGINS (NEW repo, sibling cube-idp-plugins): c02124f chore: repo
+  init (empty root commit as merge base — P2 precedent); 7481ee7 chore:
+  plugins repo scaffold — per-platform artifacts, index, attestations
+  (GT17); 7f6a79f merge: p5 P9 plugins-repo (p5/p9-plugins-repo). $ROOT:
+  ledger commits only (claim ddda2d4).
+FINDINGS: (1) OWNER GATE RUN (dispatch pre-authorized): `gh repo create
+  cube-idp/plugins --public --description "cube-idp plugins — official
+  exec plugins, published per-platform as attested OCI artifacts"` →
+  https://github.com/cube-idp/plugins, exit 0; post-merge `git remote add
+  origin https://github.com/cube-idp/plugins.git && git push -u origin
+  main` → main pushed (7f6a79f). NO secrets set — none needed (keyless
+  attestations; self-contained Go, no cube-idp checkout). Gate scope
+  honored: only main pushed, feature branch local, no tags pushed. (2)
+  attest-build-provenance pinned @v4, not the step's plan-time @v3 — P5
+  FINDINGS 1 precedent (current major; used inputs unchanged) and the
+  dispatch note names @v4 + tee/INDEX_DIGEST as house style; publish.yml
+  mirrors $PACKS publish.yml step-for-step. (3) Dispatch-note CI facts
+  baked into publish.yml header + README "Releasing" + CONTRACT-PLUGINS
+  §4: ONE tag per push (>3 tags in one push emits NO GitHub events),
+  ghcr write access belongs to the creating repo's CI only, new packages
+  start PRIVATE by org default with an owner visibility flip. NOTE:
+  A2's ledger line (757fd71, landed mid-task) reports its kyverno package
+  arrived PUBLIC — the org default may have been flipped since P4; docs
+  keep the conservative caveat ("check, then flip if needed"). (4)
+  Extras beyond the Files list, justified: go.mod (module
+  github.com/cube-idp/plugins, go 1.24 = CI go-version; `go build
+  ./plugins/<name>` needs a module root; stdlib only) and .gitignore
+  (.claude/worktrees/, dist/, digests.env, index.json, push.out — P2
+  precedent), plus repo-local git identity (fresh repo had none). (5)
+  Per-platform attestation = one @v4 step per platform digest (4) + one
+  for the index; the push loop writes digests.env lines
+  `<name>/<os>-<arch>=sha256:…` and exports DIGEST_<OS>_<ARCH> to
+  $GITHUB_ENV (P5 export-subject pattern ×4 — the action attests one
+  subject-digest per invocation). (6) genindex.sh digest resolution
+  order (multi-plugin future-proof): digests.env (this run's publishes)
+  → `oras resolve` when GENINDEX_FROM_REGISTRY=1 (CI sets it; mirrors
+  packs --from-registry) → shasum -a 256 over dist/ binaries as LOCAL
+  STAND-INS (stderr warning; per Step 4 these are file digests, not OCI
+  manifest digests). Proven: digests.env preferred when present; output
+  byte-deterministic; plugins sorted by name. (7) Index artifact type
+  chosen: application/vnd.cube-idp.plugin.index.v1 with an
+  application/json layer (GT17 names none); platform artifacts carry
+  application/vnd.cube-idp.plugin.v1 as BOTH oras --artifact-type and
+  layer media type. (8) Step 3's python3 parse check unrunnable (no
+  pyyaml on host — P5 FINDINGS 2 again): verified with yq eval + ruby
+  YAML.safe_load → YAML-OK. (9) Smoke contract generalized: no-args run
+  must exit 0 and print output CONTAINING the version (seed prints
+  "cube-idp-hello 0.1.0" exactly) — CONTRACT-PLUGINS §3, so future real
+  plugins aren't forced to make name+version their whole behavior. (10)
+  publish.yml validates tag version == plugin.yaml version; injection
+  doctrine held (tag only via native $GITHUB_REF_NAME, ${{ env.* }} only
+  in with: blocks, pull_request not pull_request_target); tee-swallow
+  caveat same as P5 FINDINGS 6 (empty digest fails the next attest step
+  immediately). ci.yml got workflow_dispatch (owner dry-run without a
+  PR; P2 skipped it for publish.yml only because that needs a tag ref).
+  (11) Stray-binary hazard: bare `go build ./...` at the repo root drops
+  a `hello` binary in cwd — caught and removed pre-merge; not gitignored
+  (per-plugin names don't scale as patterns); CI never bare-builds
+  (build-matrix.sh writes to dist/). (12) Live attestation NOT proven —
+  provable only on the first owner-tagged publish (Step 3's own caveat);
+  nothing faked; this machine cannot publish anyway (token lacks
+  write:packages — P4 FINDINGS 1).
+REVIEW: Step 4 Expected met exactly: `bash hack/build-matrix.sh hello
+  0.1.0` → 4 binaries in dist/ (ELF x86-64 + aarch64, Mach-O x86_64 +
+  arm64) and native smoke prints "cube-idp-hello 0.1.0"; `bash
+  hack/genindex.sh` → index.json passing a full jq GT17-schema assertion
+  (schemaVersion 1, plugins[0] name/version/description exact, all four
+  <os>-<arch> platform keys, every ref oci://ghcr.io/cube-idp/plugins/
+  hello:0.1.0-<plat>, every digest sha256:-prefixed) → GT17-SCHEMA-OK,
+  with stand-in warnings on stderr. bash -n both hack scripts OK; both
+  workflows parse (yq + ruby YAML-OK). $PLUGINS gate: go build ./... &&
+  go vet ./... green, gofmt -l clean, go test ./... "no test files"
+  (none exist yet). Post-merge on $PLUGINS main: build + vet + smoke
+  re-run green. Remote verified read-only: gh repo view → PUBLIC,
+  description exact, default branch main; contents list shows all
+  top-level entries; origin/main == 7f6a79f. $ROOT code untouched
+  (ledger only) — no $ROOT gate/fences due, go.mod gains no module.
+BLOCKERS: none
+HANDOFF: $PLUGINS exists at the $ROOT sibling ../cube-idp-plugins, main
+  at 7f6a79f, PUSHED to https://github.com/cube-idp/plugins (PUBLIC);
+  branch p5/p9-plugins-repo kept local. OWNER GATE RAN (repo create +
+  initial push); zero secrets exist or are needed. To prove the pipeline
+  live, owner (or a pre-authorized agent) runs, in order: (a) in
+  $PLUGINS `git tag hello/v0.1.0 && git push origin hello/v0.1.0` — ONE
+  tag per push — and watch the publish run (4 artifact pushes + 4
+  attestations + index + index attestation); (b) `gh attestation verify
+  oci://ghcr.io/cube-idp/plugins/hello:0.1.0-linux-amd64 --owner
+  cube-idp` → "✓ Verification succeeded!"; (c) check ghcr package
+  visibility for plugins/hello + plugins/index and flip to PUBLIC if the
+  org default made them private (A2's package arrived public — verify,
+  don't assume). For P10 (next in lane, $ROOT): index at
+  oci://ghcr.io/cube-idp/plugins/index:latest, schema GT17 verbatim —
+  platform keys "<os>-<arch>" over {ref, digest}; ref carries the oci://
+  scheme (packs-catalog style); digest is the OCI MANIFEST digest (pull
+  by digest, never by tag); artifact = single-layer blob, artifactType +
+  layer media type application/vnd.cube-idp.plugin.v1 (index layer
+  application/json, artifactType application/vnd.cube-idp.plugin.
+  index.v1); binary naming cube-idp-<name>-<os>-<arch>, installed as
+  cube-idp-<name>. CAUTION: the gitignored LOCAL index.json in $PLUGINS
+  holds shasum stand-in digests — P10 tests must mint their own digests
+  via its ocitest fake, and the real published index exists only after
+  owner action (a); until then `plugin install` from the official index
+  has nothing to resolve.
 ```
 
 ---
