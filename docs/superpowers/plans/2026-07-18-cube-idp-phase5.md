@@ -3652,7 +3652,7 @@ description: "<one line — user-facing, shows in cube-idp pack list>"
 #### Outcomes (one block per task — agents fill ONLY theirs)
 
 ```
-A1 STATUS: UNCLAIMED  BRANCH: p5/a1-crossplane        COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
+A1 STATUS: IN_PROGRESS(b67ed6f3, 2026-07-18T10:34:05Z)  BRANCH: p5/a1-crossplane        COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
 A2 STATUS: UNCLAIMED  BRANCH: p5/a2-kyverno           COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
 A3 STATUS: UNCLAIMED  BRANCH: p5/a3-kyverno-policies  COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
 A4 STATUS: UNCLAIMED  BRANCH: p5/a4-cloudnativepg     COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
