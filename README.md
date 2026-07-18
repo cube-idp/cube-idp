@@ -32,6 +32,11 @@ cube-idp version
 private unless you set `GOPRIVATE=github.com/cube-idp/*` and have git
 auth to the repo; prefer `gh release download`.
 
+Every pack artifact under `ghcr.io/cube-idp/packs/` carries a keyless GitHub
+provenance attestation — verify one with `gh attestation verify
+oci://ghcr.io/cube-idp/packs/<name>:<version> --owner cube-idp` (see
+[docs/pack-contract-v1.md](docs/pack-contract-v1.md), "Verifying pack provenance").
+
 > **Known limitation (v0.1.0, F12):** the default profile resolves the gateway
 > pack from the repo-relative path `packs/traefik`, so `cube-idp init && cube-idp up`
 > must currently run from a cube-idp checkout (clone the repo, run the binary at
