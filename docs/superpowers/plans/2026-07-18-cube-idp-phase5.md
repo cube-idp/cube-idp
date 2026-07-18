@@ -2524,7 +2524,7 @@ jobs:
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(b67ed6f3-p2, 2026-07-18T09:22:42Z)
 BRANCH: p5/p2-packs-repo (merged: -)
 COMMITS: -
 FINDINGS: -
