@@ -146,3 +146,8 @@ const (
 	CodeRepoGiteaAPIFail     Code = "CUBE-7302" // gitea REST API returned an unexpected status (create/fetch repo)
 	CodeRepoDeployFail       Code = "CUBE-7303" // repo created but engine git source registration/apply failed
 )
+
+// 8xxx: spoke (Phase 5)
+const (
+	CodeSpokeProviderUnsupported Code = "CUBE-8001" // spoke cluster.provider invalid for spokes (k3d deferred; existing needs context; duplicate name)
+)

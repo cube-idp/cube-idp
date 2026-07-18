@@ -136,6 +136,9 @@ var registry = map[Code]Desc{
 	CodeRepoGiteaUnavailable: {Summary: "gitea admin secret missing or port-forward to the gitea pod failed"},
 	CodeRepoGiteaAPIFail:     {Summary: "gitea REST API returned an unexpected status (create/fetch repo)"},
 	CodeRepoDeployFail:       {Summary: "repo created but engine git source registration/apply failed"},
+
+	// 8xxx: spoke (Phase 5)
+	CodeSpokeProviderUnsupported: {Summary: "spoke cluster.provider invalid for spokes (k3d deferred; existing needs context; duplicate name)"},
 }
 
 // ranges carries the documented meaning of each numeric range, verbatim
@@ -149,6 +152,8 @@ var ranges = map[string]string{
 	"4": "4xxx: pack",
 	"5": "5xxx: registry",
 	"6": "6xxx: trust/hostname (Phase 2)",
+
+	"8": "8xxx: spoke (Phase 5)",
 
 	"01": "01xx: doctor preflight checks (Phase 2)",
 	"11": "11xx: kubeconfig/connectivity",

@@ -25,5 +25,13 @@ package config
 			ref?: string & !=""
 		}
 		packs?: [...{ref: string & !="", values?: {...}}]
+		spokes?: [...{
+			name: =~"^[a-z0-9][a-z0-9-]{0,30}$"
+			cluster: {
+				provider: *"kind" | "existing"
+				context?: string
+				kubernetesVersion?: string
+			}
+		}]
 	}
 }

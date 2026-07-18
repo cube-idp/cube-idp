@@ -25,6 +25,10 @@ type Spec struct {
 	// empty slice out of marshaled output instead of an explicit `packs:
 	// null`, which CUE re-validation would reject (see ClusterSpec).
 	Packs []PackRef `yaml:"packs,omitempty" json:"packs,omitempty"`
+	// Spokes is optional (`spokes?` in schema.cue); same omitempty
+	// discipline as Packs — a nil slice must round-trip as an absent key,
+	// not an explicit YAML null.
+	Spokes []SpokeSpec `yaml:"spokes,omitempty" json:"spokes,omitempty"`
 }
 
 // ClusterSpec configures the local or remote Kubernetes cluster cube-idp
@@ -118,6 +122,15 @@ type PackRef struct {
 	// as an absent key, not an explicit YAML null, or re-validation against
 	// schema.cue's `values?: {...}` fails.
 	Values map[string]any `yaml:"values,omitempty" json:"values,omitempty"`
+}
+
+// SpokeSpec declares a managed spoke cluster (spec §5, Phase 5). cube-idp
+// only bootstraps and registers spokes — delivering workloads to them is
+// engine content, never packs. Provider is limited to kind|existing in v1
+// (GT6); k3d spokes need a shared docker network and are deferred.
+type SpokeSpec struct {
+	Name    string      `yaml:"name" json:"name"`
+	Cluster ClusterSpec `yaml:"cluster" json:"cluster"`
 }
 
 // Default returns the D9 default profile that `cube-idp init` writes:
