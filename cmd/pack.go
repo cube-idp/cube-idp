@@ -60,6 +60,8 @@ func newPackCmd() *cobra.Command {
 		"additional tags for the same pushed artifact (e.g. latest); repeatable")
 	packCmd.AddCommand(push)
 	packCmd.AddCommand(newPackInstallCmd())
+	// P2 (Phase 5): the packs-repo CI toolchain — publish + index build/push.
+	packCmd.AddCommand(newPackPublishCmd(), newPackIndexCmd())
 	return packCmd
 }
 
