@@ -12,6 +12,7 @@ import (
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
@@ -21,10 +22,12 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/engine"
 	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
+	"github.com/cube-idp/cube-idp/internal/kube"
 	"github.com/cube-idp/cube-idp/internal/lock"
 	"github.com/cube-idp/cube-idp/internal/oci"
 	"github.com/cube-idp/cube-idp/internal/pack"
 	"github.com/cube-idp/cube-idp/internal/registry"
+	"github.com/cube-idp/cube-idp/internal/spoke"
 	"github.com/cube-idp/cube-idp/internal/trust"
 	"github.com/cube-idp/cube-idp/internal/ui"
 	"github.com/cube-idp/cube-idp/internal/ui/event"
@@ -406,6 +409,18 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	con.Step("packs", "%d pack records written — try `kubectl get packs`", len(packObjs))
 
+	// Phase 5 spec §5: spokes — bootstrap and register, then the engine
+	// takes over. Failure of one spoke aborts up (fail loud, spec thesis);
+	// re-running up is the retry path and re-issues tokens (GT5).
+	for i, sp := range cube.Spec.Spokes {
+		spr := con.ProgressN("spoke", fmt.Sprintf("spoke %q (%s)", sp.Name, sp.Cluster.Provider), i+1, len(cube.Spec.Spokes))
+		if err := ensureSpoke(ctx, cube, sp, a, con); err != nil {
+			spr.Stop()
+			return err
+		}
+		spr.Done("spoke %q registered with %s", sp.Name, cube.Spec.Engine.Type)
+	}
+
 	// Phase 2: the gateway's websecure listener terminates TLS with a
 	// CA-issued cert (D6/D12), so this URL is genuinely HTTPS. Browsers only
 	// show a green lock once the CA is trusted — `cube-idp trust` does that.
@@ -434,6 +449,87 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	con.Access(access, "credentials: cube-idp get secrets")
 	return nil
+}
+
+// ensureSpoke creates/connects one spoke, bootstraps cube-idp RBAC on it,
+// and applies the engine-native registration secret on the HUB (recorded
+// in inventory so `spoke remove` + `up` prunes it, and `down` cascades).
+func ensureSpoke(ctx context.Context, cube *config.Cube, sp config.SpokeSpec, hub *apply.Applier, con *ui.Console) error {
+	sc := spokeClusterSpec(cube, sp)
+	prov, err := cluster.New(sc, config.GatewaySpec{}) // zero gw: no host ports, no certs.d (S3 kindp guards)
+	if err != nil {
+		return diag.Wrap(err, diag.CodeSpokeEnsureFailed, fmt.Sprintf("spoke %q: unusable provider", sp.Name), "spokes support provider kind or existing")
+	}
+	sctx, cancel := context.WithTimeout(ctx, clusterTimeout)
+	defer cancel()
+	conn, err := prov.Ensure(sctx, spokeClusterName(cube, sp), sc)
+	if err != nil {
+		return diag.Wrap(err, diag.CodeSpokeEnsureFailed, fmt.Sprintf("spoke %q: cluster ensure failed", sp.Name), "`cube-idp doctor` preflights the runtime; for provider existing check the context name")
+	}
+	cred, err := spoke.Bootstrap(ctx, conn, cube.Spec.Engine.Type, applyTimeout)
+	if err != nil {
+		return err
+	}
+	server, err := spokeServerURL(ctx, prov, spokeClusterName(cube, sp), sp, conn)
+	if err != nil {
+		return err
+	}
+	secrets, err := spoke.HubSecrets(cube.Spec.Engine.Type, sp.Name, server, cred)
+	if err != nil {
+		return err
+	}
+	if err := hub.Apply(ctx, secrets, true, applyTimeout); err != nil {
+		return diag.Wrap(err, diag.CodeSpokeRegisterFailed, fmt.Sprintf("spoke %q: hub registration apply failed", sp.Name), "is the hub engine namespace present? re-run `cube-idp up`")
+	}
+	if err := hub.RecordInventory(ctx, secrets); err != nil {
+		return err
+	}
+	con.Log("spoke", "%s: server %s, sa cube-idp-%s", sp.Name, server, cube.Spec.Engine.Type)
+	return nil
+}
+
+// spokeClusterSpec returns the effective ClusterSpec ensureSpoke hands the
+// provider: kind spokes with no explicit kubernetesVersion inherit the
+// hub's pin (or the documented "v1.33.1" default when the hub is provider
+// existing and carries none, load.go's rule) — a bare kind spoke must
+// never render the invalid node image "kindest/node:". Existing spokes
+// pass through untouched: kubernetesVersion is a node-creation field.
+func spokeClusterSpec(cube *config.Cube, sp config.SpokeSpec) config.ClusterSpec {
+	sc := sp.Cluster
+	if sc.Provider == "kind" && sc.KubernetesVersion == "" {
+		sc.KubernetesVersion = cube.Spec.Cluster.KubernetesVersion
+		if sc.KubernetesVersion == "" {
+			sc.KubernetesVersion = "v1.33.1"
+		}
+	}
+	return sc
+}
+
+// spokeClusterName: kind spokes get <cube>-spoke-<name> (GT7); existing
+// spokes are whatever the context points at — Ensure ignores the name.
+func spokeClusterName(cube *config.Cube, sp config.SpokeSpec) string {
+	if sp.Cluster.Provider == "existing" {
+		return sp.Name
+	}
+	return cube.Metadata.Name + "-spoke-" + sp.Name
+}
+
+// spokeServerURL picks the hub-reachable API endpoint: kind → internal
+// kubeconfig's server (shared docker network); existing → the connection's
+// own server URL (reachability is the operator's contract, doctor probes it).
+func spokeServerURL(ctx context.Context, prov cluster.Provider, clusterName string, sp config.SpokeSpec, conn *kube.Conn) (string, error) {
+	if ik, ok := prov.(cluster.InternalKubeconfiger); ok && sp.Cluster.Provider == "kind" {
+		kc, err := ik.InternalKubeconfig(ctx, clusterName)
+		if err != nil {
+			return "", err
+		}
+		cfg, err := clientcmd.RESTConfigFromKubeConfig(kc)
+		if err != nil {
+			return "", diag.Wrap(err, diag.CodeSpokeEnsureFailed, "internal kubeconfig invalid", "recreate the spoke: cube-idp spoke remove --delete-cluster && cube-idp up")
+		}
+		return cfg.Host, nil
+	}
+	return conn.REST.Host, nil
 }
 
 // stepFetchSource emits the per-pack resolved-fetch-source step line —

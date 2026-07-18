@@ -10,6 +10,7 @@ import (
 	kindexec "sigs.k8s.io/kind/pkg/exec"
 
 	"github.com/cube-idp/cube-idp/internal/bundle"
+	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
@@ -157,5 +158,20 @@ func TestLoadImagesIntoNodes_PermanentFailureSurfacesCUBE7006(t *testing.T) {
 	}
 	if de.Code != diag.CodeBundleImageLoadFail {
 		t.Fatalf("loadImagesIntoNodes: code = %s, want %s (CUBE-7006)", de.Code, diag.CodeBundleImageLoadFail)
+	}
+}
+
+// TestCertsDZeroGatewaySkipsInjection pins the S3 spoke contract's certs.d
+// side: a Kind provider built with a zero GatewaySpec (spoke clusters have
+// no gateway hostname and no zot) must request NO certs.d injection — the
+// zero CertsD value — and must not touch the trust dir to decide that.
+func TestCertsDZeroGatewaySkipsInjection(t *testing.T) {
+	k := &Kind{gw: config.GatewaySpec{}}
+	cd, err := k.certsD()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cd != (CertsD{}) {
+		t.Fatalf("zero gateway must request no certs.d injection, got %+v", cd)
 	}
 }

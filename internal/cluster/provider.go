@@ -39,6 +39,17 @@ var (
 	_ Loggable = (*k3dp.K3d)(nil)
 )
 
+// InternalKubeconfiger is implemented by providers whose clusters have a
+// second, container-network-internal API endpoint (kind). Spoke
+// registration prefers it (GT7): hub engine pods reach a kind spoke via
+// https://<name>-control-plane:6443 on the shared `kind` docker network,
+// never via the host-published 127.0.0.1 port.
+type InternalKubeconfiger interface {
+	InternalKubeconfig(ctx context.Context, name string) ([]byte, error)
+}
+
+var _ InternalKubeconfiger = (*kindp.Kind)(nil)
+
 // Provider seam defines the interface for all cluster implementations.
 type Provider interface {
 	Ensure(ctx context.Context, name string, spec config.ClusterSpec) (*kube.Conn, error)

@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cube-idp/cube-idp/internal/config"
 )
 
 // runCLI drives the root command the way every test in this package does
@@ -77,5 +80,33 @@ func TestSpokeListAndRemove(t *testing.T) {
 	b, _ := os.ReadFile(p)
 	if strings.Contains(string(b), "staging") {
 		t.Fatalf("spoke not removed:\n%s", b)
+	}
+}
+
+// TestSpokeRemoveDeleteClusterYes replaces S1's stub contract: with --yes,
+// --delete-cluster must reach the real provider deletion (through the
+// spokeClusterDelete seam) for the GT7-named cluster — the S1 "ships in a
+// later task" CUBE-8001 error is gone.
+func TestSpokeRemoveDeleteClusterYes(t *testing.T) {
+	var deleted []string
+	restore := spokeClusterDelete
+	spokeClusterDelete = func(_ context.Context, _ config.SpokeSpec, name string) error {
+		deleted = append(deleted, name)
+		return nil
+	}
+	defer func() { spokeClusterDelete = restore }()
+
+	p := writeSpokeFixture(t)
+	mustRunCLI(t, "spoke", "add", "staging", "--provider", "kind", "-f", p)
+	out := mustRunCLI(t, "spoke", "remove", "staging", "--delete-cluster", "--yes", "-f", p)
+	if len(deleted) != 1 || deleted[0] != "dev-spoke-staging" {
+		t.Fatalf("expected dev-spoke-staging deleted via the seam, got %v\noutput: %s", deleted, out)
+	}
+	if !strings.Contains(out, "dev-spoke-staging deleted") {
+		t.Fatalf("deletion must be reported:\n%s", out)
+	}
+	b, _ := os.ReadFile(p)
+	if strings.Contains(string(b), "staging") {
+		t.Fatalf("spoke not removed from config:\n%s", b)
 	}
 }

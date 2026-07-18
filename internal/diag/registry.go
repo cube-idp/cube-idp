@@ -141,6 +141,8 @@ var registry = map[Code]Desc{
 	CodeSpokeProviderUnsupported: {Summary: "spoke cluster.provider invalid for spokes (k3d deferred; existing needs context; duplicate name)"},
 	CodeSpokeBootstrapFailed:     {Summary: "spoke RBAC bootstrap apply failed"},
 	CodeSpokeTokenFailed:         {Summary: "spoke ServiceAccount token issuance failed"},
+	CodeSpokeEnsureFailed:        {Summary: "spoke cluster create/connect failed"},
+	CodeSpokeRegisterFailed:      {Summary: "hub registration secret build/apply failed"},
 }
 
 // ranges carries the documented meaning of each numeric range, verbatim

@@ -106,6 +106,12 @@ func (k *Kind) Ensure(ctx context.Context, name string, spec config.ClusterSpec)
 // EnsureCA runs before cluster creation in up.Run) so certs.d exists before
 // RenderConfig ever mounts it.
 func (k *Kind) certsD() (CertsD, error) {
+	// Zero gateway = spoke cluster (S3): no gateway hostname, no zot on this
+	// cluster — there is no registry.<host> to map, so request no injection
+	// (CertsD zero value) instead of writing a bogus "registry." certs.d dir.
+	if k.gw.Host == "" {
+		return CertsD{}, nil
+	}
 	dir, err := trust.Dir()
 	if err != nil {
 		return CertsD{}, err
@@ -245,6 +251,18 @@ func (k *Kind) Kubeconfig(ctx context.Context, name string) ([]byte, error) {
 	kc, err := k.provider.KubeConfig(name, false)
 	if err != nil {
 		return nil, diag.Wrap(err, diag.CodeKindKubeconfigGet, "cannot get kubeconfig from kind", "retry; if it persists, `cube-idp down` and `up` again")
+	}
+	return []byte(kc), nil
+}
+
+// InternalKubeconfig returns the docker-network-internal kubeconfig
+// (server https://<name>-control-plane:6443) — what hub engine pods must
+// use to reach a kind spoke (GT7). Satisfies cluster.InternalKubeconfiger
+// structurally (same cycle constraint SetLogSink documents).
+func (k *Kind) InternalKubeconfig(ctx context.Context, name string) ([]byte, error) {
+	kc, err := k.provider.KubeConfig(name, true)
+	if err != nil {
+		return nil, diag.Wrap(err, diag.CodeKindKubeconfigGet, "cannot get internal kubeconfig from kind", "retry; if it persists the spoke cluster may be gone")
 	}
 	return []byte(kc), nil
 }

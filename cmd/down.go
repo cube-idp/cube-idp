@@ -103,9 +103,53 @@ func printDownPreview(out io.Writer, cube *config.Cube, keepCluster bool) {
 		bullet("zot registry volume, generated TLS certs")
 	}
 	bullet("%d installed packs", len(cube.Spec.Packs))
+	// S3 (spec §5): declared spokes are part of the deletion set — one line
+	// each, mirroring downSpokes' real paths. Spoke-less cubes print nothing
+	// here, keeping the TE-3.1 golden byte-identical (GT13).
+	for _, s := range cube.Spec.Spokes {
+		switch {
+		case s.Cluster.Provider == "kind" && !keepCluster:
+			bullet("spoke %s (kind) — cluster will be deleted", s.Name)
+		case s.Cluster.Provider == "kind":
+			bullet("spoke %s (kind) — cluster kept; hub registration removed", s.Name)
+		default:
+			bullet("spoke %s (existing) — cluster left untouched; hub registration removed", s.Name)
+		}
+	}
 	if dir, err := trustDir(); err == nil {
 		if st, serr := trust.LoadState(dir); serr == nil && st.Installed {
 			bullet("OS trust-store entry for the cube-idp local CA (reverted)")
+		}
+	}
+}
+
+// downSpokes cascades `down` onto declared spokes AFTER the hub teardown
+// succeeded (spec §5): kind spoke clusters are deleted (best-effort — a
+// failure warns with CUBE-8004 and never fails down, which must not strand
+// the finished hub teardown on a half-dead spoke); existing spokes are
+// never touched — the note hands the operator the manual RBAC removal.
+// Hub-side registration secrets need no work here: they died with the hub
+// cluster (kind/k3d path) or were cascade-deleted from inventory
+// (existing/--keep-cluster path). --keep-cluster keeps spoke clusters too.
+func downSpokes(ctx context.Context, con *ui.Console, cube *config.Cube, keepCluster bool) {
+	for _, s := range cube.Spec.Spokes {
+		switch s.Cluster.Provider {
+		case "kind":
+			name := cube.Metadata.Name + "-spoke-" + s.Name
+			if keepCluster {
+				con.Note("spoke %s: kind cluster %s kept (--keep-cluster)", s.Name, name)
+				continue
+			}
+			if err := spokeClusterDelete(ctx, s, name); err != nil {
+				con.Warn("%v", diag.Wrap(err, diag.CodeSpokeEnsureFailed,
+					fmt.Sprintf("spoke %s: kind cluster %s deletion failed (continuing)", s.Name, name),
+					"delete manually: kind delete cluster --name "+name))
+				continue
+			}
+			con.Step("spoke", "kind cluster %s deleted", name)
+		case "existing":
+			con.Note("spoke %s: existing cluster left untouched — cube-idp-%s RBAC remains; remove with kubectl delete ns cube-idp-system && kubectl delete clusterrolebinding cube-idp-%s-admin --context %s",
+				s.Name, cube.Spec.Engine.Type, cube.Spec.Engine.Type, s.Cluster.Context)
 		}
 	}
 }
@@ -170,6 +214,7 @@ func runDown(ctx context.Context, con *ui.Console, file string, keepCluster bool
 			return err
 		}
 		pr.Done("inventory objects deleted")
+		downSpokes(ctx, con, cube, keepCluster) // hub teardown done — cascade to spokes (S3)
 		return revertTrust(con)
 	}
 	// local providers (kind, k3d): deleting the cluster IS the cascade
@@ -179,6 +224,7 @@ func runDown(ctx context.Context, con *ui.Console, file string, keepCluster bool
 		return err
 	}
 	pr.Done("%s cluster deleted", cube.Spec.Cluster.Provider)
+	downSpokes(ctx, con, cube, keepCluster) // spoke clusters are separate kind clusters — the hub delete does not take them down
 	return revertTrust(con)
 }
 

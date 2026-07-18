@@ -152,4 +152,6 @@ const (
 	CodeSpokeProviderUnsupported Code = "CUBE-8001" // spoke cluster.provider invalid for spokes (k3d deferred; existing needs context; duplicate name)
 	CodeSpokeBootstrapFailed     Code = "CUBE-8002" // spoke RBAC bootstrap apply failed
 	CodeSpokeTokenFailed         Code = "CUBE-8003" // spoke ServiceAccount token issuance failed
+	CodeSpokeEnsureFailed        Code = "CUBE-8004" // spoke cluster create/connect failed
+	CodeSpokeRegisterFailed      Code = "CUBE-8005" // hub registration secret build/apply failed
 )
