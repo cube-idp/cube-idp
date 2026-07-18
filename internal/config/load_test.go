@@ -695,3 +695,51 @@ spec:
 		t.Fatalf("remediation must name both replacement fields: %q", de.Remediation)
 	}
 }
+
+// TestEngineSelfManageRoundTrip pins P8's config surface (GT16):
+// spec.engine.selfManage: true decodes and survives a SaveValidated
+// round-trip; omitted → false with NO selfManage key on re-marshal
+// (omitempty discipline — a false bool is the zero value and must not
+// materialize a key the user never wrote).
+func TestEngineSelfManageRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.yaml")
+	base := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: dev}
+spec:
+  engine:
+    type: flux
+    selfManage: true
+  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443}
+`
+	if err := os.WriteFile(p, []byte(base), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatalf("valid selfManage rejected: %v", err)
+	}
+	if !c.Spec.Engine.SelfManage {
+		t.Fatalf("selfManage: true not decoded: %+v", c.Spec.Engine)
+	}
+	if err := SaveValidated(p, c); err != nil {
+		t.Fatalf("selfManage does not round-trip through SaveValidated: %v", err)
+	}
+	if c, err = Load(p); err != nil || !c.Spec.Engine.SelfManage {
+		t.Fatalf("selfManage lost on round-trip: %v %+v", err, c.Spec.Engine)
+	}
+
+	// Omitted → false, and re-marshal writes no selfManage key.
+	mc, err := Load("testdata/minimal.yaml")
+	if err != nil || mc.Spec.Engine.SelfManage {
+		t.Fatalf("omitted selfManage must be false, got %v %+v", err, mc.Spec.Engine)
+	}
+	raw, err := sigyaml.Marshal(mc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "selfManage") {
+		t.Fatalf("false selfManage must marshal as an absent key:\n%s", raw)
+	}
+}

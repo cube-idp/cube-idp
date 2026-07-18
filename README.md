@@ -105,12 +105,19 @@ spec:
 | `spec.cluster.mounts` | `[{hostPath, nodePath}]` | — | D10 layer 1: host paths mounted into the node |
 | `spec.cluster.providerConfig` | string | — | D10 layer 2 escape hatch: a file path or inline provider-native config (e.g. a full kind config). cube-idp merges in only what it *requires* and fails with a typed error on real conflicts; inspect the merged result with `cube-idp config render-cluster` |
 | `spec.engine.type` | `flux` \| `argocd` | `flux` | GitOps reconciler; `argocd` ships in Phase 2 (D2) |
+| `spec.engine.tuning.components.<name>.replicas` | int | — | patch the named engine Deployment's replica count before `up` applies the install manifests (GT1). The closed knob set: an unknown component name is CUBE-3009 (it lists the valid ones). Not helm values — the engine installs from pre-rendered plain manifests, so tuning is an in-memory patch, never a chart re-render. Preview with `cube-idp config render-engine` |
+| `spec.engine.tuning.components.<name>.resources` | map (k8s `ResourceRequirements`) | — | replaces the named engine component's container `resources` block verbatim before `up` (GT1); same closed-knob validation as `replicas` |
+| `spec.engine.selfManage` | bool | `false` | **opt-in** engine self-management (GT16): after the health gate, `up` pushes the rendered (tuned) install manifests to the in-cluster registry (zot) as the `cube-engine` artifact and attaches an engine-native self-source with pruning disabled — the engine reconciles its own install from then on, correcting drift between `up`s. First install and unhealthy-at-start recovery still apply directly. Sourced from zot only (never Gitea); works offline |
 | `spec.gateway.pack` | `traefik` \| `envoy-gateway` (any pack name is accepted when paired with `spec.gateway.ref`) | `traefik` | Gateway API implementation; `cube-idp init --gateway-pack` writes this and `spec.gateway.ref` coherently |
 | `spec.gateway.host` | string | `cube-idp.localtest.me` | routable hostname for delivered packs |
 | `spec.gateway.port` | int | `8443` | host port mapped to the gateway's `websecure` (HTTPS) listener — see the note below |
 | `spec.gateway.httpPort` | int | — | **opt-in** host port mapped to the gateway's plain-HTTP `web` listener (NodePort `30080`, already pinned by both gateway packs); absent = no HTTP exposure (today's behavior). Must differ from `gateway.port` and every `extraPorts.hostPort` (CUBE-0002). Cluster-shape field: recreate the cluster (`down` && `up`) to change it |
 | `spec.gateway.ref` | string | `oci://ghcr.io/cube-idp/packs/traefik:0.2.0` | the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); `init` always writes it — the published oci ref by default, an absolute path with `--local`. Falls back to `packs/<pack>` when unset (hand-written config), which only resolves from a cube-idp/packs checkout root |
-| `spec.packs` | `[{ref, values}]` | gitea + argocd (D9) | additional packs delivered after the gateway; `ref` is `oci://` or a local dir (git `github.com/...` refs ship in Phase 2); `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
+| `spec.packs` | `[{ref, values, extraManifests, delivery}]` | gitea + argocd (D9) | additional packs delivered after the gateway; `ref` is `oci://` or a local dir (git `github.com/...` refs ship in Phase 2); `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
+| `spec.packs[].values` | map | — | helm values, only, always (the vocabulary stone, GT15) — consumed exclusively by the pack's `chart.yaml` render; setting them on a chartless pack is CUBE-4016. A pack with non-empty `values` is CUSTOMIZED (`kubectl get packs`) |
+| `spec.packs[].extraManifests` | string (multi-doc YAML) | — | the uniform extras channel valid for **every** pack kind (GT15): parsed, `${GATEWAY_*}`-substituted, and appended after the pack's own objects; invalid YAML is CUBE-4017. A pack with non-empty `extraManifests` is CUSTOMIZED |
+| `spec.packs[].delivery` | `oci` \| `repo` | `oci` | how `up` hands the pack to the engine (GT19, P7): `oci` (default) pushes the render to zot and registers an OCI source; `repo` pushes it into a Gitea repo (`cube-pack-<name>`) and registers a git source for an editable in-cluster fork. `repo` requires the gitea pack in `spec.packs`; gitea itself can never be repo-delivered (CUBE-7304). Shown as the `DELIVERY` column in `kubectl get packs` |
+| `spec.spokes` | `[{name, cluster}]` | — | managed spoke clusters this cube's engine registers (spec §5). Each entry names a spoke and its `cluster` (`provider: kind` \| `existing` only in v1 — GT6; k3d spokes are deferred). Declared with `cube-idp spoke add`; applied on the next `cube-idp up` (hub registration prunes removed spokes). cube-idp only bootstraps and registers spokes — delivering workloads to them is engine content, not packs |
 
 **Precedence:** when both `spec.gateway.ref` and `spec.gateway.pack` are
 set, the REF decides what is fetched; `up` verifies the ref'd pack.cue name
@@ -119,8 +126,11 @@ always writes the two coherently (`--gateway-pack`).
 
 Run `cube-idp config render-cluster` to preview the final merged kind
 provider config (D10 layer 2) before `up` creates anything. Run `cube-idp
-config schema` to print the CUE schema `cube.yaml` is validated against —
-every CUBE-0002 (config validation failure) remediation points here.
+config render-engine` to preview the engine install manifests `up` would
+apply — with `spec.engine.tuning` already patched in (GT1), so the tuned
+result is inspectable before any cluster exists. Run `cube-idp config
+schema` to print the CUE schema `cube.yaml` is validated against — every
+CUBE-0002 (config validation failure) remediation points here.
 
 > **Phase 1 → Phase 2 behavior change:** Phase 1 mapped host
 > `spec.gateway.port` (default `8443`) to Traefik's plain-HTTP NodePort
@@ -340,7 +350,9 @@ change (D6).
   remediation.
 - **`cube-idp status --details`** — adds every inventory object
   (kind/namespace/name) to the health summary; plain `cube-idp status`
-  prints only the component/inventory-count roll-up.
+  prints only the component/inventory-count roll-up. When `spec.spokes` is
+  set, status also reports one row per spoke (registered / reachable), and
+  `-o json` gains the additive `spokes` array.
 - **`cube-idp down --keep-cluster`** — deletes cube-idp's resources
   (inventory-driven cascade) but leaves the cluster itself running; useful
   for iterating on `cube.yaml` without paying kind/k3d cluster-creation cost
@@ -404,6 +416,24 @@ CA); the engine reaches the gitea Service directly in-cluster. Re-running is
 idempotent (`--deploy` re-registers the same source). Admin credentials come
 from `cube-idp get secrets -p gitea`.
 
+## Spokes (hub/spoke, spec §5)
+
+A cube can register **spoke** clusters with its own engine, so one hub
+delivers to many clusters. cube-idp bootstraps and registers spokes and
+then gets out of the way — delivering workloads *onto* a spoke is engine
+content (a flux `Kustomization` / Argo CD `ApplicationSet` targeting the
+registered cluster), never packs.
+
+| Command | What it does |
+| --- | --- |
+| `cube-idp spoke add <name> [--provider kind\|existing] [--context <ctx>]` | Declare a spoke in `cube.yaml` (`spec.spokes`). `--provider existing` needs `--context`; `kind` (default) creates a `<cube>-spoke-<name>` cluster on the next `up`. Only edits the file. |
+| `cube-idp spoke list` | List declared spokes with their live hub state when the cluster is reachable (`registered` / `reachable`); falls back to the declared config when it is not. |
+| `cube-idp spoke remove <name> [--delete-cluster] [--yes]` | Drop the declaration; the hub registration secret prunes on the next `up`. `--delete-cluster` also deletes a kind spoke's cluster now (consent-gated — see "Prompts & consent"). |
+
+Spokes support both engines from day one (each spoke is one hub Secret).
+In v1 the spoke provider is `kind` or `existing` only (k3d spokes are
+deferred); the hub itself may still be any provider.
+
 ## Air-gapped install (`vendor` + `up --bundle`)
 
 For a host with no registry access, split the install into a connected
@@ -465,9 +495,31 @@ prompting; an untrusted plugin prompts interactively (CUBE-7104) or, in a
 non-TTY, is refused. Any change to the binary invalidates the recorded hash
 and re-prompts.
 
-**Install.** `cube-idp plugin install <name> --index <url>` fetches a plugin
-from a sha256-pinned git index and records its trust in one step. `--index`
-is required (Owner Decisions #8) — there is no implicit default index.
+**Install.** `cube-idp plugin install <name>[@version]` installs from the
+official plugin index — the public, attested monorepo `cube-idp/plugins`,
+mirroring the packs platform. It resolves the discovery index
+(`oci://ghcr.io/cube-idp/plugins/index:latest`, override with
+`CUBE_IDP_PLUGIN_INDEX`; cached 24h), selects the build for your
+`GOOS`/`GOARCH`, pulls it **by digest** (never by a moved tag), writes it to
+the plugin install dir, and hands off to the same sha256 trust-consent flow
+above. Because the install runs a binary with your permissions, it asks for
+consent: pass `--yes` to trust it in one step, or approve the prompt on a
+TTY; a non-TTY without `--yes` is refused (CUBE-7104). `cube-idp plugin list
+--available` and `cube-idp plugin search <term>` browse the index without
+installing.
+
+Every published platform artifact carries a keyless GitHub provenance
+attestation. Verify one before (or after) installing:
+
+```bash
+gh attestation verify \
+  oci://ghcr.io/cube-idp/plugins/hello:0.1.0-linux-amd64 --owner cube-idp
+```
+
+The original sha256-pinned **git index** still works for private or
+out-of-band plugins: `cube-idp plugin install <name> --index <git-url>[@commit]`
+fetches and trusts a plugin from a git repo whose `plugins/<name>.yaml`
+pins each platform archive by sha256.
 
 Global flags go AFTER the plugin name: `cube-idp myplugin --plain` dispatches
 to the plugin, but `cube-idp --plain myplugin` does not (the plugin
@@ -495,6 +547,20 @@ workflow: pushing a `<name>/vX.Y.Z` tag validates that the tag version
 equals the pack's `pack.cue` version, pushes the artifact, attests its
 digest, and rebuilds the catalog index
 (`oci://ghcr.io/cube-idp/packs/index:latest`).
+
+Browse and add from that catalog:
+
+| Command | What it does |
+| --- | --- |
+| `cube-idp pack list --available` | Print every pack the published index offers (name / version / description). The index is cached 24h; when it is unreachable the built-in list is shown instead, with a notice. |
+| `cube-idp pack search <term>` | Case-insensitively match `<term>` against the name and description of every catalog pack. |
+| `cube-idp pack install [ref…] [--via oci\|repo]` | Append pack refs to `cube.yaml` `spec.packs` (delivered on the next `up`). Bare on a TTY it offers a filterable multi-select over the catalog; with refs it never prompts. `--via repo` delivers the pack as an editable Gitea repo (`cube-pack-<name>`) instead of an OCI artifact — needs the gitea pack. |
+
+The packs-repo CI toolchain (`pack publish <dir> <oci-ref>`, `pack index
+build`, `pack index push`) is what the publish workflow runs to validate a
+pack directory, push its artifact, and (re)build/push the catalog index —
+authors normally trigger it by pushing a `<name>/vX.Y.Z` tag rather than
+running it by hand.
 
 Git-sourced packs (the bare grammar and `git::` URLs) shell out to the
 system `git` binary (go-getter's `GitGetter`) — every other source form is
@@ -619,6 +685,10 @@ falls back (everything else).
   over the pack catalog plus one summary confirm; the hint then names the
   exact `pack install <refs…>` twin. With positional args, or on a
   non-TTY, it never prompts — passing refs as arguments *is* the twin.
+- **`cube-idp spoke remove --delete-cluster`** — deleting a kind spoke's
+  cluster asks for confirmation first; `--yes` is the twin, required on a
+  non-TTY run (refused with `CUBE-0010` otherwise). Removing the spoke
+  *declaration* alone never prompts — it only edits `cube.yaml`.
 - **`$ACCESSIBLE`** (non-empty) swaps TUI prompts for plain sequential
   ones — the gh accessibility retrofit.
 
@@ -634,6 +704,14 @@ given on a TTY; any flag short-circuits the wizard for scripted/CI use.
   `cube-idp status --watch --exit-status && run-e2e`. `--compact` hides
   Ready rows. On a non-TTY the view is appended per interval with no ANSI
   clearing.
+- **`cube-idp doctor`** — a tri-state checklist (GT18): every registered
+  check renders exactly one row — green `✔` passed (with a one-line
+  detail), yellow `⚠` warning, or red `✗` error (warnings and errors carry
+  a `CUBE-xxxx` code), glyph and word always paired. Passing checks are
+  *shown*, not silent. Exit is 1 iff any row is red; `--output json` adds
+  the additive `checks` array (row for row). Checks that cannot apply to
+  this host/cube (no `httpPort`, non-Linux, no spokes, no reachable
+  cluster) simply have no row.
 - **`cube-idp explain CUBE-XXXX`** — offline lookup for any diagnostic
   code: summary, the documented meaning of its numeric range, and the
   remediation (rustc `--explain` pattern). `--list` prints every code.

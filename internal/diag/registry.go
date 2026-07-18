@@ -85,6 +85,8 @@ var registry = map[Code]Desc{
 	CodePokeTargetMissing:   {Summary: "Poke found no delivery source (OCIRepository/GitRepository/Application) for the pack"},
 	CodePokeIOFail:          {Summary: "Poke found the delivery source but could not read/update it (transient engine IO — retry)"},
 	CodeEngineTuningUnknown: {Summary: "engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched)"},
+	// GT16 engine self-management (Phase 5 P8):
+	CodeEngineSelfManage: {Summary: "engine.selfManage failed: cube-engine artifact push, self-source build/apply, or post-attach health wait — re-run `cube-idp up`"},
 
 	// 4xxx: pack
 	CodePackRefInvalid:   {Summary: "unsupported pack ref scheme"},
@@ -135,6 +137,7 @@ var registry = map[Code]Desc{
 	CodePluginExecFail:    {Summary: "plugin process failed to start/run (not the plugin's own reported exit code)"},
 	CodePluginUntrusted:   {Summary: "plugin refused: unknown or changed sha256, and no interactive confirmation"},
 	CodePluginNameInvalid: {Summary: "plugin name fails the ^[a-z0-9][a-z0-9-]*$ charset guard on `plugin install`/`plugin trust`"},
+	CodePluginNoPlatform:  {Summary: "the official plugin index has no build for this GOOS/GOARCH (`plugin install`)"},
 
 	// 72xx: sync (Task 10, Task 11)
 	CodeSyncNoManifests:    {Summary: "sync dir has no pack.cue and no renderable *.yaml manifests"},

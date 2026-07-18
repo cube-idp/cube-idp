@@ -64,6 +64,22 @@ func (fakeEngine) DeliverGit(_ context.Context, name string, _ engine.GitSource)
 	}, nil
 }
 
+// DeliverSelf mirrors the flux self-source shape truthfully (P8, GT16):
+// the plain cube-engine names (never cube-idp-<pack>) are exactly what
+// diff.desiredState's orphan stubs must reproduce.
+func (fakeEngine) DeliverSelf(context.Context, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
+	return []*unstructured.Unstructured{
+		{Object: map[string]any{
+			"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "OCIRepository",
+			"metadata": map[string]any{"name": "cube-engine", "namespace": "engine-system"},
+		}},
+		{Object: map[string]any{
+			"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization",
+			"metadata": map[string]any{"name": "cube-engine", "namespace": "engine-system"},
+		}},
+	}, nil
+}
+
 func (fakeEngine) Poke(context.Context, *apply.Applier, string) error { return nil }
 
 func (fakeEngine) Health(context.Context, *apply.Applier) ([]engine.ComponentHealth, error) {
@@ -252,5 +268,48 @@ func TestDesiredStateRepoDeliveredPack(t *testing.T) {
 	// The gateway pack stays a full-spec OCI diff.
 	if !desiredSet[refKey("source.toolkit.fluxcd.io", "OCIRepository", ns, "cube-idp-demo")] {
 		t.Fatalf("gateway pack must keep its OCI delivery objects:\n%v", sortedKeys(desiredSet))
+	}
+}
+
+// TestDesiredStateSelfManagedEngine pins P8's diff mirror (GT16): with
+// spec.engine.selfManage on, up.Run additionally applies + inventories the
+// engine's cube-engine self-source objects, whose SOURCE carries a fresh
+// reconcile-now annotation per render — so desiredState must track their
+// identities in orphanOnly (never full-spec through a.Diff, the perpetual
+// "changed" trap) and contribute nothing when selfManage is off.
+func TestDesiredStateSelfManagedEngine(t *testing.T) {
+	cube := &config.Cube{
+		Metadata: config.Metadata{Name: "test"},
+		Spec: config.Spec{
+			Engine:  config.EngineSpec{Type: "flux", SelfManage: true},
+			Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
+		},
+	}
+
+	desired, orphanOnly, _, err := desiredState(context.Background(), cube, fakeEngine{})
+	if err != nil {
+		t.Fatalf("desiredState: %v", err)
+	}
+	desiredSet := identitySet(desired)
+	orphanSet := identitySet(orphanOnly)
+	const ns = "engine-system"
+	selfSrc := refKey("source.toolkit.fluxcd.io", "OCIRepository", ns, "cube-engine")
+	selfKust := refKey("kustomize.toolkit.fluxcd.io", "Kustomization", ns, "cube-engine")
+	if !orphanSet[selfSrc] || !orphanSet[selfKust] {
+		t.Fatalf("self-source identities must be orphan-tracked on a selfManage cube:\n%v", sortedKeys(orphanSet))
+	}
+	if desiredSet[selfSrc] || desiredSet[selfKust] {
+		t.Fatalf("self-source objects must never enter the full-spec diff set:\n%v", sortedKeys(desiredSet))
+	}
+
+	// selfManage off: no self identities anywhere (the pre-P8 sets exactly).
+	cube.Spec.Engine.SelfManage = false
+	desired, orphanOnly, _, err = desiredState(context.Background(), cube, fakeEngine{})
+	if err != nil {
+		t.Fatalf("desiredState: %v", err)
+	}
+	off := identitySet(desired, orphanOnly)
+	if off[selfSrc] || off[selfKust] {
+		t.Fatalf("selfManage off must contribute no self-source identities:\n%v", sortedKeys(off))
 	}
 }
