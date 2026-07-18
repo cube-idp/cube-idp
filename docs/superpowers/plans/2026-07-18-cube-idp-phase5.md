@@ -2930,7 +2930,7 @@ gh attestation verify oci://ghcr.io/cube-idp/packs/<name>:<version> --owner cube
   VERIFY-API against the marketplace when executing; pin the major, never
   a branch).
 
-- [ ] **Step 1: Wire attestation into `publish.yml`.** Extend the
+- [x] **Step 1: Wire attestation into `publish.yml`.** Extend the
   workflow's permissions block:
 
 ```yaml
@@ -2974,13 +2974,13 @@ permissions:
           push-to-registry: true
 ```
 
-- [ ] **Step 2: Verify the workflow parses.** Run:
+- [x] **Step 2: Verify the workflow parses.** Run:
   `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/publish.yml'))" && echo YAML-OK`
   Expected: `YAML-OK`. (The attestation itself can only be proven on the
   first owner-tagged publish — the P4 Step 2 owner gate; state this in
   FINDINGS and HANDOFF. Do not fake a run.)
 
-- [ ] **Step 3: Verification docs.** Add a "Verifying pack provenance"
+- [x] **Step 3: Verification docs.** Add a "Verifying pack provenance"
   section to `$PACKS/CONTRACT.md` AND `$ROOT/docs/pack-contract-v1.md`
   (identical text, GT12), plus a two-line snippet in `$ROOT/README.md`
   next to the install instructions:
@@ -2999,7 +2999,7 @@ as the builder. cube-idp itself pins digests (catalog index, e2e
 packs.lock) and does not re-verify attestations at pull time.
 ```
 
-- [ ] **Step 4: Gate + commits.** $PACKS:
+- [x] **Step 4: Gate + commits.** $PACKS:
   `git add .github/ CONTRACT.md && git commit -m "ci: keyless GitHub attestations for published packs + index"`
   $ROOT (docs only — full gate still runs and must stay green):
   `go build ./... && go vet ./... && go test ./...` then
@@ -3008,13 +3008,60 @@ packs.lock) and does not re-verify attestations at pull time.
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(p5-agent-b67ed6f3, 2026-07-18T09:56:59Z)
-BRANCH: p5/p5-pack-attest (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/p5-pack-attest (merged: yes — $PACKS 2adfee7, $ROOT 16ff3a5;
+  branch kept in BOTH repos)
+COMMITS: $PACKS: 8f3b3db ci: keyless GitHub attestations for published
+  packs + index; 2adfee7 merge: p5 P5 pack-attest (p5/p5-pack-attest).
+  $ROOT: 5095444 docs: pack provenance verification via gh attestation
+  verify; 16ff3a5 merge: p5 P5 pack-attest (p5/p5-pack-attest).
+FINDINGS: (1) VERIFY-API: actions/attest-build-provenance current major
+  is v4, not the plan-time v3 — pinned @v4 per the step's own "pin the
+  major" instruction. Checked both tags' action.yml: the used inputs
+  (subject-name, subject-digest, push-to-registry) are unchanged v3→v4
+  (v4 is a thin wrapper over actions/attest; upstream suggests
+  actions/attest for new implementations — NOT adopted, the wrapper sets
+  the provenance predicate itself and the plan names this action). (2)
+  Step 2's python3 -c "import yaml; …" is unrunnable here (no pyyaml on
+  the host) — the parse was verified with BOTH yq v4.49.2 eval AND ruby
+  YAML.safe_load → YAML-OK. (3) As the plan itself states: the
+  attestation cannot be PROVEN until the first owner-tagged publish (P2
+  owner gate still open — no GitHub repo, no remote, CI has never run);
+  nothing was faked. (4) Contract-doc section appended after §6 in both
+  copies, plan-verbatim (incl. its indented code block — IDE markdownlint
+  MD046 style warning noted; neither repo has a md-lint gate). Copies
+  diff-verified byte-identical (GT12). (5) README snippet sits in
+  ## Install after the go-install paragraph, before the F12 caveat
+  blockquote (which P4 deletes) — 4 wrapped lines incl. a pointer to the
+  contract section. (6) Plan-verbatim `| tee push.out` hides a failed
+  `index push` exit inside its step (Actions bash -e, no pipefail), but
+  the empty INDEX_DIGEST then fails the index attest step immediately —
+  accepted as authored. (7) Injection doctrine held: digests.env values
+  reach shell only via $GITHUB_ENV; ${{ env.* }} only inside with:
+  blocks; trigger stays the write-access-gated tag push.
+REVIEW: publish.yml now: permissions + id-token/attestations: write;
+  export-pack-subject step (reads digests.env → PACK_NAME/PACK_DIGEST);
+  attest-build-provenance@v4 for ghcr.io/cube-idp/packs/<name>; rebuild
+  index tees `pack index push` output and exports INDEX_DIGEST; second
+  @v4 attest for .../packs/index — matches P5's YAML modulo the v4 pin.
+  Parse gate YAML-OK (yq + ruby). CONTRACT.md ≡ docs/pack-contract-v1.md
+  verified via diff after the append. $ROOT worktree gate green:
+  go build && go vet && go test ./... all ok (31 pkgs) — docs-only
+  change, no cmd/ or internal/ui/ files touched, so no fence leg due;
+  post-merge on main GOTEST_EXIT=0, 31 ok, no FAIL lines.
+BLOCKERS: none
+HANDOFF: Attestation wiring is authored + parse-verified ONLY — nothing
+  has ever executed on GitHub (P2 owner gate open: no repo, no
+  CUBE_IDP_READ_TOKEN, no remote). The first <name>/vX.Y.Z tag push
+  after that gate proves the chain end to end (publish → attest pack
+  digest → rebuild index → attest index digest → `gh attestation verify
+  oci://ghcr.io/cube-idp/packs/<name>:<ver> --owner cube-idp` prints
+  "✓ Verification succeeded!"). For P4: keep the rebuild-index tee/
+  INDEX_DIGEST lines when swapping the bootstrap source checkout for a
+  release download; permissions block must keep id-token+attestations:
+  write. Verification docs live at $ROOT/docs/pack-contract-v1.md and
+  $PACKS/CONTRACT.md ("Verifying pack provenance" — the two files MUST
+  stay byte-identical, GT12) plus README ## Install.
 ```
 
 ---
