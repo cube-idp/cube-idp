@@ -2133,7 +2133,7 @@ func (p *Pack) RenderWith(values map[string]any, extraManifests string, gw confi
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(fable-u4-b67ed6f3, 2026-07-18T10:08:18Z)
 BRANCH: p5/u4-values-stone (merged: -)
 COMMITS: -
 FINDINGS: -
