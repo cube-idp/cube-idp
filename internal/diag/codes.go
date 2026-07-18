@@ -45,6 +45,7 @@ const (
 	CodeKindCreateFailed  Code = "CUBE-1203" // kind cluster creation failed
 	CodeKindKubeconfigGet Code = "CUBE-1204" // cannot get kubeconfig from kind
 	CodeKindDeleteFailed  Code = "CUBE-1205" // kind cluster deletion failed
+	CodeKindCoreOverride  Code = "CUBE-1206" // kind core injection overrode a user providerConfigRef/forProvider field (warning)
 )
 
 // 13xx: k3d provider

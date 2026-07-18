@@ -42,7 +42,7 @@ func newConfigCmd() *cobra.Command {
 			var out []byte
 			switch cube.Spec.Cluster.Provider {
 			case "kind":
-				out, err = kindp.RenderConfig(cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, kindp.CertsD{})
+				out, _, err = kindp.RenderConfig(c.Context(), cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, kindp.CertsD{})
 			case "k3d":
 				out, err = k3dp.RenderConfig(cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, k3dp.ZotMirror{})
 			default:

@@ -35,6 +35,7 @@ const loadRetryBackoff = 2 * time.Second
 type Kind struct {
 	gw       config.GatewaySpec
 	provider *kindcluster.Provider
+	sink     func(line string)
 }
 
 // New returns a Kind provider bound to the given gateway spec. It
@@ -56,6 +57,7 @@ func New(gw config.GatewaySpec) *Kind {
 // `func(line string)` because importing internal/cluster from here would
 // cycle (see the note on K3d in k3dp for the shared constraint).
 func (k *Kind) SetLogSink(sink func(line string)) {
+	k.sink = sink
 	np, _ := kindcluster.DetectNodeProvider()
 	opts := []kindcluster.ProviderOption{kindcluster.ProviderWithLogger(newKindLogger(sink))}
 	if np != nil {
@@ -76,9 +78,14 @@ func (k *Kind) Ensure(ctx context.Context, name string, spec config.ClusterSpec)
 		if err != nil {
 			return nil, err
 		}
-		cfg, err := RenderConfig(name, spec, k.gw, certsd)
+		cfg, warns, err := RenderConfig(ctx, name, spec, k.gw, certsd)
 		if err != nil {
 			return nil, err
+		}
+		for _, w := range warns {
+			if k.sink != nil {
+				k.sink(fmt.Sprintf("⚠ %s  %s", w.Code, w.Message))
+			}
 		}
 		err = k.provider.Create(name,
 			kindcluster.CreateWithRawConfig(cfg),

@@ -56,6 +56,7 @@ var registry = map[Code]Desc{
 	CodeKindCreateFailed:  {Summary: "kind cluster creation failed"},
 	CodeKindKubeconfigGet: {Summary: "cannot get kubeconfig from kind"},
 	CodeKindDeleteFailed:  {Summary: "kind cluster deletion failed"},
+	CodeKindCoreOverride:  {Summary: "kind core injection overrode a user providerConfigRef/forProvider field (warning)"},
 
 	// 13xx: k3d provider
 	CodeK3dConfigMerge:   {Summary: "k3d providerConfig merge failed"},
