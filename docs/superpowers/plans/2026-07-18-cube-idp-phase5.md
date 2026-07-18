@@ -1383,7 +1383,7 @@ HANDOFF: S4 consumes: hub secret naming cube-idp-spoke-<name> in ns argocd (labe
   `argocd`/`flux-system`), `statusCollector` seam (`cmd/status.go:242`,
   `statusConnect` var at `:248` — the W2.T12 fake-collector test pattern).
 
-- [ ] **Step 1: Failing status test** — in `cmd/status_test.go`, extend
+- [x] **Step 1: Failing status test** — in `cmd/status_test.go`, extend
   the existing fake-collector test (find the test that stubs
   `statusConnect`; copy its arrangement) with a snapshot carrying
   `Spokes: []spokeStatus{{Name: "staging", Provider: "kind", Registered:
@@ -1395,7 +1395,7 @@ HANDOFF: S4 consumes: hub secret naming cube-idp-spoke-<name> in ns argocd (labe
   Run: `go test ./cmd/ -run TestStatus -v` — Expected: FAIL (no Spokes
   field).
 
-- [ ] **Step 2: Implement.** (a) Add the struct + field; (b) in
+- [x] **Step 2: Implement.** (a) Add the struct + field; (b) in
   `connectStatus`'s collector closure: after component collection, if
   `cube.Spec.Spokes` is non-empty, for each spoke read the hub secret
   (Registered = secret exists in the engine's namespace) and probe
@@ -1409,7 +1409,7 @@ HANDOFF: S4 consumes: hub secret naming cube-idp-spoke-<name> in ns argocd (labe
   (`cmd/status.go:412`). Re-run — Expected: PASS. The `--watch` path needs
   NO change (it re-runs the same collector).
 
-- [ ] **Step 3: Doctor + spoke list + docs.** Doctor: add a
+- [x] **Step 3: Doctor + spoke list + docs.** Doctor: add a
   `spoke-reachability` check (skip silently when no spokes declared; warn
   with CUBE-8006 naming each unreachable spoke). `spoke list`: attempt the
   same collector; when the hub is unreachable print the S1 config-only
@@ -1421,20 +1421,20 @@ HANDOFF: S4 consumes: hub secret naming cube-idp-spoke-<name> in ns argocd (labe
   Run: `go test ./cmd/ ./internal/doctor/ -v -run 'TestSpoke|TestDoctor'`
   Expected: PASS.
 
-- [ ] **Step 4: Gate + fences + commit** — full gate + fence commands (as
+- [x] **Step 4: Gate + fences + commit** — full gate + fence commands (as
   S3 Step 11). Expected: PASS; JSONL fence green (additive only). Commit:
   `git add cmd/ internal/doctor/ internal/diag/ docs/machine-readable-output.md && git commit -m "feat(status,doctor): spoke representation — rows, probes, live list (CUBE-8006)"`
 
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(fable-s4-b67ed6f3, 2026-07-18T10:01:17Z)
-BRANCH: p5/s4-spoke-status (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/s4-spoke-status (merged: yes)
+COMMITS: 9fbc96c feat(status,doctor): spoke representation — rows, probes, live list (CUBE-8006); 3f9b6d4 merge: p5 S4 spoke-status (p5/s4-spoke-status)
+FINDINGS: (1) Step 1 drift: the suggested raw-substring JSON assertion `"spokes":[{"name":"staging"` can never match — writeJSONDoc pretty-prints (json.MarshalIndent); asserted `"spokes": [` plus unmarshal-and-check-fields instead. "Extend the existing fake-collector test" implemented as a NEW test (TestStatusSpokeRows) reusing the existing stubStatusConnect helper. (2) Probe vantage is the CLI process, by design: reachability rebuilds the REST config from the hub secret's OWN payload (plan text) and GETs /readyz — kind spokes register a docker-network-internal URL (GT7), so from outside that network they truthfully probe unreachable while the hub engine still reconciles; remediation text, doc comments, and docs/machine-readable-output.md all carry this caveat, and it is one reason CUBE-8006 is a warning, never an error. (3) Doctor warns on BOTH arms, not just the plan's named one: declared-but-unregistered (missing hub secret — message names cube-idp-spoke-<name>) and registered-but-unreachable; an unregistered spoke is trivially unreachable by the engine. Both CUBE-8006 warnings. (4) Placement: SpokeState/ProbeSpokes/CheckSpokeReachability all live in internal/doctor/doctor.go (plan's file list — internal/spoke untouched); cmd/status.go maps doctor.SpokeState → the plan's cmd-local spokeStatus via spokeStatusRows. doctor gains imports corev1/client-go rest/clientcmd/controller-runtime client/internal-config — no new modules; VERIFY-API: rest.HTTPClientFor and clientcmd.RESTConfigFromKubeConfig confirmed present in pinned client-go v0.36.2 via go doc. spokeArgocdConfig copies the unexported spoke.argocdClusterConfig fields per S3 handoff. (5) renderStatusPlain/renderStatusStyled/writeStatusJSON gained a spokes parameter — existing test call sites updated with nil; spoke-less plain output byte-identical (TestStatusPlainByteStable untouched and green) and the JSON `spokes` key is omitempty so spoke-less documents are unchanged (pinned by new TestStatusJSONOmitsSpokesWhenNone). Plain section format: "\nspokes\n" then `%-20s %-10s <reg-cell>  <reach-cell>` rows; styled mirrors it as a th.Section "Spokes" between Components and Access. spokeStateCell renders every state as paired glyph+word (✔ registered/✗ unregistered, ✔ reachable/✗ unreachable). (6) spoke list's live path goes through the statusConnect seam (stubbable): S1's TestSpokeListAndRemove now exercises the real seam and degrades gracefully (no "dev" cluster exists); the new degradation test is hermetic — KUBECONFIG pointed at an absent file + hub provider existing with a bogus context, so no docker/network dependency. Degraded output is byte-identical to the S1 table plus the exact trailing note line. (7) Probe tests are credential-tight: the httptest TLS spoke returns 401 unless `Authorization: Bearer tok` arrives, so the reachable arms prove the payload's token actually flows (both engine payload shapes). (8) Claim-commit rideover, same pattern P1 recorded: my claim commit 1b19517 carried two in-flight U3 checkbox ticks from the shared main working tree; no STATUS line of any other task touched; HEAD verified showing S4 IN_PROGRESS. (9) Main gained U4 (values stone) mid-task; merge back auto-resolved cleanly including the append-only codes.go/registry.go (both sides kept, no manual conflict). (10) gofmt -l on touched dirs flags only pre-existing cmd/init.go + cmd/status.go — byte-identical set to baseline main (S3 FINDINGS 9); all S4-added code is gofmt-clean.
+REVIEW: TDD red→green observed on all three legs. Status: build-fail red (unknown field Spokes / undefined spokeStatus / writeStatusJSON arity) → green TestStatusSpokeRows (plain cells + JSON doc fields) and TestStatusJSONOmitsSpokesWhenNone; frozen surfaces intact (TestStatusPlainByteStable, TestStatusJSONDocument, watch tests all green; --watch needed no change — same collector re-run). Doctor: red (undefined CheckSpokeReachability / diag.CodeSpokeUnreachable) → green ×3: no-spokes silent skip; flux arms healthy/dead/ghost against a real TLS httptest /readyz (bearer-token-checked), a dead endpoint, and a missing secret — findings CUBE-8006 warnings in declaration order naming each spoke; argocd payload arm (server + config JSON) probes Registered+Reachable. Spoke list: red (missing columns, missing note) → green TestSpokeListLiveColumns (stubbed seam) + TestSpokeListDegradesWithoutHub (hermetic real-seam failure, exact note line, no glyphs). Registry fence TestRegistryCoversEveryDeclaredCode green with CUBE-8006 in both codes.go and registry.go. Task gate in worktree: go build ./... && go vet ./... && go test ./... → 31 pkgs ok, 0 FAIL; fence run go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence' → all ok (prompt fence's spoke remove row untouched). Post-merge on main: go test ./... → 31 pkgs ok, 0 FAIL.
+BLOCKERS: none
+HANDOFF: U5 (doctor tri-state checklist) wraps CheckSpokeReachability(ctx, client, engineType, spokes) []diag.Finding in internal/doctor/doctor.go — check id spoke-reachability is recorded in its doc comment; note its silent-skip semantics (nil when no spokes declared) will need an explicit skipped-vs-passed row decision in the tri-state model, and ProbeSpokes/SpokeState are exported if U5 wants per-spoke pass rows rather than one aggregate check. CUBE-8006 is taken; the next spoke code is CUBE-8007 (GT8 reserved through 8007). statusDoc gained additive omitempty `spokes` (documented in docs/machine-readable-output.md) — machine consumers must treat absence as "no spokes declared". spokeStateCell (cmd/status.go) is the shared paired glyph+word cell renderer reused by spoke list. spoke list's live path rides the statusConnect seam — any change to connectStatus changes spoke list too, and tests stub the seam via stubStatusConnect (cmd/status_test.go). Reachability is probed from the CLI's machine with the hub secret's own payload, 2s per spoke in parallel: kind spokes are expected to show ✗ unreachable from the host while the engine reconciles them fine — F1's docs sweep may want a README line on that vantage caveat.
 ```
 
 ---
