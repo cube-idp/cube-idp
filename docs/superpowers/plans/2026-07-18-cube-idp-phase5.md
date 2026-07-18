@@ -3008,7 +3008,7 @@ packs.lock) and does not re-verify attestations at pull time.
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(p5-agent-b67ed6f3, 2026-07-18T09:56:59Z)
 BRANCH: p5/p5-pack-attest (merged: -)
 COMMITS: -
 FINDINGS: -
