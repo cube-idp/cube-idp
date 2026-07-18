@@ -20,17 +20,28 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/engine"
 )
 
 //go:embed manifests/install.yaml
 var installYAML []byte
 
 // Flux implements engine.Engine.
-type Flux struct{}
+type Flux struct {
+	// tuning is the closed engine.tuning knob set (GT1, U3) applied over
+	// the embedded install manifests by InstallManifests. nil = untuned.
+	tuning *config.EngineTuning
+}
 
-// New returns a Flux engine.
+// New returns an untuned Flux engine (tests and callers that only need the
+// stock install).
 func New() *Flux { return &Flux{} }
+
+// NewTuned returns a Flux engine whose InstallManifests patches the
+// embedded manifests with t (GT1). The factory is the production caller.
+func NewTuned(t *config.EngineTuning) *Flux { return &Flux{tuning: t} }
 
 // InstallManifests parses the embedded, pre-rendered Flux install manifest
 // (source-controller + kustomize-controller only; see
@@ -50,9 +61,18 @@ func (f *Flux) Install(ctx context.Context, a *apply.Applier, timeout time.Durat
 
 // InstallManifests implements engine.Engine, delegating to the package-level
 // InstallManifests func (kept for tests and for callers that only need the
-// manifests, not a Flux value).
+// manifests, not a Flux value) and then applying this engine's tuning
+// (GT1, U3) — the objects Install SSAs and `up` inventories are the tuned
+// ones. An unknown tuning component surfaces as CUBE-3009 here.
 func (f *Flux) InstallManifests() ([]*unstructured.Unstructured, error) {
-	return InstallManifests()
+	objs, err := InstallManifests()
+	if err != nil {
+		return nil, err
+	}
+	if err := engine.ApplyTuning(objs, f.tuning); err != nil {
+		return nil, err
+	}
+	return objs, nil
 }
 
 // deliveredListGVKs are the engine-native kinds Deliver creates per pack;

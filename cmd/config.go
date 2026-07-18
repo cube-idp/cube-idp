@@ -4,11 +4,13 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"sigs.k8s.io/yaml"
 
 	"github.com/cube-idp/cube-idp/internal/cluster/k3dp"
 	"github.com/cube-idp/cube-idp/internal/cluster/kindp"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
+	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
 )
 
 // newConfigCmd exposes read-only inspection of the loaded cube.yaml, e.g.
@@ -57,6 +59,41 @@ func newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
+	// `cube-idp config render-engine` — render-cluster's engine twin (GT1,
+	// U3): prints the engine install manifests exactly as `up` would SSA
+	// them, i.e. with spec.engine.tuning already patched in. Inspectability
+	// is the point — the tuned result is visible before any cluster exists.
+	// Unlike render-cluster there is no up-time injection gap: stdout IS
+	// the full object stream, so it stays pure YAML (pipeable into kubectl).
+	renderEngine := &cobra.Command{
+		Use:   "render-engine",
+		Short: "Print the tuned engine install manifests that `up` would apply (GT1)",
+		RunE: func(c *cobra.Command, _ []string) error {
+			cube, err := config.Load(file)
+			if err != nil {
+				return err
+			}
+			eng, err := enginefactory.New(cube.Spec.Engine)
+			if err != nil {
+				return err
+			}
+			objs, err := eng.InstallManifests()
+			if err != nil {
+				return err
+			}
+			for i, o := range objs {
+				b, err := yaml.Marshal(o.Object)
+				if err != nil {
+					return err
+				}
+				if i > 0 {
+					fmt.Fprintln(c.OutOrStdout(), "---")
+				}
+				fmt.Fprint(c.OutOrStdout(), string(b))
+			}
+			return nil
+		},
+	}
 	// `cube-idp config schema` — the command every CUBE-0002 remediation
 	// points at: prints the embedded CUE schema cube.yaml is validated
 	// against. Needs no cube.yaml to exist.
@@ -71,6 +108,7 @@ func newConfigCmd() *cobra.Command {
 
 	cfg.PersistentFlags().StringVarP(&file, "file", "f", "cube.yaml", "path to cube.yaml")
 	cfg.AddCommand(render)
+	cfg.AddCommand(renderEngine)
 	cfg.AddCommand(schema)
 	return cfg
 }

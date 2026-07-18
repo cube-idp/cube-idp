@@ -94,7 +94,7 @@ func newDoctorCmd() *cobra.Command {
 				defer cancel()
 				if conn, err := prov.Ensure(ctx, cube.Metadata.Name, cube.Spec.Cluster); err == nil {
 					if a, err := apply.New(conn.REST, cube.Metadata.Name); err == nil {
-						if eng, err := enginefactory.New(cube.Spec.Engine.Type); err == nil {
+						if eng, err := enginefactory.New(cube.Spec.Engine); err == nil {
 							if comps, err := eng.Health(ctx, a); err == nil {
 								for _, comp := range comps {
 									if !comp.Ready {

@@ -80,6 +80,7 @@ var registry = map[Code]Desc{
 	CodeEngineArgocdRegFail: {Summary: "reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design"},
 	CodePokeTargetMissing:   {Summary: "Poke found no delivery source (OCIRepository/GitRepository/Application) for the pack"},
 	CodePokeIOFail:          {Summary: "Poke found the delivery source but could not read/update it (transient engine IO — retry)"},
+	CodeEngineTuningUnknown: {Summary: "engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched)"},
 
 	// 4xxx: pack
 	CodePackRefInvalid:   {Summary: "unsupported pack ref scheme"},

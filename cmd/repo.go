@@ -122,7 +122,7 @@ idempotent, and --deploy re-registers the same delivery source.`,
 					}
 
 					if deploy {
-						eng, err := enginefactory.New(cube.Spec.Engine.Type)
+						eng, err := enginefactory.New(cube.Spec.Engine)
 						if err != nil {
 							return err
 						}

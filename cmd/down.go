@@ -145,7 +145,7 @@ func runDown(ctx context.Context, con *ui.Console, file string, keepCluster bool
 		// are still alive), then the inventory cascade removes
 		// everything else — DeleteAll skips the already-gone engine
 		// objects via its IsNotFound/NoMatch handling.
-		eng, err := enginefactory.New(cube.Spec.Engine.Type)
+		eng, err := enginefactory.New(cube.Spec.Engine)
 		if err != nil {
 			return err
 		}

@@ -316,3 +316,76 @@ spec:
 		t.Fatalf("omitted httpPort must be zero, got %v %+v", err, mc.Spec.Gateway)
 	}
 }
+
+// TestEngineTuningRoundTripAndValidation covers U3's spec.engine.tuning
+// (GT1): set → decoded (typed *int replicas, int64-leaved resources — CUE's
+// decode type, deliberately NOT normalized to int like PackRef.Values,
+// because the consumer is unstructured SSA) and round-tripped through
+// SaveValidated; a knob outside the closed set (replicas: 0) → CUBE-0002;
+// omitted → nil pointer, an absent key on re-marshal (PackRef.Values
+// discipline).
+func TestEngineTuningRoundTripAndValidation(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.yaml")
+	base := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: dev}
+spec:
+  engine:
+    type: flux
+    tuning:
+      components:
+        source-controller:
+          replicas: 2
+          resources: {limits: {memory: 512Mi, cpu: 1}}
+  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443}
+`
+	if err := os.WriteFile(p, []byte(base), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatalf("valid tuning rejected: %v", err)
+	}
+	ct, ok := c.Spec.Engine.Tuning.Components["source-controller"]
+	if !ok || ct.Replicas == nil || *ct.Replicas != 2 {
+		t.Fatalf("tuning not decoded: %+v", c.Spec.Engine.Tuning)
+	}
+	limits, _ := ct.Resources["limits"].(map[string]any)
+	if limits["memory"] != "512Mi" {
+		t.Fatalf("resources not decoded: %+v", ct.Resources)
+	}
+	if cpu, isInt64 := limits["cpu"].(int64); !isInt64 || cpu != 1 {
+		t.Fatalf("tuning numbers must stay int64 (unstructured-safe), got %T %v", limits["cpu"], limits["cpu"])
+	}
+	if err := SaveValidated(p, c); err != nil {
+		t.Fatalf("tuning does not round-trip through SaveValidated: %v", err)
+	}
+	c, err = Load(p)
+	if err != nil || c.Spec.Engine.Tuning == nil || *c.Spec.Engine.Tuning.Components["source-controller"].Replicas != 2 {
+		t.Fatalf("tuning lost on round-trip: %v %+v", err, c.Spec.Engine)
+	}
+
+	// The knob set is closed: replicas must be > 0 per schema.cue.
+	bad := strings.Replace(base, "replicas: 2", "replicas: 0", 1)
+	if err := os.WriteFile(p, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); err == nil || codeOf(t, err) != "CUBE-0002" {
+		t.Fatalf("replicas: 0 must be CUBE-0002, got: %v", err)
+	}
+
+	// Omitted → nil: no tuning block, no patch, and re-marshal writes no
+	// explicit `tuning: null` (omitempty discipline).
+	mc, err := Load("testdata/minimal.yaml")
+	if err != nil || mc.Spec.Engine.Tuning != nil {
+		t.Fatalf("omitted tuning must be nil, got %v %+v", err, mc.Spec.Engine)
+	}
+	raw, err := sigyaml.Marshal(mc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "tuning") {
+		t.Fatalf("nil tuning must marshal as an absent key:\n%s", raw)
+	}
+}

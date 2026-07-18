@@ -66,7 +66,7 @@ gitea pack ('cube-idp repo create').`,
 				if err != nil {
 					return err
 				}
-				eng, err := enginefactory.New(cube.Spec.Engine.Type)
+				eng, err := enginefactory.New(cube.Spec.Engine)
 				if err != nil {
 					return err
 				}
@@ -111,7 +111,7 @@ gitea pack ('cube-idp repo create').`,
 					if err != nil {
 						return err
 					}
-					eng, err := enginefactory.New(cube.Spec.Engine.Type)
+					eng, err := enginefactory.New(cube.Spec.Engine)
 					if err != nil {
 						return err
 					}

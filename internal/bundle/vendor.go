@@ -19,6 +19,7 @@ import (
 
 	"golang.org/x/mod/sumdb/dirhash"
 
+	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
 	"github.com/cube-idp/cube-idp/internal/lock"
@@ -192,9 +193,11 @@ var (
 
 // defaultEngineInstallImages returns every image the named GitOps engine's
 // own install manifests reference — exactly what `up` records for the
-// engine via lock.ImagesFrom(eng.InstallManifests()).
+// engine via lock.ImagesFrom(eng.InstallManifests()). The engine is built
+// untuned on purpose: engine.tuning (GT1) only patches replicas/resources,
+// never image refs, so the vendored image set is tuning-independent.
 func defaultEngineInstallImages(engineType string) ([]string, error) {
-	eng, err := enginefactory.New(engineType)
+	eng, err := enginefactory.New(config.EngineSpec{Type: engineType})
 	if err != nil {
 		return nil, err
 	}
