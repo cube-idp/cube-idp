@@ -49,6 +49,9 @@ func (f *fakeEngine) Deliver(_ context.Context, r *pack.Rendered, _ engine.Artif
 func (f *fakeEngine) DeliverGit(context.Context, string, engine.GitSource) ([]*unstructured.Unstructured, error) {
 	return nil, nil
 }
+func (f *fakeEngine) DeliverSelf(context.Context, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
+	return nil, nil
+}
 func (f *fakeEngine) Poke(_ context.Context, _ *apply.Applier, packName string) error {
 	f.poked = append(f.poked, packName)
 	return nil

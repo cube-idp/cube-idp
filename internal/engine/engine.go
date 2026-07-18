@@ -20,6 +20,16 @@ import (
 // Task 11's change-skip logic is the first consumer.
 type ArtifactRef struct{ Repo, Tag, Digest string }
 
+// SelfArtifactName is the reserved name of the engine's own rendered
+// install pushed to zot when spec.engine.selfManage is on (GT16, P8): `up`
+// pushes it via oci.PushRendered (so the artifact lands at
+// packs/cube-engine) and DeliverSelf's objects carry this name verbatim —
+// deliberately NOT the cube-idp-<pack> delivery convention, so no pack can
+// ever collide with the self-source (every pack's delivery objects are
+// prefixed; a pack literally named "cube-engine" would still deliver as
+// cube-idp-cube-engine).
+const SelfArtifactName = "cube-engine"
+
 // ComponentHealth is the readiness of a single engine-managed component
 // (e.g. a Flux Kustomization) for a cube.
 type ComponentHealth struct {
@@ -59,6 +69,17 @@ type Engine interface {
 	// applies them — DeliverGit never touches the cluster. name matches the
 	// name Deliver/Poke use; delivered objects are named cube-idp-<name>.
 	DeliverGit(ctx context.Context, name string, src GitSource) ([]*unstructured.Unstructured, error)
+	// DeliverSelf returns the engine-native self-source objects watching
+	// the cube-engine artifact (GT16, P8) in the ENGINE's own namespace
+	// with pruning disabled: flux → OCIRepository + Kustomization
+	// (prune: false) in flux-system; argocd → one Application over ns
+	// argocd (automated sync, prune: false, no resources-finalizer). Same
+	// purity rule as Deliver: it RETURNS objects, the caller applies them.
+	// The returned SOURCE object carries a fresh reconcile-now annotation
+	// (flux requestedAt / argocd refresh), so every apply doubles as the
+	// GT16 "poke" — Poke(name) addresses cube-idp-<pack> names and cannot
+	// reach the plain cube-engine self-source (see SelfArtifactName).
+	DeliverSelf(ctx context.Context, src ArtifactRef) ([]*unstructured.Unstructured, error)
 	// Poke asks the engine to reconcile the delivered pack now instead of on
 	// its poll interval. packName matches the name Deliver/DeliverGit was
 	// called with. Implementations must be idempotent and cheap (an

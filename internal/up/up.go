@@ -225,21 +225,36 @@ func Run(ctx context.Context, opts Options) error {
 
 	// Task 15.3a: the engine install (Flux/Argo CD's own controllers coming
 	// up) is the second long, previously-silent wait.
+	// P8 (GT16): the install is ALWAYS rendered first (embedded manifests +
+	// U3 tuning) — the rendered objects are what SSA applies, what the
+	// inventory records, and (selfManage) what the cube-engine artifact
+	// carries, so the SSA'd state and the first pushed artifact are
+	// byte-identical renders. SSA is skipped only when the engine owns
+	// itself: selfManage on AND healthy at start (rule 2); first install
+	// (rule 1) and unhealthy-at-start recovery (rule 3) SSA directly, and
+	// selfManage off keeps the pre-P8 behavior.
 	pr = con.Progress("engine", fmt.Sprintf("installing %s", cube.Spec.Engine.Type))
-	if err := eng.Install(ctx, a, applyTimeout); err != nil {
-		pr.Stop()
-		return err
-	}
 	installObjs, err := eng.InstallManifests()
 	if err != nil {
 		pr.Stop()
 		return err
 	}
+	ssaEngine := installNeedsSSA(ctx, eng, a, cube.Spec.Engine.SelfManage)
+	if ssaEngine {
+		if err := a.Apply(ctx, installObjs, true, applyTimeout); err != nil {
+			pr.Stop()
+			return err
+		}
+	}
 	if err := a.RecordInventory(ctx, installObjs); err != nil {
 		pr.Stop()
 		return err
 	}
-	pr.Done("%s installed", cube.Spec.Engine.Type)
+	if ssaEngine {
+		pr.Done("%s installed", cube.Spec.Engine.Type)
+	} else {
+		pr.Done("%s healthy — self-managed, install SSA skipped (GT16)", cube.Spec.Engine.Type)
+	}
 
 	// The gateway pack's websecure listener references this secret by name
 	// (packs/traefik/manifests/10-gateway.yaml); it must exist before the
@@ -416,6 +431,45 @@ func Run(ctx context.Context, opts Options) error {
 
 	if err := waitHealthy(ctx, eng, a, con, healthTimeout); err != nil {
 		return err
+	}
+
+	// P8 (GT16 rule 2): with selfManage on, hand the engine its own (tuned)
+	// render as a zot artifact and attach the engine-native self-source —
+	// from here the engine reconciles itself, and later `up`s render → push
+	// → poke without ever SSA-ing a healthy engine. Runs after the health
+	// gate so the first attach binds to a healthy engine; the re-wait below
+	// is instant when artifact == live state (the first enable pushes the
+	// byte-identical render SSA just applied — no restart, no flap).
+	if cube.Spec.Engine.SelfManage {
+		spr := con.Progress("engine-self", "handing the engine its own install (selfManage)")
+		// The pre-pack-loop registry tunnel (tunnelAddr) is minutes old by
+		// now — the CRD wait, the CoreDNS restart, and the health
+		// convergence all ran since — and a client-go port-forward that old
+		// can be dead (its local listener closes once the SPDY session
+		// drops; the live P8 leg caught exactly that as a connection-refused
+		// push). The push therefore gets a fresh bounded tunnel of its own,
+		// acquired at use time like the gitea session is.
+		selfAddr, selfStop, err := registry.PortForward(ctx, conn.REST)
+		if err != nil {
+			spr.Stop()
+			return diag.Wrap(err, diag.CodeEngineSelfManage,
+				"engine self-management: cannot open a registry tunnel for the cube-engine push",
+				"re-run `cube-idp up` — it is idempotent and resumes where it left off")
+		}
+		selfDeps := deps
+		selfDeps.tunnelAddr = selfAddr
+		err = deliverEngineSelf(ctx, selfDeps, installObjs)
+		selfStop()
+		if err != nil {
+			spr.Stop()
+			return err
+		}
+		spr.Done("engine self-managed from oci://%s/packs/%s:%s", registry.InClusterURL, engine.SelfArtifactName, engineSelfTag)
+		if err := waitHealthy(ctx, eng, a, con, healthTimeout); err != nil {
+			return diag.Wrap(err, diag.CodeEngineSelfManage,
+				"engine did not settle after the self-source attach",
+				"re-run `cube-idp up` — it is idempotent and resumes where it left off")
+		}
 	}
 
 	// D11: write each pack's discoverability record now that health is
@@ -821,10 +875,14 @@ const (
 )
 
 // packEngine is the narrow engine surface the delivery tail uses —
-// engine.Engine satisfies it; the branch unit tests fake it.
+// engine.Engine satisfies it; the branch unit tests fake it. DeliverSelf
+// (P8) rides the same seam: the cube-engine artifact push reuses deliverDeps'
+// pushOCI/applier collaborators, so the selfManage unit tests share the
+// P7 fakes.
 type packEngine interface {
 	Deliver(ctx context.Context, r *pack.Rendered, src engine.ArtifactRef) ([]*unstructured.Unstructured, error)
 	DeliverGit(ctx context.Context, name string, src engine.GitSource) ([]*unstructured.Unstructured, error)
+	DeliverSelf(ctx context.Context, src engine.ArtifactRef) ([]*unstructured.Unstructured, error)
 }
 
 // packApplier is the narrow Applier surface the delivery tail uses —
@@ -1013,6 +1071,78 @@ func giteaSession(ctx context.Context, timeout, poll time.Duration, attempt func
 		case <-time.After(poll):
 		}
 	}
+}
+
+// ---- P8: engine self-management (engine.selfManage, GT16) ----------------
+
+// enginePreflightTimeout bounds the single eng.Health call of the GT16
+// preflight — one LIST against the cluster, generously capped so a slow
+// API server reads as "not healthy, SSA" rather than hanging `up`.
+const enginePreflightTimeout = 10 * time.Second
+
+// engineSelfTag is the fixed tag of the cube-engine artifact. Every `up`
+// re-pushes the same tag (the digest moves, the tag never does), so the
+// engine-native self-source watches one stable ref and each push is picked
+// up as a new revision of it — no per-run tag garbage in zot.
+const engineSelfTag = "latest"
+
+// installNeedsSSA decides whether `up` server-side-applies the rendered
+// engine install (GT16): selfManage off → always, the pre-P8 behavior
+// (Health is not even consulted); selfManage on → only on first install
+// (rule 1) or when the engine is unhealthy at start (rule 3, self-brick
+// recovery). A healthy self-managed engine owns itself and is never SSA'd
+// (rule 2, single owner).
+func installNeedsSSA(ctx context.Context, eng engine.Engine, a *apply.Applier, selfManage bool) bool {
+	if !selfManage {
+		return true
+	}
+	return !engineHealthyAtStart(ctx, eng, a)
+}
+
+// engineHealthyAtStart is the GT16 preflight: one bounded eng.Health call
+// (the same call waitHealthy polls). Healthy means components exist and
+// every one is Ready. Tolerant of not-installed-yet by construction: on a
+// fresh cluster the engine CRDs are absent, Health reports zero components
+// with no error, and zero components is not-healthy — exactly rule 1's
+// "first install". Any Health error also reads as not-healthy: when in
+// doubt, SSA — re-applying the rendered install is idempotent.
+func engineHealthyAtStart(ctx context.Context, eng engine.Engine, a *apply.Applier) bool {
+	hctx, cancel := context.WithTimeout(ctx, enginePreflightTimeout)
+	defer cancel()
+	health, err := eng.Health(hctx, a)
+	return err == nil && allReady(health)
+}
+
+// deliverEngineSelf is the GT16 rule-2 tail, run after the health gate when
+// selfManage is on: push the ALREADY-rendered (tuned) engine install as the
+// cube-engine artifact to zot over the registry tunnel, then apply +
+// inventory the engine-native self-source objects. Rendering always
+// happened in `up` before this — the artifact is finished YAML; the engine
+// never sees tuning as a concept. The fresh reconcile-now annotation inside
+// DeliverSelf's source object makes each apply double as the poke. Every
+// failure arm is CUBE-3010 with re-run as the retry.
+func deliverEngineSelf(ctx context.Context, deps deliverDeps, installObjs []*unstructured.Unstructured) error {
+	wrap := func(err error, what string) error {
+		return diag.Wrap(err, diag.CodeEngineSelfManage,
+			"engine self-management: "+what,
+			"re-run `cube-idp up` — it is idempotent and resumes where it left off")
+	}
+	selfRendered := &pack.Rendered{Name: engine.SelfArtifactName, Version: engineSelfTag, Objects: installObjs}
+	artifact, err := deps.pushOCI(ctx, selfRendered, deps.tunnelAddr)
+	if err != nil {
+		return wrap(err, "cannot push the cube-engine artifact to zot")
+	}
+	selfObjs, err := deps.eng.DeliverSelf(ctx, artifact)
+	if err != nil {
+		return wrap(err, "cannot build the engine self-source")
+	}
+	if err := deps.applier.Apply(ctx, selfObjs, true, applyTimeout); err != nil {
+		return wrap(err, "self-source apply failed")
+	}
+	if err := deps.applier.RecordInventory(ctx, selfObjs); err != nil {
+		return wrap(err, "self-source inventory write failed")
+	}
+	return nil
 }
 
 // giteaConnectOnce is one production acquisition attempt for giteaSession:
