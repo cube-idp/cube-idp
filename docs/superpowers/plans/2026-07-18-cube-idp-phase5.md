@@ -3099,15 +3099,15 @@ func FetchCatalog(ctx context.Context) (*Catalog, error)
   artifact (`internal/pack/source.go:113`); the existing `packCatalog`
   shape (`cmd/pack.go:71`) as the FALLBACK, never deleted.
 
-- [ ] **Step 1: Failing catalog tests** — fetch+parse against the ocitest
+- [x] **Step 1: Failing catalog tests** — fetch+parse against the ocitest
   fake (valid index → entries; corrupt JSON → error; cache hit within TTL
   skips the network — assert by killing the fake and re-fetching).
   Run: `go test ./internal/pack/ -run TestCatalog -v` — Expected: FAIL.
 
-- [ ] **Step 2: Implement + pass.** `FetchCatalog` per the interface
+- [x] **Step 2: Implement + pass.** `FetchCatalog` per the interface
   (pull index artifact to cache dir, mtime-based 24h TTL, env override).
 
-- [ ] **Step 3: CLI wiring.** `cmd/pack.go`: `packCatalogOptions`/
+- [x] **Step 3: CLI wiring.** `cmd/pack.go`: `packCatalogOptions`/
   `packCatalogNames` gain a context-taking loader that tries
   `FetchCatalog` first, falls back to the built-in list with a single
   `ui` Note (`catalog: using built-in list (index unreachable: <err>)`).
@@ -3121,20 +3121,102 @@ func FetchCatalog(ctx context.Context) (*Catalog, error)
   Run: `go test ./cmd/ -run 'TestPackList|TestPackSearch|TestPackInstall' -v`
   — Expected: PASS.
 
-- [ ] **Step 4: Gate + fences + commit** — full gate + fences (wizard
+- [x] **Step 4: Gate + fences + commit** — full gate + fences (wizard
   touched → prompt fence matters). Commit:
   `git add internal/pack/ cmd/ && git commit -m "feat(pack): remote catalog — index-backed list/search/install with built-in fallback"`
 
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(fable-p6-b67ed6f3, 2026-07-18T10:15:11Z)
-BRANCH: p5/p6-remote-catalog (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/p6-remote-catalog (merged: yes — $ROOT 139e180; branch kept)
+COMMITS: a897c70 feat(pack): remote catalog — index-backed
+  list/search/install with built-in fallback; 139e180 merge: p5 P6
+  remote-catalog (p5/p6-remote-catalog).
+FINDINGS: (1) catalog_test.go is an EXTERNAL test package (pack_test):
+  the fixtures publish via internal/oci.PushPackDir (the `pack index
+  push` twin), and internal/oci imports internal/pack — an in-package
+  test would be an import cycle. (2) CatalogEntry carries explicit json
+  tags for the P2 index keys (the plan sketch had bare fields; json
+  tags pin the schema, field Description not Desc). (3) No new CUBE
+  codes minted (none assigned): CUBE-4004 CodePackManifestErr for
+  corrupt JSON / wrong schemaVersion / EMPTY index / missing
+  index.json; CUBE-4001 for a non-oci:// CUBE_IDP_PACK_INDEX;
+  CUBE-4012 surfaces from pullOCI on network failure; CUBE-0007 for
+  `pack list` without --available. (4) Guards beyond the plan letter:
+  schemaVersion != 1 and ZERO-pack indexes are typed errors (P2
+  FINDINGS' "empty index would wipe the catalog" concern, enforced
+  consumer-side), and a corrupt cache file within TTL self-heals by
+  refetching. (5) Cache: raw index JSON in DefaultCacheDir, file keyed
+  by sha256(ref) so a mirror override never serves the default index's
+  cache; atomic temp+rename write, best-effort (a failed cache write
+  costs a re-pull, never the fetch). Stale cache is deliberately NOT
+  served on network failure — plan contract is (nil, err) → built-in
+  fallback. (6) loadPackCatalog bounds the fetch with a 10s timeout
+  (catalogFetchTimeout, cmd-side only): a black-hole network degrades
+  to the fallback in seconds instead of stalling menu/wizard until the
+  OS TCP timeout; pack pulls proper keep their unbounded context. (7)
+  "ui Note": Printer has no Note method and Console.Note is
+  pipeline-event-only (internal/ui outside P6's file list), so the
+  advisory renders via Printer.Warn — plain mode emits the bare line,
+  wording plan-verbatim. (8) `pack list` bare form: plan specifies only
+  --available; bare invocation is a typed CUBE-0007 refusal naming
+  `cube-idp pack list --available` — the bare surface stays reserved
+  (e.g. a future installed-packs listing) instead of inventing output.
+  (9) packMenuSelect seam now takes the option list (menu stays pure
+  UI); the catalog loads once per command and strictly AFTER the
+  prompt gate, so the non-TTY CUBE-0010 refusal stays instant and
+  offline. packMenuSeams isolates HOME + a dead-port
+  CUBE_IDP_PACK_INDEX so no unit test can ever reach the real ghcr.
+  (10) Wizard semantics: options come from the loaded catalog; default
+  selection stays the built-in names; applyWizardToCube APPENDS a
+  selected pack's index ref only when its name is OUTSIDE the built-in
+  list (remote-discovered, spec B3) — built-in names keep filter-only
+  semantics so an engine-argocd cube cannot resurrect the argocd pack
+  (CUBE-0005 guard, pinned by TestApplyWizardAppendsRemoteCatalogPacks).
+  (11) init loads the catalog only on the wizardApplicable path —
+  flag-driven runs, CI, and e2e never touch the network. (12) NB for
+  Wave A/F1: the ref↔name substring convention (packCatalogName) will
+  mis-bucket name pairs like kyverno/kyverno-policies once both exist;
+  pre-existing convention, not worsened here, flagged for the fleet.
+REVIEW: TDD red→green: `go test ./internal/pack/ -run TestCatalog`
+  FAILED first (undefined pack.FetchCatalog — build failed), then 7/7
+  PASS (parse fields+order, corrupt JSON → CUBE-4004 via errors.As,
+  bad schemaVersion, empty index, cache hit proven by killing the
+  in-process registry mid-test, TTL expiry proven by backdating mtimes
+  25h → refetch sees the updated index, dead-port cold-cache →
+  (nil, err)). Step 3: `go test ./cmd/ -run
+  'TestPackList|TestPackSearch|TestPackInstall'` 11/11 PASS — golden
+  rows pinned by the duplicated "%-20s %-10s %s" format (full-output
+  equality also proves no stray Note when the index is reachable),
+  fallback via dead port asserts the advisory line + both built-in
+  rows, menu path proves an index-only pack (kargo) lands its entry
+  ref in cube.yaml. Worktree gate green: go build ./... && go vet
+  ./... && go test ./... (all pkgs ok, 0 FAIL) + fences
+  (TestModeMatrixFence, TestPromptFenceNeverBlocksOnBufferStdin, all
+  TE goldens) green. Post-merge `go test ./...` green on main at
+  139e180 — the union with U4 (values stone) and S4 (spoke status),
+  both of which landed mid-task; merge had zero conflicts (disjoint
+  files, as designed).
+BLOCKERS: none
+HANDOFF: pack.FetchCatalog is the ONE catalog entrypoint: default
+  oci://ghcr.io/cube-idp/packs/index:latest, override
+  CUBE_IDP_PACK_INDEX (oci:// form), 24h mtime cache in
+  DefaultCacheDir keyed by ref hash; error → cmd falls back to the
+  built-in two-entry packCatalog (kept verbatim, never deleted) with
+  one Warn line. Nothing exists on ghcr yet (P2 owner gate open):
+  every P6 surface is proven against in-process registries only; the
+  first real-index round-trip happens after the owner gate + P4's
+  publish — until then users simply see the built-in fallback (== the
+  pre-P6 catalog, wording synced by P1). For P4: keep builtin
+  packCatalog's versions/descriptions in sync with what actually
+  publishes. For F1: new surfaces are `pack list --available` (bare
+  `pack list` = typed CUBE-0007 refusal, deliberately reserved) and
+  `pack search <term>`; the wizard multi-select now offers the remote
+  catalog and appends remote-only selections. Unit tests that drive
+  the pack-install menu MUST use packMenuSeams (it pins HOME + a
+  dead-port index env) or set CUBE_IDP_PACK_INDEX themselves — never
+  let a test resolve the real index.
 ```
 
 ---
