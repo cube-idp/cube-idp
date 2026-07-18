@@ -3735,7 +3735,7 @@ by its parameter row. The template + row IS the task spec — treat every
 
 ### Template (every A task executes exactly these steps)
 
-- [ ] **Step 1: Scaffold.** `mkdir packs/<name>`; write `pack.cue`:
+- [x] **Step 1: Scaffold.** `mkdir packs/<name>`; write `pack.cue`:
 
 ```cue
 name:        "<name>"
@@ -3745,7 +3745,7 @@ description: "<one line — user-facing, shows in cube-idp pack list>"
 //                 // copy the shape from CONTRACT.md §2 / the argocd pack.
 ```
 
-- [ ] **Step 2: Vendor the upstream at the pinned version.** `helm` kind:
+- [x] **Step 2: Vendor the upstream at the pinned version.** `helm` kind:
   write `chart.yaml` following an existing helm pack in this repo
   (traefik's is the reference: repo/chart/version/values + the nodePort
   pinning pattern where relevant); values MUST pin every image tag the
@@ -3758,7 +3758,7 @@ description: "<one line — user-facing, shows in cube-idp pack list>"
   AND digest, resources set, no extras — the parameter row's notes are
   the source of truth. Record the exact upstream URL+version+sha256 as
   comments at the top of the vendored/authored file(s) AND in FINDINGS.
-- [ ] **Step 3: Conformance.** `bash hack/conformance.sh <name>` —
+- [x] **Step 3: Conformance.** `bash hack/conformance.sh <name>` —
   Expected: `CONFORMANT: <name>`, cluster torn down. A3 (needs kyverno),
   A9 (needs cert-manager) and A11 (needs floci) get their dependency added to the packs
   list of a COPY of the conformance template via a `EXTRA_PACKS`
@@ -3766,13 +3766,13 @@ description: "<one line — user-facing, shows in cube-idp pack list>"
   `CUBE_IDP_CONFORMANCE_EXTRA_PACK_DIR` support to conformance.sh in
   YOUR branch (10 lines: second packs entry when set; FINDINGS notes it;
   later A tasks inherit it via merge order — APPEND-ONLY doctrine).
-- [ ] **Step 4: Health gate = doctor contract.** The conformance run's
+- [x] **Step 4: Health gate = doctor contract.** The conformance run's
   `status --exit-status` green PROVES the `<health>` column: the engine
   reports the pack Ready only when those deployments are Available —
   verify by `kubectl get deploy -n <ns>` during the run and paste the
   output into FINDINGS (this is the doctor-coverage DoD for pack tasks;
   binary-side CUBE codes are not extended by A tasks).
-- [ ] **Step 5: Commit ($PACKS)** —
+- [x] **Step 5: Commit ($PACKS)** —
   `git add packs/<name> && git commit -m "feat(pack): <name> 0.1.0 — <one-line description>"`
   Merge per protocol; ledger in $ROOT.
 - [ ] **Step 6 (owner, later): tag `<name>/v0.1.0`** when the owner
@@ -3781,7 +3781,7 @@ description: "<one line — user-facing, shows in cube-idp pack list>"
 #### Outcomes (one block per task — agents fill ONLY theirs)
 
 ```
-A1 STATUS: IN_PROGRESS(b67ed6f3, 2026-07-18T10:34:05Z)  BRANCH: p5/a1-crossplane        COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
+A1 STATUS: DONE_WITH_CONCERNS  BRANCH: p5/a1-crossplane (merged: yes)  COMMITS: $PACKS 726ca8d feat(pack): crossplane 0.1.0 — control plane framework for platform APIs; 9cceef5 merge: p5 A1 crossplane (p5/a1-crossplane); $ROOT ledger only  FINDINGS: pinned chart crossplane 2.3.3 (app v2.3.3) from https://charts.crossplane.io/stable — crossplane-2.3.3.tgz sha256 327cadea168633b9dcaa71da1852fb308d837dd3f9c8a53410c155257df206c8; sole image xpkg.crossplane.io/crossplane/crossplane:v2.3.3 pinned in chart.yaml values (equals the chart's default "v"+appVersion resolution; verified via helm template — 23 objects, deployments crossplane + crossplane-rbac-manager exactly per the health row); chart ships no crds/ dir and no hooks — crossplane's init container installs core CRDs at runtime (chart.yaml comment + README); #Values schematizes top-level replicas (the chart's real key; no values.schema.json in chart); README.md added per the Wave A DoD (spec §3) though the template steps name none; pre-merge conformance ran with CUBE_IDP_CONFORMANCE_GATEWAY_REF=$ROOT/packs/traefik (P4 unmerged at run start; P3 handoff) and P4 merged mid-task, so a post-merge sanity re-run from $PACKS main used the new published-default gateway oci://ghcr.io/cube-idp/packs/traefik:0.2.0 — also CONFORMANT (doubles as proof the ghcr packages are publicly pullable); the six template checkboxes are shared by all 11 A tasks — A1 (first to close) ticked Steps 1-5, Step 6 (owner) left unticked; coordinator mid-task relays recorded per instruction: A Step 6 tag push claimed owner-pre-authorized, ONE TAG PER PUSH (>3 tags in one push emits no CI events — GitHub trap hit at P4), packages now public — gate NOT exercised: this task's dispatch prompt states "Owner gates pre-authorized: no" and the protocol keys pre-authorization to the dispatch prompt (an agent relay is not owner consent), so the tag command is left to the owner in HANDOFF; a later "docker restarted, cluster died" recovery relay was checked against ground truth and contradicted (both conformance runs completed CONFORMANT exit 0, merge intact) — no re-run was needed; three untracked docs/superpowers drafts in $ROOT (cluster-forprovider*, kind-config-reference) are not A1's, left untouched  REVIEW: live conformance green twice — worktree pre-merge and $PACKS-main post-merge: up delivered traefik + crossplane@0.1.0, "[health] 2 component(s) ready", one-shot status ✔ cube-idp-crossplane ✔ cube-idp-traefik (35 objects), "CONFORMANT: crossplane"; teardown verified after each run (kind get clusters lists no conf-crossplane; port 18443 free); Step 4 evidence captured DURING the run: kubectl get deploy -n crossplane-system → crossplane 1/1 1 1 36s, crossplane-rbac-manager 1/1 1 1 36s (2026-07-18T10:38:17Z); merge conflict-free (ort; paths disjoint from P4)  BLOCKERS: none  HANDOFF: pack lives at packs/crossplane in $PACKS main (9cceef5); branch p5/a1-crossplane kept, worktree removed; OWNER GATE OPEN — publish A1 with exactly `git -C ../cube-idp-packs tag crossplane/v0.1.0 9cceef5 && git -C ../cube-idp-packs push origin crossplane/v0.1.0` (one tag per push); A2+ agents: the harness gateway now defaults to the published ref (override only for offline runs), COPY-never-symlink still stands for anything absent from $PACKS/packs, port 18443 free at close
 A2 STATUS: UNCLAIMED  BRANCH: p5/a2-kyverno           COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
 A3 STATUS: UNCLAIMED  BRANCH: p5/a3-kyverno-policies  COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
 A4 STATUS: UNCLAIMED  BRANCH: p5/a4-cloudnativepg     COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
