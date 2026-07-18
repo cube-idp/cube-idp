@@ -999,7 +999,7 @@ func HubSecrets(engineType, spokeName, server string, cred *Credential) ([]*unst
   create/connect failed), `CodeSpokeRegisterFailed = "CUBE-8005"` (hub
   secret apply failed).
 
-- [ ] **Step 1: Failing register tests** — `internal/spoke/register_test.go`
+- [x] **Step 1: Failing register tests** — `internal/spoke/register_test.go`
   (pure unit, no cluster):
 
 ```go
@@ -1071,11 +1071,11 @@ func TestHubSecretsFlux(t *testing.T) {
 `unstructured.NestedStringMap(o.Object, "stringData")` — write it at the
 bottom of the test file.)
 
-- [ ] **Step 2: Verify fail** — Run:
+- [x] **Step 2: Verify fail** — Run:
   `go test ./internal/spoke/ -run 'TestBuild|TestHubSecrets' -v`
   Expected: FAIL — functions undefined.
 
-- [ ] **Step 3: Implement `internal/spoke/register.go`:**
+- [x] **Step 3: Implement `internal/spoke/register.go`:**
 
 ```go
 package spoke
@@ -1157,14 +1157,14 @@ Add codes to the 8xxx block + registry:
 	CodeSpokeRegisterFailed Code = "CUBE-8005" // hub registration secret build/apply failed
 ```
 
-- [ ] **Step 4: Verify pass** — Run:
+- [x] **Step 4: Verify pass** — Run:
   `go test ./internal/spoke/ -run 'TestBuild|TestHubSecrets' -v`
   Expected: PASS ×3.
 
-- [ ] **Step 5: Commit** —
+- [x] **Step 5: Commit** —
   `git add internal/spoke/ internal/diag/ && git commit -m "feat(spoke): hub registration secrets for flux and argocd (CUBE-8004/8005)"`
 
-- [ ] **Step 6: Port-skip guard + internal kubeconfig in kindp.** Failing
+- [x] **Step 6: Port-skip guard + internal kubeconfig in kindp.** Failing
   test first, in `internal/cluster/kindp/kind_test.go` (append; the file
   already tests `RenderConfig` — mirror its fixture style):
 
@@ -1214,10 +1214,10 @@ Re-run the test — Expected: PASS. Also run the kindp contract test:
 `go test ./internal/cluster/kindp/ -run TestKind -short` (the live-kind
 contract leg only runs where CI/the arbiter says so, per GT14).
 
-- [ ] **Step 7: Commit** —
+- [x] **Step 7: Commit** —
   `git add internal/cluster/ && git commit -m "feat(kindp): zero-gateway render skips host ports; InternalKubeconfig for spokes"`
 
-- [ ] **Step 8: `up` spoke loop.** In `internal/up/up.go`, insert AFTER
+- [x] **Step 8: `up` spoke loop.** In `internal/up/up.go`, insert AFTER
   the `waitHealthy` call (line ~360; anchor: right after the block that
   writes pack discoverability records — grep `RecordInventory` and the
   health summary emission to find the exact seam, FINDINGS records the
@@ -1314,7 +1314,7 @@ code references it (vet must be clean). Unit-test `ensureSpoke`'s pieces:
 table tests in `internal/up/up_test.go`; the full loop is covered by the
 e2e leg below.
 
-- [ ] **Step 9: `down` cascade + real `spokeDeleteCluster`.** In
+- [x] **Step 9: `down` cascade + real `spokeDeleteCluster`.** In
   `cmd/down.go`: the preview (W1.T07) gains one line per spoke
   (`spoke <name> (<provider>)` — kind spokes annotated `cluster will be
   deleted`); after the hub teardown succeeds, for each `provider: kind`
@@ -1331,7 +1331,7 @@ e2e leg below.
   and the TE-3 consent goldens UNCHANGED for spoke-less cubes (frozen
   surface, GT13).
 
-- [ ] **Step 10: e2e leg (gated).** Append to `tests/e2e/e2e_test.go` a
+- [x] **Step 10: e2e leg (gated).** Append to `tests/e2e/e2e_test.go` a
   `TestSpokeKindRegistration` following the file's existing gating pattern
   (env-gated; honors `CUBE_IDP_E2E_GATEWAY_PORT`, GT14): cube.yaml with
   one kind spoke, `up`, assert hub secret `cube-idp-spoke-<name>` exists
@@ -1341,7 +1341,7 @@ e2e leg below.
   Do NOT run it locally by default; note in FINDINGS whether the arbiter
   ran it live.
 
-- [ ] **Step 11: Gate + fences + commit** —
+- [x] **Step 11: Gate + fences + commit** —
   `go build ./... && go vet ./... && go test ./...` and
   `go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence'`
   Expected: all PASS. Then:
@@ -1350,13 +1350,13 @@ e2e leg below.
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(s3-agent-b67ed6f3, 2026-07-18T09:38:40Z)
-BRANCH: p5/s3-spoke-register (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/s3-spoke-register (merged: yes)
+COMMITS: f906d4e feat(spoke): hub registration secrets for flux and argocd (CUBE-8004/8005); f1ea99c feat(kindp): zero-gateway render skips host ports; InternalKubeconfig for spokes; af86649 feat(up,down): spoke reconcile loop + cascade — engine takes over (spec §5); 9f3bb4f merge: p5 S3 spoke-register (p5/s3-spoke-register)
+FINDINGS: (1) Step 6 drift, twofold: RenderConfig tests live in merge_test.go (NOT kind_test.go as the plan says) — TestRenderConfigZeroGatewaySkipsHostPorts appended there; and the `if gw.Port > 0` guard ALREADY existed (U2 pre-created it for S3, merge.go comment says so), so the test passed immediately — the plan's "Expected: FAIL" was stale; the test still pins the contract. (2) Bug found beyond plan text and fixed: with a zero GatewaySpec kindp.certsD produced Host "registry." plus a bogus certs.d dir under the user config dir, mounted into every spoke node — guarded (gw.Host == "" → zero CertsD, no injection), TDD'd red→green via TestCertsDZeroGatewaySkipsInjection in kind_test.go. (3) Added spokeClusterSpec (not in plan): a kind spoke with no kubernetesVersion would render the INVALID node image "kindest/node:" (Load defaults only the hub's version) — spokes inherit the hub's pin, falling back to the documented "v1.33.1" when the hub (provider existing) has none; existing spokes pass through untouched (node-creation field). Table-tested. (4) Plan's ensureSpoke spokeName var + `_ = spokeName` dropped entirely (spokeClusterName serves every use, vet clean); the loop's progress handle is spr (pr already lives in Run's scope). (5) Spoke loop seam: inserted after con.Step("packs", ...) and before con.Epilogue, per the plan's anchor; hub secrets go through the HUB applier with wait=true then RecordInventory (S2 handoff honored — Bootstrap's applier stays throwaway). (6) Step 9 decision (plan silent): --keep-cluster keeps SPOKE clusters too, consistent with the flag's promise; downSpokes(ctx, con, cube, keepCluster) runs on BOTH runDown branches after hub teardown (spoke kind clusters are separate clusters — deleting the hub does not take them down); kind failures are con.Warn lines carrying CUBE-8004 via diag.Wrap (best-effort, never fails down); existing spokes get the Note with the manual RBAC removal recipe; hub-side secrets need no explicit prune (die with the hub cluster, or cascade-deleted from inventory on the keep/existing path). (7) spokeClusterDelete (cmd/spoke.go) is a shared seam in the trust.go trustInstall pattern — spoke remove --delete-cluster and downSpokes both use it; tests stub it, so none needs docker; spokeDeleteCluster's S1 consent path is byte-unchanged (promptfence row green). (8) e2e TestSpokeKindRegistration appended with the file's CUBE_IDP_E2E=1 gate; NOT run live (GT14 — unit+envtest are the default gate; no live leg was sanctioned). deleteLingeringCluster refactored to deleteLingeringClusterNamed + kindClusterExists so the spoke leg can guard both clusters; hub-leg behavior unchanged. (9) gofmt -l flags 7 files (cmd/init.go, cmd/status.go, internal/bundle/bundle.go, internal/config/types.go, internal/syncer/synconce_test.go, internal/ui/render/live.go, internal/ui/ui_test.go) — pre-existing on main, none touched by S3 (toolchain noise, left alone). (10) VERIFY-API: clusterTimeout/applyTimeout consts, con.ProgressN/Log, apply.Apply+RecordInventory all as the plan assumed; up.go gained imports clientcmd/kube/spoke only.
+REVIEW: TDD fail→pass observed on all four legs: register (red "undefined: BuildKubeconfig/HubSecrets" → PASS ×3), certsD (red: got Host:registry. + real user-config dir → green after guard), up helpers (red "undefined: spokeServerURL" → green ×3 incl. both spokeServerURL arms via the fakeInternalProvider seam and cluster.New's real existing provider), cmd (red "undefined: spokeClusterDelete" → green: TestDownPreviewSpokes, TestDownSpokesCascade incl. CUBE-8004 warn + keep-cluster arms, TestSpokeRemoveDeleteClusterYes asserting the GT7 name dev-spoke-staging reaches the seam). TE-3 goldens unchanged (TestTE3_DownPreviewGolden green — spoke-less preview byte-identical, GT13). Task gate in worktree: go build ./... && go vet ./... && go test ./... → 30 pkgs ok, 0 FAIL; fence run go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence' all PASS. Envtest leg (Makefile incantation, setup-envtest use 1.33): full ./internal/spoke/ green incl. S2's TestBootstrapIdempotentAndTokenIssued (3.7s) beside the new pure tests. Post-merge on main: go test ./... 30 pkgs ok, 0 FAIL.
+BLOCKERS: none
+HANDOFF: S4 consumes: hub secret naming cube-idp-spoke-<name> in ns argocd (label argocd.argoproj.io/secret-type: cluster; stringData name/server/config JSON with bearerToken+tlsClientConfig.caData) or flux-system (stringData value = kubeconfig) — spoke.BuildKubeconfig is exported if S4 needs to rebuild REST configs; the argocd config JSON shape is spoke.argocdClusterConfig (unexported, copy the fields). CUBE-8004/8005 taken; S4's CUBE-8006 appends inside the same codes.go 8xxx block + registry section. up.go spoke helpers (ensureSpoke, spokeClusterSpec, spokeClusterName, spokeServerURL) sit between Run and stepFetchSource; the loop emits ProgressN stage "spoke" + a con.Log("spoke", ...) line. cluster.InternalKubeconfiger is kindp-only; existing spokes register conn.REST.Host. cmd seams: spokeClusterDelete (stubbable, shared by spoke remove --delete-cluster and down), downSpokes cascade; --keep-cluster keeps spoke clusters (FINDINGS 6 — owner may override). e2e TestSpokeKindRegistration has never run live; first live run locally needs CUBE_IDP_E2E_GATEWAY_PORT=18443 (GT14).
 ```
 
 ---
