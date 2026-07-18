@@ -2035,7 +2035,7 @@ func (p *Pack) HasChart() bool
   manifests walk uses them (`internal/pack/render.go:82`); the D11
   record writer in `internal/up/up.go` (~:364).
 
-- [ ] **Step 1: Failing render tests** — append to
+- [x] **Step 1: Failing render tests** — append to
   `internal/pack/render_test.go` (mirror its fixture helpers):
 
 ```go
@@ -2073,11 +2073,11 @@ func TestRenderWithExtraManifestsAppendsAndSubstitutes(t *testing.T) {
   `substitute` function's exact name/location (expose.go). Record drift
   in FINDINGS.
 
-- [ ] **Step 2: Verify fail** — Run:
+- [x] **Step 2: Verify fail** — Run:
   `go test ./internal/pack/ -run TestRenderWith -v`
   Expected: FAIL — RenderWith undefined.
 
-- [ ] **Step 3: Implement.** `HasChart` (stat chart.yaml), `RenderWith`:
+- [x] **Step 3: Implement.** `HasChart` (stat chart.yaml), `RenderWith`:
 
 ```go
 func (p *Pack) RenderWith(values map[string]any, extraManifests string, gw config.GatewaySpec) (*Rendered, error) {
@@ -2114,11 +2114,11 @@ func (p *Pack) RenderWith(values map[string]any, extraManifests string, gw confi
   `RenderWith(ref.Values, ref.ExtraManifests, gw)` — the compiler and
   grep are the checklist; list every touched call site in FINDINGS.
 
-- [ ] **Step 4: Verify pass** — Run:
+- [x] **Step 4: Verify pass** — Run:
   `go test ./internal/pack/ ./internal/config/ -run 'TestRenderWith|ExtraManifests' -v`
   Expected: PASS.
 
-- [ ] **Step 5: CUSTOMIZED surface.** Add to the Pack CRD
+- [x] **Step 5: CUSTOMIZED surface.** Add to the Pack CRD
   (`internal/pack/manifests/pack-crd.yaml`) an `additionalPrinterColumns`
   entry `CUSTOMIZED` (JSONPath onto the record field), and set
   `customized: yes|no` in the D11 record writer
@@ -2127,19 +2127,19 @@ func (p *Pack) RenderWith(values map[string]any, extraManifests string, gw confi
   existing e2e (no new leg). Note: the CRD is applied by `up` (D11 —
   wait=true Established); a changed CRD re-applies idempotently.
 
-- [ ] **Step 6: Gate + fences + commit** — full gate + fences. Commit:
+- [x] **Step 6: Gate + fences + commit** — full gate + fences. Commit:
   `git add internal/ && git commit -m "feat(pack): values stone — helm-only values, extraManifests, CUSTOMIZED (CUBE-4016/4017)"`
 
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(fable-u4-b67ed6f3, 2026-07-18T10:08:18Z)
-BRANCH: p5/u4-values-stone (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/u4-values-stone (merged: yes)
+COMMITS: 8aae2fd feat(pack): values stone — helm-only values, extraManifests, CUSTOMIZED (CUBE-4016/4017); 23b5fd5 merge: p5 U4 values-stone (p5/u4-values-stone)
+FINDINGS: (1) VERIFY-API drift: no loadFixturePack helper exists in render_test.go — its fixture pattern is Fetch(context.Background(), "testdata/<name>", t.TempDir()); reused the EXISTING chartless fixture testdata/demo (pack.cue + manifests/cm.yaml, no chart.yaml) instead of building a new "manifests-only" one. substitute confirmed at internal/pack/expose.go:58 and apply.ParseMultiDoc at internal/apply/multidoc.go:17, both as planned. (2) Record-writer location drift: the plan places the D11 record writer in internal/up/up.go (~:364); it is actually pack.PackObject in internal/pack/expose.go, called from up.go's packObjs loop. Implemented as a fourth parameter — PackObject(p, gw, ready, customized bool) — writing spec.customized ALWAYS as "yes"/"no" (never absent, so kubectl renders the column for stock packs instead of a blank cell); up.go computes it as len(refs[i].Values) > 0 || refs[i].ExtraManifests != "" (refs↔packs index alignment is load-bearing and now documented at the loop — exactly one append per ref, any failure aborts Run). (3) RenderFor→RenderWith call sites (grep per Step 3): internal/up/up.go:303 and internal/diff/diff.go:210 — the plan's "diff" is internal/diff, NOT cmd/, so this task never touched cmd/ or internal/ui/ (fences run anyway, green). Intentionally NOT rewired: internal/pack/render.go:21 (Render→RenderFor, the frozen pre-stone entry point), internal/syncer/syncer.go:95 Render(nil) (P7's repo-delivery seam), cnoe's RenderDir. (4) Call site beyond the plan's grep: internal/diff/diff_test.go:170 calls pack.PackObject (caught by go vet) — updated to mirror up.Run's customized expression; only record identity is compared there. (5) Files-list addition honored: TestPackExtraManifestsRoundTrip in internal/config/load_test.go pins decode, SaveValidated round-trip, schema.cue rejection of extraManifests: "" (string & !=""), and cleared-field marshals as an ABSENT key (omitempty — an emitted "" would make the file unwritable against the same schema). (6) gofmt on the append-only shared files: the two new registry.go entries' longer identifiers would realign the entire 4xxx map block (15-line whitespace churn); avoided by starting a new alignment group with a "// GT15 values stone (Phase 5 U4):" comment line (codes.go got the same comment-separated structure naturally). gofmt -l drift on bundle.go/types.go/synconce_test.go/live.go/ui_test.go is PRE-EXISTING on main (identical list before my change; my types.go hunk verified clean). (7) U3-HANDOFF int64 awareness: extraManifests objects come from kyaml's YAMLOrJSONDecoder (JSON-typed numbers, int64/float64) — same as the manifests/ walk, unstructured-safe; normalizePackValues NOT extended (it only touches Values, which are helm-only and never enter unstructured). (8) CUBE-4016 fires before validateValues, so chartless+values never reaches the pack's #Values schema — the stone wins; codes/messages verbatim from the plan snippet; CUBE-4016/4017 registered (completeness fence green).
+REVIEW: TDD observed red→green twice: Step 2 red = "p.RenderWith undefined (type *Pack has no field or method RenderWith) ... FAIL [build failed]"; Step 5 pre-implementation red = "too many arguments in call to PackObject ... have (bool) want (bool, bool)" FAIL. Step 4 command (go test ./internal/pack/ ./internal/config/ -run 'TestRenderWith|ExtraManifests' -v): PASS x3 (TestRenderWithValuesOnChartlessPackIsCube4016, TestRenderWithExtraManifestsAppendsAndSubstitutes incl. CUBE-4017 branch, TestPackExtraManifestsRoundTrip). CUSTOMIZED unit tests: TestPackObjectCustomized (yes/no matrix), TestCRDParsesAndPrintsColumns extended to require the CUSTOMIZED printer column. Task gate in worktree: go build ./... && go vet ./... && go test ./... ALL ok (31 pkgs, vet was what caught FINDINGS-4); fence run go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence' ALL ok. go.mod/go.sum untouched. Post-merge on main: go test ./... zero FAIL lines. Visual kubectl get packs check rides the existing e2e per the step note (no new leg, GT14).
+BLOCKERS: none
+HANDOFF: U5 (p5/u5-doctor-checklist) is unblocked — U4 merged at 23b5fd5. For U5+: nothing in doctor was touched. For P7 (DELIVERY, GT19): the record-writer seam is pack.PackObject in internal/pack/expose.go — add the delivery value there (suggest widening the customized param pattern or passing the PackRef), compute from refs[i] in up.go's packObjs loop (index-alignment comment already in place), and append the DELIVERY printer column + spec.delivery schema property to internal/pack/manifests/pack-crd.yaml exactly like CUSTOMIZED (all three touch points are the sanctioned append-only surfaces; expect a trivial both-sides merge with any concurrent codes.go/registry.go appends). CUBE-4016/4017 are taken (next pack code 4018). RenderWith(values, extraManifests, gw) is the render entry point for user-config-driven paths (up + diff); Render/RenderFor stay pre-stone for tests/cnoe/syncer — P7's repo-delivery push should switch syncer's Render(nil) to RenderWith only if repo-delivered packs are to honor extraManifests (owner call, not made here). The gateway pack's implicit PackRef carries no values/extraManifests, so it is always CUSTOMIZED=no unless a future task adds gateway values.
 ```
 
 ---
