@@ -22,6 +22,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/doctor"
 	"github.com/cube-idp/cube-idp/internal/engine"
 	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
 	"github.com/cube-idp/cube-idp/internal/ui"
@@ -235,6 +236,29 @@ type statusSnapshot struct {
 	Health    []engine.ComponentHealth
 	Inventory []object.ObjMetadata
 	Access    []ui.PackAccess
+	Spokes    []spokeStatus
+}
+
+// spokeStatus is one declared spoke's row in the status view (S4):
+// Registered — the S3 hub registration secret exists in the engine's
+// namespace; Reachable — the spoke API server answered /readyz using that
+// secret's own payload (probed from this machine — kind spokes carry a
+// docker-network-internal URL, GT7, so the hub engine may reach them when
+// this process cannot).
+type spokeStatus struct {
+	Name       string
+	Provider   string
+	Registered bool
+	Reachable  bool
+}
+
+// spokeStatusRows projects doctor's spoke probe states into status rows.
+func spokeStatusRows(states []doctor.SpokeState) []spokeStatus {
+	rows := make([]spokeStatus, 0, len(states))
+	for _, s := range states {
+		rows = append(rows, spokeStatus{Name: s.Name, Provider: s.Provider, Registered: s.Registered, Reachable: s.Reachable})
+	}
+	return rows
 }
 
 // statusCollector produces one statusSnapshot per call; --watch invokes it
@@ -293,6 +317,15 @@ func connectStatus(ctx context.Context, file string, withAccess bool) (string, s
 			// API call and stay byte-frozen.
 			snap.Access = packAccessRows(ctx, a.Client())
 		}
+		if len(cube.Spec.Spokes) > 0 {
+			// S4: spoke rows — Registered from the S3 hub secret,
+			// Reachable from a /readyz probe of the secret's own payload
+			// (2s each, all spokes in parallel). Probe failures are
+			// states, never errors: status must render a dead spoke, not
+			// fail on it. Spoke-less cubes take no extra API call and
+			// keep their frozen bytes.
+			snap.Spokes = spokeStatusRows(doctor.ProbeSpokes(ctx, a.Client(), cube.Spec.Engine.Type, cube.Spec.Spokes))
+		}
 		return snap, nil
 	}
 	return cube.Metadata.Name, collect, nil
@@ -322,26 +355,46 @@ func renderStatusOnce(out io.Writer, p *ui.Printer, jsonDoc bool, cube string, s
 	}
 	switch {
 	case jsonDoc:
-		return allReady, writeStatusJSON(out, cube, snap.Health, snap.Inventory, details, allReady)
+		return allReady, writeStatusJSON(out, cube, snap.Health, snap.Spokes, snap.Inventory, details, allReady)
 	case p.Styled():
-		renderStatusStyled(out, p, health, snap.Inventory, details, snap.Access)
+		renderStatusStyled(out, p, health, snap.Spokes, snap.Inventory, details, snap.Access)
 	default:
-		renderStatusPlain(out, p, health, snap.Inventory, details)
+		renderStatusPlain(out, p, health, snap.Spokes, snap.Inventory, details)
 	}
 	return allReady, nil
+}
+
+// spokeStateCell renders one paired glyph+word state cell (semantic-color
+// doctrine, GT13: the word always accompanies the glyph — color and symbol
+// alone may never carry the meaning).
+func spokeStateCell(p *ui.Printer, ok bool, okWord, badWord string) string {
+	if ok {
+		return p.Glyph(ui.GlyphOK) + " " + okWord
+	}
+	return p.Glyph(ui.GlyphErr) + " " + badWord
 }
 
 // renderStatusPlain reproduces the pre-14c plain bytes exactly (design doc §8
 // item 4: status' "%s %s Ready\n" plain path is byte-frozen). Glyph passes the
 // bare character through in plain mode, so this is identical to the phase-1
 // inline fmt.Fprintf calls.
-func renderStatusPlain(out io.Writer, p *ui.Printer, health []engine.ComponentHealth, inventory []object.ObjMetadata, details bool) {
+func renderStatusPlain(out io.Writer, p *ui.Printer, health []engine.ComponentHealth, spokes []spokeStatus, inventory []object.ObjMetadata, details bool) {
 	for _, h := range health {
 		if h.Ready {
 			fmt.Fprintf(out, "%s %s Ready\n", p.Glyph(ui.GlyphOK), h.Name)
 			continue
 		}
 		fmt.Fprintf(out, "%s %s %s\n", p.Glyph(ui.GlyphErr), h.Name, h.Message)
+	}
+	// S4: spokes section — new surface, emitted only when spokes are
+	// declared, so spoke-less cubes keep the byte-frozen pre-S4 output.
+	if len(spokes) > 0 {
+		fmt.Fprintf(out, "\nspokes\n")
+		for _, s := range spokes {
+			fmt.Fprintf(out, "%-20s %-10s %s  %s\n", s.Name, s.Provider,
+				spokeStateCell(p, s.Registered, "registered", "unregistered"),
+				spokeStateCell(p, s.Reachable, "reachable", "unreachable"))
+		}
 	}
 	fmt.Fprintf(out, "\n%d object(s) in inventory\n", len(inventory))
 	if details {
@@ -354,7 +407,7 @@ func renderStatusPlain(out io.Writer, p *ui.Printer, health []engine.ComponentHe
 // the access URLs from the Pack records (when any), and, under --details, the
 // inventory table. out is threaded explicitly (not p.Out()) so the --watch
 // tick program can render the same view into its region buffer.
-func renderStatusStyled(out io.Writer, p *ui.Printer, health []engine.ComponentHealth, inventory []object.ObjMetadata, details bool, access []ui.PackAccess) {
+func renderStatusStyled(out io.Writer, p *ui.Printer, health []engine.ComponentHealth, spokes []spokeStatus, inventory []object.ObjMetadata, details bool, access []ui.PackAccess) {
 	fmt.Fprintln(out, th.Section.Render("Components"))
 	name := 0
 	for _, h := range health {
@@ -368,6 +421,16 @@ func renderStatusStyled(out io.Writer, p *ui.Printer, health []engine.ComponentH
 			glyph, msg = p.Glyph(ui.GlyphErr), h.Message
 		}
 		fmt.Fprintf(out, "  %s %-*s  %s\n", glyph, name, h.Name, th.Msg.Render(msg))
+	}
+	// S4: spokes section right after the components, mirroring their
+	// glyph-led rows; omitted entirely when no spokes are declared.
+	if len(spokes) > 0 {
+		fmt.Fprintf(out, "\n%s\n", th.Section.Render("Spokes"))
+		for _, s := range spokes {
+			fmt.Fprintf(out, "  %-20s %-10s %s  %s\n", s.Name, s.Provider,
+				spokeStateCell(p, s.Registered, "registered", "unregistered"),
+				spokeStateCell(p, s.Reachable, "reachable", "unreachable"))
+		}
 	}
 	if len(access) > 0 {
 		fmt.Fprintf(out, "\n%s\n", th.Section.Render("Access"))
@@ -413,14 +476,24 @@ type statusDoc struct {
 	jsonDocHead
 	Cube       string           `json:"cube"`
 	Components []statusComponent `json:"components"`
-	Inventory  statusInventory   `json:"inventory"`
-	Ready      bool              `json:"ready"`
+	// Spokes is additive (S4, GT13): present only when spokes are declared,
+	// so pre-S4 consumers and spoke-less cubes see an unchanged document.
+	Spokes    []statusSpoke   `json:"spokes,omitempty"`
+	Inventory statusInventory `json:"inventory"`
+	Ready     bool            `json:"ready"`
 }
 
 type statusComponent struct {
 	Name    string `json:"name"`
 	Ready   bool   `json:"ready"`
 	Message string `json:"message"`
+}
+
+type statusSpoke struct {
+	Name       string `json:"name"`
+	Provider   string `json:"provider"`
+	Registered bool   `json:"registered"`
+	Reachable  bool   `json:"reachable"`
 }
 
 type statusInventory struct {
@@ -434,7 +507,7 @@ type statusObject struct {
 	Name      string `json:"name"`
 }
 
-func writeStatusJSON(out io.Writer, cube string, health []engine.ComponentHealth, inventory []object.ObjMetadata, details, ready bool) error {
+func writeStatusJSON(out io.Writer, cube string, health []engine.ComponentHealth, spokes []spokeStatus, inventory []object.ObjMetadata, details, ready bool) error {
 	doc := statusDoc{
 		jsonDocHead: jsonDocHead{V: docSchemaVersion},
 		Cube:        cube,
@@ -444,6 +517,9 @@ func writeStatusJSON(out io.Writer, cube string, health []engine.ComponentHealth
 	}
 	for _, h := range health {
 		doc.Components = append(doc.Components, statusComponent{Name: h.Name, Ready: h.Ready, Message: h.Message})
+	}
+	for _, s := range spokes {
+		doc.Spokes = append(doc.Spokes, statusSpoke{Name: s.Name, Provider: s.Provider, Registered: s.Registered, Reachable: s.Reachable})
 	}
 	if details {
 		doc.Inventory.Objects = inventoryObjects(inventory)

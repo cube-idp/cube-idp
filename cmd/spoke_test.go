@@ -83,6 +83,62 @@ func TestSpokeListAndRemove(t *testing.T) {
 	}
 }
 
+// TestSpokeListLiveColumns (S4): with a reachable hub, `spoke list` gains
+// Registered/Reachable columns from the same collector status uses —
+// paired glyph+word cells (semantic-color doctrine), no degradation note.
+func TestSpokeListLiveColumns(t *testing.T) {
+	stubStatusConnect(t, statusSnapshot{
+		Spokes: []spokeStatus{{Name: "staging", Provider: "kind", Registered: true, Reachable: true}},
+	})
+	p := writeSpokeFixture(t)
+	mustRunCLI(t, "spoke", "add", "staging", "--provider", "kind", "-f", p)
+	out := mustRunCLI(t, "spoke", "list", "-f", p)
+	for _, want := range []string{"staging", "kind", "✔ registered", "✔ reachable"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("live spoke list missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "hub unreachable") {
+		t.Fatalf("live list must not print the degradation note:\n%s", out)
+	}
+}
+
+// TestSpokeListDegradesWithoutHub (S4): when the hub cluster cannot be
+// reached, `spoke list` still prints the declared config (the S1 table)
+// plus a trailing note — graceful, exit 0, never an error.
+func TestSpokeListDegradesWithoutHub(t *testing.T) {
+	// Hermetic kubeconfig: the fixture's hub is `existing` with a context
+	// that cannot exist, so the real statusConnect fails fast and offline.
+	t.Setenv("KUBECONFIG", filepath.Join(t.TempDir(), "absent"))
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.yaml")
+	base := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: dev}
+spec:
+  cluster: {provider: existing, context: no-such-context}
+  engine: {type: flux}
+  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443}
+  spokes:
+    - name: staging
+      cluster: {provider: kind}
+`
+	if err := os.WriteFile(p, []byte(base), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := mustRunCLI(t, "spoke", "list", "-f", p)
+	for _, want := range []string{"staging", "kind", "hub unreachable — showing declared config only"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("degraded spoke list missing %q:\n%s", want, out)
+		}
+	}
+	// Declared config only: no live state cells (the note's own
+	// "unreachable" word aside, no glyphs and no registered column).
+	if strings.Contains(out, "✔") || strings.Contains(out, "✗") || strings.Contains(out, "registered") {
+		t.Fatalf("degraded list must show declared config only:\n%s", out)
+	}
+}
+
 // TestSpokeRemoveDeleteClusterYes replaces S1's stub contract: with --yes,
 // --delete-cluster must reach the real provider deletion (through the
 // spokeClusterDelete seam) for the GT7-named cluster — the S1 "ships in a

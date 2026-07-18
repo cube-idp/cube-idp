@@ -159,4 +159,5 @@ const (
 	CodeSpokeTokenFailed         Code = "CUBE-8003" // spoke ServiceAccount token issuance failed
 	CodeSpokeEnsureFailed        Code = "CUBE-8004" // spoke cluster create/connect failed
 	CodeSpokeRegisterFailed      Code = "CUBE-8005" // hub registration secret build/apply failed
+	CodeSpokeUnreachable         Code = "CUBE-8006" // spoke hub registration missing, or spoke API server unreachable from this machine
 )
