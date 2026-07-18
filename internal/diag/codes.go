@@ -139,6 +139,7 @@ const (
 	CodePluginExecFail    Code = "CUBE-7103" // plugin process failed to start/run (not the plugin's own reported exit code)
 	CodePluginUntrusted   Code = "CUBE-7104" // plugin refused: unknown or changed sha256, and no interactive confirmation
 	CodePluginNameInvalid Code = "CUBE-7105" // plugin name fails the ^[a-z0-9][a-z0-9-]*$ charset guard on `plugin install`/`plugin trust`
+	CodePluginNoPlatform  Code = "CUBE-7106" // the official plugin index has no build for this GOOS/GOARCH (P10)
 )
 
 // 72xx: sync (Task 10, Task 11)

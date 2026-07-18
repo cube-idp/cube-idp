@@ -465,9 +465,31 @@ prompting; an untrusted plugin prompts interactively (CUBE-7104) or, in a
 non-TTY, is refused. Any change to the binary invalidates the recorded hash
 and re-prompts.
 
-**Install.** `cube-idp plugin install <name> --index <url>` fetches a plugin
-from a sha256-pinned git index and records its trust in one step. `--index`
-is required (Owner Decisions #8) — there is no implicit default index.
+**Install.** `cube-idp plugin install <name>[@version]` installs from the
+official plugin index — the public, attested monorepo `cube-idp/plugins`,
+mirroring the packs platform. It resolves the discovery index
+(`oci://ghcr.io/cube-idp/plugins/index:latest`, override with
+`CUBE_IDP_PLUGIN_INDEX`; cached 24h), selects the build for your
+`GOOS`/`GOARCH`, pulls it **by digest** (never by a moved tag), writes it to
+the plugin install dir, and hands off to the same sha256 trust-consent flow
+above. Because the install runs a binary with your permissions, it asks for
+consent: pass `--yes` to trust it in one step, or approve the prompt on a
+TTY; a non-TTY without `--yes` is refused (CUBE-7104). `cube-idp plugin list
+--available` and `cube-idp plugin search <term>` browse the index without
+installing.
+
+Every published platform artifact carries a keyless GitHub provenance
+attestation. Verify one before (or after) installing:
+
+```bash
+gh attestation verify \
+  oci://ghcr.io/cube-idp/plugins/hello:0.1.0-linux-amd64 --owner cube-idp
+```
+
+The original sha256-pinned **git index** still works for private or
+out-of-band plugins: `cube-idp plugin install <name> --index <git-url>[@commit]`
+fetches and trusts a plugin from a git repo whose `plugins/<name>.yaml`
+pins each platform archive by sha256.
 
 Global flags go AFTER the plugin name: `cube-idp myplugin --plain` dispatches
 to the plugin, but `cube-idp --plain myplugin` does not (the plugin
