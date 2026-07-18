@@ -22,16 +22,17 @@ type Desc struct {
 // other direction (a code cannot ship without an entry).
 var registry = map[Code]Desc{
 	// 0xxx: preflight/config
-	CodeConfigRead:          {Summary: "cannot read cube.yaml"},
-	CodeConfigInvalid:       {Summary: "cube.yaml YAML syntax or schema validation error"},
-	CodeLockCorrupt:         {Summary: "cube.lock unreadable or corrupt (Phase 2)"},
-	CodeProviderMiss:        {Summary: "cluster provider config mismatch (e.g., render-cluster for non-kind)"},
-	CodeArgoPackRedun:       {Summary: "argocd pack listed while engine.type: argocd (Phase 2)"},
-	CodeInitExists:          {Summary: "cube.yaml already exists; refusing overwrite"},
-	CodeBadFlagValue:        {Summary: "an enum flag (--progress, --output) got an unrecognized value"},
-	CodeGatewayPackMismatch: {Summary: "gateway.ref points at a pack whose pack.cue name != gateway.pack (F11: ref silently wins over pack)"},
-	CodeUpgradeGuard:        {Summary: "upgrade refused: see summary (was the last un-coded user-facing error)"},
-	CodeConfirmRequired:     {Summary: "a destructive command refused to run without confirmation (--yes / --confirm)"},
+	CodeConfigRead:            {Summary: "cannot read cube.yaml"},
+	CodeConfigInvalid:         {Summary: "cube.yaml YAML syntax or schema validation error"},
+	CodeLockCorrupt:           {Summary: "cube.lock unreadable or corrupt (Phase 2)"},
+	CodeProviderMiss:          {Summary: "cluster provider config mismatch (e.g., render-cluster for non-kind)"},
+	CodeArgoPackRedun:         {Summary: "argocd pack listed while engine.type: argocd (Phase 2)"},
+	CodeInitExists:            {Summary: "cube.yaml already exists; refusing overwrite"},
+	CodeBadFlagValue:          {Summary: "an enum flag (--progress, --output) got an unrecognized value"},
+	CodeGatewayPackMismatch:   {Summary: "gateway.ref points at a pack whose pack.cue name != gateway.pack (F11: ref silently wins over pack)"},
+	CodeUpgradeGuard:          {Summary: "upgrade refused: see summary (was the last un-coded user-facing error)"},
+	CodeConfirmRequired:       {Summary: "a destructive command refused to run without confirmation (--yes / --confirm)"},
+	CodeProviderConfigRemoved: {Summary: "cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)"},
 
 	// 01xx: doctor preflight checks (Phase 2)
 	CodeDoctorRuntime: {Summary: "container runtime not found"},
@@ -41,9 +42,10 @@ var registry = map[Code]Desc{
 	CodeDoctorGitCLI:  {Summary: "git CLI missing while git-sourced packs are configured (doctor, warning)"},
 
 	// 1xxx: cluster
-	CodeClusterTypeUnknown:    {Summary: "cluster provider type unknown or unsupported"},
-	CodeClusterFieldsConflict: {Summary: "node-creation fields (extraPorts/mounts/providerConfig/kubernetesVersion) set with provider: existing (config cross-validation)"},
-	CodeClusterNotExists:      {Summary: "cluster does not exist; run `cube-idp up`"},
+	CodeClusterTypeUnknown:     {Summary: "cluster provider type unknown or unsupported"},
+	CodeClusterFieldsConflict:  {Summary: "node-creation fields (extraPorts/mounts/providerConfig/kubernetesVersion) set with provider: existing (config cross-validation)"},
+	CodeClusterNotExists:       {Summary: "cluster does not exist; run `cube-idp up`"},
+	CodeProviderConfigRefFetch: {Summary: "providerConfigRef fetch failed, unparsable, or not exactly one YAML mapping document"},
 
 	// 11xx: kubeconfig/connectivity
 	CodeKubeUnreachable: {Summary: "cluster behind context unreachable"},
@@ -55,6 +57,7 @@ var registry = map[Code]Desc{
 	CodeKindCreateFailed:  {Summary: "kind cluster creation failed"},
 	CodeKindKubeconfigGet: {Summary: "cannot get kubeconfig from kind"},
 	CodeKindDeleteFailed:  {Summary: "kind cluster deletion failed"},
+	CodeKindCoreOverride:  {Summary: "kind core injection overrode a user providerConfigRef/forProvider field (warning)"},
 
 	// 13xx: k3d provider
 	CodeK3dConfigMerge:   {Summary: "k3d providerConfig merge failed"},
@@ -62,6 +65,7 @@ var registry = map[Code]Desc{
 	CodeK3dCreateFailed:  {Summary: "k3d cluster creation failed / runtime unreachable"},
 	CodeK3dKubeconfigGet: {Summary: "cannot get kubeconfig from k3d"},
 	CodeK3dDeleteFailed:  {Summary: "k3d cluster deletion failed"},
+	CodeK3dCoreOverride:  {Summary: "k3d core injection overrode a user providerConfigRef/forProvider field (warning)"},
 
 	// 2xxx: apply
 	CodeApplyWaitTimeout: {Summary: "timed out waiting for resources to become ready"},

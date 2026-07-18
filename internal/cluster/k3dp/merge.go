@@ -1,13 +1,16 @@
-// Package k3dp implements the k3d ClusterProvider (D4, Phase 3) with the
-// same D10 two-layer customization model as kindp: typed fields + a
-// provider-native SimpleConfig escape hatch, explicit conflict errors,
-// inspectable via `cube-idp config render-cluster`.
+// Package k3dp implements the k3d ClusterProvider (D4, Phase 3) and the
+// cluster customization ladder (spec 2026-07-18-cluster-forprovider-design.md
+// §4): providerConfigRef (fetched base) + forProvider (inline overrides,
+// RFC 7386 merge-patched on top) composed generically by internal/cluster/
+// compose, strict-decoded into v1alpha5.SimpleConfig, then typed sugar
+// (extraPorts/mounts/registry) and cube-idp's core injections applied here.
 package k3dp
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
-	"os"
 	"slices"
 	"strings"
 
@@ -22,8 +25,10 @@ import (
 	// and writes. Already a repo dependency (cmd/init.go, config/load_test.go).
 	"sigs.k8s.io/yaml"
 
+	"github.com/cube-idp/cube-idp/internal/cluster/compose"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
 // ZotMirror is k3d's CertsD-equivalent (D12): when Host is non-empty,
@@ -32,29 +37,47 @@ import (
 // cmd/config.go passes the zero value (file-free render, mirror of kindp).
 type ZotMirror struct{ Host string }
 
-// RenderConfig performs the D10 two-layer merge and returns the final k3d
-// SimpleConfig YAML. It is pure: no docker, no cluster, fully unit-testable.
+// RenderConfig composes the customization ladder (spec 2026-07-18 §4) and
+// returns the final k3d config YAML plus core-override warnings. Pure
+// except the providerConfigRef fetch: no docker, no cluster.
 //
-// base   = user providerConfig (file path or inline YAML; a k3d SimpleConfig)
+// layers 1-2 = compose.Compose(providerConfigRef, forProvider), strict-
 //
-//	if set, else an empty v1alpha5.SimpleConfig
+//	decoded into v1alpha5.SimpleConfig (unknown field -> CUBE-1302)
 //
-// inject = gateway port mapping (host gw.Port -> node config.GatewayNodePort
+// layer 3 = typed extraPorts/mounts/registry — user-vs-user conflicts stay
 //
-//	on server:0), k3sExtraArgs --disable=traefik (server:0) — our gateway
-//	pack owns ingress, registry mirrors/insecure as embedded k3s
-//	registries.yaml (user spec.cluster.registry entries + the D12 zot
-//	mirror when set), typed extraPorts -> ports entries, mounts ->
-//	volumes, image rancher/k3s:<kubernetesVersion>-k3s1
+//	hard CUBE-1301 errors
 //
-// conflict = user config maps gw.Port to a different node port, or sets a
+// layer 4 = core injections (name/kind/apiVersion, gateway ports, node
 //
-//	different image than kubernetesVersion implies, or re-enables
-//	traefik -> CUBE-1301; unreadable/invalid providerConfig -> CUBE-1302
-func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, zot ZotMirror) ([]byte, error) {
-	cfg, err := loadUserConfig(spec.ProviderConfig)
+//	image, --disable=traefik, zot mirror) — core wins, CUBE-1306 warning
+//	(decision 1)
+func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw config.GatewaySpec, zot ZotMirror) ([]byte, []diag.Finding, error) {
+	var warns []diag.Finding
+	warn := func(msg string) {
+		warns = append(warns, diag.Finding{Code: diag.CodeK3dCoreOverride, Severity: diag.SeverityWarning,
+			Message: msg, Remediation: "inspect the final config with `cube-idp config render-cluster`"})
+	}
+	cacheDir, err := pack.DefaultCacheDir()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	merged, err := compose.Compose(ctx, spec.ProviderConfigRef, spec.ForProvider, cacheDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg := &v1alpha5.SimpleConfig{}
+	if len(merged) > 0 {
+		j, err := json.Marshal(merged)
+		if err != nil {
+			return nil, nil, diag.Wrap(err, diag.CodeK3dConfigInvalid, "cannot encode composed provider config", "report this as a bug")
+		}
+		if err := yaml.UnmarshalStrict(j, cfg); err != nil { // yaml = sigs.k8s.io/yaml, already this package's import
+			return nil, nil, diag.Wrap(err, diag.CodeK3dConfigInvalid,
+				"providerConfigRef/forProvider is not a valid k3d SimpleConfig document",
+				"unknown or mistyped field — see https://k3d.io/stable/usage/configfile/")
+		}
 	}
 	cfg.TypeMeta.APIVersion = "k3d.io/v1alpha5"
 	cfg.TypeMeta.Kind = "Simple"
@@ -63,12 +86,10 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, z
 		cfg.Servers = 1
 	}
 
-	// Node image from kubernetesVersion (conflict on mismatch, D10).
+	// Node image from kubernetesVersion (core wins, CUBE-1306 warning).
 	image := "rancher/k3s:" + spec.KubernetesVersion + "-k3s1"
 	if cfg.Image != "" && cfg.Image != image {
-		return nil, diag.New(diag.CodeK3dConfigMerge,
-			fmt.Sprintf("providerConfig sets image %q but spec.cluster.kubernetesVersion implies %q", cfg.Image, image),
-			"remove image from providerConfig or align kubernetesVersion; inspect with `cube-idp config render-cluster`")
+		warn(fmt.Sprintf("overriding image %q with %q — spec.cluster.kubernetesVersion wins over providerConfigRef/forProvider", cfg.Image, image))
 	}
 	cfg.Image = image
 
@@ -78,12 +99,12 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, z
 	// no mapping at all.
 	if gw.Port > 0 {
 		gwMapping := fmt.Sprintf("%d:%d", gw.Port, config.GatewayNodePort)
-		for _, p := range cfg.Ports {
+		for i := range cfg.Ports {
+			p := &cfg.Ports[i]
 			host, node, ok := strings.Cut(p.Port, ":")
 			if ok && host == fmt.Sprint(gw.Port) && node != fmt.Sprint(config.GatewayNodePort) {
-				return nil, diag.New(diag.CodeK3dConfigMerge,
-					fmt.Sprintf("providerConfig maps host port %s to %s, but cube-idp requires %s for the gateway", host, node, gwMapping),
-					"remove that ports entry or change spec.gateway.port; inspect with `cube-idp config render-cluster`")
+				warn(fmt.Sprintf("rewriting ports entry %s -> %s — the gateway requires this mapping", p.Port, gwMapping))
+				p.Port = gwMapping
 			}
 		}
 		if !hasHostPort(cfg.Ports, gw.Port) {
@@ -97,12 +118,12 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, z
 		// mapping, byte-identical output to before.
 		if gw.HTTPPort > 0 {
 			httpMapping := fmt.Sprintf("%d:%d", gw.HTTPPort, config.GatewayHTTPNodePort)
-			for _, p := range cfg.Ports {
+			for i := range cfg.Ports {
+				p := &cfg.Ports[i]
 				host, node, ok := strings.Cut(p.Port, ":")
 				if ok && host == fmt.Sprint(gw.HTTPPort) && node != fmt.Sprint(config.GatewayHTTPNodePort) {
-					return nil, diag.New(diag.CodeK3dConfigMerge,
-						fmt.Sprintf("providerConfig maps host port %s to %s, but cube-idp requires %s for the gateway's HTTP listener", host, node, httpMapping),
-						"remove that ports entry or change spec.gateway.httpPort; inspect with `cube-idp config render-cluster`")
+					warn(fmt.Sprintf("rewriting ports entry %s -> %s — the gateway requires this mapping for its HTTP listener", p.Port, httpMapping))
+					p.Port = httpMapping
 				}
 			}
 			if !hasHostPort(cfg.Ports, gw.HTTPPort) {
@@ -114,13 +135,14 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, z
 	}
 
 	// Required injection 2: disable k3s's bundled traefik — the gateway pack
-	// owns ingress (D3). Conflict if the user explicitly re-enables it.
+	// owns ingress (D3). Core wins on an explicit re-enable, CUBE-1306
+	// warning quoting the discarded arg (decision 1).
 	disable := v1alpha5.K3sArgWithNodeFilters{Arg: "--disable=traefik", NodeFilters: []string{"server:0"}}
-	for _, a := range cfg.Options.K3sOptions.ExtraArgs {
+	for i := range cfg.Options.K3sOptions.ExtraArgs {
+		a := &cfg.Options.K3sOptions.ExtraArgs[i]
 		if strings.Contains(a.Arg, "traefik") && a.Arg != disable.Arg {
-			return nil, diag.New(diag.CodeK3dConfigMerge,
-				fmt.Sprintf("providerConfig sets k3s arg %q, but cube-idp requires --disable=traefik (the gateway pack provides ingress)", a.Arg),
-				"remove the traefik-related k3s arg; the traefik gateway pack replaces the bundled one")
+			warn(fmt.Sprintf("replacing k3s arg %q with %q — the gateway pack provides ingress", a.Arg, disable.Arg))
+			a.Arg = disable.Arg
 		}
 	}
 	if !slices.ContainsFunc(cfg.Options.K3sOptions.ExtraArgs, func(a v1alpha5.K3sArgWithNodeFilters) bool { return a.Arg == disable.Arg }) {
@@ -131,17 +153,17 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, z
 	for _, p := range spec.ExtraPorts {
 		if hasHostPort(cfg.Ports, int(p.HostPort)) {
 			if int(p.HostPort) == gw.Port {
-				return nil, diag.New(diag.CodeK3dConfigMerge,
+				return nil, nil, diag.New(diag.CodeK3dConfigMerge,
 					fmt.Sprintf("spec.cluster.extraPorts maps hostPort %d which cube-idp reserves for the gateway", p.HostPort),
 					"remove that entry from spec.cluster.extraPorts or change spec.gateway.port")
 			}
 			if gw.HTTPPort > 0 && int(p.HostPort) == gw.HTTPPort {
-				return nil, diag.New(diag.CodeK3dConfigMerge,
+				return nil, nil, diag.New(diag.CodeK3dConfigMerge,
 					fmt.Sprintf("spec.cluster.extraPorts maps hostPort %d which cube-idp reserves for the gateway's HTTP listener", p.HostPort),
 					"remove that entry from spec.cluster.extraPorts or change spec.gateway.httpPort")
 			}
-			return nil, diag.New(diag.CodeK3dConfigMerge,
-				fmt.Sprintf("host port %d is mapped both in providerConfig and spec.cluster.extraPorts", p.HostPort),
+			return nil, nil, diag.New(diag.CodeK3dConfigMerge,
+				fmt.Sprintf("hostPort %d is mapped both in providerConfigRef/forProvider and spec.cluster.extraPorts", p.HostPort),
 				"keep exactly one of the two mappings")
 		}
 		cfg.Ports = append(cfg.Ports, v1alpha5.PortWithNodeFilters{
@@ -155,46 +177,28 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, z
 	}
 	if reg := registriesYAML(spec.Registry, zot); reg != "" {
 		if cfg.Registries.Config != "" {
-			// Two distinct conflicts share this branch — diagnose the one the
-			// user actually caused. registries.config is an opaque blob we
-			// cannot merge into without parsing, so both are rejected, but on
-			// the Ensure path zot.Host is ALWAYS set: blaming
-			// spec.cluster.registry there would point at a field the user
-			// never touched.
+			// Two distinct cases share this branch. A user-vs-user conflict
+			// (spec.cluster.registry also set) stays a hard CUBE-1301 error —
+			// cube-idp cannot silently pick a winner between two things the
+			// user wrote. A user-vs-core conflict (only the Ensure-path zot
+			// mirror needs the slot, spec.cluster.registry untouched) is
+			// decision 1's warn-and-win: registries.config is an opaque blob
+			// that cannot be merged into without parsing, so the user's block
+			// is discarded in favor of cube-idp's, with a warning naming what
+			// was dropped.
 			if len(spec.Registry.Mirrors) > 0 || len(spec.Registry.Insecure) > 0 {
-				return nil, diag.New(diag.CodeK3dConfigMerge,
-					"registry mirrors are set both in providerConfig (registries.config) and spec.cluster.registry",
+				return nil, nil, diag.New(diag.CodeK3dConfigMerge,
+					"registry mirrors are set both in providerConfigRef/forProvider (registries.config) and spec.cluster.registry",
 					"keep exactly one of the two")
 			}
-			return nil, diag.New(diag.CodeK3dConfigMerge,
-				fmt.Sprintf("providerConfig sets registries.config, but cube-idp must inject a zot registry mirror (%s -> the in-cluster zot NodePort) into the same registries.yaml and cannot merge into an opaque registries.config block", zot.Host),
-				"move your mirrors/insecure entries from providerConfig's registries.config into spec.cluster.registry so cube-idp can compose them with the zot mirror")
+			warn(fmt.Sprintf("discarding providerConfigRef/forProvider registries.config %q — cube-idp must inject a zot registry mirror (%s -> the in-cluster zot NodePort) into the same registries.yaml and cannot merge into an opaque registries.config block",
+				cfg.Registries.Config, zot.Host))
 		}
 		cfg.Registries.Config = reg
 	}
 
-	return yaml.Marshal(cfg)
-}
-
-func loadUserConfig(pc string) (*v1alpha5.SimpleConfig, error) {
-	var cfg v1alpha5.SimpleConfig
-	if pc == "" {
-		return &cfg, nil
-	}
-	raw := []byte(pc)
-	if !strings.Contains(pc, "\n") { // single line -> file path (same rule as kindp)
-		b, err := os.ReadFile(pc)
-		if err != nil {
-			return nil, diag.Wrap(err, diag.CodeK3dConfigInvalid, fmt.Sprintf("cannot read providerConfig file %s", pc),
-				"set spec.cluster.providerConfig to a readable k3d SimpleConfig file or an inline YAML document")
-		}
-		raw = b
-	}
-	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		return nil, diag.Wrap(err, diag.CodeK3dConfigInvalid, "providerConfig is not a valid k3d SimpleConfig document",
-			"see https://k3d.io/stable/usage/configfile/")
-	}
-	return &cfg, nil
+	out, err := yaml.Marshal(cfg)
+	return out, warns, err
 }
 
 func hasHostPort(ports []v1alpha5.PortWithNodeFilters, host int) bool {

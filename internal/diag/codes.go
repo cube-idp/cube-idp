@@ -3,16 +3,17 @@ package diag
 
 // 0xxx: preflight/config
 const (
-	CodeConfigRead          Code = "CUBE-0001" // cannot read cube.yaml
-	CodeConfigInvalid       Code = "CUBE-0002" // cube.yaml YAML syntax or schema validation error
-	CodeLockCorrupt         Code = "CUBE-0003" // cube.lock unreadable or corrupt (Phase 2)
-	CodeProviderMiss        Code = "CUBE-0004" // cluster provider config mismatch (e.g., render-cluster for non-kind)
-	CodeArgoPackRedun       Code = "CUBE-0005" // argocd pack listed while engine.type: argocd (Phase 2)
-	CodeInitExists          Code = "CUBE-0006" // cube.yaml already exists; refusing overwrite
-	CodeBadFlagValue        Code = "CUBE-0007" // an enum flag (--progress, --output) got an unrecognized value
-	CodeGatewayPackMismatch Code = "CUBE-0008" // gateway.ref points at a pack whose pack.cue name != gateway.pack (F11: ref silently wins over pack)
-	CodeUpgradeGuard        Code = "CUBE-0009" // upgrade refused: see summary (was the last un-coded user-facing error)
-	CodeConfirmRequired     Code = "CUBE-0010" // a destructive command refused to run without confirmation (--yes / --confirm)
+	CodeConfigRead            Code = "CUBE-0001" // cannot read cube.yaml
+	CodeConfigInvalid         Code = "CUBE-0002" // cube.yaml YAML syntax or schema validation error
+	CodeLockCorrupt           Code = "CUBE-0003" // cube.lock unreadable or corrupt (Phase 2)
+	CodeProviderMiss          Code = "CUBE-0004" // cluster provider config mismatch (e.g., render-cluster for non-kind)
+	CodeArgoPackRedun         Code = "CUBE-0005" // argocd pack listed while engine.type: argocd (Phase 2)
+	CodeInitExists            Code = "CUBE-0006" // cube.yaml already exists; refusing overwrite
+	CodeBadFlagValue          Code = "CUBE-0007" // an enum flag (--progress, --output) got an unrecognized value
+	CodeGatewayPackMismatch   Code = "CUBE-0008" // gateway.ref points at a pack whose pack.cue name != gateway.pack (F11: ref silently wins over pack)
+	CodeUpgradeGuard          Code = "CUBE-0009" // upgrade refused: see summary (was the last un-coded user-facing error)
+	CodeConfirmRequired       Code = "CUBE-0010" // a destructive command refused to run without confirmation (--yes / --confirm)
+	CodeProviderConfigRemoved Code = "CUBE-0011" // cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)
 )
 
 // 01xx: doctor preflight checks (Phase 2)
@@ -26,9 +27,10 @@ const (
 
 // 1xxx: cluster
 const (
-	CodeClusterTypeUnknown    Code = "CUBE-1001" // cluster provider type unknown or unsupported
-	CodeClusterFieldsConflict Code = "CUBE-1003" // node-creation fields (extraPorts/mounts/providerConfig/kubernetesVersion) set with provider: existing (config cross-validation)
-	CodeClusterNotExists      Code = "CUBE-1004" // cluster does not exist; run `cube-idp up`
+	CodeClusterTypeUnknown     Code = "CUBE-1001" // cluster provider type unknown or unsupported
+	CodeClusterFieldsConflict  Code = "CUBE-1003" // node-creation fields (extraPorts/mounts/providerConfig/kubernetesVersion) set with provider: existing (config cross-validation)
+	CodeClusterNotExists       Code = "CUBE-1004" // cluster does not exist; run `cube-idp up`
+	CodeProviderConfigRefFetch Code = "CUBE-1005" // providerConfigRef fetch failed, unparsable, or not exactly one YAML mapping document
 )
 
 // 11xx: kubeconfig/connectivity
@@ -44,6 +46,7 @@ const (
 	CodeKindCreateFailed  Code = "CUBE-1203" // kind cluster creation failed
 	CodeKindKubeconfigGet Code = "CUBE-1204" // cannot get kubeconfig from kind
 	CodeKindDeleteFailed  Code = "CUBE-1205" // kind cluster deletion failed
+	CodeKindCoreOverride  Code = "CUBE-1206" // kind core injection overrode a user providerConfigRef/forProvider field (warning)
 )
 
 // 13xx: k3d provider
@@ -53,6 +56,7 @@ const (
 	CodeK3dCreateFailed  Code = "CUBE-1303" // k3d cluster creation failed / runtime unreachable
 	CodeK3dKubeconfigGet Code = "CUBE-1304" // cannot get kubeconfig from k3d
 	CodeK3dDeleteFailed  Code = "CUBE-1305" // k3d cluster deletion failed
+	CodeK3dCoreOverride  Code = "CUBE-1306" // k3d core injection overrode a user providerConfigRef/forProvider field (warning)
 )
 
 // 2xxx: apply

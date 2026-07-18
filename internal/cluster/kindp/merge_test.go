@@ -1,6 +1,7 @@
 package kindp
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -36,7 +37,7 @@ func TestRenderTypedFieldsOnly(t *testing.T) {
 		},
 		Mounts: []config.Mount{{HostPath: "/tmp/images", NodePath: "/var/lib/images"}},
 	}
-	out, err := RenderConfig("dev", spec, gw, CertsD{})
+	out, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,9 +50,9 @@ func TestRenderMergesUserProviderConfig(t *testing.T) {
 	spec := config.ClusterSpec{
 		Provider:          "kind",
 		KubernetesVersion: "v1.33.1",
-		ProviderConfig:    filepath.Join("testdata", "user-kind-config.yaml"),
+		ProviderConfigRef: filepath.Join("testdata", "user-kind-config.yaml"),
 	}
-	out, err := RenderConfig("dev", spec, gw, CertsD{})
+	out, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,21 +61,32 @@ func TestRenderMergesUserProviderConfig(t *testing.T) {
 	}
 }
 
+// TestRenderConflictOnGatewayPort pins decision 1: a providerConfigRef/
+// forProvider mapping that collides with the gateway's required hostPort no
+// longer hard-errors — core wins and the override is surfaced as a
+// CUBE-1206 warning.
 func TestRenderConflictOnGatewayPort(t *testing.T) {
-	inline := `
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-- role: control-plane
-  extraPortMappings:
-  - containerPort: 9999
-    hostPort: 8443
-`
-	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1", ProviderConfig: inline}
-	_, err := RenderConfig("dev", spec, gw, CertsD{})
-	var de *diag.Error
-	if !errors.As(err, &de) || de.Code != "CUBE-1201" {
-		t.Fatalf("want CUBE-1201 conflict, got %v", err)
+	spec := config.ClusterSpec{
+		Provider: "kind", KubernetesVersion: "v1.33.1",
+		ForProvider: map[string]any{"nodes": []any{map[string]any{
+			"role": "control-plane",
+			"extraPortMappings": []any{map[string]any{
+				"containerPort": float64(9999), "hostPort": float64(8443)}}}}},
+	}
+	out, warns, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warns) != 1 || warns[0].Code != diag.CodeKindCoreOverride || warns[0].Severity != diag.SeverityWarning {
+		t.Fatalf("want one CUBE-1206 warning, got %v", warns)
+	}
+	var cfg v1alpha4.Cluster
+	if err := yaml.Unmarshal(out, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	cp := cfg.Nodes[0]
+	if len(cp.ExtraPortMappings) != 1 || cp.ExtraPortMappings[0].ContainerPort != 30443 {
+		t.Fatalf("gateway mapping must be rewritten to 30443: %s", out)
 	}
 }
 
@@ -88,39 +100,41 @@ func wantDiag(t *testing.T, err error, code diag.Code) *diag.Error {
 	return de
 }
 
+// TestRenderConflictOnNodeImage pins decision 1: a providerConfigRef/
+// forProvider node image conflicting with spec.cluster.kubernetesVersion no
+// longer hard-errors — core wins and the override is a CUBE-1206 warning.
 func TestRenderConflictOnNodeImage(t *testing.T) {
-	inline := `
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-- role: control-plane
-  image: kindest/node:v1.30.0
-`
-	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1", ProviderConfig: inline}
-	_, err := RenderConfig("dev", spec, gw, CertsD{})
-	wantDiag(t, err, "CUBE-1201")
+	spec := config.ClusterSpec{
+		Provider: "kind", KubernetesVersion: "v1.33.1",
+		ForProvider: map[string]any{"nodes": []any{map[string]any{
+			"role": "control-plane", "image": "kindest/node:v1.30.0"}}},
+	}
+	out, warns, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warns) != 1 || warns[0].Code != diag.CodeKindCoreOverride || warns[0].Severity != diag.SeverityWarning {
+		t.Fatalf("want one CUBE-1206 warning, got %v", warns)
+	}
+	if !strings.Contains(string(out), "kindest/node:v1.33.1") || strings.Contains(string(out), "v1.30.0") {
+		t.Fatalf("core image must win: %s", out)
+	}
 }
 
 func TestRenderConflictOnDuplicateExtraPort(t *testing.T) {
-	inline := `
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-- role: control-plane
-  extraPortMappings:
-  - containerPort: 32222
-    hostPort: 32222
-`
 	spec := config.ClusterSpec{
 		Provider:          "kind",
 		KubernetesVersion: "v1.33.1",
-		ProviderConfig:    inline,
-		ExtraPorts:        []config.PortMapping{{HostPort: 32222, NodePort: 32222}},
+		ForProvider: map[string]any{"nodes": []any{map[string]any{
+			"role": "control-plane",
+			"extraPortMappings": []any{map[string]any{
+				"containerPort": float64(32222), "hostPort": float64(32222)}}}}},
+		ExtraPorts: []config.PortMapping{{HostPort: 32222, NodePort: 32222}},
 	}
-	_, err := RenderConfig("dev", spec, gw, CertsD{})
+	_, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
 	de := wantDiag(t, err, "CUBE-1201")
-	if !strings.Contains(de.Summary, "providerConfig") {
-		t.Fatalf("duplicate against providerConfig should mention providerConfig, got %q", de.Summary)
+	if !strings.Contains(de.Summary, "providerConfigRef/forProvider") {
+		t.Fatalf("duplicate against providerConfigRef/forProvider should mention it, got %q", de.Summary)
 	}
 }
 
@@ -130,46 +144,52 @@ func TestRenderConflictOnExtraPortReservedForGateway(t *testing.T) {
 		KubernetesVersion: "v1.33.1",
 		ExtraPorts:        []config.PortMapping{{HostPort: 8443, NodePort: 30443}},
 	}
-	_, err := RenderConfig("dev", spec, gw, CertsD{})
+	_, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
 	de := wantDiag(t, err, "CUBE-1201")
 	if !strings.Contains(de.Summary, "reserves for the gateway") {
 		t.Fatalf("gateway-port duplicate should blame extraPorts, not providerConfig; got %q", de.Summary)
 	}
 }
 
+// TestRenderProviderConfigFileMissing pins the new fetch layer: a
+// providerConfigRef that cannot be fetched is a CUBE-1005 (compose.Resolve),
+// not a kindp-level CUBE-1202 — the failure happens before strict decode.
 func TestRenderProviderConfigFileMissing(t *testing.T) {
 	spec := config.ClusterSpec{
 		Provider:          "kind",
 		KubernetesVersion: "v1.33.1",
-		ProviderConfig:    filepath.Join("testdata", "does-not-exist.yaml"),
+		ProviderConfigRef: filepath.Join("testdata", "does-not-exist.yaml"),
 	}
-	_, err := RenderConfig("dev", spec, gw, CertsD{})
-	wantDiag(t, err, "CUBE-1202")
+	_, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
+	wantDiag(t, err, diag.CodeProviderConfigRefFetch)
 }
 
+// TestRenderProviderConfigInvalidYAML pins the new fetch layer: invalid YAML
+// content behind providerConfigRef fails at compose.Resolve (CUBE-1005),
+// same reasoning as TestRenderProviderConfigFileMissing — the inline-blob
+// channel that used to hit kindp's own YAML unmarshal is gone.
 func TestRenderProviderConfigInvalidYAML(t *testing.T) {
-	inline := "kind: Cluster\nnodes: {not: [a, valid, kind, document\n"
-	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1", ProviderConfig: inline}
-	_, err := RenderConfig("dev", spec, gw, CertsD{})
-	wantDiag(t, err, "CUBE-1202")
+	dir := t.TempDir()
+	p := filepath.Join(dir, "bad.yaml")
+	if err := os.WriteFile(p, []byte("kind: Cluster\nnodes: {not: [a, valid, kind, document\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1", ProviderConfigRef: p}
+	_, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
+	wantDiag(t, err, diag.CodeProviderConfigRefFetch)
 }
 
 func TestRenderInjectsOnControlPlaneNotFirstNode(t *testing.T) {
-	inline := `
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-- role: worker
-- role: control-plane
-`
 	spec := config.ClusterSpec{
 		Provider:          "kind",
 		KubernetesVersion: "v1.33.1",
 		ExtraPorts:        []config.PortMapping{{HostPort: 32222, NodePort: 32222}},
 		Mounts:            []config.Mount{{HostPath: "/tmp/images", NodePath: "/var/lib/images"}},
-		ProviderConfig:    inline,
+		ForProvider: map[string]any{"nodes": []any{
+			map[string]any{"role": "worker"},
+			map[string]any{"role": "control-plane"}}},
 	}
-	out, err := RenderConfig("dev", spec, gw, CertsD{})
+	out, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +229,7 @@ nodes:
 
 func TestRenderMapsGatewayPortToWebsecure(t *testing.T) {
 	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1"}
-	out, err := RenderConfig("dev", spec, gw, CertsD{})
+	out, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +241,7 @@ func TestRenderMapsGatewayPortToWebsecure(t *testing.T) {
 
 func TestRenderConfigInjectsCertsD(t *testing.T) {
 	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1"}
-	out, err := RenderConfig("dev", spec, gw, CertsD{Host: "registry.cube-idp.localtest.me", HostDir: "/tmp/certsd"})
+	out, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{Host: "registry.cube-idp.localtest.me", HostDir: "/tmp/certsd"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,15 +255,13 @@ func TestRenderConfigInjectsCertsD(t *testing.T) {
 }
 
 func TestRenderNoControlPlaneNode(t *testing.T) {
-	inline := `
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-- role: worker
-- role: worker
-`
-	spec := config.ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1", ProviderConfig: inline}
-	_, err := RenderConfig("dev", spec, gw, CertsD{})
+	spec := config.ClusterSpec{
+		Provider: "kind", KubernetesVersion: "v1.33.1",
+		ForProvider: map[string]any{"nodes": []any{
+			map[string]any{"role": "worker"},
+			map[string]any{"role": "worker"}}},
+	}
+	_, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
 	de := wantDiag(t, err, "CUBE-1202")
 	if !strings.Contains(de.Summary, "no control-plane node") {
 		t.Fatalf("summary should say no control-plane node, got %q", de.Summary)
@@ -256,7 +274,7 @@ nodes:
 // byte-identical output to today (decision 3).
 func TestRenderConfigMapsHTTPPortWhenSet(t *testing.T) {
 	gw := config.GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443, HTTPPort: 8080}
-	cfg, err := RenderConfig("dev", config.ClusterSpec{Provider: "kind"}, gw, CertsD{})
+	cfg, _, err := RenderConfig(context.Background(), "dev", config.ClusterSpec{Provider: "kind"}, gw, CertsD{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +284,7 @@ func TestRenderConfigMapsHTTPPortWhenSet(t *testing.T) {
 	}
 	// And absent → absent (opt-in contract).
 	gw.HTTPPort = 0
-	cfg, _ = RenderConfig("dev", config.ClusterSpec{Provider: "kind"}, gw, CertsD{})
+	cfg, _, _ = RenderConfig(context.Background(), "dev", config.ClusterSpec{Provider: "kind"}, gw, CertsD{})
 	if strings.Contains(string(cfg), "30080") {
 		t.Fatalf("httpPort must be opt-in:\n%s", cfg)
 	}
@@ -276,11 +294,118 @@ func TestRenderConfigMapsHTTPPortWhenSet(t *testing.T) {
 // zero GatewaySpec (spoke clusters — the hub owns the host ports) renders a
 // kind config with no host port mapping at all.
 func TestRenderConfigZeroGatewaySkipsHostPorts(t *testing.T) {
-	cfg, err := RenderConfig("dev-spoke-staging", config.ClusterSpec{Provider: "kind"}, config.GatewaySpec{}, CertsD{})
+	cfg, _, err := RenderConfig(context.Background(), "dev-spoke-staging", config.ClusterSpec{Provider: "kind"}, config.GatewaySpec{}, CertsD{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(cfg), "hostPort") {
 		t.Fatalf("spoke render must not map host ports (hub owns them):\n%s", cfg)
+	}
+}
+
+func TestRenderForProviderFeatureGates(t *testing.T) {
+	spec := config.ClusterSpec{
+		Provider: "kind", KubernetesVersion: "v1.33.1",
+		ForProvider: map[string]any{
+			"featureGates": map[string]any{"MyFeature": true},
+			"networking":   map[string]any{"kubeProxyMode": "nftables"},
+		},
+	}
+	out, warns, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warns) != 0 {
+		t.Fatalf("unexpected warnings: %v", warns)
+	}
+	var cfg v1alpha4.Cluster
+	if err := yaml.Unmarshal(out, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.FeatureGates["MyFeature"] || cfg.Networking.KubeProxyMode != "nftables" {
+		t.Fatalf("forProvider fields missing: %s", out)
+	}
+}
+
+func TestRenderForProviderUnknownFieldStrict(t *testing.T) {
+	spec := config.ClusterSpec{
+		Provider: "kind", KubernetesVersion: "v1.33.1",
+		ForProvider: map[string]any{"featureGatez": map[string]any{"Oops": true}},
+	}
+	_, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeKindConfigInvalid {
+		t.Fatalf("want CUBE-1202, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "featureGatez") {
+		t.Fatalf("error must name the bad field: %v", err)
+	}
+}
+
+func TestRenderRefPlusForProviderListReplace(t *testing.T) {
+	// providerConfigRef declares 2 nodes; forProvider's nodes list replaces
+	// wholesale (RFC 7386, decision 4) with a single labeled control-plane.
+	dir := t.TempDir()
+	ref := filepath.Join(dir, "base.yaml")
+	os.WriteFile(ref, []byte("nodes:\n- role: control-plane\n- role: worker\n"), 0o644)
+	spec := config.ClusterSpec{
+		Provider: "kind", KubernetesVersion: "v1.33.1",
+		ProviderConfigRef: ref,
+		ForProvider: map[string]any{"nodes": []any{
+			map[string]any{"role": "control-plane", "labels": map[string]any{"tier": "system"}}}},
+	}
+	out, _, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg v1alpha4.Cluster
+	if err := yaml.Unmarshal(out, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Nodes) != 1 || cfg.Nodes[0].Labels["tier"] != "system" {
+		t.Fatalf("list-replace failed: %s", out)
+	}
+}
+
+func TestRenderImageConflictWarnsAndWins(t *testing.T) {
+	spec := config.ClusterSpec{
+		Provider: "kind", KubernetesVersion: "v1.33.1",
+		ForProvider: map[string]any{"nodes": []any{
+			map[string]any{"role": "control-plane", "image": "kindest/node:v1.99.0"}}},
+	}
+	out, warns, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warns) != 1 || warns[0].Code != diag.CodeKindCoreOverride || warns[0].Severity != diag.SeverityWarning {
+		t.Fatalf("warns = %v", warns)
+	}
+	if !strings.Contains(string(out), "kindest/node:v1.33.1") || strings.Contains(string(out), "v1.99.0") {
+		t.Fatalf("core image must win: %s", out)
+	}
+}
+
+func TestRenderGatewayPortConflictWarnsAndWins(t *testing.T) {
+	spec := config.ClusterSpec{
+		Provider: "kind", KubernetesVersion: "v1.33.1",
+		ForProvider: map[string]any{"nodes": []any{map[string]any{
+			"role": "control-plane",
+			"extraPortMappings": []any{map[string]any{
+				"containerPort": float64(31000), "hostPort": float64(8443)}}}}},
+	}
+	out, warns, err := RenderConfig(context.Background(), "dev", spec, gw, CertsD{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warns) != 1 || warns[0].Code != diag.CodeKindCoreOverride {
+		t.Fatalf("warns = %v", warns)
+	}
+	var cfg v1alpha4.Cluster
+	if err := yaml.Unmarshal(out, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	cp := cfg.Nodes[0]
+	if len(cp.ExtraPortMappings) != 1 || cp.ExtraPortMappings[0].ContainerPort != 30443 {
+		t.Fatalf("gateway mapping must be rewritten to 30443: %s", out)
 	}
 }

@@ -93,3 +93,38 @@ func Run(t *testing.T, p cluster.Provider, spec config.ClusterSpec) {
 		t.Fatal("Exists still true after Delete")
 	}
 }
+
+// RenderContract is the pure render-side provider contract (spec 2026-07-18
+// forprovider design §9): deterministic default output, warn-not-error on
+// core-injection conflicts, typed error on unknown forProvider fields. No
+// gate — it needs no container runtime.
+func RenderContract(t *testing.T, base, conflict config.ClusterSpec,
+	render func(config.ClusterSpec) ([]byte, []diag.Finding, error)) {
+	t.Helper()
+
+	out1, warns, err := render(base)
+	if err != nil {
+		t.Fatalf("render(base): %v", err)
+	}
+	if len(warns) != 0 {
+		t.Fatalf("render(base) warnings: %v", warns)
+	}
+	out2, _, err := render(base)
+	if err != nil || string(out1) != string(out2) {
+		t.Fatalf("render is not deterministic (err %v)", err)
+	}
+
+	_, warns, err = render(conflict)
+	if err != nil {
+		t.Fatalf("render(conflict) must warn, not error (decision 1): %v", err)
+	}
+	if len(warns) == 0 {
+		t.Fatal("render(conflict) produced no warning")
+	}
+
+	bad := base
+	bad.ForProvider = map[string]any{"zzzNotAField": true}
+	if _, _, err := render(bad); err == nil {
+		t.Fatal("unknown forProvider field must fail the strict decode")
+	}
+}

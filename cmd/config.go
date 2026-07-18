@@ -40,11 +40,12 @@ func newConfigCmd() *cobra.Command {
 			// YAML so `cube-idp config render-cluster --file cube.yaml | kind
 			// create cluster --config -` keeps working.
 			var out []byte
+			var warns []diag.Finding
 			switch cube.Spec.Cluster.Provider {
 			case "kind":
-				out, err = kindp.RenderConfig(cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, kindp.CertsD{})
+				out, warns, err = kindp.RenderConfig(c.Context(), cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, kindp.CertsD{})
 			case "k3d":
-				out, err = k3dp.RenderConfig(cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, k3dp.ZotMirror{})
+				out, warns, err = k3dp.RenderConfig(c.Context(), cube.Metadata.Name, cube.Spec.Cluster, cube.Spec.Gateway, k3dp.ZotMirror{})
 			default:
 				return diag.New(diag.CodeProviderMiss,
 					fmt.Sprintf("render-cluster applies to cluster-creating providers (kind, k3d), not %q", cube.Spec.Cluster.Provider),
@@ -53,6 +54,10 @@ func newConfigCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			for _, w := range warns {
+				fmt.Fprintf(c.ErrOrStderr(), "⚠ %s  %s\n", w.Code, w.Message)
+			}
+			// existing certs.d note + stdout YAML print unchanged
 			fmt.Fprintln(c.ErrOrStderr(),
 				"note: `up` also injects a containerd certs.d bind mount (kind) or registries.yaml zot mirror entry (k3d) for the local CA trust root (D6) — this rendering omits it")
 			fmt.Fprint(c.OutOrStdout(), string(out))

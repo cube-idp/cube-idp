@@ -34,3 +34,13 @@ First release. Private distribution via GitHub Releases (`gh release download`).
 - Event stream covers vendor/sync/repo/plugin/pack push (`--progress=json`).
 - Diag taxonomy sweep; plugin trust/index hardening; D15 kustomize
   substitution; gateway pack/ref coherence + envoy in-cluster CoreDNS fix.
+
+### Phase 5 — In progress (2026-07-18)
+- BREAKING: `spec.cluster.providerConfig` (string) is replaced by
+  `providerConfigRef` (fetchable ref: local path, oci://, git, s3, http) and
+  `forProvider` (inline provider-native fields, RFC 7386-merged over the ref).
+  A file path migrates to `providerConfigRef: <path>`; an inline blob becomes
+  structured `forProvider:` fields. Load fails with CUBE-0011 and this recipe.
+  Core injections (gateway ports, node image, certs.d/zot) now override
+  conflicting user fields with a warning (CUBE-1206/CUBE-1306) instead of
+  erroring; user-vs-user conflicts still error (CUBE-1201/CUBE-1301).

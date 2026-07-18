@@ -44,7 +44,10 @@ const loadRetryBackoff = 2 * time.Second
 // still checked at compile time: internal/cluster/provider.go's `case "k3d":
 // return k3dp.New(gw), nil` only compiles because *K3d satisfies
 // cluster.Provider (New's return type there is cluster.Provider).
-type K3d struct{ gw config.GatewaySpec }
+type K3d struct {
+	gw   config.GatewaySpec
+	sink func(line string)
+}
 
 // New returns a K3d provider bound to the given gateway spec.
 func New(gw config.GatewaySpec) *K3d { return &K3d{gw: gw} }
@@ -55,7 +58,10 @@ func New(gw config.GatewaySpec) *K3d { return &K3d{gw: gw} }
 // cluster.Loggable, satisfied structurally: the parameter is a plain
 // `func(line string)` because importing internal/cluster from here would
 // cycle (see the type comment on K3d).
-func (k *K3d) SetLogSink(sink func(line string)) { installK3dHook(sink) }
+func (k *K3d) SetLogSink(sink func(line string)) {
+	k.sink = sink
+	installK3dHook(sink)
+}
 
 // k3dSink is the forwarder's current destination. Atomic pointer, not a
 // plain var: SetLogSink swaps it per-run while the hook installed by an
@@ -95,9 +101,14 @@ func (k *K3d) Ensure(ctx context.Context, name string, spec config.ClusterSpec) 
 		return nil, err
 	}
 	if !exists {
-		cfgYAML, err := RenderConfig(name, spec, k.gw, ZotMirror{Host: "registry." + k.gw.Host})
+		cfgYAML, warns, err := RenderConfig(ctx, name, spec, k.gw, ZotMirror{Host: "registry." + k.gw.Host})
 		if err != nil {
 			return nil, err
+		}
+		for _, w := range warns {
+			if k.sink != nil {
+				k.sink(fmt.Sprintf("⚠ %s  %s", w.Code, w.Message))
+			}
 		}
 		var simpleCfg v1alpha5.SimpleConfig
 		if err := yaml.Unmarshal(cfgYAML, &simpleCfg); err != nil {

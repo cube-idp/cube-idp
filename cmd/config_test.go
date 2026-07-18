@@ -100,3 +100,50 @@ func TestRenderEngineUnknownComponentIsCube3009(t *testing.T) {
 		t.Fatalf("want CUBE-3009 naming valid components, got err=%v\noutput: %s", err, out)
 	}
 }
+
+func TestRenderClusterPrintsOverrideWarnings(t *testing.T) {
+	// cube.yaml whose forProvider sets a conflicting node image: render
+	// must succeed, stdout must be the final YAML with the core image,
+	// stderr must carry a CUBE-1206 line (stdout stays pipeable YAML).
+	t.Chdir(t.TempDir())
+	doc := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata:
+  name: dev
+spec:
+  cluster:
+    provider: kind
+    kubernetesVersion: v1.33.1
+    forProvider:
+      nodes:
+      - role: control-plane
+        image: kindest/node:v1.99.0
+  engine:
+    type: flux
+  gateway:
+    pack: traefik
+    host: cube-idp.localtest.me
+    port: 8443
+`
+	if err := os.WriteFile("cube.yaml", []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := NewRootCmd()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"config", "render-cluster"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("render-cluster: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "kindest/node:v1.33.1") ||
+		strings.Contains(stdout.String(), "v1.99.0") {
+		t.Fatalf("core image must win in stdout:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "CUBE-1206") {
+		t.Fatalf("stdout must stay pure YAML:\n%s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "CUBE-1206") {
+		t.Fatalf("stderr must carry the override warning:\n%s", stderr.String())
+	}
+}
