@@ -3,7 +3,9 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -13,7 +15,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/doctor"
 	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
-	"github.com/cube-idp/cube-idp/internal/trust"
+	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
 func newDoctorCmd() *cobra.Command {
@@ -42,89 +44,30 @@ func newDoctorCmd() *cobra.Command {
 				cube = config.Default("dev")
 			}
 
-			// doctor is read-only: unlike Ensure, it must never CREATE a
-			// missing cluster (cmd/status.go's requireClusterExists guards the
-			// same hazard for `status`). It only probes the cluster side
-			// below when one already exists.
-			clusterExists := false
-			prov, provErr := cluster.New(cube.Spec.Cluster, cube.Spec.Gateway)
-			if provErr == nil {
-				clusterExists, _ = prov.Exists(c.Context(), cube.Metadata.Name)
-			}
+			// Cluster-side observation first (existence feeds the host
+			// checks' port heuristics), through its seam.
+			clusterExists, clusterFindings, spokeResults := doctorProbeCluster(c.Context(), cube)
 
-			if cube.Spec.Cluster.Provider == "kind" {
-				if f := doctor.CheckRuntime(); f != nil {
-					findings = append(findings, *f)
-				}
+			// GT18: the tri-state checklist — every check one row, passes
+			// shown. The findings array keeps its pre-U5 order: config,
+			// host checks, cluster-side, spokes.
+			results := doctor.RunChecks(doctorChecks(cube, clusterExists))
+			for _, r := range results {
+				findings = append(findings, r.Findings...)
 			}
-			if f := doctor.CheckPortFree(cube.Spec.Gateway.Port, clusterExists); f != nil {
-				findings = append(findings, *f)
-			}
-			// U2: the opt-in plain-HTTP gateway port is a second host bind —
-			// preflight it too when set (absent = no probe, as before).
-			if hp := cube.Spec.Gateway.HTTPPort; hp > 0 {
-				if f := doctor.CheckHostPortFree(hp, clusterExists, "spec.gateway.httpPort"); f != nil {
-					findings = append(findings, *f)
-				}
-			}
-			if dir, err := trust.Dir(); err == nil {
-				if f := doctor.CheckDiskSpace(dir, 5<<30); f != nil {
-					findings = append(findings, *f)
-				}
-			}
-			findings = append(findings, doctor.CheckInotify()...)
-
-			// scan every ref `up` would fetch: spec.packs plus the gateway
-			// pack (its ref override may also be a git source)
-			refs := make([]string, 0, len(cube.Spec.Packs)+1)
-			for _, p := range cube.Spec.Packs {
-				refs = append(refs, p.Ref)
-			}
-			refs = append(refs, cube.Spec.Gateway.PackRef())
-			if f := doctor.CheckGitCLI(refs); f != nil {
-				findings = append(findings, *f)
-			}
-
-			if provErr == nil {
-				findings = append(findings, prov.Diagnose(c.Context(), cube.Metadata.Name)...)
-			}
-
-			if provErr == nil && clusterExists {
-				ctx, cancel := context.WithTimeout(c.Context(), doctor.ClusterProbeTimeout)
-				defer cancel()
-				if conn, err := prov.Ensure(ctx, cube.Metadata.Name, cube.Spec.Cluster); err == nil {
-					if a, err := apply.New(conn.REST, cube.Metadata.Name); err == nil {
-						if eng, err := enginefactory.New(cube.Spec.Engine); err == nil {
-							if comps, err := eng.Health(ctx, a); err == nil {
-								for _, comp := range comps {
-									if !comp.Ready {
-										findings = append(findings, diag.Finding{Code: diag.CodeEngineHealthTimeout,
-											Severity: diag.SeverityError, Message: comp.Name + " not ready: " + comp.Message,
-											Remediation: "re-run `cube-idp up`; inspect the component with kubectl"})
-									}
-								}
-							}
-						}
-						// S4: spoke reachability (check id spoke-reachability) —
-						// each declared spoke probed via its S3 hub registration
-						// payload; silent when no spokes are declared.
-						findings = append(findings, doctor.CheckSpokeReachability(ctx, a.Client(), cube.Spec.Engine.Type, cube.Spec.Spokes)...)
-					}
-				} else {
-					var de *diag.Error
-					if errors.As(err, &de) {
-						findings = append(findings, diag.Finding{Code: de.Code, Severity: diag.SeverityError,
-							Message: de.Summary, Remediation: de.Remediation})
-					}
-				}
+			findings = append(findings, clusterFindings...)
+			results = append(results, spokeResults...)
+			for _, r := range spokeResults {
+				findings = append(findings, r.Findings...)
 			}
 
 			if jsonDoc {
-				if writeDoctorJSON(out, findings) {
+				if writeDoctorJSON(out, findings, results) {
 					return errExitCode(1)
 				}
 				return nil
 			}
+			renderDoctorChecklist(out, results)
 			if doctor.Render(out, findings) {
 				return errExitCode(1)
 			}
@@ -136,12 +79,142 @@ func newDoctorCmd() *cobra.Command {
 	return c
 }
 
+// doctorChecks assembles the host-side checklist — a package-level seam
+// (the statusConnect pattern) so command tests stub the check set.
+var doctorChecks = doctor.All
+
+// doctorProbeCluster performs every cluster-side observation doctor makes —
+// seamed like doctorChecks so command tests never touch docker,
+// kubeconfigs, or the network.
+var doctorProbeCluster = probeDoctorCluster
+
+// probeDoctorCluster resolves the provider, reports whether the cluster
+// already exists (doctor is read-only: unlike Ensure it must never CREATE a
+// missing cluster — cmd/status.go's requireClusterExists guards the same
+// hazard for `status`), collects the provider's Diagnose findings and, when
+// the cluster is reachable, the engine-health findings plus the S4
+// spoke-reachability check (a GT18 row over CUBE-8006 findings). The spoke
+// check is assembled here and not in doctor.All because it needs the live
+// cluster client; it is registered only when spokes are declared AND the
+// hub answered — a checklist row always means "this was probed now".
+func probeDoctorCluster(ctx context.Context, cube *config.Cube) (bool, []diag.Finding, []doctor.CheckResult) {
+	var findings []diag.Finding
+	prov, provErr := cluster.New(cube.Spec.Cluster, cube.Spec.Gateway)
+	if provErr != nil {
+		return false, nil, nil
+	}
+	clusterExists, _ := prov.Exists(ctx, cube.Metadata.Name)
+	findings = append(findings, prov.Diagnose(ctx, cube.Metadata.Name)...)
+	if !clusterExists {
+		return clusterExists, findings, nil
+	}
+	pctx, cancel := context.WithTimeout(ctx, doctor.ClusterProbeTimeout)
+	defer cancel()
+	conn, err := prov.Ensure(pctx, cube.Metadata.Name, cube.Spec.Cluster)
+	if err != nil {
+		var de *diag.Error
+		if errors.As(err, &de) {
+			findings = append(findings, diag.Finding{Code: de.Code, Severity: diag.SeverityError,
+				Message: de.Summary, Remediation: de.Remediation})
+		}
+		return clusterExists, findings, nil
+	}
+	a, err := apply.New(conn.REST, cube.Metadata.Name)
+	if err != nil {
+		return clusterExists, findings, nil
+	}
+	if eng, err := enginefactory.New(cube.Spec.Engine); err == nil {
+		if comps, err := eng.Health(pctx, a); err == nil {
+			for _, comp := range comps {
+				if !comp.Ready {
+					findings = append(findings, diag.Finding{Code: diag.CodeEngineHealthTimeout,
+						Severity: diag.SeverityError, Message: comp.Name + " not ready: " + comp.Message,
+						Remediation: "re-run `cube-idp up`; inspect the component with kubectl"})
+				}
+			}
+		}
+	}
+	var spokeResults []doctor.CheckResult
+	if spokes := cube.Spec.Spokes; len(spokes) > 0 {
+		// S4's probe as a GT18 row (check id spoke-reachability). Findings
+		// stay warnings by design: kind spokes register a
+		// docker-network-internal URL this machine may not reach while the
+		// hub engine still reconciles them.
+		spokeResults = doctor.RunChecks([]doctor.Check{{Name: "spoke-reachability", Run: func() (string, []diag.Finding) {
+			if fs := doctor.CheckSpokeReachability(pctx, a.Client(), cube.Spec.Engine.Type, spokes); len(fs) > 0 {
+				return "", fs
+			}
+			return fmt.Sprintf("%d spoke(s) registered and reachable", len(spokes)), nil
+		}}})
+	}
+	return clusterExists, findings, spokeResults
+}
+
+// renderDoctorChecklist prints the GT18 tri-state checklist: one row per
+// executed check. Styled rows pair the theme-colored glyph with the word
+// (semantic-color doctrine — the word always accompanies the glyph); plain
+// rows carry the ok/warn/fail word alone, no glyphs. The findings render
+// (with remediations) and the verdict line follow, unchanged in meaning.
+func renderDoctorChecklist(out io.Writer, results []doctor.CheckResult) {
+	if len(results) == 0 {
+		return
+	}
+	p := ui.NewFor(out)
+	width := 0
+	for _, r := range results {
+		if len(r.Name) > width {
+			width = len(r.Name)
+		}
+	}
+	width += 2
+	for _, r := range results {
+		word := r.Status()
+		line := fmt.Sprintf("%-6s%-*s%s", word, width, r.Name, doctorRowText(r))
+		if p.Styled() {
+			line = doctorRowGlyph(p, word) + " " + line
+		}
+		fmt.Fprintln(out, strings.TrimRight(line, " "))
+	}
+	fmt.Fprintln(out)
+}
+
+// doctorRowGlyph maps a row word onto its themed glyph (ok ✔ / warn ⚠ /
+// fail ✗) for the styled render.
+func doctorRowGlyph(p *ui.Printer, word string) string {
+	switch word {
+	case "ok":
+		return p.Glyph(ui.GlyphOK)
+	case "fail":
+		return p.Glyph(ui.GlyphErr)
+	default:
+		return p.Glyph(ui.GlyphWarn)
+	}
+}
+
+// doctorRowText is one row's right-hand cell: the green detail, or the
+// worst finding's message paired with its CUBE code — plus a (+N more)
+// marker when a multi-finding check (inotify, spoke-reachability) carries
+// siblings. The full finding set always follows in the findings render.
+func doctorRowText(r doctor.CheckResult) string {
+	w := r.Worst()
+	if w == nil {
+		return r.Detail
+	}
+	text := fmt.Sprintf("%s — %s", w.Message, w.Code)
+	if n := len(r.Findings) - 1; n > 0 {
+		text = fmt.Sprintf("%s (+%d more)", text, n)
+	}
+	return text
+}
+
 // doctorDoc is the gh-style doctor document (design doc §10): the findings
-// array with codes and severities — CI-annotation gold — plus the overall
-// errors verdict that drives the exit code.
+// array with codes and severities — CI-annotation gold — the additive U5
+// checks array (GT18: one tri-state row per executed check), plus the
+// overall errors verdict that drives the exit code.
 type doctorDoc struct {
 	jsonDocHead
 	Findings []doctorFinding `json:"findings"`
+	Checks   []doctorCheck   `json:"checks"`
 	Errors   bool            `json:"errors"`
 }
 
@@ -152,10 +225,24 @@ type doctorFinding struct {
 	Remediation string `json:"remediation"`
 }
 
+// doctorCheck is one checklist row: name is the stable check id, status is
+// ok|warn|fail; detail is present on ok rows, code+message (the worst
+// finding) on warn/fail rows. Additive (GT13) — pre-U5 consumers keep
+// reading findings/errors unchanged.
+type doctorCheck struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Detail  string `json:"detail,omitempty"`
+	Code    string `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
 // writeDoctorJSON emits the doctor document and reports whether any finding is
 // an error (so cmd keeps the exit-1 semantics unchanged across all modes).
-func writeDoctorJSON(out io.Writer, findings []diag.Finding) bool {
-	doc := doctorDoc{jsonDocHead: jsonDocHead{V: docSchemaVersion}, Findings: make([]doctorFinding, 0, len(findings))}
+func writeDoctorJSON(out io.Writer, findings []diag.Finding, results []doctor.CheckResult) bool {
+	doc := doctorDoc{jsonDocHead: jsonDocHead{V: docSchemaVersion},
+		Findings: make([]doctorFinding, 0, len(findings)),
+		Checks:   make([]doctorCheck, 0, len(results))}
 	for _, f := range findings {
 		if f.Severity == diag.SeverityError {
 			doc.Errors = true
@@ -163,6 +250,13 @@ func writeDoctorJSON(out io.Writer, findings []diag.Finding) bool {
 		doc.Findings = append(doc.Findings, doctorFinding{
 			Code: string(f.Code), Severity: string(f.Severity), Message: f.Message, Remediation: f.Remediation,
 		})
+	}
+	for _, r := range results {
+		row := doctorCheck{Name: r.Name, Status: r.Status(), Detail: r.Detail}
+		if w := r.Worst(); w != nil {
+			row.Code, row.Message = string(w.Code), w.Message
+		}
+		doc.Checks = append(doc.Checks, row)
 	}
 	// A JSON document must still be emitted even on marshal failure paths; the
 	// error is a programming error here (all fields are plain strings).

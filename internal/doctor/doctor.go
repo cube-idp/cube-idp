@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/trust"
 	"github.com/cube-idp/cube-idp/internal/ui"
 	"github.com/cube-idp/cube-idp/internal/ui/theme"
 )
@@ -39,10 +41,15 @@ var th = theme.Detect(os.Stdin, os.Stdout)
 // listener — generous for any real service, short enough not to stall doctor.
 const portProbeTimeout = 300 * time.Millisecond
 
+// runtimeBins is the container-runtime CLI set CheckRuntime probes — the
+// same set the kind provider auto-detects. Shared with the U5 checklist
+// wrapper so the green row can name which binary satisfied the check.
+var runtimeBins = []string{"docker", "podman", "nerdctl"}
+
 // CheckRuntime looks for a container runtime CLI on PATH — the same set the
 // kind provider auto-detects (docker, podman, nerdctl).
 func CheckRuntime() *diag.Finding {
-	for _, bin := range []string{"docker", "podman", "nerdctl"} {
+	for _, bin := range runtimeBins {
 		if _, err := exec.LookPath(bin); err == nil {
 			return nil
 		}
@@ -340,4 +347,159 @@ func CheckSpokeReachability(ctx context.Context, c client.Client, engineType str
 		}
 	}
 	return findings
+}
+
+// ——— U5: the tri-state checklist registry (GT18) ———
+
+// diskMinBytes is the free-space floor the disk-space check wants at the
+// cube-idp config/cache dir (kind node images are the dominant consumer) —
+// the same 5 GiB the doctor command passed inline before U5.
+const diskMinBytes = 5 << 30
+
+// Check is one named doctor probe (GT18). Run returns a non-empty one-line
+// detail ("what passed looks like") with no findings for a green row, or
+// ("", findings) to color the row — SeverityWarning yellow, SeverityError
+// red. Run returns the detail (rather than mutating a Detail field: a
+// value-slice element cannot be mutated by its own closure) and a SLICE of
+// findings (inotify and spoke-reachability are multi-finding — a single
+// pointer would drop entries from the documented findings array); the U5
+// ledger records both deviations from the plan sketch.
+type Check struct {
+	Name string // stable id, e.g. "container-runtime" — part of the JSON contract
+	Run  func() (string, []diag.Finding)
+}
+
+// CheckResult is one executed Check: the material of one checklist row.
+type CheckResult struct {
+	Name     string
+	Detail   string         // green rows: what passed looks like; else ""
+	Findings []diag.Finding // empty on green
+}
+
+// Status returns the row verdict: "ok" (no findings), "warn", or "fail"
+// (any error finding — the exit-1 driver, GT18). Any finding at all
+// forfeits green; none of today's checks emits SeverityInfo.
+func (r CheckResult) Status() string {
+	s := "ok"
+	for _, f := range r.Findings {
+		if f.Severity == diag.SeverityError {
+			return "fail"
+		}
+		s = "warn"
+	}
+	return s
+}
+
+// Worst returns the finding that colors the row — the first error, else
+// the first finding; nil on green.
+func (r CheckResult) Worst() *diag.Finding {
+	for i := range r.Findings {
+		if r.Findings[i].Severity == diag.SeverityError {
+			return &r.Findings[i]
+		}
+	}
+	if len(r.Findings) == 0 {
+		return nil
+	}
+	return &r.Findings[0]
+}
+
+// RunChecks executes checks in registration order, one result per check.
+func RunChecks(checks []Check) []CheckResult {
+	results := make([]CheckResult, 0, len(checks))
+	for _, c := range checks {
+		detail, findings := c.Run()
+		results = append(results, CheckResult{Name: c.Name, Detail: detail, Findings: findings})
+	}
+	return results
+}
+
+// one lifts a single optional finding into Run's slice form.
+func one(f *diag.Finding) []diag.Finding {
+	if f == nil {
+		return nil
+	}
+	return []diag.Finding{*f}
+}
+
+// All assembles the host-side tri-state checklist for this cube (GT18),
+// each entry wrapping its existing Check* func unchanged: container-runtime
+// (kind clusters — the provider gate the doctor command always applied),
+// gateway-port (and http-port when the opt-in spec.gateway.httpPort is
+// set), disk-space, inotify (linux hosts), git-cli. A check that cannot
+// apply to this cube/host is not registered — a row always means "this was
+// probed now"; vacuous passes that WERE probed (git-cli with no
+// git-sourced refs) stay registered and say so in their detail.
+// spoke-reachability is not assembled here: it needs a live cluster
+// client, so the doctor command appends it when a connection exists.
+func All(cube *config.Cube, clusterExists bool) []Check {
+	var checks []Check
+	if cube.Spec.Cluster.Provider == "kind" {
+		checks = append(checks, Check{Name: "container-runtime", Run: func() (string, []diag.Finding) {
+			if f := CheckRuntime(); f != nil {
+				return "", one(f)
+			}
+			for _, bin := range runtimeBins {
+				if _, err := exec.LookPath(bin); err == nil {
+					return bin + " on PATH", nil
+				}
+			}
+			return "container runtime on PATH", nil
+		}})
+	}
+	gw := cube.Spec.Gateway
+	checks = append(checks, Check{Name: "gateway-port", Run: func() (string, []diag.Finding) {
+		if f := CheckPortFree(gw.Port, clusterExists); f != nil {
+			return "", one(f)
+		}
+		return fmt.Sprintf("port %d free", gw.Port), nil
+	}})
+	if gw.HTTPPort > 0 {
+		checks = append(checks, Check{Name: "http-port", Run: func() (string, []diag.Finding) {
+			if f := CheckHostPortFree(gw.HTTPPort, clusterExists, "spec.gateway.httpPort"); f != nil {
+				return "", one(f)
+			}
+			return fmt.Sprintf("port %d free", gw.HTTPPort), nil
+		}})
+	}
+	if dir, err := trust.Dir(); err == nil {
+		checks = append(checks, Check{Name: "disk-space", Run: func() (string, []diag.Finding) {
+			if f := CheckDiskSpace(dir, diskMinBytes); f != nil {
+				return "", one(f)
+			}
+			return fmt.Sprintf("≥ %d GiB free at %s", diskMinBytes>>30, dir), nil
+		}})
+	}
+	if goruntime.GOOS == "linux" {
+		checks = append(checks, Check{Name: "inotify", Run: func() (string, []diag.Finding) {
+			if fs := CheckInotify(); len(fs) > 0 {
+				return "", fs
+			}
+			return "inotify limits at or above kind's needs", nil
+		}})
+	}
+	checks = append(checks, Check{Name: "git-cli", Run: func() (string, []diag.Finding) {
+		refs := packRefsToFetch(cube)
+		if f := CheckGitCLI(refs); f != nil {
+			return "", one(f)
+		}
+		for _, r := range refs {
+			if pack.NeedsGitCLI(r) {
+				return "git CLI on PATH", nil
+			}
+		}
+		return "no git-sourced pack refs — git not needed", nil
+	}})
+	return checks
+}
+
+// packRefsToFetch lists every ref `up` would fetch: spec.packs plus the
+// gateway pack (its ref override may also be a git source) — the same scan
+// the doctor command performed inline before U5.
+func packRefsToFetch(cube *config.Cube) []string {
+	refs := make([]string, 0, len(cube.Spec.Packs)+1)
+	for _, p := range cube.Spec.Packs {
+		refs = append(refs, p.Ref)
+	}
+	return append(refs, cube.Spec.Gateway.PackRef())
 }

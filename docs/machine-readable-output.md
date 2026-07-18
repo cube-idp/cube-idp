@@ -311,6 +311,19 @@ behavior is identical to text mode.
       "remediation": "if this is not cube-idp's gateway, stop whatever binds port 8443 or change spec.gateway.port"
     }
   ],
+  "checks": [
+    {
+      "name": "container-runtime",
+      "status": "ok",
+      "detail": "docker on PATH"
+    },
+    {
+      "name": "gateway-port",
+      "status": "fail",
+      "code": "CUBE-0102",
+      "message": "port 8443 is already in use"
+    }
+  ],
   "errors": true
 }
 ```
@@ -318,10 +331,12 @@ behavior is identical to text mode.
 | Field | Type | Meaning |
 |---|---|---|
 | `findings` | array | Every finding: `code` (`CUBE-xxxx`), `severity` (`error` \| `warning` \| `info`), `message`, `remediation`. `[]` (never `null`) when clean. |
-| `errors` | bool | Whether any finding is an error; `true` also makes the command exit 1. |
+| `checks` | array | **Additive (Phase 5, GT18).** One row per executed doctor check — passes included, that is the point. `name` is the stable check id (`container-runtime`, `gateway-port`, `http-port`, `disk-space`, `inotify`, `git-cli`, `spoke-reachability`); `status` is `ok` \| `warn` \| `fail`; `detail` is present on `ok` rows ("what passed looks like"); `code` + `message` (the worst finding) are present on `warn`/`fail` rows, with every underlying finding still in `findings`. A check that cannot apply to this cube/host (no `httpPort`, non-linux, no spokes, no reachable cluster) has no row. |
+| `errors` | bool | Whether any finding is an error; `true` also makes the command exit 1 (a `fail` check row always implies an error finding). |
 
 The findings array is designed for CI annotation: each entry carries the
-typed code and severity a PR annotator needs.
+typed code and severity a PR annotator needs; the checks array mirrors the
+human tri-state checklist row for row.
 
 ### `cube-idp get secrets --output json`
 
