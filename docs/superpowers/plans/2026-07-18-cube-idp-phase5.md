@@ -1428,7 +1428,7 @@ HANDOFF: S4 consumes: hub secret naming cube-idp-spoke-<name> in ns argocd (labe
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(fable-s4-b67ed6f3, 2026-07-18T10:01:17Z)
 BRANCH: p5/s4-spoke-status (merged: -)
 COMMITS: -
 FINDINGS: -
@@ -1790,7 +1790,7 @@ func engine.ApplyTuning(objs []*unstructured.Unstructured, v *config.EngineTunin
   (`internal/engine/argocd/argocd.go:94`); `config render-cluster`
   precedent in `cmd/config.go` (CUBE-0004 pattern).
 
-- [ ] **Step 1: Failing tune tests** — `internal/engine/tune_test.go`:
+- [x] **Step 1: Failing tune tests** — `internal/engine/tune_test.go`:
 
 ```go
 package engine
@@ -1863,7 +1863,7 @@ func TestApplyTuningNilIsNoop(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Verify fail** — Run:
+- [x] **Step 2: Verify fail** — Run:
   `go test ./internal/engine/ -run TestApplyTuning -v`
   Expected: FAIL — ApplyTuning undefined (config types too).
 
