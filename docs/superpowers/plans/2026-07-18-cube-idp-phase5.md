@@ -2220,7 +2220,7 @@ func All(cube *config.Cube, clusterExists bool) []Check
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(b67ed6f3-6188-4eca-ba99-88e5dad89e07, 2026-07-18T10:36:51Z)
 BRANCH: p5/u5-doctor-checklist (merged: -)
 COMMITS: -
 FINDINGS: -
