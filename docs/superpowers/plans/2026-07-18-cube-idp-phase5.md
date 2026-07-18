@@ -2549,7 +2549,13 @@ COMMITS: $ROOT: 7fad66c feat(pack): publish + index build/push — the
 FINDINGS: (1) Step 4 OWNER GATE NOT run (dispatch: not pre-authorized) —
   its box is deliberately unticked: no GitHub repo created, no secret set,
   nothing pushed anywhere; Steps 5-7 executed locally per the gate's own
-  fallback. Exact owner commands in HANDOFF. (2) VERIFY-API digest
+  fallback. Exact owner commands in HANDOFF. — ADDENDUM (orchestrator,
+  owner pre-authorization 2026-07-18): gate CLOSED — cube-idp/packs
+  created public, $PACKS main pushed (origin
+  https://github.com/cube-idp/packs); CUBE_IDP_READ_TOKEN deliberately
+  NOT set: cube-idp/cube-idp is already PUBLIC so the token's only
+  purpose is gone (P4 drops/guards the CI checkout token input
+  accordingly). (2) VERIFY-API digest
   sourcing: internal/oci exports NO offline digest helper (pushPackDirTo
   is an unexported oras.Target seam, and P2's Files list excludes
   internal/oci), so per the plan's stated fallback `index build` takes
@@ -3246,7 +3252,11 @@ HANDOFF: pack.FetchCatalog is the ONE catalog entrypoint: default
   branch main…})` instead of `oci.PushRendered` + OCI deliver.
   Every pack's D11 record carries `delivery: oci|repo` (GT19; empty
   `PackRef.Delivery` records as `oci`), surfaced by a Pack CRD
-  `additionalPrinterColumns` entry `DELIVERY`.
+  `additionalPrinterColumns` entry `DELIVERY`. Ratified (owner,
+  2026-07-18, closing U4's open call): repo-delivered packs honor
+  `extraManifests` exactly like OCI-delivered ones — deliverPackRepo
+  writes the RenderWith output (values + extras applied); cube.yaml is
+  the source of truth, the Gitea repo is the editable working copy.
 - Consumes: `gitea.EnsureRepo` (`internal/gitea/client.go:62`),
   `syncer.SyncOnce(ctx, deps Deps, dir string)`
   (`internal/syncer/syncer.go:88` — VERIFY-API its `Deps` fields; repo
