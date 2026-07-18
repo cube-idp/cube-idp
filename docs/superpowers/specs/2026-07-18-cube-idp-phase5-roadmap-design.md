@@ -18,7 +18,7 @@ surface:
 1. Packs live in a public monorepo and ship as OCI artifacts with
    GitHub-native provenance attestations — the downloaded binary needs
    nothing else (closes F12).
-2. The pack fleet grows from 7 to ~17 (10 confirmed new packs across 9
+2. The pack fleet grows from 7 to ~19 (12 confirmed new packs across 11
    Wave A tasks), each with CI conformance and doctor coverage.
 3. CLI UX gaps close: visible cluster provisioning, opt-in HTTP gateway
    port, remote pack catalog, engine install knobs.
@@ -94,7 +94,12 @@ Confirmed: `crossplane-core` · `kyverno` · `kyverno-policies` (curated
 default policies, separate so they stay optional) · `cloudnativepg` ·
 `argo-rollouts` (plain install first; per-gateway traffic-shifting is a
 follow-up) · `argo-events` · `argo-workflows` · `prometheus-stack` +
-`grafana` · `kargo`.
+`grafana` · `kargo` · `floci` + `floci-ui` (owner, 2026-07-18: the
+cloud-emulator pair — floci is an AWS-compatible local emulator, floci-ui
+its console; fills the local-cloud-dev slot the dropped localstack left.
+Docker-only upstream, so both are authored-manifest packs; in-cluster the
+core services work but container-backed ones — Lambda/RDS/ECS — do not,
+since kind nodes have no docker socket).
 
 `kgateway` and `openbao` are **parked** with the OpenChoreo research
 (decision 6) — not Wave A candidates in this phase.
@@ -238,7 +243,7 @@ public, scheduled when the org flips the main repo public.
 W0.T1 ──► W0.T2 ──► { W0.T3, W0.T4, W0.T5 }        (serial gate, then 3-wide)
                        │
                        ▼
-Wave A: 9-11 pack tasks, fully parallel             (after W0)
+Wave A: 11 pack tasks, fully parallel               (after W0)
 Wave C: C1 Gitea delivery                           (after W0)
 Wave B: B1, B2, B4 anytime; B3 after index format   (parallel with W0)
 Wave D: spokes v1                                   (anytime, independent)

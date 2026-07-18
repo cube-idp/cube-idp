@@ -227,7 +227,7 @@ any owner override in FINDINGS of the affected task and update this block.
 | P5 | P | $PACKS+docs | `p5/p5-pack-attest` | P2 | GitHub attestations in publish CI + `gh attestation verify` docs |
 | P6 | P | $ROOT | `p5/p6-remote-catalog` | P2 | index-backed catalog: `pack list --available`, wizard, install |
 | P7 | P | $ROOT | `p5/p7-gitea-delivery` | P4 | per-pack `delivery: repo` via SyncOnce + DeliverGit |
-| A1–A9 | A | $PACKS | `p5/a<N>-<pack>` | P3 | one new pack each — see Wave A template + parameter table |
+| A1–A11 | A | $PACKS | `p5/a<N>-<pack>` | P3 | one new pack each — see Wave A template + parameter table |
 
 \* P2 also adds the `pack publish` / `pack index` commands in $ROOT.
 
@@ -1965,7 +1965,15 @@ HANDOFF: -
      `internal/pack/helm.go:138`).
   4. **Values** — merge order: chart defaults ← pack.cue/chart.yaml
      defaults ← user `values:` ← substitution; numbers normalized
-     int/float64.
+     int/float64. MUST document the per-kind semantics explicitly
+     (verified against `internal/pack/render.go:33-105`): user `values:`
+     are ALWAYS validated against the pack's `#Values` CUE schema when one
+     is declared, but they are CONSUMED only by the `chart.yaml` helm
+     render — a manifests-only or kustomize pack's values are validated
+     then unused (raw manifests get only the `${GATEWAY_*}` byte
+     substitution). Contract rule: packs without `chart.yaml` SHOULD NOT
+     declare `#Values`; authors needing parametrization there use the
+     `${GATEWAY_*}` variables or add a chart.
   5. **Artifact** — OCI media types exactly as `internal/oci/pushdir.go`
      produces (name them from the source), tag = pack version, digest
      immutability, `<name>/vX.Y.Z` git-tag convention (GT9).
@@ -2678,7 +2686,7 @@ HANDOFF: -
 
 ## Lane A — Wave A pack authoring  `[repo: $PACKS]`
 
-Nine tasks, one pack each, ALL depending only on P3 (and their `Depends`
+Eleven tasks, one pack each, ALL depending only on P3 (and their `Depends`
 column below). Fully parallel with each other ONCE P3 is DONE — but each A
 agent works only under `$PACKS/packs/<name>/`, so conflicts are
 structurally impossible; claim ANY unclaimed A task whose Depends are
@@ -2701,6 +2709,8 @@ by its parameter row. The template + row IS the task spec — treat every
 | A7 | `argo-workflows` | `p5/a7-argo-workflows` | P3 | manifests | upstream `install.yaml` (pin) | `argo` | deploys `workflow-controller`, `argo-server` Available | `https://workflows.${GATEWAY_HOST}` (server, `--auth-mode=server` for local IDP use) |
 | A8 | `prometheus-stack` | `p5/a8-prometheus-stack` | P3 | helm | chart `kube-prometheus-stack` from `https://prometheus-community.github.io/helm-charts` (pin) | `monitoring` | deploy `prometheus-stack-grafana` + operator Available, statefulset prometheus Ready | `https://grafana.${GATEWAY_HOST}`, authSecretRef grafana admin secret + impliedFields username admin |
 | A9 | `kargo` | `p5/a9-kargo` | P3 (cert-manager pack must be in the conformance cube — see template step 3 note) | helm | chart `kargo` from `oci://ghcr.io/akuity/kargo-charts/kargo` (pin) | `kargo` | deploys `kargo-api`, `kargo-controller` Available | `https://kargo.${GATEWAY_HOST}` |
+| A10 | `floci` | `p5/a10-floci` | P3 | manifests (authored) | Docker-only upstream (github.com/floci-io/floci, AWS emulator) — author ns+Deployment+Service pinning image `floci/floci:1.5.33` (verify latest stable at execution; record tag+sha256). NO docker-socket mount: kind nodes run containerd, so container-backed services (Lambda/RDS/ECS…) are unavailable — core services (S3, DynamoDB, SQS, …) only; state this in the pack README | `floci` | deploy `floci` Available | `https://floci.${GATEWAY_HOST}` → Service port 4566 |
+| A11 | `floci-ui` | `p5/a11-floci-ui` | P3 + A10 | manifests (authored) | Docker-only upstream (github.com/floci-io/floci-ui, web console) — author Deployment+Service pinning image `floci/floci-ui:0.2.0` (verify at execution: serving ports 4500 UI / 4501 API and env names); set env `FLOCI_ENDPOINT=http://floci.floci.svc.cluster.local:4566` | `floci` (shared with A10) | deploy `floci-ui` Available | `https://floci-ui.${GATEWAY_HOST}` → Service port 4500 |
 
 ### Template (every A task executes exactly these steps)
 
@@ -2721,12 +2731,15 @@ description: "<one line — user-facing, shows in cube-idp pack list>"
   chart would otherwise float. `manifests` kind: download the pinned
   upstream YAML into `manifests/NN-*.yaml` files (numbered, namespace
   object first — copy argocd's layout), strip nothing, add nothing except
-  the namespace if upstream omits it. Record the exact upstream
-  URL+version+sha256 as comments at the top of the vendored file(s) AND
-  in FINDINGS.
+  the namespace if upstream omits it. `manifests (authored)` kind (the
+  upstream is Docker-only, no YAML exists): write minimal
+  namespace+Deployment+Service manifests yourself, image pinned by tag
+  AND digest, resources set, no extras — the parameter row's notes are
+  the source of truth. Record the exact upstream URL+version+sha256 as
+  comments at the top of the vendored/authored file(s) AND in FINDINGS.
 - [ ] **Step 3: Conformance.** `bash hack/conformance.sh <name>` —
-  Expected: `CONFORMANT: <name>`, cluster torn down. A3 (needs kyverno)
-  and A9 (needs cert-manager) get their dependency added to the packs
+  Expected: `CONFORMANT: <name>`, cluster torn down. A3 (needs kyverno),
+  A9 (needs cert-manager) and A11 (needs floci) get their dependency added to the packs
   list of a COPY of the conformance template via a `EXTRA_PACKS`
   override the script already supports — if it does not, add
   `CUBE_IDP_CONFORMANCE_EXTRA_PACK_DIR` support to conformance.sh in
@@ -2756,6 +2769,8 @@ A6 STATUS: UNCLAIMED  BRANCH: p5/a6-argo-events       COMMITS: -  FINDINGS: -  R
 A7 STATUS: UNCLAIMED  BRANCH: p5/a7-argo-workflows    COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
 A8 STATUS: UNCLAIMED  BRANCH: p5/a8-prometheus-stack  COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
 A9 STATUS: UNCLAIMED  BRANCH: p5/a9-kargo             COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
+A10 STATUS: UNCLAIMED BRANCH: p5/a10-floci            COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
+A11 STATUS: UNCLAIMED BRANCH: p5/a11-floci-ui         COMMITS: -  FINDINGS: -  REVIEW: -  BLOCKERS: -  HANDOFF: -
 ```
 
 ---
@@ -2764,7 +2779,7 @@ A9 STATUS: UNCLAIMED  BRANCH: p5/a9-kargo             COMMITS: -  FINDINGS: -  R
 
 ```text
 Immediately dispatchable in parallel: S1, U1, P1     (three lanes, three agents)
-Then:  S2→S3→S4   U2→U3   P2→{P3, P5, P6}   P3→P4→P7   P3→A1..A9 (any order, parallel)
+Then:  S2→S3→S4   U2→U3   P2→{P3, P5, P6}   P3→P4→P7   P3→A1..A11 (any order, parallel)
 Owner gates: P2 Step 4 (gh repo create + CUBE_IDP_READ_TOKEN),
              P4 Step 2 (publish 0.2.0), A Step 6 (tags).
 ```
