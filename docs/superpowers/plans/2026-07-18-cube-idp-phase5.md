@@ -2640,7 +2640,7 @@ HANDOFF: $PACKS exists at the $ROOT sibling path `../cube-idp-packs`,
   `tests/e2e/e2e_test.go`), `cube-idp status --exit-status` (W2.T12) as
   the health gate, GT14 port override.
 
-- [ ] **Step 1: `hack/conformance.sh`:**
+- [x] **Step 1: `hack/conformance.sh`:**
 
 ```bash
 #!/usr/bin/env bash
@@ -2686,7 +2686,7 @@ spec:
   `conformance_config_gateway.tmpl.yaml` (same file, no `packs:` list,
   `gateway.pack` substituted). Write both templates.
 
-- [ ] **Step 2: `.github/workflows/conformance.yml`:**
+- [x] **Step 2: `.github/workflows/conformance.yml`:**
 
 ```yaml
 name: conformance
@@ -2722,7 +2722,7 @@ jobs:
         env: {CUBE_IDP_E2E_GATEWAY_PORT: '18443'}
 ```
 
-- [ ] **Step 3: Local verification** — run the harness once against a
+- [x] **Step 3: Local verification** — run the harness once against a
   REAL pack to prove the loop closes (this is the task's live leg;
   requires docker locally, GT14 port):
   `cd $PACKS && bash hack/conformance.sh gitea $ROOT_BUILT_BINARY` — but
@@ -2733,19 +2733,70 @@ jobs:
   in FINDINGS. If docker is unavailable: BLOCKED per protocol — do not
   fake the leg.
 
-- [ ] **Step 4: Commit ($PACKS)** —
+- [x] **Step 4: Commit ($PACKS)** —
   `git add hack/ .github/ && git commit -m "ci: per-pack conformance harness — kind + up + exit-status gate"`
 
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(p3-agent-b67ed6f3, 2026-07-18T09:42:40Z)
-BRANCH: p5/p3-conformance (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE
+BRANCH: p5/p3-conformance (merged: yes — $PACKS dae8408; branch kept)
+COMMITS: $PACKS: 392d017 ci: per-pack conformance harness — kind + up +
+  exit-status gate; dae8408 merge: p5 P3 conformance (p5/p3-conformance).
+  $ROOT: ledger commits only (no code).
+FINDINGS: (1) Gateway-source bootstrap made concrete: the non-gateway
+  template's gateway.ref is a {{GATEWAY_REF}} placeholder; conformance.sh
+  defaults it to the plan's oci://ghcr.io/cube-idp/packs/traefik:0.2.0
+  and honors CUBE_IDP_CONFORMANCE_GATEWAY_REF — conformance.yml sets that
+  to the cube-idp-src checkout's packs/traefik (the plan NOTE named the
+  mechanism but its YAML lacked it). P4 drops the env var + checkout when
+  the published ref is live; NB traefik pack.cue is 0.1.0 today while the
+  default pins :0.2.0 — P4 owns making tag and default agree. (2) Step
+  3's suggested symlink does NOT work: the pack fetcher rejects a
+  symlinked pack dir — CUBE-4001 "cannot hash pack directory … is not a
+  directory" (Lstat semantics). Verified with a real COPY of
+  $ROOT/packs/gitea instead (same intent); symlink limitation is a
+  standing caveat for A-task agents. The failed run doubled as
+  negative-path evidence: the EXIT trap tore the half-up cluster down
+  cleanly. (3) Gateway special case per the plan NOTE: traefik|
+  envoy-gateway render conformance_config_gateway.tmpl.yaml (no packs
+  list, gateway.pack + gateway.ref = {{PACK_DIR}}); both templates
+  validated via `config render-cluster` (kind shape correct, 18443→
+  NodePort 30443). (4) Workflow hardened per the P2-recorded Actions
+  injection doctrine: origin/$GITHUB_BASE_REF and matrix.pack reach run:
+  only as quoted env vars (pack names are PR-author-controlled dir
+  names); `permissions: contents: read` added (publish.yml precedent).
+  (5) The changed-packs matrix filters through [ -d "packs/$p" ], so
+  deletion/rename PRs and non-dir files (packs/.gitkeep) no longer matrix
+  a nonexistent pack (the plan's pipeline would have). (6) conformance.sh
+  adds a fail-fast "no such pack" guard (mirrors publish-changed.sh)
+  before any cluster is created. (7) P2 stub's workflow_dispatch trigger
+  dropped (plan-verbatim triggers: pull_request paths packs/**) — a
+  dispatch run has no base ref to diff against. go-version '1.24' kept
+  (matches publish.yml; the toolchain line auto-hoists to go.mod's
+  1.26.2). (8) --exit-status is a --watch refinement; the one-shot
+  `status` used here already exits 1 iff any component is unhealthy —
+  flag kept plan-verbatim, harmless.
+REVIEW: bash -n + exec bit + yq parse of all three YAMLs green. Live leg
+  (docker + GT14 port 18443): `bash hack/conformance.sh gitea <binary
+  built from $ROOT main>` with the gateway override → up delivered
+  traefik@0.1.0 + gitea@0.1.0, "[health] 2 component(s) ready", one-shot
+  status ✔ cube-idp-gitea / ✔ cube-idp-traefik (35 objects), printed
+  "CONFORMANT: gitea"; afterwards `kind get clusters` lists only the
+  unrelated pre-existing cluster — conf-gitea absent. Both Expected lines
+  met. $ROOT untouched, so no Go gate due; $PACKS tree clean post-merge.
+BLOCKERS: none
+HANDOFF: The conformance entrypoint for every A task and CI:
+  `bash hack/conformance.sh <pack> [cube-idp-binary]` from $PACKS (binary
+  on PATH or absolute). COPY — never symlink — any not-yet-migrated pack
+  into $PACKS/packs/ first; local runs need
+  CUBE_IDP_CONFORMANCE_GATEWAY_REF=<cube-idp-checkout>/packs/traefik
+  until P4 publishes the gateway pack. Gateway packs under test render
+  the second template (no pack list). CI matrixes changed packs/** dirs
+  per PR; it cannot run until P2's owner gate (repo + CUBE_IDP_READ_TOKEN)
+  is done. For P4: swap/keep the {{GATEWAY_REF}} default, drop the CI
+  override + cube-idp-src checkout, and publish a traefik tag that
+  matches the default ref.
 ```
 
 ---
