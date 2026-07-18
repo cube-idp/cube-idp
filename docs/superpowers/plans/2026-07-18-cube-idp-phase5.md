@@ -2336,7 +2336,7 @@ func TestReposPacksSatisfyContractV1(t *testing.T) {
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(fable-b67ed6f3, 2026-07-18T09:06:12Z)
 BRANCH: p5/p1-pack-contract (merged: -)
 COMMITS: -
 FINDINGS: -
