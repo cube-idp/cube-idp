@@ -51,7 +51,7 @@ manually-dispatched agent per task, ledger ticks in the plan file.
 | 10 | Renovate/dependabot in packs repo | **Parked** for a later phase |
 | 11 | The values stone | `values:` = **helm values only** (owner, 2026-07-18): chartless `values:` → typed error; extras via **`packs[].extraManifests`** (any pack kind, `${GATEWAY_*}`-substituted, appended); customized installs show **CUSTOMIZED** in `kubectl get packs`. Vocabulary: values→helm, tuning→engine patches, extraManifests→appended objects |
 | 12 | Engine self-management | **Opt-in `engine.selfManage: true`, sourced from zot** (never Gitea): render → push `cube-engine` artifact → engine reconciles itself; direct SSA only on first install and unhealthy-recovery (owner-driven, 2026-07-18) |
-| 13 | Gitea guarantee | Gitea stays an **optional pack**: `delivery: repo` packs validate gitea presence at load (typed error; gitea itself never repo-delivered), gitea hard-ordered right after the gateway, repo delivery gated on gitea API readiness; "gitea as core" parked as a product question |
+| 13 | Gitea guarantee | Gitea stays an **optional pack**: `delivery: repo` packs validate gitea presence at load (typed error; gitea itself never repo-delivered), gitea hard-ordered right after the gateway, repo delivery gated on gitea API readiness; "gitea as core" parked as a product question; a DELIVERY printer column in `kubectl get packs` shows `oci` or `repo` per pack |
 | 14 | Doctor UX | **Tri-state checklist** (owner, 2026-07-18): every check renders one green ✔ / yellow ⚠ / red ✗ row — passes shown, not silent; exit 1 iff any red; additive `checks` JSON array |
 | 15 | Plugins platform | **`cube-idp/plugins` public monorepo mirroring packs** (owner, 2026-07-18): dedicated folder per plugin, `<name>/vX.Y.Z` tags, per-platform OCI artifacts + discovery index + keyless GitHub attestations; `plugin install` resolves the index by digest and hands off to the unchanged sha256 trust-consent flow |
 | 16 | CLI coherence gate | A single **final task** (owner, 2026-07-18): command-tree golden fence (`TestCommandTreeGolden`), conventions audit (-f/--yes/prompt-doctrine), README + machine-readable docs sweep — claimed only when all other main-repo tasks are DONE |
@@ -145,7 +145,9 @@ since kind nodes have no docker socket).
   pushes the rendered pack, and points the engine at the repo instead of
   the OCI ref — building on the Phase 3 repo/syncer subsystem
   (`deployRepo`, `cube-idp sync`). The payoff: an editable, in-cluster
-  fork of any pack (edit in Gitea UI → engine reconciles).
+  fork of any pack (edit in Gitea UI → engine reconciles). Operator
+  visibility: every pack's cluster record carries `delivery: oci|repo`,
+  shown as a DELIVERY printer column in `kubectl get packs`.
 
 ### Wave D — spokes v1 (independent of all other waves)
 

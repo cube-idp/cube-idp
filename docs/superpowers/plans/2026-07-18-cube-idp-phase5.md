@@ -60,11 +60,13 @@ the first task in that lane whose STATUS is `UNCLAIMED` and whose Depends
 are all DONE. Two agents may hold IN_PROGRESS tasks simultaneously only if
 they are in different lanes.
 
-**Merge-conflict doctrine:** lanes touch disjoint files by design; the two
+**Merge-conflict doctrine:** lanes touch disjoint files by design; the
 deliberate shared files are `internal/config/types.go` /
-`internal/config/schema.cue` (S1, U2, U3, P7 all add fields) and
+`internal/config/schema.cue` (S1, U2, U3, P7 all add fields),
 `internal/diag/codes.go` + `internal/diag/registry.go` (most tasks append
-codes). These are APPEND-ONLY additions — on merge conflict, take both
+codes), and `internal/pack/manifests/pack-crd.yaml` printer columns + the
+D11 record-writer fields in `internal/up/up.go` (U4 CUSTOMIZED, P7
+DELIVERY). These are APPEND-ONLY additions — on merge conflict, take both
 sides, run the task-level gate, and note it in FINDINGS. Any other
 conflict: STOP, set BLOCKED.
 
@@ -256,6 +258,12 @@ any owner override in FINDINGS of the affected task and update this block.
   GT13). Exit semantics preserved: exit 1 iff any red. `-o json` gains an
   additive `checks` array. Passing checks are SHOWN, not silent — that is
   the point.
+- GT19 (owner, 2026-07-18) Delivery visibility: every pack's D11 record
+  carries `delivery: oci|repo` (the record writer maps an empty
+  `PackRef.Delivery` to `oci`), and the Pack CRD gains an
+  `additionalPrinterColumns` entry **DELIVERY** — repo-delivered packs
+  are visible to the operator in `kubectl get packs`, beside U4's
+  CUSTOMIZED column. (P7 implements.)
 
 ---
 
@@ -278,7 +286,7 @@ any owner override in FINDINGS of the affected task and update this block.
 | P4 | P | both | `p5/p4-migrate-f12` | P3 | move 7 packs, oci:// gateway default, F12 closed, e2e digest-pinned |
 | P5 | P | $PACKS+docs | `p5/p5-pack-attest` | P2 | GitHub attestations in publish CI + `gh attestation verify` docs |
 | P6 | P | $ROOT | `p5/p6-remote-catalog` | P2 | index-backed catalog: `pack list --available`, wizard, install |
-| P7 | P | $ROOT | `p5/p7-gitea-delivery` | P4 | per-pack `delivery: repo` via SyncOnce + DeliverGit; gitea validation + ordering + readiness gate |
+| P7 | P | $ROOT | `p5/p7-gitea-delivery` | P4 | per-pack `delivery: repo` via SyncOnce + DeliverGit; gitea validation + ordering + readiness gate; DELIVERY column (GT19) |
 | P8 | P | $ROOT | `p5/p8-engine-selfmanage` | P7 + U3 | opt-in engine self-management from zot (GT16) |
 | P9 | P | $PLUGINS* | `p5/p9-plugins-repo` | P8 | plugins repo scaffold: per-platform artifacts, index, attestations (GT17) |
 | P10 | P | $ROOT | `p5/p10-plugin-install` | P9 | `plugin install` from the official index → digest pull → existing trust consent |
@@ -2913,10 +2921,11 @@ HANDOFF: -
 
 **Files:**
 - Modify: `internal/config/types.go` (PackRef.Delivery) + `schema.cue`,
-  `internal/up/up.go` (pack-loop branch), `cmd/pack.go`
-  (`pack install --via repo`), `internal/diag/codes.go` + `registry.go`
-  (reuse 73xx repo codes where they fit; new code only if none fits —
-  FINDINGS justifies)
+  `internal/up/up.go` (pack-loop branch + D11 record `delivery` field),
+  `internal/pack/manifests/pack-crd.yaml` (DELIVERY printer column),
+  `cmd/pack.go` (`pack install --via repo`), `internal/diag/codes.go` +
+  `registry.go` (reuse 73xx repo codes where they fit; new code only if
+  none fits — FINDINGS justifies)
 - Test: `internal/config/load_test.go`, `internal/up/up_test.go` (unit
   seam), e2e leg
 
@@ -2929,6 +2938,9 @@ HANDOFF: -
   `syncer.SyncOnce(ctx, deps, dir)` pushes the rendered manifests →
   `eng.DeliverGit(ctx, name, engine.GitSource{…in-cluster gitea URL,
   branch main…})` instead of `oci.PushRendered` + OCI deliver.
+  Every pack's D11 record carries `delivery: oci|repo` (GT19; empty
+  `PackRef.Delivery` records as `oci`), surfaced by a Pack CRD
+  `additionalPrinterColumns` entry `DELIVERY`.
 - Consumes: `gitea.EnsureRepo` (`internal/gitea/client.go:62`),
   `syncer.SyncOnce(ctx, deps Deps, dir string)`
   (`internal/syncer/syncer.go:88` — VERIFY-API its `Deps` fields; repo
@@ -2972,12 +2984,22 @@ HANDOFF: -
 - [ ] **Step 3: `pack install --via repo`** — flag sets
   `Delivery: "repo"` on the written PackRef; `--via oci` (default)
   writes nothing. Test asserts the yaml.
-- [ ] **Step 4: e2e leg (gated, GT14)** — extend the existing e2e with
+- [ ] **Step 4: DELIVERY surface (GT19).** Add to the Pack CRD
+  (`internal/pack/manifests/pack-crd.yaml`) an `additionalPrinterColumns`
+  entry `DELIVERY` (JSONPath onto the record field), and set
+  `delivery: oci|repo` in the D11 record writer from `ref.Delivery`
+  (empty maps to `oci` — every pack shows a value, repo-delivered packs
+  stand out). Unit-test the record object's field for both modes; the
+  visual `kubectl get packs` check rides the e2e leg below. CRD re-apply
+  is idempotent (same note as U4 Step 5); U4 appends to the same two
+  files from lane U — the append-only doctrine covers that merge.
+- [ ] **Step 5: e2e leg (gated, GT14)** — extend the existing e2e with
   one repo-delivered pack: after `up`, assert the gitea repo
-  `cube-pack-<name>` exists (via the gateway API the way repo tests do)
-  and the engine source object is a Git one (flux GitRepository /
-  argocd Application spec.source.repoURL). Gated like the other e2e legs.
-- [ ] **Step 5: Gate + fences + commit** —
+  `cube-pack-<name>` exists (via the gateway API the way repo tests do),
+  the engine source object is a Git one (flux GitRepository /
+  argocd Application spec.source.repoURL), and the pack's Pack record
+  reports `delivery: repo`. Gated like the other e2e legs.
+- [ ] **Step 6: Gate + fences + commit** —
   `git add internal/ cmd/ tests/ && git commit -m "feat(pack): per-pack delivery: repo — rendered packs as engine-watched Gitea repos"`
 
 #### Outcome
