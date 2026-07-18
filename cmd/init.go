@@ -79,6 +79,11 @@ func newInitCmd() *cobra.Command {
 			}
 			wizardRan := false
 			if wizardApplicable(c) {
+				// P6: the wizard's pack multi-select offers the remote
+				// catalog (built-in fallback when the index is unreachable).
+				// Loaded only on the interactive path — flag-driven runs,
+				// CI, and the e2e suite never touch the network here.
+				wiz.Catalog = loadPackCatalog(c.Context(), c.OutOrStdout())
 				if err := runInitWizard(c, &name, &engineType, &wiz); err != nil {
 					return err
 				}
@@ -145,12 +150,13 @@ func newInitCmd() *cobra.Command {
 // engine stay in their existing flag-backed vars). It is applied to the cube
 // after config.Default + engine/local resolution by applyWizardToCube.
 type initWizardResult struct {
-	Provider    string   // "kind" | "existing"
-	Context     string   // kubeconfig context, when Provider == "existing"
+	Provider    string         // "kind" | "existing"
+	Context     string         // kubeconfig context, when Provider == "existing"
 	GatewayHost string
 	GatewayPort int
-	GatewayPack string   // "traefik" | "envoy-gateway" (R7a)
-	Packs       []string // selected optional-pack catalog names
+	GatewayPack string         // "traefik" | "envoy-gateway" (R7a)
+	Packs       []string       // selected optional-pack catalog names
+	Catalog     []catalogEntry // the loaded pack catalog the multi-select offered (P6)
 }
 
 // applyWizardToCube overlays the wizard answers onto cube, keeping the written
@@ -174,6 +180,35 @@ func applyWizardToCube(cube *config.Cube, r initWizardResult) {
 		cube.Spec.Gateway.Pack = r.GatewayPack
 	}
 	cube.Spec.Packs = filterSelectedPacks(cube.Spec.Packs, r.Packs)
+	// P6: a selected catalog pack OUTSIDE the built-in list was never in the
+	// default profile, so keeping the user's choice means appending its
+	// published ref (spec B3: the wizard discovers packs without a binary
+	// release). Built-in names never append here — their presence in the
+	// default list is engine/--local logic's decision (e.g. engine argocd
+	// drops the argocd pack; resurrecting it would re-trip CUBE-0005).
+	builtin := map[string]bool{}
+	for _, n := range packCatalogNames() {
+		builtin[n] = true
+	}
+	for _, name := range r.Packs {
+		if builtin[name] || packsContainName(cube.Spec.Packs, name) {
+			continue
+		}
+		if ref := catalogRef(r.Catalog, name); ref != "" {
+			cube.Spec.Packs = append(cube.Spec.Packs, config.PackRef{Ref: ref})
+		}
+	}
+}
+
+// packsContainName reports whether any pack ref already matches name by the
+// established substring convention (packCatalogName's rule).
+func packsContainName(packs []config.PackRef, name string) bool {
+	for _, p := range packs {
+		if strings.Contains(p.Ref, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // filterSelectedPacks keeps every pack whose catalog name (gitea/argocd, by
@@ -296,7 +331,7 @@ func runInitWizard(c *cobra.Command, name, engineType *string, res *initWizardRe
 				Value(&res.GatewayPack),
 			huh.NewMultiSelect[string]().
 				Title("Optional packs").
-				Options(packCatalogOptions()...).
+				Options(catalogOptions(res.Catalog)...).
 				Value(&res.Packs),
 		),
 	).WithOutput(c.OutOrStdout()).WithInput(c.InOrStdin()).WithAccessible(accessible)
