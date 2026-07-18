@@ -321,7 +321,7 @@ any owner override in FINDINGS of the affected task and update this block.
   config-mutating pattern (`cmd/pack.go`), prompt doctrine seams
   (`ui.PromptsAllowed`/`Confirm`).
 
-- [ ] **Step 1: Failing config tests** — append to
+- [x] **Step 1: Failing config tests** — append to
   `internal/config/load_test.go`:
 
 ```go
@@ -381,11 +381,11 @@ spec:
 }
 ```
 
-- [ ] **Step 2: Verify fail** — Run:
+- [x] **Step 2: Verify fail** — Run:
   `go test ./internal/config/ -run TestSpokes -v`
   Expected: FAIL — `cube.Spec.Spokes` undefined / CUE rejects `spokes`.
 
-- [ ] **Step 3: Implement config.** In `internal/config/types.go`, after
+- [x] **Step 3: Implement config.** In `internal/config/types.go`, after
   the `PackRef` type:
 
 ```go
@@ -462,14 +462,14 @@ error is a typed CUBE-8001 with a spoke-specific fix line rather than a
 generic CUBE-0002 schema failure. Keep both; the CUE `*"kind"|"existing"`
 must NOT be widened.
 
-- [ ] **Step 4: Verify pass** — Run:
+- [x] **Step 4: Verify pass** — Run:
   `go test ./internal/config/ -run TestSpokes -v`
   Expected: PASS (all four sub-assertions).
 
-- [ ] **Step 5: Commit** —
+- [x] **Step 5: Commit** —
   `git add internal/config/ internal/diag/ && git commit -m "feat(config): spec.spokes schema + CUBE-8001 validation"`
 
-- [ ] **Step 6: Failing command tests** — create `cmd/spoke_test.go`:
+- [x] **Step 6: Failing command tests** — create `cmd/spoke_test.go`:
 
 ```go
 package cmd
@@ -535,10 +535,10 @@ VERIFY-API: `runCLI`/`mustRunCLI` — `cmd/pack_test.go` and
 name and signature; if none is exported for reuse, lift the one
 `pack_test.go` uses. Record the actual name in FINDINGS.
 
-- [ ] **Step 7: Verify fail** — Run: `go test ./cmd/ -run TestSpoke -v`
+- [x] **Step 7: Verify fail** — Run: `go test ./cmd/ -run TestSpoke -v`
   Expected: FAIL — `unknown command "spoke"`.
 
-- [ ] **Step 8: Implement `cmd/spoke.go`** — follow `cmd/pack.go`'s
+- [x] **Step 8: Implement `cmd/spoke.go`** — follow `cmd/pack.go`'s
   config-mutating pattern exactly (load → mutate → validate by round-trip
   → write). Complete file:
 
@@ -710,28 +710,28 @@ part of this step and rewire pack.go's call site). (b) `ui.Confirm` /
 surface; use the real method names (FINDINGS records drift). Register
 `newSpokeCmd()` in `cmd/root.go` alongside the other `AddCommand` calls.
 
-- [ ] **Step 9: Verify pass** — Run: `go test ./cmd/ -run TestSpoke -v`
+- [x] **Step 9: Verify pass** — Run: `go test ./cmd/ -run TestSpoke -v`
   Expected: PASS.
 
-- [ ] **Step 10: Fences + gate** — Run:
+- [x] **Step 10: Fences + gate** — Run:
   `go build ./... && go vet ./... && go test ./...` then
   `go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence'`
   Expected: all PASS (spoke add/list/remove emit only static Printer
   output; no new prompt reaches a producer).
 
-- [ ] **Step 11: Commit** —
+- [x] **Step 11: Commit** —
   `git add cmd/ internal/config/ && git commit -m "feat(cmd): spoke add/list/remove — declarative spokes in cube.yaml"`
 
 #### Outcome
 
 ```
-STATUS: IN_PROGRESS(b67ed6f3, 2026-07-18T09:05:50Z)
-BRANCH: p5/s1-spoke-config (merged: -)
-COMMITS: -
-FINDINGS: -
-REVIEW: -
-BLOCKERS: -
-HANDOFF: -
+STATUS: DONE_WITH_CONCERNS
+BRANCH: p5/s1-spoke-config (merged: yes)
+COMMITS: bc32ee5 feat(config): spec.spokes schema + CUBE-8001 validation; 22ab114 feat(cmd): spoke add/list/remove — declarative spokes in cube.yaml; 7fe48f6 merge: p5 S1 spoke-config (p5/s1-spoke-config)
+FINDINGS: (1) OWNER: the plan's crossValidate placement can never yield CUBE-8001 for a k3d spoke — CUE validates BEFORE decode, so the narrow spoke enum fails first with CUBE-0002 ("2 errors in empty disjunction", observed). Adaptation: validateSpokes runs as a best-effort pre-CUE probe pass in Load (typed yaml decode of spec.spokes from raw; malformed docs skip it and get CUE's canonical CUBE-0002); the CUE enum stays *"kind" | "existing" exactly as ordered; absent provider aliases the CUE default ("", "kind"). (2) OWNER: spoke cluster CUE block additionally allows `registry?:` (verbatim mirror of the hub's) — ClusterSpec.Registry is a non-pointer struct that ALWAYS marshals as `registry: {}` (types.go documents omitempty is a no-op there), so without it every spoke SaveValidated round-trip failed CUE "field not allowed"; alternative (pointer *RegistrySpec) would change hub marshal output. extraPorts/mounts/providerConfig stay disallowed for spokes. (3) config.SaveValidated did not exist: pack.go carried the save inline — lifted into internal/config.SaveValidated (load.go) and rewired packInstallRefs, per this task's VERIFY-API note (a). (4) ui drift: ui.NewFor takes io.Writer, not *cobra.Command; Printer has no Notef/Linef — Notef mapped to p.Step("spoke", ...) (state changes) and p.Warn (advisory); list rows via fmt.Fprintf. ui.Confirm is (in, out, ConfirmOpts) — spokeDeleteCluster adapted; non-TTY returns Default=false → CUBE-0010 with the --yes twin (doctrine intact). (5) No runCLI/mustRunCLI helper existed in cmd tests — defined spoke_test.go-local helpers wrapping NewRootCmd + SetOut/SetErr/SetIn + Execute (pack_test.go mechanics). (6) Added a TestPromptFenceNeverBlocksOnBufferStdin row "spoke remove --delete-cluster" (the stub's consent path is fenced per the table's doctrine). (7) diag.go package comment called 8xxx "release/bundle-integrity (reserved, unallocated)" — updated to "8xxx spoke (Phase 5)" per GT8; registry.go also needed ranges["8"] (TestRangeMeaningCoversAllCodes). (8) Steps 5/11 commit messages used verbatim plus the mandated Co-Authored-By trailer.
+REVIEW: TDD observed fail→pass both legs (Step 2: "cube.Spec.Spokes undefined"; Step 7: unknown command "spoke"; Steps 4/9: PASS). Task gate in worktree: go build && go vet && go test ./... all green; fence run go test ./internal/ui/... ./cmd/... -run 'TE|TestModeMatrixFence|TestPromptFence' green (incl. the new spoke fence row). Post-merge on main: go test ./... exit 0, 29 packages ok. Verified duplicate-add fails cleanly with file untouched, remove prunes the spokes key entirely (omitempty), k3d/dup/no-context all CUBE-8001.
+BLOCKERS: none
+HANDOFF: S2 creates internal/spoke (nothing exists there yet). Reuse config.SaveValidated for any config mutation. CUBE-8001 is taken (all S1 misuse cases); 8002/8003 are next and the 8xxx codes.go block + registry section + ranges["8"] already exist — append inside them. The spoke provider check lives in Load's pre-CUE probe (validateSpokes), NOT crossValidate — extend the probe if S3/S4 add spoke config rules. spokeDeleteCluster in cmd/spoke.go is the S1 stub returning a typed not-yet error after real consent — S3 replaces its tail with the provider call (keep the Confirm path and the promptfence row). Spoke kind cluster naming <cube>-spoke-<name> is already user-visible in remove's messages (GT7).
 ```
 
 ---
