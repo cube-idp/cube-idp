@@ -163,6 +163,33 @@ func TestGatewayServiceMalformed(t *testing.T) {
 	}
 }
 
+// TestPackDescriptionParsed pins contract v1's optional description field
+// (Phase 5 P1): a pack.cue `description: "…"` parses into Pack.Description —
+// P2's index artifact and P6's remote catalog read it from here.
+func TestPackDescriptionParsed(t *testing.T) {
+	dir := writePack(t, `name: "gitea"
+version: "0.1.0"
+description: "in-cluster git server"
+`)
+	p, err := Fetch(context.Background(), dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Description != "in-cluster git server" {
+		t.Fatalf("description not parsed: %q", p.Description)
+	}
+}
+
+// TestPackDescriptionOptional: packs predating the field load exactly as
+// before — Description stays "", no error (backward-compatible).
+func TestPackDescriptionOptional(t *testing.T) {
+	dir := writePack(t, "name: \"plain\"\nversion: \"0.1.0\"\n")
+	p, err := Fetch(context.Background(), dir, "")
+	if err != nil || p.Description != "" {
+		t.Fatalf("want empty Description, got %q (err %v)", p.Description, err)
+	}
+}
+
 func TestRenderKustomizeFailureIsTyped(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "pack.cue"), []byte("name: \"bad\"\nversion: \"0.1.0\"\n"), 0o644)

@@ -1,5 +1,6 @@
-name:    "backstage"
-version: "0.1.0"
+name:        "backstage"
+version:     "0.1.0"
+description: "developer portal"
 #Values: {
 	// nested under "backstage" to match the chart's actual values key
 	// (templates/backstage-deployment.yaml reads .Values.backstage.replicas;
