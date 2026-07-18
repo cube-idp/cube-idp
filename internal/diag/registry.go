@@ -41,9 +41,10 @@ var registry = map[Code]Desc{
 	CodeDoctorGitCLI:  {Summary: "git CLI missing while git-sourced packs are configured (doctor, warning)"},
 
 	// 1xxx: cluster
-	CodeClusterTypeUnknown:    {Summary: "cluster provider type unknown or unsupported"},
-	CodeClusterFieldsConflict: {Summary: "node-creation fields (extraPorts/mounts/providerConfig/kubernetesVersion) set with provider: existing (config cross-validation)"},
-	CodeClusterNotExists:      {Summary: "cluster does not exist; run `cube-idp up`"},
+	CodeClusterTypeUnknown:     {Summary: "cluster provider type unknown or unsupported"},
+	CodeClusterFieldsConflict:  {Summary: "node-creation fields (extraPorts/mounts/providerConfig/kubernetesVersion) set with provider: existing (config cross-validation)"},
+	CodeClusterNotExists:       {Summary: "cluster does not exist; run `cube-idp up`"},
+	CodeProviderConfigRefFetch: {Summary: "providerConfigRef fetch failed, unparsable, or not exactly one YAML mapping document"},
 
 	// 11xx: kubeconfig/connectivity
 	CodeKubeUnreachable: {Summary: "cluster behind context unreachable"},

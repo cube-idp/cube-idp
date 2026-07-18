@@ -26,9 +26,10 @@ const (
 
 // 1xxx: cluster
 const (
-	CodeClusterTypeUnknown    Code = "CUBE-1001" // cluster provider type unknown or unsupported
-	CodeClusterFieldsConflict Code = "CUBE-1003" // node-creation fields (extraPorts/mounts/providerConfig/kubernetesVersion) set with provider: existing (config cross-validation)
-	CodeClusterNotExists      Code = "CUBE-1004" // cluster does not exist; run `cube-idp up`
+	CodeClusterTypeUnknown     Code = "CUBE-1001" // cluster provider type unknown or unsupported
+	CodeClusterFieldsConflict  Code = "CUBE-1003" // node-creation fields (extraPorts/mounts/providerConfig/kubernetesVersion) set with provider: existing (config cross-validation)
+	CodeClusterNotExists       Code = "CUBE-1004" // cluster does not exist; run `cube-idp up`
+	CodeProviderConfigRefFetch Code = "CUBE-1005" // providerConfigRef fetch failed, unparsable, or not exactly one YAML mapping document
 )
 
 // 11xx: kubeconfig/connectivity
