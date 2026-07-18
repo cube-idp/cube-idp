@@ -37,6 +37,9 @@ func (failingDeliverGitEngine) Deliver(context.Context, *pack.Rendered, engine.A
 func (failingDeliverGitEngine) DeliverGit(context.Context, string, engine.GitSource) ([]*unstructured.Unstructured, error) {
 	return nil, errors.New("boom")
 }
+func (failingDeliverGitEngine) DeliverSelf(context.Context, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
+	return nil, nil
+}
 func (failingDeliverGitEngine) Poke(context.Context, *apply.Applier, string) error { return nil }
 func (failingDeliverGitEngine) Health(context.Context, *apply.Applier) ([]engine.ComponentHealth, error) {
 	return nil, nil

@@ -50,6 +50,7 @@ import (
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/yaml"
 
+	"github.com/cube-idp/cube-idp/internal/apply"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 )
@@ -838,6 +839,192 @@ func TestRepoDeliveredPack(t *testing.T) {
 	if got, _, _ := unstructured.NestedString(gwRec.Object, "spec", "delivery"); got != "oci" {
 		t.Fatalf("stock pack record delivery = %q, want oci", got)
 	}
+
+	run(t, dir, bin, "down", "--yes")
+}
+
+// zotGatewayManifestDigest resolves the manifest digest of <repo>:<tag> in
+// the in-cluster zot over the HTTPS gateway (registry.<host> routes there —
+// D6), the way a host-side oras/docker client would: a HEAD against the OCI
+// distribution manifest endpoint, digest read from Docker-Content-Digest.
+// Cube-CA TLS, verification disabled for the local test like giteaGatewayAPI.
+func zotGatewayManifestDigest(t *testing.T, port int, repo, tag string) string {
+	t.Helper()
+	client := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}, Timeout: 30 * time.Second}
+	url := fmt.Sprintf("https://registry.cube-idp.localtest.me:%d/v2/%s/manifests/%s", port, repo, tag)
+	req, err := http.NewRequest(http.MethodHead, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Accept", "application/vnd.oci.image.manifest.v1+json")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("HEAD %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("HEAD %s: HTTP %d", url, resp.StatusCode)
+	}
+	dig := resp.Header.Get("Docker-Content-Digest")
+	if dig == "" {
+		t.Fatalf("HEAD %s returned no Docker-Content-Digest", url)
+	}
+	return dig
+}
+
+// replicasFieldOwners returns every field manager that owns spec.replicas
+// on the named Deployment, per its managedFields (the SSA ownership truth).
+func replicasFieldOwners(t *testing.T, cs *kubernetes.Clientset, ns, name string) []string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	dep, err := cs.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Deployment %s/%s: %v", ns, name, err)
+	}
+	var owners []string
+	for _, mf := range dep.ManagedFields {
+		if mf.FieldsV1 == nil {
+			continue
+		}
+		var fields map[string]any
+		if err := json.Unmarshal(mf.FieldsV1.Raw, &fields); err != nil {
+			continue
+		}
+		spec, ok := fields["f:spec"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, ok := spec["f:replicas"]; ok {
+			owners = append(owners, mf.Manager)
+		}
+	}
+	return owners
+}
+
+// pollDeploymentReplicas polls until the named Deployment's spec.replicas
+// equals want, or fails after timeout — the engine reconciles the new
+// cube-engine artifact asynchronously after `up` returns.
+func pollDeploymentReplicas(t *testing.T, cs *kubernetes.Clientset, ns, name string, want int32, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var last int32 = -1
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		dep, err := cs.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
+		cancel()
+		if err == nil && dep.Spec.Replicas != nil {
+			last = *dep.Spec.Replicas
+			if last == want {
+				return
+			}
+		}
+		time.Sleep(5 * time.Second)
+	}
+	t.Fatalf("Deployment %s/%s never reached replicas=%d within %s (last seen %d) — the engine never picked up the new cube-engine artifact",
+		ns, name, want, timeout, last)
+}
+
+// TestEngineSelfManage is P8's acceptance leg (GT16): with
+// spec.engine.selfManage: true and an engine.tuning replica knob, `up`
+// pushes the rendered install as the cube-engine zot artifact and the
+// engine reconciles ITSELF — so flipping the knob and re-running `up` must
+// (a) push a NEW cube-engine digest, (b) land the new replica count on the
+// component's Deployment, and (c) leave spec.replicas OWNED by the ENGINE's
+// field manager, not cube-idp's applier — the managedFields proof that the
+// engine, not `up`'s SSA, reconfigured the engine (rule 2: the re-run never
+// SSA'd a healthy self-managed engine).
+func TestEngineSelfManage(t *testing.T) {
+	requireE2E(t)
+	requireDocker(t)
+
+	provider := providerName()
+	name := "e2e-selfmanage"
+	port := gatewayPort(t)
+	dir := t.TempDir()
+	bin := build(t)
+
+	guardDeleteCluster(t, provider, name)
+	t.Cleanup(func() { cleanupCube(t, bin, dir, provider, name) })
+
+	initCube(t, dir, bin, name, provider, port)
+
+	// The tuned component per engine (a real Deployment of each install).
+	// flux: kustomize-controller, NOT source-controller — source-controller's
+	// readinessProbe is "/" on the artifact file-server port, which only the
+	// leader-elected replica serves (that is how flux keeps the storage
+	// Service pointed at the leader), so replicas: 2 on it can NEVER
+	// converge (found live: the cube-engine Kustomization health-waits on
+	// [Deployment/flux-system/source-controller status: 'InProgress'] until
+	// CUBE-3004). kustomize-controller's readiness is /readyz on healthz —
+	// standby replicas are Ready, the scale-up converges.
+	component, ns, engineManager := "kustomize-controller", "flux-system", "kustomize-controller"
+	if engineName() == "argocd" {
+		component, ns, engineManager = "argocd-repo-server", "argocd", ""
+	}
+	setReplicas := func(n int) {
+		patchCube(t, dir, func(c *config.Cube) {
+			c.Spec.Engine.SelfManage = true
+			c.Spec.Engine.Tuning = &config.EngineTuning{Components: map[string]config.ComponentTuning{
+				component: {Replicas: &n},
+			}}
+		})
+	}
+
+	setReplicas(1)
+	run(t, dir, bin, "up")
+
+	const selfRepo = "packs/cube-engine"
+	dig1 := zotGatewayManifestDigest(t, port, selfRepo, "latest")
+	t.Logf("cube-engine digest after up 1: %s", dig1)
+
+	cs := clusterClientset(t, dir)
+	pollDeploymentReplicas(t, cs, ns, component, 1, time.Minute)
+
+	// Flip the knob and re-run: render -> push -> poke, never SSA (GT16).
+	setReplicas(2)
+	run(t, dir, bin, "up")
+
+	// (a) A NEW cube-engine digest exists in zot.
+	dig2 := zotGatewayManifestDigest(t, port, selfRepo, "latest")
+	t.Logf("cube-engine digest after up 2: %s", dig2)
+	if dig2 == dig1 {
+		t.Fatalf("re-run with changed tuning must push a NEW cube-engine digest, still %s", dig1)
+	}
+
+	// (b) The component Deployment's replicas changed — via the engine's
+	// own reconcile of the new artifact, asynchronously after `up`.
+	pollDeploymentReplicas(t, cs, ns, component, 2, 3*time.Minute)
+
+	// (c) spec.replicas is owned by the ENGINE's field manager, not
+	// cube-idp's applier — the proof the engine reconfigured itself.
+	owners := replicasFieldOwners(t, cs, ns, component)
+	if len(owners) == 0 {
+		t.Fatalf("no field manager owns spec.replicas on %s/%s", ns, component)
+	}
+	for _, o := range owners {
+		if o == apply.FieldManager {
+			t.Fatalf("spec.replicas still owned by %q — the re-run SSA'd a healthy self-managed engine (GT16 rule 2 broken); owners: %v",
+				apply.FieldManager, owners)
+		}
+	}
+	if engineManager != "" {
+		found := false
+		for _, o := range owners {
+			if o == engineManager {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("spec.replicas owners %v never include the engine's manager %q", owners, engineManager)
+		}
+	}
+
+	// A converged self-managed cube reports no drift and no orphans — the
+	// diff-side regression net for the self-source identity stubs.
+	run(t, dir, bin, "diff")
 
 	run(t, dir, bin, "down", "--yes")
 }

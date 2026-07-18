@@ -265,6 +265,9 @@ func (stubUnhealthyEngine) Deliver(context.Context, *pack.Rendered, engine.Artif
 func (stubUnhealthyEngine) DeliverGit(context.Context, string, engine.GitSource) ([]*unstructured.Unstructured, error) {
 	return nil, nil
 }
+func (stubUnhealthyEngine) DeliverSelf(context.Context, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
+	return nil, nil
+}
 func (stubUnhealthyEngine) Poke(context.Context, *apply.Applier, string) error { return nil }
 func (stubUnhealthyEngine) Health(context.Context, *apply.Applier) ([]engine.ComponentHealth, error) {
 	return []engine.ComponentHealth{{Name: "kustomize-controller", Ready: false, Message: "reconciling"}}, nil
@@ -407,6 +410,7 @@ type fakePackEngine struct {
 	delivered    []string // pack names handed to Deliver (OCI shape)
 	gitDelivered []string // pack names handed to DeliverGit
 	gitSources   []engine.GitSource
+	selfRefs     []engine.ArtifactRef // artifacts handed to DeliverSelf (P8)
 }
 
 func (f *fakePackEngine) Deliver(_ context.Context, r *pack.Rendered, _ engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
@@ -423,6 +427,14 @@ func (f *fakePackEngine) DeliverGit(_ context.Context, name string, src engine.G
 	o := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1", "kind": "ConfigMap",
 		"metadata": map[string]any{"name": "git-" + name, "namespace": "d"}}}
+	return []*unstructured.Unstructured{o}, nil
+}
+
+func (f *fakePackEngine) DeliverSelf(_ context.Context, src engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
+	f.selfRefs = append(f.selfRefs, src)
+	o := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]any{"name": "self-cube-engine", "namespace": "d"}}}
 	return []*unstructured.Unstructured{o}, nil
 }
 
@@ -644,5 +656,153 @@ func TestGiteaSessionGate(t *testing.T) {
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != diag.CodeRepoGiteaUnavailable {
 		t.Fatalf("gate timeout must be CUBE-7301, got: %v", err)
+	}
+}
+
+// ---- P8: engine self-management (engine.selfManage, GT16) ----------------
+
+// fakeHealthEngine is a full engine.Engine stub whose Health is canned and
+// counted — all the P8 preflight (installNeedsSSA/engineHealthyAtStart)
+// consumes. The applier is never touched and may be nil.
+type fakeHealthEngine struct {
+	health []engine.ComponentHealth
+	err    error
+	calls  int
+}
+
+func (f *fakeHealthEngine) Install(context.Context, *apply.Applier, time.Duration) error { return nil }
+func (f *fakeHealthEngine) InstallManifests() ([]*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (f *fakeHealthEngine) Deliver(context.Context, *pack.Rendered, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (f *fakeHealthEngine) DeliverGit(context.Context, string, engine.GitSource) ([]*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (f *fakeHealthEngine) DeliverSelf(context.Context, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (f *fakeHealthEngine) Poke(context.Context, *apply.Applier, string) error { return nil }
+func (f *fakeHealthEngine) Health(context.Context, *apply.Applier) ([]engine.ComponentHealth, error) {
+	f.calls++
+	return f.health, f.err
+}
+func (f *fakeHealthEngine) Uninstall(context.Context, *apply.Applier, time.Duration) error {
+	return nil
+}
+
+// TestSelfManageSSADecision pins the GT16 SSA rules on installNeedsSSA:
+// selfManage off → always SSA, without even consulting Health (the pre-P8
+// path stays byte-identical); selfManage on → SSA on first install (zero
+// components), on unhealthy components (rule 3), and on a Health error —
+// only a fully healthy engine skips SSA (rule 2, single owner).
+func TestSelfManageSSADecision(t *testing.T) {
+	ready := []engine.ComponentHealth{{Name: "a", Ready: true}, {Name: "b", Ready: true}}
+	unready := []engine.ComponentHealth{{Name: "a", Ready: true}, {Name: "b", Ready: false, Message: "nope"}}
+
+	off := &fakeHealthEngine{health: ready}
+	if !installNeedsSSA(context.Background(), off, nil, false) {
+		t.Fatal("selfManage off must always SSA")
+	}
+	if off.calls != 0 {
+		t.Fatalf("selfManage off must not consult Health (pre-P8 path), got %d calls", off.calls)
+	}
+
+	cases := []struct {
+		name string
+		eng  *fakeHealthEngine
+		want bool // want SSA
+	}{
+		{"first_install_zero_components", &fakeHealthEngine{}, true},
+		{"unhealthy_components", &fakeHealthEngine{health: unready}, true},
+		{"health_error", &fakeHealthEngine{err: errors.New("api down")}, true},
+		{"healthy_engine_owns_itself", &fakeHealthEngine{health: ready}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := installNeedsSSA(context.Background(), tc.eng, nil, true)
+			if got != tc.want {
+				t.Fatalf("installNeedsSSA(selfManage=true) = %v, want %v", got, tc.want)
+			}
+			if tc.eng.calls != 1 {
+				t.Fatalf("preflight must be exactly one Health call, got %d", tc.eng.calls)
+			}
+		})
+	}
+}
+
+// TestSelfManageDeliverEngineSelf pins the GT16 rule-2 tail: the rendered
+// install is pushed as the cube-engine artifact (fixed tag, the pushed
+// Rendered carries the installObjs verbatim — tuning already applied by
+// InstallManifests, so the artifact carries tuned bytes), the resulting
+// artifact ref is handed to DeliverSelf, and the self-source objects are
+// applied + inventoried. Gitea is never touched — GT16: zot only.
+func TestSelfManageDeliverEngineSelf(t *testing.T) {
+	eng := &fakePackEngine{}
+	ap := &fakePackApplier{}
+	var pushed []*pack.Rendered
+	deps := deliverDeps{
+		eng:        eng,
+		applier:    ap,
+		tunnelAddr: "127.0.0.1:5000",
+		pushOCI: func(_ context.Context, r *pack.Rendered, addr string) (engine.ArtifactRef, error) {
+			if addr != "127.0.0.1:5000" {
+				t.Fatalf("push must use the registry tunnel, got %q", addr)
+			}
+			pushed = append(pushed, r)
+			return engine.ArtifactRef{Repo: "packs/" + r.Name, Tag: r.Version, Digest: "sha256:d1"}, nil
+		},
+		gitea: func(context.Context) (giteaPacks, error) {
+			t.Fatal("engine self-management must never touch gitea (GT16: zot only)")
+			return nil, nil
+		},
+	}
+	installObjs := []*unstructured.Unstructured{{Object: map[string]any{
+		"apiVersion": "apps/v1", "kind": "Deployment",
+		"metadata": map[string]any{"name": "source-controller", "namespace": "flux-system"},
+		"spec":     map[string]any{"replicas": int64(2)}, // a tuned render — pushed verbatim
+	}}}
+
+	if err := deliverEngineSelf(context.Background(), deps, installObjs); err != nil {
+		t.Fatal(err)
+	}
+	if len(pushed) != 1 || pushed[0].Name != engine.SelfArtifactName || pushed[0].Version != engineSelfTag {
+		t.Fatalf("must push exactly the cube-engine:%s artifact, got %+v", engineSelfTag, pushed)
+	}
+	if !reflect.DeepEqual(pushed[0].Objects, installObjs) {
+		t.Fatalf("the artifact must carry the rendered (tuned) install verbatim: %+v", pushed[0].Objects)
+	}
+	if len(eng.selfRefs) != 1 || eng.selfRefs[0].Repo != "packs/cube-engine" ||
+		eng.selfRefs[0].Tag != engineSelfTag || eng.selfRefs[0].Digest != "sha256:d1" {
+		t.Fatalf("DeliverSelf must receive the pushed artifact ref, got %+v", eng.selfRefs)
+	}
+	if !reflect.DeepEqual(ap.applied, []string{"self-cube-engine"}) || !reflect.DeepEqual(ap.recorded, []string{"self-cube-engine"}) {
+		t.Fatalf("self-source objects must be applied AND inventoried: %v / %v", ap.applied, ap.recorded)
+	}
+	// No pack-shaped delivery may have happened.
+	if len(eng.delivered) != 0 || len(eng.gitDelivered) != 0 {
+		t.Fatalf("self delivery must not invoke Deliver/DeliverGit: %v %v", eng.delivered, eng.gitDelivered)
+	}
+}
+
+// TestSelfManageDeliverEngineSelfFailureIsCube3010 pins the failure typing:
+// every arm (push shown here) is CUBE-3010 with re-run remediation.
+func TestSelfManageDeliverEngineSelfFailureIsCube3010(t *testing.T) {
+	deps := deliverDeps{
+		eng:     &fakePackEngine{},
+		applier: &fakePackApplier{},
+		pushOCI: func(context.Context, *pack.Rendered, string) (engine.ArtifactRef, error) {
+			return engine.ArtifactRef{}, errors.New("zot gone")
+		},
+		gitea: func(context.Context) (giteaPacks, error) { return nil, nil },
+	}
+	err := deliverEngineSelf(context.Background(), deps, nil)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeEngineSelfManage {
+		t.Fatalf("self-manage failure must be CUBE-3010, got: %v", err)
+	}
+	if !strings.Contains(de.Remediation, "cube-idp up") {
+		t.Fatalf("remediation must name the `cube-idp up` re-run, got: %q", de.Remediation)
 	}
 }

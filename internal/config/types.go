@@ -85,6 +85,14 @@ type EngineSpec struct {
 	// re-render. nil = absent; omitempty keeps the round-trip discipline of
 	// PackRef.Values (an absent key, not an explicit YAML null).
 	Tuning *EngineTuning `yaml:"tuning,omitempty" json:"tuning,omitempty"`
+	// SelfManage opts the engine into managing its own install from zot
+	// (GT16, P8): after the health gate, `up` pushes the rendered (tuned)
+	// install manifests as the cube-engine artifact and attaches an
+	// engine-native self-source with pruning disabled — the engine
+	// reconciles itself from then on, so drift between `up`s is corrected.
+	// First install and unhealthy-at-start recovery still SSA directly
+	// (GT16 rules 1+3). Sourced from zot only, never Gitea; works offline.
+	SelfManage bool `yaml:"selfManage,omitempty" json:"selfManage,omitempty"`
 }
 
 // EngineTuning is the closed engine.tuning knob set (GT1). Component names

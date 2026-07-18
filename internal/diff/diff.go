@@ -194,6 +194,24 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 	}
 	desired = append(desired, installObjs...)
 
+	// P8 (GT16): a self-managed engine additionally carries the cube-engine
+	// self-source objects (flux OCIRepository + Kustomization / argocd
+	// Application), applied and inventoried by up.Run's selfManage block.
+	// Identity-only, like the repo-delivery sources below: the source object
+	// carries a fresh reconcile-now annotation per render (the GT16 poke),
+	// so re-rendering it here would fabricate a perpetual "changed" — and
+	// identity is all orphanRefs needs. A placeholder ArtifactRef suffices:
+	// the names are deterministic (cube-engine).
+	if cube.Spec.Engine.SelfManage {
+		selfObjs, err := eng.DeliverSelf(ctx, engine.ArtifactRef{})
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for _, o := range selfObjs {
+			orphanOnly = append(orphanOnly, identityStub(o.GroupVersionKind(), o.GetNamespace(), o.GetName()))
+		}
+	}
+
 	dir, err := pack.DefaultCacheDir()
 	if err != nil {
 		return nil, nil, nil, err

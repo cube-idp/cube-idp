@@ -29,6 +29,10 @@ package config
 					resources?: {...}
 				}}
 			}
+			// GT16 (P8): opt-in engine self-management — `up` pushes the
+			// rendered install as the cube-engine zot artifact and the
+			// engine reconciles itself from an engine-native self-source.
+			selfManage?: bool
 		}
 		gateway: {
 			pack: *"traefik" | string
