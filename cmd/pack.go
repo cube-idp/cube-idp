@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	huh "charm.land/huh/v2"
 	"github.com/spf13/cobra"
@@ -62,13 +63,16 @@ func newPackCmd() *cobra.Command {
 	packCmd.AddCommand(newPackInstallCmd())
 	// P2 (Phase 5): the packs-repo CI toolchain — publish + index build/push.
 	packCmd.AddCommand(newPackPublishCmd(), newPackIndexCmd())
+	// P6 (Phase 5): the index-backed remote catalog surfaces.
+	packCmd.AddCommand(newPackListCmd(), newPackSearchCmd())
 	return packCmd
 }
 
-// packCatalog is the single optional-pack catalog behind both init's wizard
-// multi-select and `pack install`'s menu (spec WP6): names, published
-// versions, descriptions, and (via packCatalogRef) the OCI refs
-// config.Default writes.
+// packCatalog is the BUILT-IN optional-pack catalog — since P6 the offline
+// FALLBACK (never deleted) behind loadPackCatalog: when the published index
+// artifact is unreachable, init's wizard and `pack install`'s menu offer
+// exactly this pre-P6 list. Wording stays in sync with the packs'
+// pack.cue descriptions (P1).
 var packCatalog = []struct {
 	Name, Version, Desc string
 }{
@@ -76,8 +80,12 @@ var packCatalog = []struct {
 	{"argocd", "0.1.0", "delivery UI"},
 }
 
-// packCatalogNames lists the catalog names — the substring convention
-// filterSelectedPacks matches pack refs against (init.go's optionalPacks).
+// packCatalogNames lists the BUILT-IN catalog names — the substring
+// convention filterSelectedPacks matches pack refs against (init.go's
+// optionalPacks), and applyWizardToCube's fence between "filter the default
+// profile" (built-in names) and "append a discovered pack" (remote-only
+// names). Deliberately static: the default profile's members do not grow
+// when the remote index does.
 func packCatalogNames() []string {
 	names := make([]string, 0, len(packCatalog))
 	for _, p := range packCatalog {
@@ -86,27 +94,138 @@ func packCatalogNames() []string {
 	return names
 }
 
-// packCatalogOptions renders the catalog as huh options in WP6's
+// catalogEntry is one resolved pack-catalog row — remote index entry or
+// built-in fallback — the single shape every P6 consumer (menu, wizard,
+// list, search) renders from.
+type catalogEntry struct {
+	Name, Version, Desc, Ref string
+}
+
+// builtinCatalogEntries maps packCatalog into entries, deriving the same
+// published OCI refs config.Default pins.
+func builtinCatalogEntries() []catalogEntry {
+	entries := make([]catalogEntry, 0, len(packCatalog))
+	for _, p := range packCatalog {
+		entries = append(entries, catalogEntry{
+			Name:    p.Name,
+			Version: p.Version,
+			Desc:    p.Desc,
+			Ref:     "oci://ghcr.io/cube-idp/packs/" + p.Name + ":" + p.Version,
+		})
+	}
+	return entries
+}
+
+// catalogFetchTimeout bounds the index pull inside loadPackCatalog: the
+// catalog gates interactive surfaces (menu, wizard), so a black-hole
+// network must degrade to the built-in fallback in seconds, not hang until
+// the OS TCP timeout. Pack pulls proper (`up`) keep their unbounded
+// context — big artifacts may legitimately take long.
+const catalogFetchTimeout = 10 * time.Second
+
+// loadPackCatalog resolves the catalog every menu and listing consumes: the
+// remote index when reachable (pack.FetchCatalog — 24h cache,
+// CUBE_IDP_PACK_INDEX override), else the built-in fallback announced with
+// a single advisory line. Callers invoke it once per command so that line
+// never repeats; offline behavior is byte-for-byte the pre-P6 catalog.
+func loadPackCatalog(ctx context.Context, out io.Writer) []catalogEntry {
+	ctx, cancel := context.WithTimeout(ctx, catalogFetchTimeout)
+	defer cancel()
+	cat, err := pack.FetchCatalog(ctx)
+	if err != nil {
+		ui.NewFor(out).Warn("catalog: using built-in list (index unreachable: %v)", err)
+		return builtinCatalogEntries()
+	}
+	entries := make([]catalogEntry, 0, len(cat.Packs))
+	for _, e := range cat.Packs {
+		entries = append(entries, catalogEntry{Name: e.Name, Version: e.Version, Desc: e.Description, Ref: e.Ref})
+	}
+	return entries
+}
+
+// catalogOptions renders entries as huh options in WP6's
 // "name@version — description" shape. Option values are catalog names, not
 // refs, so init's wizard (which filters config.Default's pack list by name)
 // and `pack install` (which maps names to refs) share one option list.
-func packCatalogOptions() []huh.Option[string] {
-	opts := make([]huh.Option[string], 0, len(packCatalog))
-	for _, p := range packCatalog {
-		opts = append(opts, huh.NewOption(fmt.Sprintf("%s@%s — %s", p.Name, p.Version, p.Desc), p.Name))
+func catalogOptions(entries []catalogEntry) []huh.Option[string] {
+	opts := make([]huh.Option[string], 0, len(entries))
+	for _, e := range entries {
+		opts = append(opts, huh.NewOption(fmt.Sprintf("%s@%s — %s", e.Name, e.Version, e.Desc), e.Name))
 	}
 	return opts
 }
 
-// packCatalogRef maps a catalog name to the published OCI ref config.Default
-// pins ("" for a name outside the catalog — callers pass menu values only).
-func packCatalogRef(name string) string {
-	for _, p := range packCatalog {
-		if p.Name == name {
-			return "oci://ghcr.io/cube-idp/packs/" + p.Name + ":" + p.Version
+// catalogRef maps a catalog name to its entry's OCI ref ("" for a name
+// outside the catalog — callers pass menu values only).
+func catalogRef(entries []catalogEntry, name string) string {
+	for _, e := range entries {
+		if e.Name == name {
+			return e.Ref
 		}
 	}
 	return ""
+}
+
+// printCatalogRows renders entries as name/version/description rows —
+// `spoke list`'s fixed-width column style.
+func printCatalogRows(out io.Writer, entries []catalogEntry) {
+	for _, e := range entries {
+		fmt.Fprintf(out, "%-20s %-10s %s\n", e.Name, e.Version, e.Desc)
+	}
+}
+
+func newPackListCmd() *cobra.Command {
+	var available bool
+	c := &cobra.Command{
+		Use:   "list",
+		Short: "List packs available from the remote catalog",
+		Long: "List every pack the published catalog index offers, one\n" +
+			"name/version/description row per pack. The index is cached for 24h;\n" +
+			"when it is unreachable the built-in list is shown instead (with a\n" +
+			"notice). Packs configured for THIS cube live in cube.yaml (spec.packs).",
+		Args: cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			if !available {
+				// The bare form is reserved (a future task may list the
+				// cube's own packs); today the command exists for the
+				// catalog, so refuse with the exact spelling to use.
+				return diag.New(diag.CodeBadFlagValue,
+					"pack list requires --available (the remote catalog)",
+					"run `cube-idp pack list --available`; packs configured for this cube are listed in cube.yaml under spec.packs")
+			}
+			printCatalogRows(c.OutOrStdout(), loadPackCatalog(c.Context(), c.OutOrStdout()))
+			return nil
+		},
+	}
+	c.Flags().BoolVar(&available, "available", false, "list every pack in the remote catalog")
+	return c
+}
+
+func newPackSearchCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "search <term>",
+		Short: "Search the pack catalog by name and description",
+		Long: "Case-insensitively match <term> against the name and description of\n" +
+			"every pack in the remote catalog (built-in fallback when the index is\n" +
+			"unreachable) and print the matching name/version/description rows.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(c *cobra.Command, args []string) error {
+			term := strings.ToLower(args[0])
+			var matched []catalogEntry
+			for _, e := range loadPackCatalog(c.Context(), c.OutOrStdout()) {
+				if strings.Contains(strings.ToLower(e.Name), term) ||
+					strings.Contains(strings.ToLower(e.Desc), term) {
+					matched = append(matched, e)
+				}
+			}
+			if len(matched) == 0 {
+				fmt.Fprintf(c.OutOrStdout(), "no packs match %q\n", args[0])
+				return nil
+			}
+			printCatalogRows(c.OutOrStdout(), matched)
+			return nil
+		},
+	}
 }
 
 // Seams for tests — the menu/consent paths need a TTY, so tests override
@@ -136,12 +255,17 @@ func newPackInstallCmd() *cobra.Command {
 						"pack install needs pack refs in non-interactive mode",
 						"pass refs: cube-idp pack install oci://ghcr.io/cube-idp/packs/<name>:<version>")
 				}
-				names, err := packMenuSelect(c.InOrStdin(), c.OutOrStdout())
+				// Catalog load strictly AFTER the prompt gate: the
+				// non-interactive refusal must stay instant and offline.
+				catalog := loadPackCatalog(c.Context(), c.OutOrStdout())
+				names, err := packMenuSelect(c.InOrStdin(), c.OutOrStdout(), catalogOptions(catalog))
 				if err != nil {
 					return err
 				}
 				for _, n := range names {
-					refs = append(refs, packCatalogRef(n))
+					if ref := catalogRef(catalog, n); ref != "" {
+						refs = append(refs, ref)
+					}
 				}
 				if len(refs) == 0 {
 					fmt.Fprintln(c.OutOrStdout(), "aborted — nothing was changed")
@@ -176,14 +300,16 @@ func newPackInstallCmd() *cobra.Command {
 }
 
 // runPackMenu is the TTY half of `pack install` (spec WP6): a filterable huh
-// MultiSelect over the pack catalog. Callers gate on ui.PromptsAllowed; this
-// function assumes the terminal is available.
-func runPackMenu(in io.Reader, out io.Writer) ([]string, error) {
+// MultiSelect over the loaded pack catalog (P6: remote index or built-in
+// fallback — the caller passes the options so this stays pure UI). Callers
+// gate on ui.PromptsAllowed; this function assumes the terminal is
+// available.
+func runPackMenu(in io.Reader, out io.Writer, opts []huh.Option[string]) ([]string, error) {
 	var names []string
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewMultiSelect[string]().
 			Title("Packs to install").
-			Options(packCatalogOptions()...).
+			Options(opts...).
 			Filterable(true).
 			Value(&names),
 	)).WithInput(in).WithOutput(out).WithAccessible(os.Getenv("ACCESSIBLE") != "")

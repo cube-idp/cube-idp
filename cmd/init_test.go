@@ -177,6 +177,57 @@ func TestApplyWizardExistingProviderLoads(t *testing.T) {
 	}
 }
 
+// TestApplyWizardAppendsRemoteCatalogPacks pins the P6 wizard semantics:
+// a selected catalog pack OUTSIDE the built-in list (remote-discovered) is
+// APPENDED with its index ref; a selected built-in name never appends — the
+// default profile's membership stays engine/--local logic's decision (an
+// engine-argocd cube keeps the argocd pack dropped even when "argocd" is
+// ticked, so CUBE-0005 cannot be re-authored by the wizard).
+func TestApplyWizardAppendsRemoteCatalogPacks(t *testing.T) {
+	remote := []catalogEntry{
+		{Name: "argocd", Version: "0.2.0", Desc: "delivery UI", Ref: "oci://ghcr.io/cube-idp/packs/argocd:0.2.0"},
+		{Name: "gitea", Version: "0.1.0", Desc: "in-cluster git server", Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"},
+		{Name: "kargo", Version: "1.0.0", Desc: "promotion pipelines", Ref: "oci://ghcr.io/cube-idp/packs/kargo:1.0.0"},
+	}
+
+	cube := config.Default("dev")
+	applyWizardToCube(cube, initWizardResult{
+		Provider: "kind",
+		Packs:    []string{"gitea", "argocd", "kargo"},
+		Catalog:  remote,
+	})
+	refs := make([]string, 0, len(cube.Spec.Packs))
+	for _, p := range cube.Spec.Packs {
+		refs = append(refs, p.Ref)
+	}
+	want := []string{
+		"oci://ghcr.io/cube-idp/packs/gitea:0.1.0",  // default profile, kept
+		"oci://ghcr.io/cube-idp/packs/argocd:0.1.0", // default profile, kept
+		"oci://ghcr.io/cube-idp/packs/kargo:1.0.0",  // remote-discovered, appended
+	}
+	if len(refs) != len(want) {
+		t.Fatalf("packs = %v, want %v", refs, want)
+	}
+	for i := range want {
+		if refs[i] != want[i] {
+			t.Fatalf("packs[%d] = %q, want %q (all: %v)", i, refs[i], want[i], refs)
+		}
+	}
+
+	// Engine-argocd shape: the argocd pack was dropped BEFORE the wizard
+	// answers apply; ticking "argocd" must not resurrect it.
+	cube = config.Default("dev")
+	cube.Spec.Packs = []config.PackRef{{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0"}}
+	applyWizardToCube(cube, initWizardResult{
+		Provider: "kind",
+		Packs:    []string{"gitea", "argocd"},
+		Catalog:  remote,
+	})
+	if len(cube.Spec.Packs) != 1 || packCatalogName(cube.Spec.Packs[0].Ref) != "gitea" {
+		t.Fatalf("built-in selection must never append (CUBE-0005 guard), got %+v", cube.Spec.Packs)
+	}
+}
+
 // TestValidateGatewayPortRejectsGarbage covers the wizard's inline port
 // validation: non-numeric and out-of-range values are rejected; a free port
 // passes.

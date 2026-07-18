@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http/httptest"
@@ -15,11 +16,13 @@ import (
 	"testing"
 	"time"
 
+	huh "charm.land/huh/v2"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"sigs.k8s.io/yaml"
 
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/oci"
 	"github.com/cube-idp/cube-idp/internal/pack"
 	"github.com/cube-idp/cube-idp/internal/ui"
 )
@@ -196,11 +199,17 @@ func TestPackInstallBareNonTTYRefuses(t *testing.T) {
 
 // packMenuSeams routes the TTY-only menu path through test stubs (down_test's
 // seam pattern): prompting allowed, menu returns names, confirm returns ok.
+// It also isolates the P6 catalog loader — a fresh $HOME (throwaway index
+// cache) and CUBE_IDP_PACK_INDEX at a dead loopback port — so the menu path
+// falls back to the built-in catalog fast and deterministically instead of
+// ever reaching the real published index from a unit test.
 func packMenuSeams(t *testing.T, names []string, ok bool) {
 	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(pack.EnvPackIndex, "oci://127.0.0.1:1/packs/index:latest")
 	restoreAllowed, restoreMenu, restoreConfirm := packPromptsAllowed, packMenuSelect, packConfirm
 	packPromptsAllowed = func(io.Reader, io.Writer) bool { return true }
-	packMenuSelect = func(io.Reader, io.Writer) ([]string, error) { return names, nil }
+	packMenuSelect = func(io.Reader, io.Writer, []huh.Option[string]) ([]string, error) { return names, nil }
 	packConfirm = func(_ io.Reader, _ io.Writer, _ ui.ConfirmOpts) (bool, error) { return ok, nil }
 	t.Cleanup(func() {
 		packPromptsAllowed, packMenuSelect, packConfirm = restoreAllowed, restoreMenu, restoreConfirm
@@ -316,6 +325,158 @@ func TestPackInstallDuplicateRefSkipped(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected exactly one %s entry, got %d (packs: %+v)", ref, count, cube.Spec.Packs)
+	}
+}
+
+// cmdCatalogIndexJSON is the two-entry index fixture the P6 catalog tests
+// publish — P2's schemaVersion-1 shape, entries name-sorted.
+const cmdCatalogIndexJSON = `{
+  "schemaVersion": 1,
+  "packs": [
+    {
+      "name": "argocd",
+      "version": "0.2.0",
+      "description": "delivery UI",
+      "ref": "oci://ghcr.io/cube-idp/packs/argocd:0.2.0",
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "name": "kargo",
+      "version": "1.0.0",
+      "description": "promotion pipelines",
+      "ref": "oci://ghcr.io/cube-idp/packs/kargo:1.0.0",
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ]
+}
+`
+
+// catalogIndexFixture publishes raw as the index artifact on an in-process
+// registry and points the catalog loader at it: CUBE_IDP_PACK_INDEX set,
+// fresh $HOME so the 24h index cache is a cold throwaway dir.
+func catalogIndexFixture(t *testing.T, raw string) {
+	t.Helper()
+	host := packLocalRegistry(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.json"), []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := oci.PushPackDir(context.Background(), dir, "oci://"+host+"/packs/index:latest"); err != nil {
+		t.Fatalf("pushing index fixture: %v", err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(pack.EnvPackIndex, "oci://"+host+"/packs/index:latest")
+}
+
+// TestPackListAvailablePrintsCatalogRows: `pack list --available` renders one
+// name/version/description row per index entry — full-output equality, so a
+// reachable index also proves NO fallback notice is printed.
+func TestPackListAvailablePrintsCatalogRows(t *testing.T) {
+	catalogIndexFixture(t, cmdCatalogIndexJSON)
+
+	out := mustRunCLI(t, "pack", "list", "--available")
+
+	want := fmt.Sprintf("%-20s %-10s %s\n", "argocd", "0.2.0", "delivery UI") +
+		fmt.Sprintf("%-20s %-10s %s\n", "kargo", "1.0.0", "promotion pipelines")
+	if out != want {
+		t.Fatalf("rows drifted:\ngot:  %q\nwant: %q", out, want)
+	}
+}
+
+// TestPackListWithoutAvailableRefuses: the bare form is reserved — a typed
+// CUBE-0007 refusal that spells out the exact flag to use, no network touched.
+func TestPackListWithoutAvailableRefuses(t *testing.T) {
+	_, err := runCLI(t, "pack", "list")
+
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeBadFlagValue {
+		t.Fatalf("want CUBE-0007 (CodeBadFlagValue), got %v", err)
+	}
+	if !strings.Contains(de.Remediation, "pack list --available") {
+		t.Fatalf("refusal must name the exact invocation, got: %q", de.Remediation)
+	}
+}
+
+// TestPackListAvailableFallsBackToBuiltin is the P6 fallback contract: index
+// unreachable (dead loopback port, cold cache) → one advisory line naming the
+// reason, then exactly today's built-in two-entry catalog.
+func TestPackListAvailableFallsBackToBuiltin(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(pack.EnvPackIndex, "oci://127.0.0.1:1/packs/index:latest")
+
+	out := mustRunCLI(t, "pack", "list", "--available")
+
+	if !strings.Contains(out, "catalog: using built-in list (index unreachable:") {
+		t.Fatalf("expected the fallback notice, got:\n%s", out)
+	}
+	for _, row := range []string{
+		fmt.Sprintf("%-20s %-10s %s\n", "gitea", "0.1.0", "in-cluster git server"),
+		fmt.Sprintf("%-20s %-10s %s\n", "argocd", "0.1.0", "delivery UI"),
+	} {
+		if !strings.Contains(out, row) {
+			t.Fatalf("expected built-in row %q, got:\n%s", row, out)
+		}
+	}
+}
+
+// TestPackSearchFiltersNameAndDescription: matching is case-insensitive over
+// BOTH fields — "DELIVERY" hits argocd via its description, "kar" hits kargo
+// via its name; each result set excludes the other entry.
+func TestPackSearchFiltersNameAndDescription(t *testing.T) {
+	catalogIndexFixture(t, cmdCatalogIndexJSON)
+
+	byDesc := mustRunCLI(t, "pack", "search", "DELIVERY")
+	if !strings.Contains(byDesc, "argocd") || strings.Contains(byDesc, "kargo") {
+		t.Fatalf("search DELIVERY must match only argocd, got:\n%s", byDesc)
+	}
+
+	byName := mustRunCLI(t, "pack", "search", "kar")
+	want := fmt.Sprintf("%-20s %-10s %s\n", "kargo", "1.0.0", "promotion pipelines")
+	if byName != want {
+		t.Fatalf("search kar drifted:\ngot:  %q\nwant: %q", byName, want)
+	}
+}
+
+// TestPackSearchNoMatchSaysSo: an empty result is a friendly line and exit 0
+// — a search with no hits is an answer, not an error.
+func TestPackSearchNoMatchSaysSo(t *testing.T) {
+	catalogIndexFixture(t, cmdCatalogIndexJSON)
+
+	out := mustRunCLI(t, "pack", "search", "zzz-no-such-pack")
+
+	if !strings.Contains(out, `no packs match "zzz-no-such-pack"`) {
+		t.Fatalf("expected the no-match line, got:\n%s", out)
+	}
+}
+
+// TestPackInstallMenuUsesRemoteCatalog: the menu path resolves selections
+// against the LOADED catalog — picking an index-only pack (kargo, not in the
+// built-in list) appends that entry's published ref to cube.yaml.
+func TestPackInstallMenuUsesRemoteCatalog(t *testing.T) {
+	file := packlessCubeYAML(t)
+	packMenuSeams(t, []string{"kargo"}, true)
+	catalogIndexFixture(t, cmdCatalogIndexJSON) // after seams: live index wins over the seams' dead port
+
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetIn(&bytes.Buffer{})
+	root.SetArgs([]string{"pack", "install"})
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("remote-catalog menu path: %v\noutput: %s", err, out.String())
+	}
+
+	cube, err := config.Load(file)
+	if err != nil {
+		t.Fatalf("reloading cube.yaml: %v", err)
+	}
+	ref := "oci://ghcr.io/cube-idp/packs/kargo:1.0.0"
+	if len(cube.Spec.Packs) != 1 || cube.Spec.Packs[0].Ref != ref {
+		t.Fatalf("expected the index entry's ref appended, got: %+v", cube.Spec.Packs)
+	}
+	if strings.Contains(out.String(), "using built-in list") {
+		t.Fatalf("reachable index must not print the fallback notice, got:\n%s", out.String())
 	}
 }
 
