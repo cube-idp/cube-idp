@@ -60,6 +60,13 @@ func newDoctorCmd() *cobra.Command {
 			if f := doctor.CheckPortFree(cube.Spec.Gateway.Port, clusterExists); f != nil {
 				findings = append(findings, *f)
 			}
+			// U2: the opt-in plain-HTTP gateway port is a second host bind —
+			// preflight it too when set (absent = no probe, as before).
+			if hp := cube.Spec.Gateway.HTTPPort; hp > 0 {
+				if f := doctor.CheckHostPortFree(hp, clusterExists, "spec.gateway.httpPort"); f != nil {
+					findings = append(findings, *f)
+				}
+			}
 			if dir, err := trust.Dir(); err == nil {
 				if f := doctor.CheckDiskSpace(dir, 5<<30); f != nil {
 					findings = append(findings, *f)

@@ -158,3 +158,28 @@ func TestNonGitSourceNeverWarnsEvenWithoutGitCLI(t *testing.T) {
 		t.Fatalf("no git-sourced ref present, want no finding, got %+v", f)
 	}
 }
+
+// TestHTTPPortProbeNamesHTTPPortField covers U2: doctor's port preflight
+// also probes the opt-in gateway.httpPort, and its CUBE-0102 remediation
+// blames the field the user actually set (spec.gateway.httpPort, not
+// spec.gateway.port).
+func TestHTTPPortProbeNamesHTTPPortField(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	port := l.Addr().(*net.TCPAddr).Port
+
+	f := CheckHostPortFree(port, false, "spec.gateway.httpPort")
+	if f == nil || f.Code != "CUBE-0102" || f.Severity != diag.SeverityError {
+		t.Fatalf("squatted httpPort must yield CUBE-0102 error, got %+v", f)
+	}
+	if !strings.Contains(f.Remediation, "spec.gateway.httpPort") {
+		t.Fatalf("remediation must name spec.gateway.httpPort: %+v", f)
+	}
+	// The existing single-port probe keeps blaming spec.gateway.port.
+	if f := CheckPortFree(port, false); f == nil || !strings.Contains(f.Remediation, "spec.gateway.port") {
+		t.Fatalf("CheckPortFree must keep naming spec.gateway.port: %+v", f)
+	}
+}

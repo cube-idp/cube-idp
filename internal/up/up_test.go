@@ -263,7 +263,11 @@ func (stubUnhealthyEngine) Uninstall(context.Context, *apply.Applier, time.Durat
 
 // TestWaitHealthyNarratesUnhealthyWait pins U1's engine-wait narration:
 // while components stay unhealthy, waitHealthy emits StepLog events with
-// stage "engine" naming the not-ready components, paced by healthLogEvery
+// stage "health" — the stage of the Progress step open during the wait, so
+// the live renderer's log tail actually shows the lines (U2 Step 0; U1
+// shipped stage "engine", which never rendered live because the tail only
+// follows the open step's stage) — naming the not-ready components, paced
+// by healthLogEvery
 // (shrunk here — the package has no fake clock). The wait itself still
 // times out with CUBE-3004 as before; the narration is additive.
 func TestWaitHealthyNarratesUnhealthyWait(t *testing.T) {
@@ -281,12 +285,12 @@ func TestWaitHealthyNarratesUnhealthyWait(t *testing.T) {
 	close(ch)
 	var logs []event.StepLog
 	for ev := range ch {
-		if sl, ok := ev.(event.StepLog); ok && sl.Stage == "engine" {
+		if sl, ok := ev.(event.StepLog); ok && sl.Stage == "health" {
 			logs = append(logs, sl)
 		}
 	}
 	if len(logs) == 0 {
-		t.Fatal(`no StepLog{Stage:"engine"} events emitted during an unhealthy wait`)
+		t.Fatal(`no StepLog{Stage:"health"} events emitted during an unhealthy wait`)
 	}
 	for _, sl := range logs {
 		if !strings.Contains(sl.Line, "waiting on: ") || !strings.Contains(sl.Line, "kustomize-controller") {

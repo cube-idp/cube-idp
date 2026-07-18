@@ -22,6 +22,9 @@ package config
 			pack: *"traefik" | string
 			host: *"cube-idp.localtest.me" | string
 			port: *8443 | (int & >0 & <65536)
+			// Opt-in plain-HTTP host port (U2, decision 3): mapped onto the
+			// gateway packs' pinned HTTP NodePort 30080 only when set.
+			httpPort?: int & >0 & <65536
 			ref?: string & !=""
 		}
 		packs?: [...{ref: string & !="", values?: {...}}]

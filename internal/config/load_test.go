@@ -258,3 +258,61 @@ spec:
 		t.Fatal("duplicate spoke names must be rejected")
 	}
 }
+
+// TestLoadGatewayHTTPPortRoundTripAndCollisions covers U2's opt-in
+// spec.gateway.httpPort (decision 3): set → decoded and round-tripped
+// through SaveValidated; equal to gateway.port or colliding with a typed
+// extraPorts hostPort → CUBE-0002; omitted → zero (no host mapping at all).
+func TestLoadGatewayHTTPPortRoundTripAndCollisions(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.yaml")
+	base := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: dev}
+spec:
+  engine: {type: flux}
+  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443, httpPort: 8080}
+`
+	if err := os.WriteFile(p, []byte(base), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatalf("valid httpPort rejected: %v", err)
+	}
+	if c.Spec.Gateway.HTTPPort != 8080 {
+		t.Fatalf("httpPort not decoded: %+v", c.Spec.Gateway)
+	}
+	if err := SaveValidated(p, c); err != nil {
+		t.Fatalf("httpPort does not round-trip through SaveValidated: %v", err)
+	}
+	c, err = Load(p)
+	if err != nil || c.Spec.Gateway.HTTPPort != 8080 {
+		t.Fatalf("httpPort lost on round-trip: %v %+v", err, c.Spec.Gateway)
+	}
+
+	// httpPort equal to gateway.port must fail validation (CUBE-0002 family).
+	bad := strings.Replace(base, "httpPort: 8080", "httpPort: 8443", 1)
+	if err := os.WriteFile(p, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); err == nil || codeOf(t, err) != "CUBE-0002" {
+		t.Fatalf("httpPort == port must be CUBE-0002, got: %v", err)
+	}
+
+	// httpPort colliding with a typed extraPorts hostPort must fail too.
+	collide := base + `  cluster: {provider: kind, extraPorts: [{hostPort: 8080, nodePort: 31000}]}
+`
+	if err := os.WriteFile(p, []byte(collide), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); err == nil || codeOf(t, err) != "CUBE-0002" {
+		t.Fatalf("httpPort colliding with extraPorts must be CUBE-0002, got: %v", err)
+	}
+
+	// Omitted → zero: the opt-in default maps nothing (byte-identical to today).
+	mc, err := Load("testdata/minimal.yaml")
+	if err != nil || mc.Spec.Gateway.HTTPPort != 0 {
+		t.Fatalf("omitted httpPort must be zero, got %v %+v", err, mc.Spec.Gateway)
+	}
+}

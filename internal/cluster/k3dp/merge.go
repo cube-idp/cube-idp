@@ -73,20 +73,44 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, z
 	cfg.Image = image
 
 	// Required injection 1: the gateway port mapping (host gw.Port -> node
-	// config.GatewayNodePort on the first server).
-	gwMapping := fmt.Sprintf("%d:%d", gw.Port, config.GatewayNodePort)
-	for _, p := range cfg.Ports {
-		host, node, ok := strings.Cut(p.Port, ":")
-		if ok && host == fmt.Sprint(gw.Port) && node != fmt.Sprint(config.GatewayNodePort) {
-			return nil, diag.New(diag.CodeK3dConfigMerge,
-				fmt.Sprintf("providerConfig maps host port %s to %s, but cube-idp requires %s for the gateway", host, node, gwMapping),
-				"remove that ports entry or change spec.gateway.port; inspect with `cube-idp config render-cluster`")
+	// config.GatewayNodePort on the first server). Guarded (U2, pre-created
+	// for S3): a zero gw.Port means "no gateway on this cluster" and injects
+	// no mapping at all.
+	if gw.Port > 0 {
+		gwMapping := fmt.Sprintf("%d:%d", gw.Port, config.GatewayNodePort)
+		for _, p := range cfg.Ports {
+			host, node, ok := strings.Cut(p.Port, ":")
+			if ok && host == fmt.Sprint(gw.Port) && node != fmt.Sprint(config.GatewayNodePort) {
+				return nil, diag.New(diag.CodeK3dConfigMerge,
+					fmt.Sprintf("providerConfig maps host port %s to %s, but cube-idp requires %s for the gateway", host, node, gwMapping),
+					"remove that ports entry or change spec.gateway.port; inspect with `cube-idp config render-cluster`")
+			}
 		}
-	}
-	if !hasHostPort(cfg.Ports, gw.Port) {
-		cfg.Ports = append(cfg.Ports, v1alpha5.PortWithNodeFilters{
-			Port: gwMapping, NodeFilters: []string{"server:0"},
-		})
+		if !hasHostPort(cfg.Ports, gw.Port) {
+			cfg.Ports = append(cfg.Ports, v1alpha5.PortWithNodeFilters{
+				Port: gwMapping, NodeFilters: []string{"server:0"},
+			})
+		}
+		// U2 opt-in HTTP twin (decision 3): host gw.HTTPPort -> the
+		// plain-HTTP NodePort both gateway packs pin
+		// (config.GatewayHTTPNodePort), same host:node syntax. Absent = no
+		// mapping, byte-identical output to before.
+		if gw.HTTPPort > 0 {
+			httpMapping := fmt.Sprintf("%d:%d", gw.HTTPPort, config.GatewayHTTPNodePort)
+			for _, p := range cfg.Ports {
+				host, node, ok := strings.Cut(p.Port, ":")
+				if ok && host == fmt.Sprint(gw.HTTPPort) && node != fmt.Sprint(config.GatewayHTTPNodePort) {
+					return nil, diag.New(diag.CodeK3dConfigMerge,
+						fmt.Sprintf("providerConfig maps host port %s to %s, but cube-idp requires %s for the gateway's HTTP listener", host, node, httpMapping),
+						"remove that ports entry or change spec.gateway.httpPort; inspect with `cube-idp config render-cluster`")
+				}
+			}
+			if !hasHostPort(cfg.Ports, gw.HTTPPort) {
+				cfg.Ports = append(cfg.Ports, v1alpha5.PortWithNodeFilters{
+					Port: httpMapping, NodeFilters: []string{"server:0"},
+				})
+			}
+		}
 	}
 
 	// Required injection 2: disable k3s's bundled traefik — the gateway pack
@@ -110,6 +134,11 @@ func RenderConfig(name string, spec config.ClusterSpec, gw config.GatewaySpec, z
 				return nil, diag.New(diag.CodeK3dConfigMerge,
 					fmt.Sprintf("spec.cluster.extraPorts maps hostPort %d which cube-idp reserves for the gateway", p.HostPort),
 					"remove that entry from spec.cluster.extraPorts or change spec.gateway.port")
+			}
+			if gw.HTTPPort > 0 && int(p.HostPort) == gw.HTTPPort {
+				return nil, diag.New(diag.CodeK3dConfigMerge,
+					fmt.Sprintf("spec.cluster.extraPorts maps hostPort %d which cube-idp reserves for the gateway's HTTP listener", p.HostPort),
+					"remove that entry from spec.cluster.extraPorts or change spec.gateway.httpPort")
 			}
 			return nil, diag.New(diag.CodeK3dConfigMerge,
 				fmt.Sprintf("host port %d is mapped both in providerConfig and spec.cluster.extraPorts", p.HostPort),

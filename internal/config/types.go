@@ -89,11 +89,26 @@ type EngineSpec struct {
 // imports it.
 const GatewayNodePort = 30443
 
+// GatewayHTTPNodePort is GatewayNodePort's plain-HTTP twin: the node port
+// BOTH gateway packs already pin in-cluster for their HTTP listener
+// (packs/traefik/chart.yaml ports.web.nodePort,
+// packs/envoy-gateway/manifests/10-gatewayclass.yaml's data-plane Service).
+// The host side is mapped onto it only when the opt-in spec.gateway.httpPort
+// is set (U2, decision 3) — absent means no mapping and byte-identical
+// cluster config to before; the packs need no change either way.
+const GatewayHTTPNodePort = 30080
+
 // GatewaySpec configures the ingress/gateway pack.
 type GatewaySpec struct {
 	Pack string `yaml:"pack" json:"pack"`
 	Host string `yaml:"host" json:"host"`
 	Port int    `yaml:"port" json:"port"`
+	// HTTPPort optionally maps a host port onto the gateway's plain-HTTP
+	// listener (GatewayHTTPNodePort, 30080). Opt-in per decision 3: zero =
+	// absent = no mapping. Cluster-shape field — like Port it is baked in
+	// at cluster creation (recreate to change). Must differ from Port and
+	// from every cluster.extraPorts hostPort (CUBE-0002 at load).
+	HTTPPort int `yaml:"httpPort,omitempty" json:"httpPort,omitempty"`
 	// Ref overrides the pack source `up` fetches for the gateway pack. When
 	// unset, `up` falls back to "packs/<Pack>" (a repo-local checkout path,
 	// only valid when cube-idp runs from a checkout); `cube-idp init

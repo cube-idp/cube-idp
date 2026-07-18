@@ -43,17 +43,27 @@ func CheckRuntime() *diag.Finding {
 		Remediation: "install Docker Desktop, Podman, or nerdctl and ensure it is on PATH"}
 }
 
-// CheckPortFree probes the gateway host port. Detection dials 127.0.0.1
-// rather than attempting to Listen: on BSD-family stacks (darwin included)
-// SO_REUSEADDR lets a wildcard Listen succeed even while a loopback-bound
-// squatter already holds the port (and vice versa), so a bind-based probe
-// silently misses real conflicts on this platform family. Dialing sidesteps
-// that — a listener on either 127.0.0.1:port or 0.0.0.0:port answers a
-// loopback connection the same way.
+// CheckPortFree probes the gateway's HTTPS host port (spec.gateway.port).
+// It is CheckHostPortFree with that field name baked in — kept for the
+// existing call sites (init's wizard, doctor's default probe).
+func CheckPortFree(port int, clusterExists bool) *diag.Finding {
+	return CheckHostPortFree(port, clusterExists, "spec.gateway.port")
+}
+
+// CheckHostPortFree probes one required host port; field names the
+// cube.yaml field the remediation tells the user to change
+// (spec.gateway.port, or spec.gateway.httpPort for U2's opt-in plain-HTTP
+// probe). Detection dials 127.0.0.1 rather than attempting to Listen: on
+// BSD-family stacks (darwin included) SO_REUSEADDR lets a wildcard Listen
+// succeed even while a loopback-bound squatter already holds the port (and
+// vice versa), so a bind-based probe silently misses real conflicts on this
+// platform family. Dialing sidesteps that — a listener on either
+// 127.0.0.1:port or 0.0.0.0:port answers a loopback connection the same
+// way.
 //
 // When the cluster already exists, the gateway itself legitimately holds
 // the port — downgrade to a warning instead of lying about a conflict.
-func CheckPortFree(port int, clusterExists bool) *diag.Finding {
+func CheckHostPortFree(port int, clusterExists bool, field string) *diag.Finding {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), portProbeTimeout)
 	if err != nil {
 		return nil // nothing answers on localhost: the port is free
@@ -64,7 +74,7 @@ func CheckPortFree(port int, clusterExists bool) *diag.Finding {
 		sev, msg = diag.SeverityWarning, fmt.Sprintf("port %d is in use (expected: the cube's gateway binds it)", port)
 	}
 	return &diag.Finding{Code: diag.CodeDoctorPort, Severity: sev, Message: msg,
-		Remediation: fmt.Sprintf("if this is not cube-idp's gateway, stop whatever binds port %d or change spec.gateway.port", port)}
+		Remediation: fmt.Sprintf("if this is not cube-idp's gateway, stop whatever binds port %d or change %s", port, field)}
 }
 
 // CheckGitCLI warns when any pack ref needs the git CLI to fetch (the bare
