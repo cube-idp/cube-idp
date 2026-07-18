@@ -4,7 +4,7 @@
 
 **Goal:** Deliver Phase 5 of
 [docs/superpowers/specs/2026-07-18-cube-idp-phase5-roadmap-design.md](../specs/2026-07-18-cube-idp-phase5-roadmap-design.md):
-standalone binary via a public signed packs monorepo (closes F12), visible
+standalone binary via a public attested packs monorepo (closes F12), visible
 provisioning, opt-in HTTP gateway port, `engine.values` typed knobs, remote
 pack catalog, per-pack Gitea delivery, and hub/spoke registration — as
 independently dispatchable, idempotent tasks in three parallel lanes plus a
@@ -15,13 +15,14 @@ subsystem: spokes reuse `internal/cluster` providers + `internal/apply`;
 provider logs reuse the W1 `StepLog` event vocabulary via `ui.Console.Log`;
 `engine.values` patches the embedded engine manifests in memory before SSA
 (no helm exists in the engine path); Gitea delivery reuses
-`internal/syncer.SyncOnce` + `engine.DeliverGit`; signing extends
-`internal/trust` with stdlib `crypto/ecdsa` verification of cosign
-key-based signatures (no sigstore dependency).
+`internal/syncer.SyncOnce` + `engine.DeliverGit`; provenance uses
+GitHub-native artifact attestations generated in CI (keyless — no key
+custody, no crypto code in the binary at all).
 
 **Tech Stack:** Go (stdlib + existing pinned deps ONLY — `go.mod` gains no
-new module in any task), kind/k3d libraries already vendored, cosign CLI in
-CI only (never in the binary), GitHub Actions in the packs repo.
+new module in any task), kind/k3d libraries already vendored, GitHub
+artifact attestations in the packs-repo CI (keyless — no signing keys
+anywhere), GitHub Actions in the packs repo.
 
 ---
 
@@ -137,46 +138,58 @@ and wait — unless the dispatch prompt explicitly pre-authorized that gate.
 Binding for every task. Items marked ⭑ are new decisions taken by this
 plan with the simplest viable default — PENDING OWNER RATIFICATION; record
 any owner override in FINDINGS of the affected task and update this block.
+(GT5, GT6, GT7 and the GT10 mechanism were ratified by the owner on
+2026-07-18.)
 
 - GT1 `engine.values` v1 knobs: **`components.<name>.replicas` and
   `components.<name>.resources` only.** No args escape hatch. Unknown
-  component → typed error listing valid names.
+  component → typed error listing valid names. These are deliberately NOT
+  helm values: the engine install is pre-rendered embedded manifests —
+  there is no chart at up-time to merge values into (unlike packs, whose
+  `values:` feed a real client-side helm render); see U3's rationale.
 - GT2 Spokes support **both engines from day 1** (each is one hub Secret).
-- GT3 **kgateway / openbao are NOT in this plan** (await OpenChoreo spike
-  report on `spike/openchoreo-plan`).
+- GT3 **OpenChoreo is out of Phase 5 entirely** (owner, 2026-07-18): no
+  spike tasks run; the research branch `spike/openchoreo-plan` stays
+  parked, and `kgateway`/`openbao` are parked with it. The CNOE stacks
+  harvest via `cnoe import` remains sanctioned (spec §3 Spike) — it is
+  dispatched ad hoc, not a numbered task of this plan.
 - GT4 Spoke bootstrap naming: namespace **`cube-idp-system`**, SA
   **`cube-idp-<engine>`** (`cube-idp-flux` / `cube-idp-argocd`), CRB
   **`cube-idp-<engine>-admin`** → ClusterRole `cluster-admin`. Hub-side
   Secret: **`cube-idp-spoke-<name>`** in ns `argocd` (engine argocd,
   labeled `argocd.argoproj.io/secret-type: cluster`) or `flux-system`
   (engine flux, key `value` = kubeconfig).
-- GT5 ⭑ Spoke credentials use the **TokenRequest API** (works in envtest,
+- GT5 (ratified) Spoke credentials use the **TokenRequest API** (works in envtest,
   no kube-controller-manager needed), `expirationSeconds: 315360000` (10y,
   server may clamp); every `up` re-run re-issues and re-writes the hub
   Secret, so a clamped token self-heals on re-run.
-- GT6 ⭑ Spoke cluster providers v1: **`kind` and `existing` only** — k3d
+- GT6 (ratified) Spoke cluster providers v1: **`kind` and `existing` only** — k3d
   spokes are deferred (k3d's per-cluster docker network needs a
   shared-network cluster-shape field; kind clusters all join the `kind`
   docker network already). The k3d HUB remains fully supported.
-- GT7 ⭑ Spoke kind cluster name: **`<cube-name>-spoke-<spoke-name>`**; its
+- GT7 (ratified) Spoke kind cluster name: **`<cube-name>-spoke-<spoke-name>`**; its
   API server URL for hub secrets comes from kind's **internal kubeconfig**
   (`provider.KubeConfig(name, true)` → `https://<cluster>-control-plane:6443`).
 - GT8 Spoke CUBE codes: new **8xxx range** (“spoke”), first entries
   CUBE-8001…CUBE-8007 as assigned in Lane S tasks. Engine-values error:
-  **CUBE-3009**. Pack-signature errors: **CUBE-6101…6103**. All must be
-  registered in `internal/diag/registry.go` (the completeness fence
-  `TestRegistryCoversEveryDeclaredCode` enforces this).
+  **CUBE-3009**. All must be registered in `internal/diag/registry.go`
+  (the completeness fence `TestRegistryCoversEveryDeclaredCode` enforces
+  this). No pack-signature codes exist — see GT10.
 - GT9 Packs repo: **`github.com/cube-idp/packs`**, local path `$PACKS`
   (sibling `cube-idp-packs`). Pack dirs live at `$PACKS/packs/<name>`.
   Release tags: **`<name>/vX.Y.Z`**. Artifacts:
   `oci://ghcr.io/cube-idp/packs/<name>:X.Y.Z`. Catalog index:
   `oci://ghcr.io/cube-idp/packs/index:latest` (also digest-pinned tags).
-- GT10 Signing: CI signs with **cosign CLI, key-based** (ECDSA P-256 key
-  pair, private key in repo secrets). The binary verifies with **stdlib
-  `crypto/ecdsa`** against an embedded public key — no sigstore Go
-  dependency. Enforcement policy: refs with prefix
-  **`ghcr.io/cube-idp/packs/`** MUST verify; all other sources (local
-  paths, other registries, git) are exempt and print a one-line Note.
+- GT10 (ratified — "make this simple") Provenance: **GitHub-native
+  artifact attestations** (`actions/attest-build-provenance`, keyless
+  OIDC) — zero repo secrets, zero key custody, zero crypto code in the
+  binary. CI attests each published pack digest and the index digest.
+  Verification is the documented command
+  `gh attestation verify oci://ghcr.io/cube-idp/packs/<name>:<ver> --owner cube-idp`
+  (contract doc + README). In-binary cryptographic verification is a
+  deliberate NON-goal (would need sigstore-go, a new dependency — parked
+  in spec §6); the binary's pull integrity rests on **digest pinning**
+  (index digests, e2e packs.lock) over TLS.
 - GT11 ⭑ HTTP gateway port maps host `spec.gateway.httpPort` →
   **NodePort 30080** (`config.GatewayHTTPNodePort`), which BOTH gateway
   packs already pin in-cluster (`packs/traefik/chart.yaml` ports.web,
@@ -211,7 +224,7 @@ any owner override in FINDINGS of the affected task and update this block.
 | P2 | P | $PACKS* | `p5/p2-packs-repo` | P1 | packs repo scaffold, `pack publish`/`pack index`, publish CI, signing CI |
 | P3 | P | $PACKS | `p5/p3-conformance` | P2 | per-pack conformance harness (CI + local script) |
 | P4 | P | both | `p5/p4-migrate-f12` | P3 | move 7 packs, oci:// gateway default, F12 closed, e2e digest-pinned |
-| P5 | P | $ROOT | `p5/p5-pack-verify` | P2 | signature verification on pull (CUBE-6101…6103) |
+| P5 | P | $PACKS+docs | `p5/p5-pack-attest` | P2 | GitHub attestations in publish CI + `gh attestation verify` docs |
 | P6 | P | $ROOT | `p5/p6-remote-catalog` | P2 | index-backed catalog: `pack list --available`, wizard, install |
 | P7 | P | $ROOT | `p5/p7-gitea-delivery` | P4 | per-pack `delivery: repo` via SyncOnce + DeliverGit |
 | A1–A9 | A | $PACKS | `p5/a<N>-<pack>` | P3 | one new pack each — see Wave A template + parameter table |
@@ -2040,7 +2053,7 @@ HANDOFF: -
   digest, exits per existing error doctrine);
   `cube-idp pack index build <packs-dir> -o index.json` and
   `cube-idp pack index push index.json --ref oci://…/index:latest`.
-  Index schema (consumed by P5's CI signing, P6's catalog):
+  Index schema (consumed by P5's CI attestation, P6's catalog):
 
 ```json
 {"schemaVersion": 1, "packs": [
@@ -2081,13 +2094,14 @@ HANDOFF: -
 
 - [ ] **Step 4: ⚠ OWNER GATE — create the public repo.** STOP and report
   NEEDS_CONTEXT listing exactly:
-  `gh repo create cube-idp/packs --public --description "cube-idp packs — data-only platform packs, published as signed OCI artifacts"`
-  plus the two repo secrets P5's signing needs (`COSIGN_PRIVATE_KEY`,
-  `COSIGN_PASSWORD` — generated by the owner with
-  `cosign generate-key-pair`, public key committed as `cosign.pub`).
-  Proceed past this gate ONLY if the dispatch prompt pre-authorized it;
-  otherwise continue with Steps 5-7 locally (git init, no remote) and
-  leave pushing to the owner.
+  `gh repo create cube-idp/packs --public --description "cube-idp packs — data-only platform packs, published as attested OCI artifacts"`
+  plus the ONE repo secret the CI bootstrap needs while the main repo is
+  private: `CUBE_IDP_READ_TOKEN` (a read-only PAT for checking out
+  cube-idp/cube-idp in workflows; deleted when the main repo goes public
+  or a public release exists). No signing keys exist anywhere — GT10 uses
+  GitHub's keyless attestations. Proceed past this gate ONLY if the
+  dispatch prompt pre-authorized it; otherwise continue with Steps 5-7
+  locally (git init, no remote) and leave pushing to the owner.
 
 - [ ] **Step 5: Scaffold $PACKS.** `git init cube-idp-packs` as $ROOT's
   sibling; commit README.md (what the repo is, how to add a pack —
@@ -2133,8 +2147,8 @@ jobs:
       - run: cd cube-idp-src && go build -o /usr/local/bin/cube-idp . 
       - run: echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
       - run: hack/publish-changed.sh
-      - name: sign (P5 wires cosign here)
-        run: echo "signing added by P5 — digests in digests.env"
+      - name: attest (P5 wires GitHub attestation here)
+        run: echo "attestation added by P5 — digests in digests.env"
       - name: rebuild index
         run: |
           source <(sed 's/^/DIGEST_/' digests.env) || true
@@ -2397,112 +2411,116 @@ HANDOFF: -
 
 ---
 
-### P5: pack signature verification on pull  `[repo: $ROOT + CI wiring in $PACKS]`
+### P5: GitHub attestations in publish CI + verification docs  `[repo: $PACKS + docs in $ROOT]`
 
-**Branch:** `p5/p5-pack-verify` · **Depends:** P2 (parallel with P4 — different files)
+**Branch:** `p5/p5-pack-attest` · **Depends:** P2 (parallel with P4 — different files)
+
+Per GT10 ("make this simple"): provenance comes from GitHub's keyless
+artifact attestations — no keys, no secrets, no Go code, no CUBE codes.
+This task is CI + documentation only. In-binary verification is parked
+(spec §6); the binary's pull integrity is digest pinning over TLS.
 
 **Files:**
-- Create: `internal/trust/packsig.go`, `internal/trust/packsig_test.go`,
-  `internal/trust/testdata/` (test key pair — generated IN the test, not
-  committed private material)
-- Modify: `internal/pack/source.go` (verify hook in the oci:// arm,
-  `internal/pack/source.go:36`), `internal/diag/codes.go` + `registry.go`
-  (CUBE-6101…6103), $PACKS `.github/workflows/publish.yml` (real cosign
-  step replacing P2's placeholder)
+- Modify in $PACKS: `.github/workflows/publish.yml` (permissions + attest
+  steps replacing P2's placeholder), `CONTRACT.md` (verification section)
+- Modify in $ROOT: `docs/pack-contract-v1.md` (same verification section —
+  normative copy, GT12), `README.md` (one verification snippet)
 
 **Interfaces:**
-- Produces:
+- Produces: every tag-published pack digest and each rebuilt index digest
+  carry a GitHub provenance attestation (subject
+  `ghcr.io/cube-idp/packs/<name>@sha256:…`), verifiable by anyone with:
 
-```go
-// VerifyPackSignature enforces GT10: refs under ghcr.io/cube-idp/packs/
-// must carry a valid cosign key-based signature over their digest; other
-// sources are exempt (caller prints the Note). fetchSig pulls the cosign
-// signature artifact for a digest (tag sha256-<hex>.sig) and returns its
-// payload blob and base64 signature annotation.
-func VerifyPackSignature(ref, digest string, pubKeyPEM []byte, fetchSig SigFetcher) error
-type SigFetcher func(sigTag string) (payload []byte, sigB64 string, err error)
-// Enforced reports whether ref falls under the mandatory-verification
-// prefix (GT10).
-func SignatureEnforced(ref string) bool
+```text
+gh attestation verify oci://ghcr.io/cube-idp/packs/<name>:<version> --owner cube-idp
 ```
 
-- Consumes: cosign's key-based signature format — payload is the
-  SimpleSigning JSON whose `.critical.image."docker-manifest-digest"`
-  equals the artifact digest; signature is ECDSA-P256/SHA-256, ASN.1,
-  base64 in annotation `dev.cosignproject.cosign/signature`; verification
-  is `ecdsa.VerifyASN1(pub, sha256(payload), sig)` — stdlib only (GT10).
-  The embedded production key: `internal/trust/cosign.pub` (committed
-  once the owner generates it — until then the file holds the TEST
-  public key and `SignatureEnforced` consults
-  `CUBE_IDP_PACK_PUBKEY` for override; FINDINGS + HANDOFF must flag the
-  swap as an owner action).
+- Consumes: P2's `digests.env` (one `<name>=<sha256:…>` line per
+  tag-triggered run) and `pack index push`'s printed digest; the
+  `actions/attest-build-provenance` action (v3 major at plan time —
+  VERIFY-API against the marketplace when executing; pin the major, never
+  a branch).
 
-- [ ] **Step 1: Failing verify tests** — `internal/trust/packsig_test.go`
-  generates an ECDSA-P256 key in-test, builds a valid SimpleSigning
-  payload for digest `sha256:abc…` (literal test digest), signs it, and
-  asserts: (a) valid payload+sig verifies; (b) tampered payload →
-  CUBE-6102; (c) digest mismatch inside payload → CUBE-6103; (d) fetcher
-  "not found" error → CUBE-6101; (e) `SignatureEnforced` true for
-  `ghcr.io/cube-idp/packs/gitea:0.2.0`, false for `example.com/x`,
-  `oci://` prefix stripped first. Run:
-  `go test ./internal/trust/ -run TestPackSig -v` — Expected: FAIL.
-
-- [ ] **Step 2: Implement `internal/trust/packsig.go`** — ~90 lines:
-  parse PEM pub key (`x509.ParsePKIXPublicKey`), fetch
-  `sha256-<hex>.sig`, JSON-decode payload for the digest field, compare,
-  `ecdsa.VerifyASN1`. Codes:
-
-```go
-	CodePackSigMissing  Code = "CUBE-6101" // required pack signature artifact not found
-	CodePackSigInvalid  Code = "CUBE-6102" // pack signature cryptographically invalid
-	CodePackSigMismatch Code = "CUBE-6103" // pack signature valid but for a different digest
-```
-
-  (+ registry entries). Re-run — Expected: PASS.
-
-- [ ] **Step 3: Wire into the pull path.** In `internal/pack/source.go`'s
-  oci arm (`:36`): after `pullOCI` returns the digest, when
-  `trust.SignatureEnforced(ref)` call `trust.VerifyPackSignature` with a
-  `SigFetcher` built on the same authenticated ORAS client `pullOCI` uses
-  (VERIFY-API: expose a small helper in `internal/oci` if the client
-  isn't reachable from pack — `oci.FetchSignature(ctx, repoRef, sigTag)`
-  — mirroring pullOCI's auth; note the shape in FINDINGS); non-enforced
-  refs emit ONE Note line through the caller's existing note path (find
-  how source.go surfaces warnings; if it cannot, return a typed
-  `Unverified bool` alongside and let the up loop Note — choose the
-  smaller diff, record it). Failing-then-passing test with the ocitest
-  fake: enforced ref without sig → CUBE-6101; with valid sig → pull
-  succeeds; non-enforced local path → untouched.
-  Run: `go test ./internal/pack/ ./internal/oci/ -run 'Sig|Source' -v` —
-  Expected: PASS.
-
-- [ ] **Step 4: Real cosign in $PACKS CI.** Replace P2's placeholder step:
+- [ ] **Step 1: Wire attestation into `publish.yml`.** Extend the
+  workflow's permissions block:
 
 ```yaml
-      - uses: sigstore/cosign-installer@v3
-      - name: sign
-        env:
-          COSIGN_PRIVATE_KEY: '${{ secrets.COSIGN_PRIVATE_KEY }}'
-          COSIGN_PASSWORD: '${{ secrets.COSIGN_PASSWORD }}'
-        run: |
-          while IFS='=' read -r NAME DIGEST; do
-            cosign sign --yes --key env://COSIGN_PRIVATE_KEY \
-              "ghcr.io/cube-idp/packs/${NAME}@${DIGEST}"
-          done < digests.env
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
 ```
 
-  Commit ($PACKS): `git add .github/ && git commit -m "ci: cosign key-based signing of published packs"`
+  Replace P2's `attest (P5 wires GitHub attestation here)` placeholder
+  step with:
 
-- [ ] **Step 5: Gate + fences + commit ($ROOT)** — full gate. Commit:
-  `git add internal/ && git commit -m "feat(trust): mandatory signature verification for cube-idp registry packs (CUBE-6101..6103)"`
-  HANDOFF: production `cosign.pub` swap is pending the owner keygen (P2
-  gate).
+```yaml
+      - name: export pack subject
+        run: |
+          IFS='=' read -r NAME DIGEST < digests.env
+          echo "PACK_NAME=$NAME" >> "$GITHUB_ENV"
+          echo "PACK_DIGEST=$DIGEST" >> "$GITHUB_ENV"
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ghcr.io/cube-idp/packs/${{ env.PACK_NAME }}
+          subject-digest: ${{ env.PACK_DIGEST }}
+          push-to-registry: true
+```
+
+  and extend the `rebuild index` step to capture and attest the index
+  digest (append to the same step's `run:` block, then add the second
+  attest step):
+
+```yaml
+          cube-idp pack index push index.json --ref oci://ghcr.io/cube-idp/packs/index:latest | tee push.out
+          echo "INDEX_DIGEST=$(grep -o 'sha256:[a-f0-9]*' push.out | head -1)" >> "$GITHUB_ENV"
+```
+
+```yaml
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ghcr.io/cube-idp/packs/index
+          subject-digest: ${{ env.INDEX_DIGEST }}
+          push-to-registry: true
+```
+
+- [ ] **Step 2: Verify the workflow parses.** Run:
+  `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/publish.yml'))" && echo YAML-OK`
+  Expected: `YAML-OK`. (The attestation itself can only be proven on the
+  first owner-tagged publish — the P4 Step 2 owner gate; state this in
+  FINDINGS and HANDOFF. Do not fake a run.)
+
+- [ ] **Step 3: Verification docs.** Add a "Verifying pack provenance"
+  section to `$PACKS/CONTRACT.md` AND `$ROOT/docs/pack-contract-v1.md`
+  (identical text, GT12), plus a two-line snippet in `$ROOT/README.md`
+  next to the install instructions:
+
+```markdown
+## Verifying pack provenance
+
+Every artifact under `ghcr.io/cube-idp/packs/` is published by the
+`cube-idp/packs` GitHub workflow and carries a GitHub-native provenance
+attestation. To verify one (requires `gh` ≥ 2.49, logged in):
+
+    gh attestation verify oci://ghcr.io/cube-idp/packs/gitea:0.2.0 --owner cube-idp
+
+Expected: `✓ Verification succeeded!` naming the cube-idp/packs workflow
+as the builder. cube-idp itself pins digests (catalog index, e2e
+packs.lock) and does not re-verify attestations at pull time.
+```
+
+- [ ] **Step 4: Gate + commits.** $PACKS:
+  `git add .github/ CONTRACT.md && git commit -m "ci: keyless GitHub attestations for published packs + index"`
+  $ROOT (docs only — full gate still runs and must stay green):
+  `go build ./... && go vet ./... && go test ./...` then
+  `git add docs/pack-contract-v1.md README.md && git commit -m "docs: pack provenance verification via gh attestation verify"`
 
 #### Outcome
 
 ```
 STATUS: UNCLAIMED
-BRANCH: p5/p5-pack-verify (merged: -)
+BRANCH: p5/p5-pack-attest (merged: -)
 COMMITS: -
 FINDINGS: -
 REVIEW: -
@@ -2747,8 +2765,8 @@ A9 STATUS: UNCLAIMED  BRANCH: p5/a9-kargo             COMMITS: -  FINDINGS: -  R
 ```text
 Immediately dispatchable in parallel: S1, U1, P1     (three lanes, three agents)
 Then:  S2→S3→S4   U2→U3   P2→{P3, P5, P6}   P3→P4→P7   P3→A1..A9 (any order, parallel)
-Owner gates: P2 Step 4 (gh repo create + cosign keys), P4 Step 2 (publish 0.2.0),
-             P5 HANDOFF (production cosign.pub), A Step 6 (tags).
+Owner gates: P2 Step 4 (gh repo create + CUBE_IDP_READ_TOKEN),
+             P4 Step 2 (publish 0.2.0), A Step 6 (tags).
 ```
 
 ## Plan-level completion
@@ -2757,7 +2775,8 @@ Phase 5 is DONE when every task above is DONE/DONE_WITH_CONCERNS, the
 owner gates have run, and the two headline proofs hold:
 1. A downloaded (or freshly built) cube-idp binary in an EMPTY directory:
    `cube-idp init --name t && cube-idp up && cube-idp status --exit-status`
-   succeeds with no checkout present (F12 closed, signed packs verified).
+   succeeds with no checkout present (F12 closed; packs digest-pinned,
+   provenance attested in CI and verifiable via `gh attestation verify`).
 2. A cube.yaml with one kind spoke: `up` registers it; the engine UI/CLI
    (argocd cluster list or flux kubeconfig secret) shows the spoke;
    `down --yes` removes everything including the spoke cluster.

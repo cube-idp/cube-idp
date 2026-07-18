@@ -15,8 +15,9 @@ gateway pack from the repo-relative `packs/traefik`). Phase 5 makes the
 released binary **fully operational standalone** and grows the platform
 surface:
 
-1. Packs live in a public monorepo and ship as signed OCI artifacts — the
-   downloaded binary needs nothing else (closes F12).
+1. Packs live in a public monorepo and ship as OCI artifacts with
+   GitHub-native provenance attestations — the downloaded binary needs
+   nothing else (closes F12).
 2. The pack fleet grows from 7 to ~17 (10 confirmed new packs across 9
    Wave A tasks), each with CI conformance and doctor coverage.
 3. CLI UX gaps close: visible cluster provisioning, opt-in HTTP gateway
@@ -39,8 +40,8 @@ manually-dispatched agent per task, ledger ticks in the plan file.
 | 3 | Gateway HTTP (non-TLS) port | **Opt-in** (`spec.gateway.httpPort`), not default |
 | 4 | Gitea delivery | **Per-pack** flag/field, not cube-wide mode |
 | 5 | Crossplane | **Core-only** pack first; providers as separate packs later |
-| 6 | OpenChoreo | Demoted to research; plan lives on `spike/openchoreo-plan` |
-| 7 | Pack signing | **In scope for the repo split** (W0), not a fast-follow |
+| 6 | OpenChoreo | **Out of Phase 5 entirely** (owner, 2026-07-18) — research branch `spike/openchoreo-plan` parked; NO spike tasks this phase |
+| 7 | Pack signing | **In scope for the repo split** (W0) via **GitHub-native artifact attestations** — keyless, no key custody (owner, 2026-07-18: "make this simple"); verification documented via `gh attestation verify`, in-binary crypto deliberately out |
 | 8 | `engine.values` | **Typed knobs → patches** over embedded manifests (option A) |
 | 9 | Spokes scope | **Registration only** — bootstrap SA + hub registration, engine takes over; no pack delivery to spokes by cube-idp |
 | 10 | Renovate/dependabot in packs repo | **Parked** for a later phase |
@@ -57,9 +58,10 @@ manually-dispatched agent per task, ledger ticks in the plan file.
   versioned contract doc + CUE schema the conformance harness enforces.
 - **W0.T2 `cube-idp/packs` monorepo scaffold + publish CI.** Per-pack tags
   (`<pack>/vX.Y.Z`); CI publishes each pack as an OCI artifact to
-  `oci://ghcr.io/cube-idp/packs/<name>`, cosign-signs it (decision 7), and
-  publishes a catalog **index artifact** (`.../packs/index`) listing
-  name/version/description/ref for every pack.
+  `oci://ghcr.io/cube-idp/packs/<name>`, attests it with GitHub-native
+  artifact attestations (decision 7), and publishes a catalog **index
+  artifact** (`.../packs/index`) listing name/version/description/ref for
+  every pack.
 - **W0.T3 Conformance harness.** Packs-repo CI smoke per pack: kind +
   `cube-idp up` + health gate + teardown. This is the multiplier that makes
   Wave A's parallel authoring safe — without it a 16-pack repo rots
@@ -69,9 +71,14 @@ manually-dispatched agent per task, ledger ticks in the plan file.
   gateway pack resolves out-of-repo; `init --local` keeps working for
   checkout development; main-repo e2e consumes the packs repo pinned by
   digest (decision 2). Remove the v0.1.0 README caveat.
-- **W0.T5 Signature verification in the binary.** Extend the existing plugin
-  trust subsystem to cosign-verify pack artifacts on pull, with the same
-  consent/refusal UX doctrine (TTY prompt, CUBE-coded non-TTY refusal).
+- **W0.T5 Provenance attestation + verification docs.** CI attests every
+  published pack digest with `actions/attest-build-provenance` (keyless
+  OIDC — zero repo secrets, zero key custody). Verification is the
+  documented `gh attestation verify oci://… --owner cube-idp` path in the
+  contract doc and README. In-binary cryptographic verification is a
+  deliberate NON-goal (it would require a sigstore Go dependency); pull
+  integrity in the binary rests on digest pinning (index digests +
+  packs.lock) over TLS.
 
 Ordering inside W0: T1 → T2 → {T3, T4, T5} (the last three can run in
 parallel once T2's repo and index format exist).
@@ -89,8 +96,8 @@ default policies, separate so they stay optional) · `cloudnativepg` ·
 follow-up) · `argo-events` · `argo-workflows` · `prometheus-stack` +
 `grafana` · `kargo`.
 
-Candidates pending owner review of the OpenChoreo spike plan: `kgateway`
-(third gateway pack), `openbao`.
+`kgateway` and `openbao` are **parked** with the OpenChoreo research
+(decision 6) — not Wave A candidates in this phase.
 
 ### Wave B — CLI UX (parallel with everything; no W0 dependency except B3's index format)
 
@@ -123,15 +130,15 @@ Candidates pending owner review of the OpenChoreo spike plan: `kgateway`
 
 Design in §5.
 
-### Spikes (anytime, timeboxed)
+### Spike (anytime, timeboxed)
 
-- OpenChoreo: the five spike tasks defined in the plan on
-  `spike/openchoreo-plan` (decisive unknowns: imperative install glue vs
-  the data-only pack contract; `down` cascade through its 32 CRDs and
-  webhooks).
-- CNOE stacks harvest: try `cnoe import` (cmd/cnoe.go) against
-  cnoe-io/stacks and raftechio/cnoe-stacks-custom entries as the cheap
-  ingestion path before promoting anything to a first-class pack.
+- CNOE stacks harvest (owner-confirmed 2026-07-18): try `cnoe import`
+  (cmd/cnoe.go) against cnoe-io/stacks and raftechio/cnoe-stacks-custom
+  entries as the cheap ingestion path before promoting anything to a
+  first-class pack.
+
+No OpenChoreo spikes run in Phase 5 (decision 6) — the research plan on
+`spike/openchoreo-plan` stays parked, unexecuted.
 
 ## 4. `engine.values` — typed knobs → patches
 
@@ -212,14 +219,17 @@ no cross-cluster registry plumbing in this design.
 
 ## 6. Adopted gaps and parking lot
 
-Adopted into waves above: pack signing (W0.T5), remote catalog (B3),
+Adopted into waves above: pack attestation (W0.T5), remote catalog (B3),
 conformance harness (W0.T3), doctor coverage (Wave A DoD).
 
 Parked: Renovate/dependabot in the packs repo (decision 10 — revisit once
 the fleet exists); blueprints repository (parked earlier; prerequisite is
 the W0.T1 contract freeze); spoke pack-targeting (dropped — engine's job);
-full `openchoreo` pack-set (pending spike results); public-release path
-polish (Homebrew tap, `go install`) — natural companion to the packs going
+OpenChoreo integration in any form, and with it the `kgateway` and
+`openbao` packs (decision 6 — the research branch stays parked);
+in-binary signature verification (needs a sigstore Go dependency —
+revisit only if the threat model demands it); public-release path polish
+(Homebrew tap, `go install`) — natural companion to the packs going
 public, scheduled when the org flips the main repo public.
 
 ## 7. Dispatch map
@@ -232,19 +242,21 @@ Wave A: 9-11 pack tasks, fully parallel             (after W0)
 Wave C: C1 Gitea delivery                           (after W0)
 Wave B: B1, B2, B4 anytime; B3 after index format   (parallel with W0)
 Wave D: spokes v1                                   (anytime, independent)
-Spikes: OpenChoreo S1-S5, CNOE harvest              (anytime, timeboxed)
+Spike: CNOE stacks harvest                          (anytime, timeboxed)
 ```
 
 Suggested first dispatch batch (max parallelism, no conflicts): W0.T1,
 B1, B2, B4, Wave D design/bootstrap, one CNOE harvest spike.
 
-## 8. Open questions (owner)
+## 8. Open questions — RESOLVED (owner, 2026-07-18)
 
-1. `engine.values` v1 knob set: are `replicas` + `resources` per component
-   enough, or is a controller-args escape hatch needed day 1?
-2. Spokes: confirm both-engines parity day 1 (recommended — each is a
-   one-secret registration).
-3. Promote `kgateway` and `openbao` into Wave A now, or hold until the
-   OpenChoreo spike tasks report?
-4. Spoke bootstrap naming: namespace and `cube-idp-{engine}` SA name —
-   confirm the convention before Wave D freezes CUBE codes around it.
+1. `engine.values` v1 knob set: `replicas` + `resources` per component
+   only (plan GT1); no args escape hatch. Note: these are NOT helm values
+   — the engine install is pre-rendered embedded manifests with no chart
+   to merge into (§4); packs keep their helm-values semantics unchanged.
+2. Spokes both-engines parity day 1: **yes** (plan GT2).
+3. `kgateway` / `openbao`: **parked** with OpenChoreo (decision 6).
+4. Spoke bootstrap naming: namespace `cube-idp-system`, SA
+   `cube-idp-<engine>`, CRB `cube-idp-<engine>-admin` (plan GT4;
+   GT5/GT6/GT7 ratified same day: TokenRequest 10y, kind+existing
+   providers only, `<cube>-spoke-<name>` cluster naming).
