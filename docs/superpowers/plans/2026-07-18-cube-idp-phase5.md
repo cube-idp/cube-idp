@@ -725,7 +725,7 @@ surface; use the real method names (FINDINGS records drift). Register
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(b67ed6f3, 2026-07-18T09:05:50Z)
 BRANCH: p5/s1-spoke-config (merged: -)
 COMMITS: -
 FINDINGS: -
@@ -1629,7 +1629,7 @@ In `internal/up/up.go` right after `cluster.New` (line ~119):
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(agent-u1-b67ed6f3, 2026-07-18T09:05:51Z)
 BRANCH: p5/u1-provider-logs (merged: -)
 COMMITS: -
 FINDINGS: -
