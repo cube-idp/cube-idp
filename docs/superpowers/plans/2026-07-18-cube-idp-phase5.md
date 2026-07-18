@@ -3625,7 +3625,7 @@ description: seed plugin proving the cube-idp plugins pipeline
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(b67ed6f3-6188-p9, 2026-07-18T18:39:34Z)
 BRANCH: p5/p9-plugins-repo (merged: -)
 COMMITS: -
 FINDINGS: -
