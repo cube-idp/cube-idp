@@ -514,3 +514,82 @@ func TestPackPushJSONStreamEmitsExpectedEventTypes(t *testing.T) {
 		}
 	}
 }
+
+// P7 (decision 4): `pack install --via repo` marks every written PackRef
+// for Gitea delivery; `--via oci` (the default) writes no delivery key at
+// all — byte-compatible with pre-P7 files. A bogus --via value is a typed
+// flag refusal, and --via repo on a gitea-less cube is refused by the
+// load-time gitea guarantee with cube.yaml left untouched.
+func TestPackInstallViaRepo(t *testing.T) {
+	file := cubeYAMLFixture(t) // init default profile: gitea pack present
+	ref := "oci://ghcr.io/cube-idp/packs/demo:0.1.0"
+
+	mustRunCLI(t, "pack", "install", ref, "--via", "repo")
+	cube, err := config.Load(file)
+	if err != nil {
+		t.Fatalf("reloading cube.yaml: %v", err)
+	}
+	last := cube.Spec.Packs[len(cube.Spec.Packs)-1]
+	if last.Ref != ref || last.Delivery != "repo" {
+		t.Fatalf("want %q with delivery: repo appended, got %+v", ref, cube.Spec.Packs)
+	}
+	raw, _ := os.ReadFile(file)
+	if !strings.Contains(string(raw), "delivery: repo") {
+		t.Fatalf("cube.yaml missing delivery: repo:\n%s", raw)
+	}
+}
+
+func TestPackInstallViaOCIWritesNothing(t *testing.T) {
+	file := cubeYAMLFixture(t)
+	ref := "oci://ghcr.io/cube-idp/packs/demo:0.1.0"
+
+	mustRunCLI(t, "pack", "install", ref, "--via", "oci")
+	raw, _ := os.ReadFile(file)
+	if strings.Contains(string(raw), "delivery:") {
+		t.Fatalf("--via oci must write no delivery key:\n%s", raw)
+	}
+	cube, err := config.Load(file)
+	if err != nil || cube.Spec.Packs[len(cube.Spec.Packs)-1].Ref != ref {
+		t.Fatalf("ref not appended: %v %+v", err, cube.Spec.Packs)
+	}
+}
+
+func TestPackInstallViaBogusRefused(t *testing.T) {
+	cubeYAMLFixture(t)
+	_, err := runCLI(t, "pack", "install", "oci://ghcr.io/cube-idp/packs/demo:0.1.0", "--via", "zip")
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeBadFlagValue {
+		t.Fatalf("--via zip must be the typed flag refusal, got: %v", err)
+	}
+}
+
+func TestPackInstallViaRepoWithoutGiteaRefused(t *testing.T) {
+	// A cube WITHOUT the gitea pack: the guarantee must refuse the install
+	// (CUBE-7304 via SaveValidated's round-trip) and leave the file untouched.
+	file := cubeYAMLFixture(t)
+	cube, err := config.Load(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := cube.Spec.Packs[:0]
+	for _, p := range cube.Spec.Packs {
+		if !strings.Contains(p.Ref, "gitea") {
+			kept = append(kept, p)
+		}
+	}
+	cube.Spec.Packs = kept
+	if err := config.SaveValidated(file, cube); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(file)
+
+	_, err = runCLI(t, "pack", "install", "oci://ghcr.io/cube-idp/packs/demo:0.1.0", "--via", "repo")
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeRepoDeliveryConfig {
+		t.Fatalf("repo delivery without gitea must be CUBE-7304, got: %v", err)
+	}
+	after, _ := os.ReadFile(file)
+	if !bytes.Equal(before, after) {
+		t.Fatalf("a refused install must leave cube.yaml untouched:\n%s", after)
+	}
+}

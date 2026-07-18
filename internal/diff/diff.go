@@ -220,14 +220,32 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		}
 		entries = append(entries, lock.Entry{Name: rendered.Name, RenderedHash: rh})
 
-		// Deliver is pure (no push): the ArtifactRef mirrors the repo/tag
-		// up.Run pushes to, but nothing is pushed here.
-		artifact := engine.ArtifactRef{Repo: "packs/" + rendered.Name, Tag: rendered.Version}
-		deliverObjs, err := eng.Deliver(ctx, rendered, artifact)
-		if err != nil {
-			return nil, nil, nil, err
+		if pr.Delivery == "repo" {
+			// P7: up delivers this pack as an engine git source over the
+			// in-cluster Gitea repo (deliverPackRepo), whose spec embeds
+			// live-derived state — the gitea admin owner in the clone URL —
+			// so re-rendering it here for a dry-run diff would fabricate
+			// fields (the Pack-record reasoning above). Identity is enough
+			// for orphan accounting; a placeholder GitSource yields the
+			// engine-native identities (names are deterministic:
+			// cube-idp-<pack>).
+			gitObjs, err := eng.DeliverGit(ctx, rendered.Name, engine.GitSource{})
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			for _, o := range gitObjs {
+				orphanOnly = append(orphanOnly, identityStub(o.GroupVersionKind(), o.GetNamespace(), o.GetName()))
+			}
+		} else {
+			// Deliver is pure (no push): the ArtifactRef mirrors the
+			// repo/tag up.Run pushes to, but nothing is pushed here.
+			artifact := engine.ArtifactRef{Repo: "packs/" + rendered.Name, Tag: rendered.Version}
+			deliverObjs, err := eng.Deliver(ctx, rendered, artifact)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			desired = append(desired, deliverObjs...)
 		}
-		desired = append(desired, deliverObjs...)
 
 		// D11 Pack record identity (see the orphanOnly doc above for why
 		// only identity, not the full spec, belongs here).

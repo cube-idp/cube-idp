@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/engine"
+	"github.com/cube-idp/cube-idp/internal/gitea"
 	"github.com/cube-idp/cube-idp/internal/kube"
 	"github.com/cube-idp/cube-idp/internal/lock"
 	"github.com/cube-idp/cube-idp/internal/pack"
@@ -177,11 +179,14 @@ func TestResolveBundleRefs_LocalDirFallback(t *testing.T) {
 }
 
 // TestResolveBundleRefs_PreservesValues verifies rewriting the Ref keeps the
-// pack's Values overrides intact — only the source location changes.
+// pack's install-shaping fields intact — Values, extraManifests (GT15) and
+// delivery (P7) — only the source location changes.
 func TestResolveBundleRefs_PreservesValues(t *testing.T) {
 	refs := []config.PackRef{{
-		Ref:    "oci://ghcr.io/cube-idp/packs/gitea:0.1.0",
-		Values: map[string]any{"replicas": 2},
+		Ref:            "oci://ghcr.io/cube-idp/packs/gitea:0.1.0",
+		Values:         map[string]any{"replicas": 2},
+		ExtraManifests: "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: seed}\n",
+		Delivery:       "repo",
 	}}
 	lk := &lock.File{Packs: []lock.Entry{{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.1.0", Name: "gitea"}}}
 	resolved, err := resolveBundleRefs(refs, lk, func(string) (string, bool) {
@@ -192,6 +197,9 @@ func TestResolveBundleRefs_PreservesValues(t *testing.T) {
 	}
 	if resolved[0].Values["replicas"] != 2 {
 		t.Fatalf("values lost: %+v", resolved[0])
+	}
+	if !strings.Contains(resolved[0].ExtraManifests, "kind: ConfigMap") || resolved[0].Delivery != "repo" {
+		t.Fatalf("extraManifests/delivery lost on bundle rewrite: %+v", resolved[0])
 	}
 }
 
@@ -388,5 +396,253 @@ func TestSpokeServerURL(t *testing.T) {
 	got, err = spokeServerURL(context.Background(), fakeInternalProvider{kc: kc}, "dev-spoke-staging", kindSp, hostConn)
 	if err != nil || got != "https://dev-spoke-staging-control-plane:6443" {
 		t.Fatalf("kind arm: got %q err %v", got, err)
+	}
+}
+
+// ---- P7: per-pack delivery branch (delivery: repo) ----------------------
+
+// fakePackEngine records which delivery shape was asked for. It satisfies
+// packEngine (the narrow up-side seam), never the full engine.Engine.
+type fakePackEngine struct {
+	delivered    []string // pack names handed to Deliver (OCI shape)
+	gitDelivered []string // pack names handed to DeliverGit
+	gitSources   []engine.GitSource
+}
+
+func (f *fakePackEngine) Deliver(_ context.Context, r *pack.Rendered, _ engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
+	f.delivered = append(f.delivered, r.Name)
+	o := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]any{"name": "oci-" + r.Name, "namespace": "d"}}}
+	return []*unstructured.Unstructured{o}, nil
+}
+
+func (f *fakePackEngine) DeliverGit(_ context.Context, name string, src engine.GitSource) ([]*unstructured.Unstructured, error) {
+	f.gitDelivered = append(f.gitDelivered, name)
+	f.gitSources = append(f.gitSources, src)
+	o := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]any{"name": "git-" + name, "namespace": "d"}}}
+	return []*unstructured.Unstructured{o}, nil
+}
+
+// fakePackApplier records applied/inventoried objects — the narrow
+// packApplier seam (*apply.Applier satisfies it in production).
+type fakePackApplier struct {
+	applied  []string
+	recorded []string
+}
+
+func names(objs []*unstructured.Unstructured) []string {
+	var out []string
+	for _, o := range objs {
+		out = append(out, o.GetName())
+	}
+	return out
+}
+
+func (f *fakePackApplier) Apply(_ context.Context, objs []*unstructured.Unstructured, _ bool, _ time.Duration) error {
+	f.applied = append(f.applied, names(objs)...)
+	return nil
+}
+
+func (f *fakePackApplier) RecordInventory(_ context.Context, objs []*unstructured.Unstructured) error {
+	f.recorded = append(f.recorded, names(objs)...)
+	return nil
+}
+
+// fakeGiteaPacks records repo-side calls — the giteaPacks seam
+// (*gitea.Client satisfies it in production).
+type fakeGiteaPacks struct {
+	ensured []string
+	synced  map[string][]string // repo -> sorted synced paths
+	branch  string
+	msgs    []string
+}
+
+func (f *fakeGiteaPacks) EnsureRepo(_ context.Context, name string) (*gitea.Repo, error) {
+	f.ensured = append(f.ensured, name)
+	return &gitea.Repo{Owner: "gitea_admin", Name: name, DefaultBranch: "main",
+		CloneURL: "http://gitea/gitea_admin/" + name + ".git"}, nil
+}
+
+func (f *fakeGiteaPacks) SyncDir(_ context.Context, owner, repo, branch, dir, message string, files map[string][]byte) (bool, error) {
+	if f.synced == nil {
+		f.synced = map[string][]string{}
+	}
+	var paths []string
+	for p := range files {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	f.synced[repo] = paths
+	f.branch = branch
+	f.msgs = append(f.msgs, message)
+	return true, nil
+}
+
+func demoRendered(name string) *pack.Rendered {
+	ns := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1", "kind": "Namespace",
+		"metadata": map[string]any{"name": name}}}
+	cm := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]any{"name": "seed", "namespace": name}}}
+	return &pack.Rendered{Name: name, Version: "0.1.0", Objects: []*unstructured.Unstructured{ns, cm}}
+}
+
+// TestDeliverPackOCINeverTouchesGitea pins the P7 branch: a pack without
+// delivery: repo takes the pre-P7 tail (push to zot + engine OCI source)
+// and never opens a gitea session.
+func TestDeliverPackOCINeverTouchesGitea(t *testing.T) {
+	eng := &fakePackEngine{}
+	ap := &fakePackApplier{}
+	pushed := 0
+	deps := deliverDeps{
+		eng:     eng,
+		applier: ap,
+		pushOCI: func(_ context.Context, r *pack.Rendered, _ string) (engine.ArtifactRef, error) {
+			pushed++
+			return engine.ArtifactRef{Repo: "packs/" + r.Name, Tag: r.Version}, nil
+		},
+		gitea: func(context.Context) (giteaPacks, error) {
+			t.Fatal("OCI delivery must never touch gitea")
+			return nil, nil
+		},
+	}
+	if err := deliverPack(context.Background(), deps, config.PackRef{Ref: "x"}, demoRendered("demo")); err != nil {
+		t.Fatal(err)
+	}
+	if pushed != 1 || !reflect.DeepEqual(eng.delivered, []string{"demo"}) || len(eng.gitDelivered) != 0 {
+		t.Fatalf("OCI branch: pushed=%d delivered=%v git=%v", pushed, eng.delivered, eng.gitDelivered)
+	}
+	if !reflect.DeepEqual(ap.applied, []string{"oci-demo"}) || !reflect.DeepEqual(ap.recorded, []string{"oci-demo"}) {
+		t.Fatalf("OCI branch apply/inventory: %v / %v", ap.applied, ap.recorded)
+	}
+}
+
+// TestDeliverPackRepoNeverTouchesOCIPusher pins the other half: a
+// delivery: repo pack renders into a Gitea repo (cube-pack-<name>) and an
+// engine git source — the OCI pusher and the engine's OCI Deliver are
+// never invoked, and DeliverGit's objects are applied + inventoried
+// exactly like the OCI path's.
+func TestDeliverPackRepoNeverTouchesOCIPusher(t *testing.T) {
+	eng := &fakePackEngine{}
+	ap := &fakePackApplier{}
+	g := &fakeGiteaPacks{}
+	deps := deliverDeps{
+		eng:     eng,
+		applier: ap,
+		pushOCI: func(context.Context, *pack.Rendered, string) (engine.ArtifactRef, error) {
+			t.Fatal("repo delivery must never touch the OCI pusher")
+			return engine.ArtifactRef{}, nil
+		},
+		gitea: func(context.Context) (giteaPacks, error) { return g, nil },
+	}
+	if err := deliverPack(context.Background(), deps, config.PackRef{Ref: "x", Delivery: "repo"}, demoRendered("demo")); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(g.ensured, []string{"cube-pack-demo"}) {
+		t.Fatalf("gitea repo not ensured: %v", g.ensured)
+	}
+	wantFiles := []string{"manifests/00-namespace-demo.yaml", "manifests/01-configmap-seed.yaml"}
+	if !reflect.DeepEqual(g.synced["cube-pack-demo"], wantFiles) {
+		t.Fatalf("synced files: %v, want %v", g.synced["cube-pack-demo"], wantFiles)
+	}
+	if g.branch != "main" {
+		t.Fatalf("sync branch: %q", g.branch)
+	}
+	if len(eng.delivered) != 0 || !reflect.DeepEqual(eng.gitDelivered, []string{"demo"}) {
+		t.Fatalf("repo branch must DeliverGit only: oci=%v git=%v", eng.delivered, eng.gitDelivered)
+	}
+	src := eng.gitSources[0]
+	if src.URL != "http://gitea-http.gitea.svc.cluster.local:3000/gitea_admin/cube-pack-demo.git" ||
+		src.Branch != "main" || src.Path != "./" {
+		t.Fatalf("git source: %+v", src)
+	}
+	if !reflect.DeepEqual(ap.applied, []string{"git-demo"}) || !reflect.DeepEqual(ap.recorded, []string{"git-demo"}) {
+		t.Fatalf("repo branch apply/inventory: %v / %v", ap.applied, ap.recorded)
+	}
+}
+
+// TestRenderedFilesStableNaming pins the repo file layout: order-indexed
+// manifests/NN-<kind>-<name>.yaml — stable names give stable git diffs.
+func TestRenderedFilesStableNaming(t *testing.T) {
+	files, err := renderedFiles(demoRendered("demo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("want 2 files, got %v", files)
+	}
+	ns, ok := files["manifests/00-namespace-demo.yaml"]
+	if !ok || !strings.Contains(string(ns), "kind: Namespace") {
+		t.Fatalf("namespace file wrong: %v / %s", ok, ns)
+	}
+	cm, ok := files["manifests/01-configmap-seed.yaml"]
+	if !ok || !strings.Contains(string(cm), "kind: ConfigMap") {
+		t.Fatalf("configmap file wrong: %v / %s", ok, cm)
+	}
+}
+
+// TestOrderPackRefsHoistsGiteaForRepoDelivery pins the gitea guarantee's
+// ordering half: with any delivery: repo pack present, gitea moves
+// directly behind the gateway (refs[0]); without one, order is untouched.
+func TestOrderPackRefsHoistsGiteaForRepoDelivery(t *testing.T) {
+	gw := "oci://ghcr.io/cube-idp/packs/traefik:0.2.0"
+	a := config.PackRef{Ref: "oci://ghcr.io/cube-idp/packs/argocd:0.2.0"}
+	b := config.PackRef{Ref: "oci://ghcr.io/cube-idp/packs/backstage:0.2.0", Delivery: "repo"}
+	g := config.PackRef{Ref: "oci://ghcr.io/cube-idp/packs/gitea:0.2.0"}
+
+	got := orderPackRefs(gw, []config.PackRef{a, b, g})
+	want := []string{gw, g.Ref, a.Ref, b.Ref}
+	var gotRefs []string
+	for _, r := range got {
+		gotRefs = append(gotRefs, r.Ref)
+	}
+	if !reflect.DeepEqual(gotRefs, want) {
+		t.Fatalf("repo delivery must hoist gitea behind the gateway:\n got %v\nwant %v", gotRefs, want)
+	}
+
+	// No repo-delivered pack: byte-identical to the pre-P7 order.
+	got = orderPackRefs(gw, []config.PackRef{a, {Ref: g.Ref}})
+	gotRefs = nil
+	for _, r := range got {
+		gotRefs = append(gotRefs, r.Ref)
+	}
+	if !reflect.DeepEqual(gotRefs, []string{gw, a.Ref, g.Ref}) {
+		t.Fatalf("without repo delivery the order must be untouched: %v", gotRefs)
+	}
+}
+
+// TestGiteaSessionGate pins the readiness gate: delivery is asynchronous
+// (delivered != ready), so the session builder polls until the attempt
+// succeeds and types the terminal timeout as CUBE-7301.
+func TestGiteaSessionGate(t *testing.T) {
+	calls := 0
+	g := &fakeGiteaPacks{}
+	cli, stop, err := giteaSession(context.Background(), 2*time.Second, time.Millisecond,
+		func(context.Context) (giteaPacks, func(), error) {
+			calls++
+			if calls < 3 {
+				return nil, nil, errors.New("gitea not up yet")
+			}
+			return g, func() {}, nil
+		})
+	if err != nil || cli != g {
+		t.Fatalf("gate must succeed once the attempt does: %v", err)
+	}
+	stop()
+	if calls != 3 {
+		t.Fatalf("gate must poll: %d calls", calls)
+	}
+
+	_, _, err = giteaSession(context.Background(), 5*time.Millisecond, time.Millisecond,
+		func(context.Context) (giteaPacks, func(), error) {
+			return nil, nil, errors.New("still down")
+		})
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeRepoGiteaUnavailable {
+		t.Fatalf("gate timeout must be CUBE-7301, got: %v", err)
 	}
 }

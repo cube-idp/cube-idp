@@ -88,13 +88,20 @@ func ExposeURLs(p *Pack, gw config.GatewaySpec) []string {
 // bit (U4): true when the pack's PackRef carried non-empty values or
 // extraManifests — the caller decides, since only it holds the ref. The
 // record always carries spec.customized as "yes"/"no" (never absent) so
-// the CUSTOMIZED printer column renders for stock packs too.
-func PackObject(p *Pack, gw config.GatewaySpec, ready, customized bool) *unstructured.Unstructured {
+// the CUSTOMIZED printer column renders for stock packs too. delivery is
+// GT19's twin bit (P7), the ref's delivery mode verbatim: an empty
+// PackRef.Delivery maps to "oci" HERE, in the record writer, so every
+// pack shows a value and repo-delivered packs stand out in the DELIVERY
+// printer column.
+func PackObject(p *Pack, gw config.GatewaySpec, ready, customized bool, delivery string) *unstructured.Unstructured {
 	customizedStr := "no"
 	if customized {
 		customizedStr = "yes"
 	}
-	spec := map[string]any{"version": p.Version, "ready": ready, "customized": customizedStr}
+	if delivery == "" {
+		delivery = "oci"
+	}
+	spec := map[string]any{"version": p.Version, "ready": ready, "customized": customizedStr, "delivery": delivery}
 	if urls := ExposeURLs(p, gw); len(urls) > 0 {
 		anyURLs := make([]any, len(urls))
 		for i, u := range urls {

@@ -10,10 +10,13 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	sigyaml "sigs.k8s.io/yaml"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
 	"github.com/cube-idp/cube-idp/internal/bundle"
@@ -22,6 +25,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/engine"
 	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
+	"github.com/cube-idp/cube-idp/internal/gitea"
 	"github.com/cube-idp/cube-idp/internal/kube"
 	"github.com/cube-idp/cube-idp/internal/lock"
 	"github.com/cube-idp/cube-idp/internal/oci"
@@ -257,7 +261,11 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	// Gateway pack goes first — everything else depends on ingress existing.
-	refs := append([]config.PackRef{{Ref: cube.Spec.Gateway.PackRef()}}, cube.Spec.Packs...)
+	// P7 (the gitea guarantee, decision 13): with any delivery: repo pack
+	// declared, gitea is additionally hoisted directly behind the gateway,
+	// so the repo-delivery readiness gate below waits on a pack that is
+	// already reconciling.
+	refs := orderPackRefs(cube.Spec.Gateway.PackRef(), cube.Spec.Packs)
 	// Deviation 3 (offline): rewrite every ref to its bundle-local source dir
 	// before the loop's pack.Fetch runs, so fetching reads from disk and a
 	// ref absent from the bundle fails loudly (CUBE-7004) instead of falling
@@ -268,6 +276,38 @@ func Run(ctx context.Context, opts Options) error {
 			return err
 		}
 	}
+	// P7: the per-pack delivery collaborators, faked in the branch unit
+	// tests. The gitea session is lazy — established once, at the first
+	// delivery: repo pack (which the ordering above put right after gitea
+	// itself was delivered), then shared; its port-forward closes with Run.
+	var giteaStop func()
+	defer func() {
+		if giteaStop != nil {
+			giteaStop()
+		}
+	}()
+	var giteaCli giteaPacks
+	deps := deliverDeps{
+		eng:        eng,
+		applier:    a,
+		tunnelAddr: tunnelAddr,
+		pushOCI:    oci.PushRendered,
+		gitea: func(ctx context.Context) (giteaPacks, error) {
+			if giteaCli != nil {
+				return giteaCli, nil
+			}
+			g, stop, err := giteaSession(ctx, applyTimeout, giteaReadyPoll,
+				func(ctx context.Context) (giteaPacks, func(), error) {
+					return giteaConnectOnce(ctx, conn.REST, a.Client())
+				})
+			if err != nil {
+				return nil, err
+			}
+			giteaCli, giteaStop = g, stop
+			return giteaCli, nil
+		},
+	}
+
 	var entries []lock.Entry
 	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
 	for i, pref := range refs {
@@ -307,10 +347,6 @@ func Run(ctx context.Context, opts Options) error {
 			if err != nil {
 				return err
 			}
-			artifact, err := oci.PushRendered(ctx, rendered, tunnelAddr)
-			if err != nil {
-				return err
-			}
 			rh, err := lock.RenderedHash(rendered.Objects)
 			if err != nil {
 				return err
@@ -326,14 +362,10 @@ func Run(ctx context.Context, opts Options) error {
 				// field comment for why both sources matter.
 				Images: mergeImages(lock.ImagesFrom(rendered.Objects), pk.Images),
 			})
-			deliverObjs, err := eng.Deliver(ctx, rendered, artifact)
-			if err != nil {
-				return err
-			}
-			if err := a.Apply(ctx, deliverObjs, false, applyTimeout); err != nil {
-				return err
-			}
-			if err := a.RecordInventory(ctx, deliverObjs); err != nil {
+			// P7: the delivery tail branches on the ref's delivery mode —
+			// deliverPackOCI is the pre-P7 tail moved verbatim; delivery:
+			// repo renders into an engine-watched Gitea repo instead.
+			if err := deliverPack(ctx, deps, pref, rendered); err != nil {
 				return err
 			}
 			pr.Done("%s@%s delivered", rendered.Name, rendered.Version)
@@ -400,15 +432,16 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	// "cube-idp-"+name is the Deliver object name convention both engines
 	// use (internal/engine/flux/deliver.go, internal/engine/argocd/deliver.go).
-	// D11 record-writer fields (append-only shared surface): U4 CUSTOMIZED
-	// here; P7 adds DELIVERY. packs is index-aligned with refs (exactly one
-	// append per ref in the delivery loop above, any failure aborts Run), so
-	// refs[i] is the PackRef whose values/extraManifests decide GT15's
-	// CUSTOMIZED column for packs[i].
+	// D11 record-writer fields (append-only shared surface): U4 CUSTOMIZED,
+	// P7 DELIVERY (GT19 — PackObject maps an empty Delivery to "oci").
+	// packs is index-aligned with refs (exactly one append per ref in the
+	// delivery loop above, any failure aborts Run), so refs[i] is the
+	// PackRef whose values/extraManifests/delivery decide packs[i]'s
+	// CUSTOMIZED and DELIVERY columns.
 	packObjs := make([]*unstructured.Unstructured, 0, len(packs))
 	for i, pk := range packs {
 		customized := len(refs[i].Values) > 0 || refs[i].ExtraManifests != ""
-		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name], customized))
+		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name], customized, refs[i].Delivery))
 	}
 	if err := a.Apply(ctx, packObjs, false, applyTimeout); err != nil {
 		return err
@@ -767,4 +800,239 @@ func componentStates(health []engine.ComponentHealth) []event.ComponentState {
 		states[i] = event.ComponentState{Name: h.Name, Ready: h.Ready, Message: h.Message}
 	}
 	return states
+}
+
+// ---- P7: per-pack delivery (delivery: oci|repo) --------------------------
+
+// The D11-verified facts about the shipped gitea pack, mirrored from
+// cmd/repo.go (checkpoint 0.10/0.8; tests/e2e keeps its own copy the same
+// way): admin Secret gitea-admin-cube-idp in namespace gitea (keys
+// username/password), chart-standard pod label, Service gitea-http:3000.
+const (
+	giteaNamespace       = "gitea"
+	giteaAdminSecretName = "gitea-admin-cube-idp"
+	giteaPodSelector     = "app.kubernetes.io/name=gitea"
+	giteaPodPort         = 3000
+	giteaInClusterHost   = "gitea-http.gitea.svc.cluster.local:3000"
+	// giteaReadyPoll paces the repo-delivery readiness gate (giteaSession):
+	// engine delivery is asynchronous, so gitea being DELIVERED does not
+	// mean its API answers yet.
+	giteaReadyPoll = 3 * time.Second
+)
+
+// packEngine is the narrow engine surface the delivery tail uses —
+// engine.Engine satisfies it; the branch unit tests fake it.
+type packEngine interface {
+	Deliver(ctx context.Context, r *pack.Rendered, src engine.ArtifactRef) ([]*unstructured.Unstructured, error)
+	DeliverGit(ctx context.Context, name string, src engine.GitSource) ([]*unstructured.Unstructured, error)
+}
+
+// packApplier is the narrow Applier surface the delivery tail uses —
+// *apply.Applier satisfies it; the branch unit tests fake it.
+type packApplier interface {
+	Apply(ctx context.Context, objs []*unstructured.Unstructured, wait bool, timeout time.Duration) error
+	RecordInventory(ctx context.Context, objs []*unstructured.Unstructured) error
+}
+
+// giteaPacks is the narrow Gitea surface repo delivery uses —
+// *gitea.Client satisfies it; the branch unit tests fake it.
+type giteaPacks interface {
+	EnsureRepo(ctx context.Context, name string) (*gitea.Repo, error)
+	SyncDir(ctx context.Context, owner, repo, branch, dir, message string, files map[string][]byte) (bool, error)
+}
+
+// deliverDeps bundles the per-pack delivery collaborators so the
+// oci-vs-repo branch is unit-testable with fakes: production wires the
+// real engine, Applier, oci.PushRendered, and a lazy gitea session.
+type deliverDeps struct {
+	eng        packEngine
+	applier    packApplier
+	tunnelAddr string
+	pushOCI    func(ctx context.Context, r *pack.Rendered, registryAddr string) (engine.ArtifactRef, error)
+	// gitea yields the shared Gitea session, established lazily at the
+	// first delivery: repo pack (the session builder owns the readiness
+	// gate). OCI-delivered packs never invoke it.
+	gitea func(ctx context.Context) (giteaPacks, error)
+}
+
+// deliverPack hands one rendered pack to the engine by the ref's delivery
+// mode (P7): "" or "oci" pushes to zot and registers an OCI source (the
+// pre-P7 tail, moved verbatim into deliverPackOCI); "repo" renders into an
+// engine-watched Gitea repo (decision 13). CUE constrains Delivery to the
+// two values, so there is no third arm.
+func deliverPack(ctx context.Context, deps deliverDeps, ref config.PackRef, rendered *pack.Rendered) error {
+	if ref.Delivery == "repo" {
+		return deliverPackRepo(ctx, deps, rendered)
+	}
+	return deliverPackOCI(ctx, deps, rendered)
+}
+
+// deliverPackOCI is the pre-P7 per-pack delivery tail: push the render to
+// the in-cluster zot and apply + inventory the engine's OCI source objects.
+func deliverPackOCI(ctx context.Context, deps deliverDeps, rendered *pack.Rendered) error {
+	artifact, err := deps.pushOCI(ctx, rendered, deps.tunnelAddr)
+	if err != nil {
+		return err
+	}
+	deliverObjs, err := deps.eng.Deliver(ctx, rendered, artifact)
+	if err != nil {
+		return err
+	}
+	if err := deps.applier.Apply(ctx, deliverObjs, false, applyTimeout); err != nil {
+		return err
+	}
+	return deps.applier.RecordInventory(ctx, deliverObjs)
+}
+
+// deliverPackRepo is delivery: repo (P7, decision 4/13): ensure the Gitea
+// repo cube-pack-<name>, sync the RenderWith output (values + extras
+// applied — cube.yaml is the source of truth, the repo the editable
+// working copy) into its manifests/, and register an engine git source
+// over the in-cluster clone URL instead of an OCI one. The lazy deps.gitea
+// session carries the readiness gate, so by the time this runs the gitea
+// API is answering.
+func deliverPackRepo(ctx context.Context, deps deliverDeps, rendered *pack.Rendered) error {
+	g, err := deps.gitea(ctx)
+	if err != nil {
+		return err
+	}
+	repo, err := g.EnsureRepo(ctx, "cube-pack-"+rendered.Name)
+	if err != nil {
+		return err
+	}
+	files, err := renderedFiles(rendered)
+	if err != nil {
+		return err
+	}
+	msg := fmt.Sprintf("cube-idp up: render %s@%s", rendered.Name, rendered.Version)
+	if _, err := g.SyncDir(ctx, repo.Owner, repo.Name, repo.DefaultBranch, "manifests", msg, files); err != nil {
+		return err
+	}
+	// The ENGINE clones over the in-cluster Service URL, never the
+	// port-forward tunnel (cmd/repo.go's deployRepo, recorded 0.10
+	// decision); failures past this point mirror its CUBE-7303 — the repo
+	// itself already exists and re-running `up` is the retry.
+	wrap := func(err error) error {
+		return diag.Wrap(err, diag.CodeRepoDeployFail,
+			fmt.Sprintf("pack %s: repo delivered but engine git source registration failed", rendered.Name),
+			"re-run `cube-idp up` — it is idempotent and resumes where it left off")
+	}
+	src := engine.GitSource{
+		URL:    fmt.Sprintf("http://%s/%s/%s.git", giteaInClusterHost, repo.Owner, repo.Name),
+		Branch: repo.DefaultBranch,
+		Path:   "./",
+	}
+	deliverObjs, err := deps.eng.DeliverGit(ctx, rendered.Name, src)
+	if err != nil {
+		return wrap(err)
+	}
+	if err := deps.applier.Apply(ctx, deliverObjs, false, applyTimeout); err != nil {
+		return wrap(err)
+	}
+	if err := deps.applier.RecordInventory(ctx, deliverObjs); err != nil {
+		return wrap(err)
+	}
+	return nil
+}
+
+// renderedFiles lays rendered.Objects out as manifests/NN-<kind>-<name>.yaml
+// (order-indexed: the render's object order is the pack author's apply
+// order, and stable names give stable git diffs across re-renders).
+func renderedFiles(r *pack.Rendered) (map[string][]byte, error) {
+	files := make(map[string][]byte, len(r.Objects))
+	for i, o := range r.Objects {
+		y, err := sigyaml.Marshal(o.Object)
+		if err != nil {
+			return nil, diag.Wrap(err, diag.CodeRepoDeployFail,
+				fmt.Sprintf("pack %s: cannot marshal rendered object %d for repo delivery", r.Name, i),
+				"this is a cube-idp bug — please report it")
+		}
+		name := fmt.Sprintf("manifests/%02d-%s-%s.yaml", i, strings.ToLower(o.GetKind()), o.GetName())
+		files[name] = y
+	}
+	return files, nil
+}
+
+// orderPackRefs builds the delivery order: the gateway pack first, as
+// always. With any delivery: repo pack declared, the gitea pack is hoisted
+// directly behind the gateway (the gitea guarantee's ordering half,
+// decision 13) so the repo-delivery readiness gate waits on a pack already
+// reconciling; everything else keeps its declared relative order. Gitea is
+// matched by the same ref-substring convention config's load-time
+// guarantee and cmd/init.go's filterSelectedPacks use.
+func orderPackRefs(gatewayRef string, packs []config.PackRef) []config.PackRef {
+	refs := make([]config.PackRef, 0, len(packs)+1)
+	refs = append(refs, config.PackRef{Ref: gatewayRef})
+	repoDelivered := false
+	for _, p := range packs {
+		if p.Delivery == "repo" {
+			repoDelivered = true
+			break
+		}
+	}
+	if !repoDelivered {
+		return append(refs, packs...)
+	}
+	for _, p := range packs {
+		if strings.Contains(p.Ref, "gitea") {
+			refs = append(refs, p)
+		}
+	}
+	for _, p := range packs {
+		if !strings.Contains(p.Ref, "gitea") {
+			refs = append(refs, p)
+		}
+	}
+	return refs
+}
+
+// giteaSession is the repo-delivery readiness gate (decision 13): engine
+// reconciliation is asynchronous — the gitea pack being delivered does not
+// mean its API is up — so the session is acquired by bounded polling of
+// attempt (secret read -> port-forward -> API ping in production) until it
+// succeeds or timeout elapses (typed CUBE-7301; the applyTimeout cap keeps
+// the no-infinite-spinner rule). The hoisted gitea ordering makes this
+// wait short; the gate makes the flow correct.
+func giteaSession(ctx context.Context, timeout, poll time.Duration, attempt func(context.Context) (giteaPacks, func(), error)) (giteaPacks, func(), error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		g, stop, err := attempt(ctx)
+		if err == nil {
+			return g, stop, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, nil, diag.Wrap(err, diag.CodeRepoGiteaUnavailable,
+				fmt.Sprintf("gitea is not ready within %s — repo-delivered packs need its API serving", timeout),
+				"check `kubectl -n gitea get pods`, then re-run `cube-idp up` (idempotent) — or switch the pack to delivery: oci")
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, diag.Wrap(ctx.Err(), diag.CodeRepoGiteaUnavailable,
+				"gitea readiness wait aborted before completion",
+				"re-run `cube-idp up` — it is idempotent and resumes where it left off")
+		case <-time.After(poll):
+		}
+	}
+}
+
+// giteaConnectOnce is one production acquisition attempt for giteaSession:
+// read the gitea pack's admin Secret, port-forward to the gitea pod, and
+// prove the API answers. Errors are plain (the gate retries them); only
+// the gate's terminal timeout is typed.
+func giteaConnectOnce(ctx context.Context, restCfg *rest.Config, cl client.Client) (giteaPacks, func(), error) {
+	var sec corev1.Secret
+	key := client.ObjectKey{Namespace: giteaNamespace, Name: giteaAdminSecretName}
+	if err := cl.Get(ctx, key, &sec); err != nil {
+		return nil, nil, fmt.Errorf("gitea admin secret not readable yet: %w", err)
+	}
+	addr, stop, err := kube.PortForward(ctx, restCfg, giteaNamespace, giteaPodSelector, giteaPodPort)
+	if err != nil {
+		return nil, nil, fmt.Errorf("gitea pod not port-forwardable yet: %w", err)
+	}
+	gc := &gitea.Client{BaseURL: "http://" + addr, Username: string(sec.Data["username"]), Password: string(sec.Data["password"])}
+	if err := gc.Ping(ctx); err != nil {
+		stop()
+		return nil, nil, fmt.Errorf("gitea API not answering yet: %w", err)
+	}
+	return gc, stop, nil
 }

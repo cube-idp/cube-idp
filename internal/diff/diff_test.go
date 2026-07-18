@@ -37,14 +37,26 @@ func (fakeEngine) InstallManifests() ([]*unstructured.Unstructured, error) {
 func (fakeEngine) Deliver(_ context.Context, r *pack.Rendered, src engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
 	return []*unstructured.Unstructured{
 		{Object: map[string]any{
+			"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "OCIRepository",
+			"metadata": map[string]any{"name": "cube-idp-" + r.Name, "namespace": "engine-system"},
+		}},
+		{Object: map[string]any{
 			"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization",
 			"metadata": map[string]any{"name": "cube-idp-" + r.Name, "namespace": "engine-system"},
 		}},
 	}, nil
 }
 
+// DeliverGit mirrors the flux shape truthfully: a distinct source kind
+// (GitRepository, never OCIRepository) plus the shared Kustomization —
+// TestDesiredStateRepoDeliveredPack relies on the kinds differing exactly
+// the way the real engines' do.
 func (fakeEngine) DeliverGit(_ context.Context, name string, _ engine.GitSource) ([]*unstructured.Unstructured, error) {
 	return []*unstructured.Unstructured{
+		{Object: map[string]any{
+			"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
+			"metadata": map[string]any{"name": "cube-idp-" + name, "namespace": "engine-system"},
+		}},
 		{Object: map[string]any{
 			"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization",
 			"metadata": map[string]any{"name": "cube-idp-" + name, "namespace": "engine-system"},
@@ -167,10 +179,11 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 			t.Fatal(err)
 		}
 		wantDeliver = append(wantDeliver, deliverObjs...)
-		// customized mirrors up.Run's GT15 record-writer expression; only
-		// the record's identity is compared below, but stay truthful.
+		// customized/delivery mirror up.Run's GT15/GT19 record-writer
+		// expressions; only the record's identity is compared below, but
+		// stay truthful.
 		wantPackRecords = append(wantPackRecords, pack.PackObject(p, cube.Spec.Gateway, false,
-			len(pr.Values) > 0 || pr.ExtraManifests != ""))
+			len(pr.Values) > 0 || pr.ExtraManifests != "", pr.Delivery))
 	}
 
 	wantApplied := identitySet(regObjs, []*unstructured.Unstructured{crd}, installObjs,
@@ -192,5 +205,52 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 		if !wantApplied[key] {
 			t.Errorf("desiredState claims %s but up.Run never applies it — would silently mask a real orphan of that identity", key)
 		}
+	}
+}
+
+// TestDesiredStateRepoDeliveredPack pins P7's diff mirror (GT19 flow): a
+// delivery: repo pack contributes NO OCI delivery objects to the dry-run
+// diff set — up applies engine git-source objects instead, whose spec
+// embeds live-derived state (the gitea admin owner in the clone URL), so
+// re-rendering them here would fabricate fields. Their identities go to
+// orphanOnly (the Pack-record reasoning), keeping a converged
+// repo-delivered cube free of false orphans AND of phantom OCI-source
+// drift. The gateway pack (always OCI) keeps its full-spec diff.
+func TestDesiredStateRepoDeliveredPack(t *testing.T) {
+	cube := &config.Cube{
+		Metadata: config.Metadata{Name: "test"},
+		Spec: config.Spec{
+			Engine:  config.EngineSpec{Type: "flux"},
+			Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
+			Packs:   []config.PackRef{{Ref: "../pack/testdata/demo-kustomize", Delivery: "repo"}},
+		},
+	}
+
+	desired, orphanOnly, entries, err := desiredState(context.Background(), cube, fakeEngine{})
+	if err != nil {
+		t.Fatalf("desiredState: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("repo-delivered packs still get lock entries: %d", len(entries))
+	}
+
+	desiredSet := identitySet(desired)
+	orphanSet := identitySet(orphanOnly)
+	const ns = "engine-system"
+	ociSrc := refKey("source.toolkit.fluxcd.io", "OCIRepository", ns, "cube-idp-demo-kustomize")
+	gitSrc := refKey("source.toolkit.fluxcd.io", "GitRepository", ns, "cube-idp-demo-kustomize")
+	kust := refKey("kustomize.toolkit.fluxcd.io", "Kustomization", ns, "cube-idp-demo-kustomize")
+	if desiredSet[ociSrc] || desiredSet[gitSrc] || desiredSet[kust] {
+		t.Fatalf("repo-delivered pack must contribute no full-spec delivery objects to the diff set:\n%v", sortedKeys(desiredSet))
+	}
+	if !orphanSet[gitSrc] || !orphanSet[kust] {
+		t.Fatalf("repo-delivered pack's git-source identities must be orphan-tracked:\n%v", sortedKeys(orphanSet))
+	}
+	if orphanSet[ociSrc] {
+		t.Fatalf("no OCI source identity belongs to a repo-delivered pack:\n%v", sortedKeys(orphanSet))
+	}
+	// The gateway pack stays a full-spec OCI diff.
+	if !desiredSet[refKey("source.toolkit.fluxcd.io", "OCIRepository", ns, "cube-idp-demo")] {
+		t.Fatalf("gateway pack must keep its OCI delivery objects:\n%v", sortedKeys(desiredSet))
 	}
 }

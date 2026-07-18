@@ -145,11 +145,13 @@ const (
 	CodeSyncWatchSetupFail Code = "CUBE-7202" // `sync --watch` cannot start or attach the filesystem watcher
 )
 
-// 73xx: repo (Task 12)
+// 73xx: repo (Task 12; CUBE-7304 Phase 5 P7)
 const (
 	CodeRepoGiteaUnavailable Code = "CUBE-7301" // gitea admin secret missing or port-forward to the gitea pod failed
 	CodeRepoGiteaAPIFail     Code = "CUBE-7302" // gitea REST API returned an unexpected status (create/fetch repo)
 	CodeRepoDeployFail       Code = "CUBE-7303" // repo created but engine git source registration/apply failed
+	// P7 (the gitea guarantee, decision 13): raised at config load.
+	CodeRepoDeliveryConfig Code = "CUBE-7304" // delivery: repo needs the gitea pack in spec.packs, and gitea itself cannot be repo-delivered
 )
 
 // 8xxx: spoke (Phase 5)

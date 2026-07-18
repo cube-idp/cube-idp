@@ -140,6 +140,8 @@ var registry = map[Code]Desc{
 	CodeRepoGiteaUnavailable: {Summary: "gitea admin secret missing or port-forward to the gitea pod failed"},
 	CodeRepoGiteaAPIFail:     {Summary: "gitea REST API returned an unexpected status (create/fetch repo)"},
 	CodeRepoDeployFail:       {Summary: "repo created but engine git source registration/apply failed"},
+	// P7 (the gitea guarantee, decision 13):
+	CodeRepoDeliveryConfig: {Summary: "delivery: repo needs the gitea pack in spec.packs, and gitea itself cannot be repo-delivered"},
 
 	// 8xxx: spoke (Phase 5)
 	CodeSpokeProviderUnsupported: {Summary: "spoke cluster.provider invalid for spokes (k3d deferred; existing needs context; duplicate name)"},

@@ -32,7 +32,11 @@ func resolveBundleRefs(refs []config.PackRef, lk *lock.File, lookup func(name st
 				fmt.Sprintf("bundle has no pack for ref %q (resolved name %q)", ref.Ref, name),
 				"re-run `cube-idp vendor` on a connected machine so the bundle carries every pack this cube references, then retry")
 		}
-		out[i] = config.PackRef{Ref: dir, Values: ref.Values}
+		// Only the SOURCE is rewritten — the ref's install-shaping fields
+		// (values, GT15 extraManifests, P7 delivery) carry over so a bundle
+		// install renders and delivers exactly like the online one (repo
+		// delivery is in-cluster and works air-gapped).
+		out[i] = config.PackRef{Ref: dir, Values: ref.Values, ExtraManifests: ref.ExtraManifests, Delivery: ref.Delivery}
 	}
 	return out, nil
 }

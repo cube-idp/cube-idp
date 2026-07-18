@@ -474,3 +474,84 @@ spec:
 		t.Fatalf("empty ExtraManifests must marshal as an absent key:\n%s", raw)
 	}
 }
+
+func TestPackDeliveryRoundTripAndGiteaGuarantee(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.yaml")
+	base := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: dev}
+spec:
+  engine: {type: flux}
+  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443}
+  packs:
+    - ref: oci://ghcr.io/cube-idp/packs/gitea:0.2.0
+    - ref: oci://ghcr.io/cube-idp/packs/backstage:0.2.0
+      delivery: repo
+`
+	if err := os.WriteFile(p, []byte(base), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// (a) delivery: repo round-trips; the absent field stays absent.
+	c, err := Load(p)
+	if err != nil {
+		t.Fatalf("valid delivery: repo rejected: %v", err)
+	}
+	if c.Spec.Packs[0].Delivery != "" || c.Spec.Packs[1].Delivery != "repo" {
+		t.Fatalf("delivery not decoded: %+v", c.Spec.Packs)
+	}
+	if err := SaveValidated(p, c); err != nil {
+		t.Fatalf("delivery does not round-trip through SaveValidated: %v", err)
+	}
+	c, err = Load(p)
+	if err != nil || c.Spec.Packs[1].Delivery != "repo" {
+		t.Fatalf("delivery lost on round-trip: %v %+v", err, c.Spec.Packs)
+	}
+	raw, _ := os.ReadFile(p)
+	if got := strings.Count(string(raw), "delivery:"); got != 1 {
+		t.Fatalf("empty Delivery must marshal as an absent key (want exactly 1 delivery: line, got %d):\n%s", got, raw)
+	}
+
+	// (b) delivery: bogus is rejected by CUE (the enum is oci|repo).
+	bad := strings.Replace(base, "delivery: repo", "delivery: bogus", 1)
+	if err := os.WriteFile(p, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "CUBE-0002") {
+		t.Fatalf("delivery: bogus must fail CUE validation with CUBE-0002, got: %v", err)
+	}
+
+	// (c) The gitea guarantee: a delivery: repo pack with no gitea pack in
+	// spec.packs is a typed error naming the fix.
+	noGitea := strings.Replace(base, "    - ref: oci://ghcr.io/cube-idp/packs/gitea:0.2.0\n", "", 1)
+	if err := os.WriteFile(p, []byte(noGitea), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Load(p)
+	if err == nil || !strings.Contains(err.Error(), "CUBE-7304") {
+		t.Fatalf("repo delivery without the gitea pack must be CUBE-7304, got: %v", err)
+	}
+	var de *diag.Error
+	if !errors.As(err, &de) || !strings.Contains(de.Remediation, "add the gitea pack or use delivery: oci") {
+		t.Fatalf("CUBE-7304 must name the fix in its remediation, got: %+v", err)
+	}
+
+	// (d) gitea itself can never be repo-delivered (self-reference).
+	selfRef := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: dev}
+spec:
+  engine: {type: flux}
+  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443}
+  packs:
+    - ref: oci://ghcr.io/cube-idp/packs/gitea:0.2.0
+      delivery: repo
+`
+	if err := os.WriteFile(p, []byte(selfRef), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "CUBE-7304") {
+		t.Fatalf("gitea with delivery: repo must be CUBE-7304 (self-reference), got: %v", err)
+	}
+}
