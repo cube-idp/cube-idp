@@ -58,7 +58,7 @@ func newCnoeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			eng, err := enginefactory.New(cube.Spec.Engine.Type)
+			eng, err := enginefactory.New(cube.Spec.Engine)
 			if err != nil {
 				return err
 			}

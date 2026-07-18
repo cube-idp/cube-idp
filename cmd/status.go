@@ -270,7 +270,7 @@ func connectStatus(ctx context.Context, file string, withAccess bool) (string, s
 	if err != nil {
 		return "", nil, err
 	}
-	eng, err := enginefactory.New(cube.Spec.Engine.Type)
+	eng, err := enginefactory.New(cube.Spec.Engine)
 	if err != nil {
 		return "", nil, err
 	}

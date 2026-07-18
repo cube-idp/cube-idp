@@ -77,6 +77,33 @@ type Mount struct {
 // EngineSpec selects the GitOps reconciliation engine.
 type EngineSpec struct {
 	Type string `yaml:"type" json:"type"` // "flux" | "argocd"
+	// Tuning optionally patches the engine's embedded install manifests
+	// before SSA (GT1, U3): a closed knob set — components.<name>.replicas
+	// and components.<name>.resources only. These are NOT helm values (the
+	// vocabulary stone, GT15): the engine installs from pre-rendered plain
+	// manifests, so tuning is an in-memory walk-and-set, never a chart
+	// re-render. nil = absent; omitempty keeps the round-trip discipline of
+	// PackRef.Values (an absent key, not an explicit YAML null).
+	Tuning *EngineTuning `yaml:"tuning,omitempty" json:"tuning,omitempty"`
+}
+
+// EngineTuning is the closed engine.tuning knob set (GT1). Component names
+// are validated against the engine's actual Deployments when the manifests
+// are rendered (engine.ApplyTuning) — an unknown name is a typed CUBE-3009
+// listing the valid ones, never a silent ignore.
+type EngineTuning struct {
+	Components map[string]ComponentTuning `yaml:"components,omitempty" json:"components,omitempty"`
+}
+
+// ComponentTuning tunes one engine Deployment: spec.replicas and every
+// container's resources. Replicas nil = untouched. Resources replaces each
+// container's resources block verbatim (k8s ResourceRequirements shape);
+// numeric leaves keep CUE's int64 decode type — deliberately NOT normalized
+// to int like PackRef.Values, because the consumer is unstructured SSA
+// (DeepCopyJSONValue accepts int64, not int), not helm.
+type ComponentTuning struct {
+	Replicas  *int           `yaml:"replicas,omitempty" json:"replicas,omitempty"`
+	Resources map[string]any `yaml:"resources,omitempty" json:"resources,omitempty"`
 }
 
 // GatewayNodePort is the node port every cluster-creating provider (kindp,

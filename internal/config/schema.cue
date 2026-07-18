@@ -17,7 +17,19 @@ package config
 			mounts?: [...{hostPath: string, nodePath: string}]
 			providerConfig?: string
 		}
-		engine: type: *"flux" | "argocd"
+		engine: {
+			type: *"flux" | "argocd"
+			// GT1 (U3): closed tuning knob set — per-component replicas and
+			// resources, patched over the embedded engine install manifests.
+			// Component names are validated against the engine's actual
+			// Deployments at render time (CUBE-3009), not here.
+			tuning?: {
+				components?: {[=~"^[a-z0-9-]+$"]: {
+					replicas?:  int & >0
+					resources?: {...}
+				}}
+			}
+		}
 		gateway: {
 			pack: *"traefik" | string
 			host: *"cube-idp.localtest.me" | string

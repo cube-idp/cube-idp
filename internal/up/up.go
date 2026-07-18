@@ -185,7 +185,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
-	eng, err := enginefactory.New(cube.Spec.Engine.Type)
+	eng, err := enginefactory.New(cube.Spec.Engine)
 	if err != nil {
 		return err
 	}

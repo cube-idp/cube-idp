@@ -46,6 +46,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/engine"
 )
@@ -58,9 +59,19 @@ var installYAML []byte
 //go:embed manifests/repo-secret.yaml
 var repoSecretYAML []byte
 
-type ArgoCD struct{}
+type ArgoCD struct {
+	// tuning is the closed engine.tuning knob set (GT1, U3) applied over
+	// the embedded install manifests by InstallManifests. nil = untuned.
+	tuning *config.EngineTuning
+}
 
+// New returns an untuned ArgoCD engine (tests and callers that only need
+// the stock install).
 func New() *ArgoCD { return &ArgoCD{} }
+
+// NewTuned returns an ArgoCD engine whose InstallManifests patches the
+// embedded manifests with t (GT1). The factory is the production caller.
+func NewTuned(t *config.EngineTuning) *ArgoCD { return &ArgoCD{tuning: t} }
 
 // clusterScopedKinds are the non-namespaced kinds argo-cd's own
 // manifests/install.yaml ships (plus the Namespace object this package
@@ -101,7 +112,14 @@ func (g *ArgoCD) InstallManifests() ([]*unstructured.Unstructured, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(objs, secretObjs...), nil
+	all := append(objs, secretObjs...)
+	// GT1 (U3): apply this engine's tuning last, so the objects Install
+	// SSAs and `up` inventories are the tuned ones. An unknown tuning
+	// component surfaces as CUBE-3009 here.
+	if err := engine.ApplyTuning(all, g.tuning); err != nil {
+		return nil, err
+	}
+	return all, nil
 }
 
 func (g *ArgoCD) Install(ctx context.Context, a *apply.Applier, timeout time.Duration) error {

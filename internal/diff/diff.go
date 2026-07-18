@@ -76,7 +76,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	eng, err := enginefactory.New(cube.Spec.Engine.Type)
+	eng, err := enginefactory.New(cube.Spec.Engine)
 	if err != nil {
 		return false, err
 	}
