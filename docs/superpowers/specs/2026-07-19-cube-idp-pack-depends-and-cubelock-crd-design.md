@@ -1,7 +1,9 @@
 # cube-idp pack dependencies (`dependsOn`) + CubeLock as a first-class object
 
 Date: 2026-07-19
-Status: PROPOSED (owner review pending)
+Status: RATIFIED (owner review 2026-07-19 — all four §7 questions answered;
+see the RATIFIED marks inline). Plan:
+`docs/superpowers/plans/2026-07-19-cube-idp-pack-depends-and-cubelock-crd.md`
 Prior art: `2026-07-13-cube-idp-architecture-design.md` (D2 engine seam, D11
 records), `2026-07-18-cube-idp-phase5-roadmap-design.md` (decision 13 gitea
 guarantee, W0.T1 contract freeze), `docs/pack-contract-v1.md` (§6 additive
@@ -451,24 +453,18 @@ Per established gates (unit + envtest + e2e + fences):
 - Pack record: append-only widening (spec.dependsOn + DEPENDS-ON column)
   per the sanctioned surface.
 
-## 7. Open questions for the owner
+## 7. Open questions — RATIFIED (owner, 2026-07-19)
 
-1. **Implicit gateway edge breadth (DD3a)**: spec'd as "packs rendering
-   Gateway API objects". Alternative: *every* pack depends on the
-   gateway (matches the old comment's doctrine) — simpler to explain,
-   but serializes all of startup behind gateway health and slows `up`
-   wall-clock for no correctness gain on non-exposed packs.
-   Recommendation: keep the render-derived edge.
-2. **Argo CD wave gating (DD5)**: accept the delivery-time-only ordering
-   asymmetry, or additionally document argocd as "dependsOn
-   best-effort"? Recommendation: wave-gate + document; no sync-wave /
-   app-of-apps restructuring.
-3. **In-cluster Cube record (§4.3)**: complete the trio now, later, or
-   never? Recommendation: not now; revisit if/when `status` learns to
-   read in-cluster records.
-4. **Slot in the ledger**: this is post-F1 material (touches golden
-   fences F1 freezes). Proposed as the first Phase 6 items — or, if F1
-   has not been claimed yet, before it to avoid a double docs sweep.
+1. **Implicit gateway edge breadth (DD3a)** — RATIFIED: **keep the
+   render-derived edge** (packs rendering Gateway API objects; not the
+   blanket every-pack alternative).
+2. **Argo CD wave gating (DD5)** — RATIFIED: **wave-gate + document**;
+   no sync-wave / app-of-apps restructuring.
+3. **In-cluster Cube record (§4.3)** — RATIFIED: **not now**; revisit
+   if/when `status` learns to read in-cluster records.
+4. **Slot in the ledger** — RATIFIED: **post-Phase-5 F1** (F1 is DONE,
+   merged 99f6587; the CLI surface is frozen by `TestCommandTreeGolden`).
+   This work proceeds as its own ledgerized plan with `p6/` branches.
 
 ## 8. Execution sketch (sizing, one agent per task)
 
