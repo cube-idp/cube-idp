@@ -42,9 +42,12 @@ manually-dispatched agent per task, ledger ticks in the plan file.
 | 5 | Crossplane | **Core-only** pack first; providers as separate packs later |
 | 6 | OpenChoreo | **Out of Phase 5 entirely** (owner, 2026-07-18) — research branch `spike/openchoreo-plan` parked; NO spike tasks this phase |
 | 7 | Pack signing | **In scope for the repo split** (W0) via **GitHub-native artifact attestations** — keyless, no key custody (owner, 2026-07-18: "make this simple"); verification documented via `gh attestation verify`, in-binary crypto deliberately out |
-| 8 | `engine.values` | **Typed knobs → patches** over embedded manifests (option A) |
+| 8 | Engine knobs | **Typed knobs → patches** over embedded manifests (option A); field named **`engine.tuning`** per decision 11 (renamed from `engine.values`) |
 | 9 | Spokes scope | **Registration only** — bootstrap SA + hub registration, engine takes over; no pack delivery to spokes by cube-idp |
 | 10 | Renovate/dependabot in packs repo | **Parked** for a later phase |
+| 11 | The values stone | `values:` = **helm values only** (owner, 2026-07-18): chartless `values:` → typed error; extras via **`packs[].extraManifests`** (any pack kind, `${GATEWAY_*}`-substituted, appended); customized installs show **CUSTOMIZED** in `kubectl get packs`. Vocabulary: values→helm, tuning→engine patches, extraManifests→appended objects |
+| 12 | Engine self-management | **Opt-in `engine.selfManage: true`, sourced from zot** (never Gitea): render → push `cube-engine` artifact → engine reconciles itself; direct SSA only on first install and unhealthy-recovery (owner-driven, 2026-07-18) |
+| 13 | Gitea guarantee | Gitea stays an **optional pack**: `delivery: repo` packs validate gitea presence at load (typed error; gitea itself never repo-delivered), gitea hard-ordered right after the gateway, repo delivery gated on gitea API readiness; "gitea as core" parked as a product question |
 
 ## 3. Workstreams
 
@@ -120,7 +123,12 @@ since kind nodes have no docker socket).
   wizard discover packs without a binary release. Add `pack list
   --available` / `pack search`. Depends only on the index *format* being
   agreed; can develop against a stub.
-- **B4 `engine.values` typed knobs.** Design in §4.
+- **B4 `engine.tuning` typed knobs.** Design in §4.
+- **B5 The values stone** (decision 11): helm-only `values:` enforcement,
+  `packs[].extraManifests`, CUSTOMIZED printer column — plan task U4.
+- **B6 Engine self-management** (decision 12): `engine.selfManage` from
+  zot — design in §4, plan task P8 (needs B4 + C1's plumbing era, see
+  plan dependencies).
 
 ### Wave C — Gitea delivery (after W0)
 
@@ -145,7 +153,10 @@ Design in §5.
 No OpenChoreo spikes run in Phase 5 (decision 6) — the research plan on
 `spike/openchoreo-plan` stays parked, unexecuted.
 
-## 4. `engine.values` — typed knobs → patches
+## 4. `engine.tuning` — typed knobs → patches, and self-management
+
+(The field was named `engine.values` in early drafts; renamed per
+decision 11 — the word *values* is reserved for helm.)
 
 **Ground truth:** both engines install from embedded, pre-rendered plain
 manifests (`//go:embed manifests/install.yaml` in
@@ -160,7 +171,7 @@ before SSA. A helm-installed engine would have been the expensive path
 
 Design:
 
-- Schema: `spec.engine.values` with a small, documented, *closed* knob set
+- Schema: `spec.engine.tuning` with a small, documented, *closed* knob set
   (v1 proposal: `components.<name>.replicas`,
   `components.<name>.resources`; component names validated against the
   engine's actual Deployments). Closed schema → typed CUBE error on unknown
@@ -172,6 +183,23 @@ Design:
   `render-cluster` shows the patched result.
 - Config plumbing: schema.cue update; nil-map round-trip discipline same as
   `PackRef.Values` (omitempty, absent key not YAML null).
+
+**Self-management (decision 12).** With `engine.selfManage: true`, after
+the engine health gate `up` pushes the rendered (tuned) engine manifests
+as `oci://<zot>/cube-engine` and attaches an engine-native self-source
+with pruning disabled (flux: OCIRepository + Kustomization in
+flux-system; argocd: Application over its own namespace); the engine then
+reconciles itself continuously. Rendering ALWAYS happens in cube-idp
+before the push — the artifact is finished YAML; the engine never sees
+tuning as a concept. Three rules keep it sound: first install is direct
+SSA of the rendered manifests (bootstrap); once the self-source exists,
+later `up`s render → push → poke and never SSA (single owner); an
+unhealthy engine at `up` start gets a direct-SSA fallback of freshly
+rendered manifests (self-brick recovery). Because the SSA'd state and the
+first pushed artifact are byte-identical renders, enabling selfManage
+never causes a restart by itself. Requires nothing beyond zot — no gitea,
+offline bundles included. Plan task P8; its four-scenario matrix
+(tuning × selfManage) is normative.
 
 ## 5. Spokes v1 — registration only
 
@@ -245,7 +273,8 @@ W0.T1 ──► W0.T2 ──► { W0.T3, W0.T4, W0.T5 }        (serial gate, the
                        ▼
 Wave A: 11 pack tasks, fully parallel               (after W0)
 Wave C: C1 Gitea delivery                           (after W0)
-Wave B: B1, B2, B4 anytime; B3 after index format   (parallel with W0)
+Wave B: B1, B2, B4, B5 anytime; B3 after index format; B6 after B4+C1
+                                                    (parallel with W0)
 Wave D: spokes v1                                   (anytime, independent)
 Spike: CNOE stacks harvest                          (anytime, timeboxed)
 ```
@@ -255,7 +284,7 @@ B1, B2, B4, Wave D design/bootstrap, one CNOE harvest spike.
 
 ## 8. Open questions — RESOLVED (owner, 2026-07-18)
 
-1. `engine.values` v1 knob set: `replicas` + `resources` per component
+1. `engine.tuning` v1 knob set: `replicas` + `resources` per component
    only (plan GT1); no args escape hatch. Note: these are NOT helm values
    — the engine install is pre-rendered embedded manifests with no chart
    to merge into (§4); packs keep their helm-values semantics unchanged.

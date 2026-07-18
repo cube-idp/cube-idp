@@ -5,7 +5,7 @@
 **Goal:** Deliver Phase 5 of
 [docs/superpowers/specs/2026-07-18-cube-idp-phase5-roadmap-design.md](../specs/2026-07-18-cube-idp-phase5-roadmap-design.md):
 standalone binary via a public attested packs monorepo (closes F12), visible
-provisioning, opt-in HTTP gateway port, `engine.values` typed knobs, remote
+provisioning, opt-in HTTP gateway port, `engine.tuning` typed knobs, remote
 pack catalog, per-pack Gitea delivery, and hub/spoke registration — as
 independently dispatchable, idempotent tasks in three parallel lanes plus a
 pack-authoring template.
@@ -13,7 +13,7 @@ pack-authoring template.
 **Architecture:** Every task plugs into existing seams and adds no new
 subsystem: spokes reuse `internal/cluster` providers + `internal/apply`;
 provider logs reuse the W1 `StepLog` event vocabulary via `ui.Console.Log`;
-`engine.values` patches the embedded engine manifests in memory before SSA
+`engine.tuning` patches the embedded engine manifests in memory before SSA
 (no helm exists in the engine path); Gitea delivery reuses
 `internal/syncer.SyncOnce` + `engine.DeliverGit`; provenance uses
 GitHub-native artifact attestations generated in CI (keyless — no key
@@ -141,12 +141,13 @@ any owner override in FINDINGS of the affected task and update this block.
 (GT5, GT6, GT7 and the GT10 mechanism were ratified by the owner on
 2026-07-18.)
 
-- GT1 `engine.values` v1 knobs: **`components.<name>.replicas` and
-  `components.<name>.resources` only.** No args escape hatch. Unknown
-  component → typed error listing valid names. These are deliberately NOT
-  helm values: the engine install is pre-rendered embedded manifests —
-  there is no chart at up-time to merge values into (unlike packs, whose
-  `values:` feed a real client-side helm render); see U3's rationale.
+- GT1 (ratified) Engine knobs live at **`spec.engine.tuning`** — renamed
+  from `engine.values` per GT15's vocabulary stone: the word *values* is
+  reserved for helm. v1 knobs: **`components.<name>.replicas` and
+  `components.<name>.resources` only**, no args escape hatch; unknown
+  component → typed error listing valid names. Tuning entries are patches
+  over the pre-rendered embedded engine manifests — there is no chart at
+  up-time to merge anything into (see U3's rationale).
 - GT2 Spokes support **both engines from day 1** (each is one hub Secret).
 - GT3 **OpenChoreo is out of Phase 5 entirely** (owner, 2026-07-18): no
   spike tasks run; the research branch `spike/openchoreo-plan` stays
@@ -206,6 +207,30 @@ any owner override in FINDINGS of the affected task and update this block.
   export `CUBE_IDP_E2E_GATEWAY_PORT=18443` for any local e2e leg. Unit
   tests + envtest are the default gate; live kind/e2e legs run ONLY where
   a step says so.
+- GT15 (ratified — the values stone, owner 2026-07-18): **`values:` means
+  helm values, only, always** — consumed exclusively by a pack's
+  `chart.yaml` render. Setting `values:` on a pack without `chart.yaml`
+  is a typed error **CUBE-4016** (raised at render time — pack layout is
+  unknowable until the ref is fetched). The uniform extras mechanism is
+  **`packs[].extraManifests`** (multi-doc YAML string, valid for EVERY
+  pack kind): parsed, `${GATEWAY_*}`-substituted, appended to the pack's
+  objects, inventoried; invalid YAML → **CUBE-4017**. A pack installed
+  with non-empty `values` or `extraManifests` is **CUSTOMIZED** — recorded
+  on its D11 Pack record and shown as a `kubectl get packs` printer
+  column. Vocabulary triad: *values → helm render · tuning → engine
+  patches · extraManifests → appended objects.* (U4 implements; P1's
+  contract doc states it.)
+- GT16 (ratified mechanism, owner 2026-07-18): engine self-management is
+  **opt-in `spec.engine.selfManage: true`, sourced from zot — never
+  Gitea**. `up` pushes the rendered (tuned) engine manifests as
+  `oci://<zot>/cube-engine` and attaches an engine-native self-source
+  with pruning disabled; the engine reconciles itself from then on.
+  Three rules: (1) first install is always direct SSA of the rendered
+  manifests; (2) once the self-source exists, later `up`s render → push →
+  poke and never SSA; (3) engine unhealthy at `up` start → direct-SSA
+  fallback of freshly rendered manifests, then resume. Works with gitea
+  absent, offline bundles included. (P8 implements; its four-scenario
+  semantics are normative.)
 
 ---
 
@@ -219,14 +244,16 @@ any owner override in FINDINGS of the affected task and update this block.
 | S4 | S | $ROOT | `p5/s4-spoke-status` | S3 | status rows, doctor probes, live `spoke list` |
 | U1 | U | $ROOT | `p5/u1-provider-logs` | — | kind/k3d + engine-wait logs → `StepLog` |
 | U2 | U | $ROOT | `p5/u2-http-port` | U1 | opt-in `gateway.httpPort` → host mapping of 30080 |
-| U3 | U | $ROOT | `p5/u3-engine-values` | U2 | `engine.values` knobs + `config render-engine` |
+| U3 | U | $ROOT | `p5/u3-engine-tuning` | U2 | `engine.tuning` knobs + `config render-engine` |
+| U4 | U | $ROOT | `p5/u4-values-stone` | U3 | values stone: helm-only enforcement, `extraManifests`, CUSTOMIZED column |
 | P1 | P | $ROOT | `p5/p1-pack-contract` | — | pack contract v1 doc + conformance test + `description` field |
 | P2 | P | $PACKS* | `p5/p2-packs-repo` | P1 | packs repo scaffold, `pack publish`/`pack index`, publish CI, signing CI |
 | P3 | P | $PACKS | `p5/p3-conformance` | P2 | per-pack conformance harness (CI + local script) |
 | P4 | P | both | `p5/p4-migrate-f12` | P3 | move 7 packs, oci:// gateway default, F12 closed, e2e digest-pinned |
 | P5 | P | $PACKS+docs | `p5/p5-pack-attest` | P2 | GitHub attestations in publish CI + `gh attestation verify` docs |
 | P6 | P | $ROOT | `p5/p6-remote-catalog` | P2 | index-backed catalog: `pack list --available`, wizard, install |
-| P7 | P | $ROOT | `p5/p7-gitea-delivery` | P4 | per-pack `delivery: repo` via SyncOnce + DeliverGit |
+| P7 | P | $ROOT | `p5/p7-gitea-delivery` | P4 | per-pack `delivery: repo` via SyncOnce + DeliverGit; gitea validation + ordering + readiness gate |
+| P8 | P | $ROOT | `p5/p8-engine-selfmanage` | P7 + U3 | opt-in engine self-management from zot (GT16) |
 | A1–A11 | A | $PACKS | `p5/a<N>-<pack>` | P3 | one new pack each — see Wave A template + parameter table |
 
 \* P2 also adds the `pack publish` / `pack index` commands in $ROOT.
@@ -1666,13 +1693,13 @@ HANDOFF: -
 
 ---
 
-### U3: `engine.values` typed knobs → patched embedded manifests  `[repo: $ROOT]`
+### U3: `engine.tuning` typed knobs → patched embedded manifests  `[repo: $ROOT]`
 
-**Branch:** `p5/u3-engine-values` · **Depends:** U2
+**Branch:** `p5/u3-engine-tuning` · **Depends:** U2
 
 **Files:**
 - Create: `internal/engine/tune.go`, `internal/engine/tune_test.go`
-- Modify: `internal/config/types.go` (EngineValues), `internal/config/schema.cue`,
+- Modify: `internal/config/types.go` (EngineTuning), `internal/config/schema.cue`,
   `internal/engine/factory/factory.go` (+ every `enginefactory.New` call
   site — enumerate with `grep -rn "enginefactory.New" cmd/ internal/`),
   `internal/engine/flux/flux.go` + `internal/engine/argocd/argocd.go`
@@ -1687,9 +1714,9 @@ HANDOFF: -
 // config side
 type EngineSpec struct {
 	Type   string        `yaml:"type" json:"type"`
-	Values *EngineValues `yaml:"values,omitempty" json:"values,omitempty"`
+	Tuning *EngineTuning `yaml:"tuning,omitempty" json:"tuning,omitempty"`
 }
-type EngineValues struct {
+type EngineTuning struct {
 	Components map[string]ComponentTuning `yaml:"components,omitempty" json:"components,omitempty"`
 }
 type ComponentTuning struct {
@@ -1698,10 +1725,10 @@ type ComponentTuning struct {
 }
 
 // engine side
-// ApplyValues patches Deployments named in v.Components: spec.replicas and
+// ApplyTuning patches Deployments named in v.Components: spec.replicas and
 // every container's resources. Unknown component → CUBE-3009 listing the
 // Deployment names that exist. nil v is a no-op.
-func engine.ApplyValues(objs []*unstructured.Unstructured, v *config.EngineValues) error
+func engine.ApplyTuning(objs []*unstructured.Unstructured, v *config.EngineTuning) error
 ```
 
   `enginefactory.New(spec config.EngineSpec)` (was `New(engineType
@@ -1742,15 +1769,15 @@ func deployment(name string) *unstructured.Unstructured {
 
 func intp(i int) *int { return &i }
 
-func TestApplyValuesPatchesReplicasAndResources(t *testing.T) {
+func TestApplyTuningPatchesReplicasAndResources(t *testing.T) {
 	objs := []*unstructured.Unstructured{deployment("kustomize-controller"), deployment("source-controller")}
-	v := &config.EngineValues{Components: map[string]config.ComponentTuning{
+	v := &config.EngineTuning{Components: map[string]config.ComponentTuning{
 		"kustomize-controller": {
 			Replicas:  intp(2),
 			Resources: map[string]any{"limits": map[string]any{"memory": "512Mi"}},
 		},
 	}}
-	if err := ApplyValues(objs, v); err != nil {
+	if err := ApplyTuning(objs, v); err != nil {
 		t.Fatal(err)
 	}
 	rep, _, _ := unstructured.NestedInt64(objs[0].Object, "spec", "replicas")
@@ -1769,30 +1796,30 @@ func TestApplyValuesPatchesReplicasAndResources(t *testing.T) {
 	}
 }
 
-func TestApplyValuesUnknownComponentIsCube3009(t *testing.T) {
+func TestApplyTuningUnknownComponentIsCube3009(t *testing.T) {
 	objs := []*unstructured.Unstructured{deployment("source-controller")}
-	v := &config.EngineValues{Components: map[string]config.ComponentTuning{"nope": {Replicas: intp(2)}}}
-	err := ApplyValues(objs, v)
+	v := &config.EngineTuning{Components: map[string]config.ComponentTuning{"nope": {Replicas: intp(2)}}}
+	err := ApplyTuning(objs, v)
 	if err == nil || !strings.Contains(err.Error(), "CUBE-3009") || !strings.Contains(err.Error(), "source-controller") {
 		t.Fatalf("want CUBE-3009 naming valid components, got: %v", err)
 	}
 }
 
-func TestApplyValuesNilIsNoop(t *testing.T) {
+func TestApplyTuningNilIsNoop(t *testing.T) {
 	objs := []*unstructured.Unstructured{deployment("a")}
-	if err := ApplyValues(objs, nil); err != nil {
+	if err := ApplyTuning(objs, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 ```
 
 - [ ] **Step 2: Verify fail** — Run:
-  `go test ./internal/engine/ -run TestApplyValues -v`
-  Expected: FAIL — ApplyValues undefined (config types too).
+  `go test ./internal/engine/ -run TestApplyTuning -v`
+  Expected: FAIL — ApplyTuning undefined (config types too).
 
 - [ ] **Step 3: Implement.** config types + CUE exactly per the
   Interfaces block (CUE:
-  `engine: {type: *"flux" | "argocd", values?: {components?: {[=~"^[a-z0-9-]+$"]: {replicas?: int & >0, resources?: {...}}}}}`
+  `engine: {type: *"flux" | "argocd", tuning?: {components?: {[=~"^[a-z0-9-]+$"]: {replicas?: int & >0, resources?: {...}}}}}`
   — replaces the current single-line `engine: type:` form). Nil-map
   round-trip discipline identical to `PackRef.Values`
   (`internal/config/types.go:115` comment). `internal/engine/tune.go`:
@@ -1811,11 +1838,11 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// ApplyValues implements GT1: the closed engine.values knob set (replicas,
+// ApplyTuning implements GT1: the closed engine.tuning knob set (replicas,
 // resources) patched over the embedded install manifests in memory, before
 // SSA. Plain manifests are the only engine install path (no helm) — this
 // is a walk-and-set, not a re-render.
-func ApplyValues(objs []*unstructured.Unstructured, v *config.EngineValues) error {
+func ApplyTuning(objs []*unstructured.Unstructured, v *config.EngineTuning) error {
 	if v == nil || len(v.Components) == 0 {
 		return nil
 	}
@@ -1833,20 +1860,20 @@ func ApplyValues(objs []*unstructured.Unstructured, v *config.EngineValues) erro
 				valid = append(valid, n)
 			}
 			sort.Strings(valid)
-			return diag.New(diag.CodeEngineValuesUnknown,
-				fmt.Sprintf("engine.values.components.%s: no such engine component", name),
+			return diag.New(diag.CodeEngineTuningUnknown,
+				fmt.Sprintf("engine.tuning.components.%s: no such engine component", name),
 				"valid components for this engine: "+strings.Join(valid, ", "))
 		}
 		if tune.Replicas != nil {
 			if err := unstructured.SetNestedField(d.Object, int64(*tune.Replicas), "spec", "replicas"); err != nil {
-				return diag.Wrap(err, diag.CodeEngineValuesUnknown, "cannot set replicas", "report this as a bug")
+				return diag.Wrap(err, diag.CodeEngineTuningUnknown, "cannot set replicas", "report this as a bug")
 			}
 		}
 		if len(tune.Resources) > 0 {
 			cs, found, err := unstructured.NestedSlice(d.Object, "spec", "template", "spec", "containers")
 			if err != nil || !found || len(cs) == 0 {
-				return diag.New(diag.CodeEngineValuesUnknown,
-					fmt.Sprintf("engine.values.components.%s: deployment has no containers to patch", name),
+				return diag.New(diag.CodeEngineTuningUnknown,
+					fmt.Sprintf("engine.tuning.components.%s: deployment has no containers to patch", name),
 					"report this as a bug — the embedded manifest changed shape")
 			}
 			for i := range cs {
@@ -1855,7 +1882,7 @@ func ApplyValues(objs []*unstructured.Unstructured, v *config.EngineValues) erro
 				cs[i] = c
 			}
 			if err := unstructured.SetNestedSlice(d.Object, cs, "spec", "template", "spec", "containers"); err != nil {
-				return diag.Wrap(err, diag.CodeEngineValuesUnknown, "cannot set resources", "report this as a bug")
+				return diag.Wrap(err, diag.CodeEngineTuningUnknown, "cannot set resources", "report this as a bug")
 			}
 		}
 	}
@@ -1877,10 +1904,10 @@ func deepCopyJSON(m map[string]any) map[string]any {
 }
 ```
 
-Code: `CodeEngineValuesUnknown Code = "CUBE-3009"` in the 3xxx block +
+Code: `CodeEngineTuningUnknown Code = "CUBE-3009"` in the 3xxx block +
 registry entry. Factory: change `New(engineType string)` →
-`New(spec config.EngineSpec)`; engines store `values *config.EngineValues`
-and their `InstallManifests()` calls `engine.ApplyValues(objs, values)`
+`New(spec config.EngineSpec)`; engines store `values *config.EngineTuning`
+and their `InstallManifests()` calls `engine.ApplyTuning(objs, values)`
 before returning (flux at `flux.go:38`'s function end, argocd at
 `argocd.go:94`'s). Every `enginefactory.New` call site passes the full
 `cube.Spec.Engine` (grep lists them: `internal/up/up.go:166`,
@@ -1888,25 +1915,176 @@ before returning (flux at `flux.go:38`'s function end, argocd at
 the checklist). `cmd/config.go`: add `render-engine` subcommand cloning
 `render-cluster`'s shape: load config, `enginefactory.New(cube.Spec.Engine)`,
 `InstallManifests()`, marshal all objects as a `---`-separated YAML stream
-to stdout. Test in `cmd/config_test.go`: with `values: {components:
+to stdout. Test in `cmd/config_test.go`: with `tuning: {components:
 {"source-controller": {replicas: 2}}}` (engine flux) the rendered stream
 contains `replicas: 2`; with an unknown component the command fails
 mentioning CUBE-3009.
 
 - [ ] **Step 4: Verify pass** — Run:
-  `go test ./internal/engine/... ./internal/config/ ./cmd/ -run 'TestApplyValues|TestRenderEngine|TestEngineValues' -v`
+  `go test ./internal/engine/... ./internal/config/ ./cmd/ -run 'TestApplyTuning|TestRenderEngine|TestEngineTuning' -v`
   Expected: PASS.
 
 - [ ] **Step 5: Gate + fences + commit** — full gate + fences (factory
   signature change touches many packages — the build IS the migration
   checklist). Commit:
-  `git add internal/ cmd/ && git commit -m "feat(engine): engine.values typed knobs — replicas/resources patched pre-SSA (CUBE-3009)"`
+  `git add internal/ cmd/ && git commit -m "feat(engine): engine.tuning typed knobs — replicas/resources patched pre-SSA (CUBE-3009)"`
 
 #### Outcome
 
 ```
 STATUS: UNCLAIMED
-BRANCH: p5/u3-engine-values (merged: -)
+BRANCH: p5/u3-engine-tuning (merged: -)
+COMMITS: -
+FINDINGS: -
+REVIEW: -
+BLOCKERS: -
+HANDOFF: -
+```
+
+---
+
+### U4: the values stone — helm-only enforcement, `extraManifests`, CUSTOMIZED  `[repo: $ROOT]`
+
+**Branch:** `p5/u4-values-stone` · **Depends:** U3
+
+Implements GT15. Three deliverables: (1) `values:` on a chartless pack is
+a typed error, (2) `packs[].extraManifests` appends raw resources to any
+pack kind, (3) customized installs are visible in `kubectl get packs`.
+
+**Files:**
+- Modify: `internal/config/types.go` (PackRef.ExtraManifests),
+  `internal/config/schema.cue` (`extraManifests?: string & !=""`),
+  `internal/pack/render.go` (RenderWith + guard),
+  `internal/pack/manifests/pack-crd.yaml` (CUSTOMIZED printer column),
+  `internal/up/up.go` (D11 record writer sets `customized`; pack loop
+  calls RenderWith — grep `.RenderFor(` for every call site: up, diff,
+  others go to FINDINGS), `internal/diag/codes.go` + `registry.go`
+  (CUBE-4016, CUBE-4017)
+- Test: `internal/pack/render_test.go`, `internal/config/load_test.go`
+
+**Interfaces:**
+- Produces:
+
+```go
+// PackRef gains the GT15 extras channel (any pack kind):
+ExtraManifests string `yaml:"extraManifests,omitempty" json:"extraManifests,omitempty"`
+
+// RenderWith is RenderFor plus the values stone: non-empty values on a
+// pack without chart.yaml → CUBE-4016; extraManifests parsed as
+// multi-doc YAML, ${GATEWAY_*}-substituted, appended (CUBE-4017 on
+// invalid YAML). RenderFor keeps its exact current behavior for tests.
+func (p *Pack) RenderWith(values map[string]any, extraManifests string, gw config.GatewaySpec) (*Rendered, error)
+
+// HasChart reports whether the pack carries a chart.yaml (stone guard).
+func (p *Pack) HasChart() bool
+```
+
+  Pack record field `customized: "yes"|"no"` + CRD
+  `additionalPrinterColumns` entry `CUSTOMIZED`.
+- Consumes: `substitute` + `apply.ParseMultiDoc` exactly as the
+  manifests walk uses them (`internal/pack/render.go:82`); the D11
+  record writer in `internal/up/up.go` (~:364).
+
+- [ ] **Step 1: Failing render tests** — append to
+  `internal/pack/render_test.go` (mirror its fixture helpers):
+
+```go
+func TestRenderWithValuesOnChartlessPackIsCube4016(t *testing.T) {
+	p := loadFixturePack(t, "manifests-only") // reuse/build a chartless fixture
+	_, err := p.RenderWith(map[string]any{"x": 1}, "", config.GatewaySpec{})
+	if err == nil || !strings.Contains(err.Error(), "CUBE-4016") {
+		t.Fatalf("values on chartless pack must be CUBE-4016, got: %v", err)
+	}
+}
+
+func TestRenderWithExtraManifestsAppendsAndSubstitutes(t *testing.T) {
+	p := loadFixturePack(t, "manifests-only")
+	extra := "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: seed, namespace: x}\ndata: {URL: \"https://app.${GATEWAY_HOST}\"}\n"
+	r, err := p.RenderWith(nil, extra, config.GatewaySpec{Host: "cube-idp.localtest.me", Port: 8443})
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := r.Objects[len(r.Objects)-1]
+	if last.GetKind() != "ConfigMap" || last.GetName() != "seed" {
+		t.Fatalf("extras not appended: %v", last)
+	}
+	data, _, _ := unstructured.NestedStringMap(last.Object, "data")
+	if !strings.Contains(data["URL"], "cube-idp.localtest.me") {
+		t.Fatalf("extras not substituted: %v", data)
+	}
+	// Invalid YAML → CUBE-4017.
+	if _, err := p.RenderWith(nil, "{not yaml", config.GatewaySpec{}); err == nil || !strings.Contains(err.Error(), "CUBE-4017") {
+		t.Fatalf("bad extras must be CUBE-4017, got: %v", err)
+	}
+}
+```
+
+  VERIFY-API: the fixture-loading helper name in render_test.go; the
+  `substitute` function's exact name/location (expose.go). Record drift
+  in FINDINGS.
+
+- [ ] **Step 2: Verify fail** — Run:
+  `go test ./internal/pack/ -run TestRenderWith -v`
+  Expected: FAIL — RenderWith undefined.
+
+- [ ] **Step 3: Implement.** `HasChart` (stat chart.yaml), `RenderWith`:
+
+```go
+func (p *Pack) RenderWith(values map[string]any, extraManifests string, gw config.GatewaySpec) (*Rendered, error) {
+	if len(values) > 0 && !p.HasChart() {
+		return nil, diag.New(diag.CodePackValuesChartless,
+			fmt.Sprintf("pack %s has no chart.yaml — values: are helm values only (GT15)", p.Name),
+			"use extraManifests to add raw resources, or remove values")
+	}
+	r, err := p.RenderFor(values, gw)
+	if err != nil {
+		return nil, err
+	}
+	if extraManifests != "" {
+		objs, err := apply.ParseMultiDoc([]byte(substitute(extraManifests, gw)))
+		if err != nil {
+			return nil, diag.Wrap(err, diag.CodePackExtraManifests,
+				fmt.Sprintf("pack %s: extraManifests is not valid YAML", p.Name), "fix the extraManifests block in cube.yaml")
+		}
+		r.Objects = append(r.Objects, objs...)
+	}
+	return r, nil
+}
+```
+
+  Codes (4xxx block, after 4015):
+
+```go
+	CodePackValuesChartless Code = "CUBE-4016" // values: set on a pack without chart.yaml (values are helm-only, GT15)
+	CodePackExtraManifests  Code = "CUBE-4017" // packs[].extraManifests is not valid multi-doc YAML
+```
+
+  (+ registry entries). Config field + CUE. Rewire the up pack loop (and
+  `diff`) from `RenderFor(values, gw)` to
+  `RenderWith(ref.Values, ref.ExtraManifests, gw)` — the compiler and
+  grep are the checklist; list every touched call site in FINDINGS.
+
+- [ ] **Step 4: Verify pass** — Run:
+  `go test ./internal/pack/ ./internal/config/ -run 'TestRenderWith|ExtraManifests' -v`
+  Expected: PASS.
+
+- [ ] **Step 5: CUSTOMIZED surface.** Add to the Pack CRD
+  (`internal/pack/manifests/pack-crd.yaml`) an `additionalPrinterColumns`
+  entry `CUSTOMIZED` (JSONPath onto the record field), and set
+  `customized: yes|no` in the D11 record writer
+  (`len(ref.Values) > 0 || ref.ExtraManifests != ""`). Unit-test the
+  record object's field; the visual `kubectl get packs` check rides the
+  existing e2e (no new leg). Note: the CRD is applied by `up` (D11 —
+  wait=true Established); a changed CRD re-applies idempotently.
+
+- [ ] **Step 6: Gate + fences + commit** — full gate + fences. Commit:
+  `git add internal/ && git commit -m "feat(pack): values stone — helm-only values, extraManifests, CUSTOMIZED (CUBE-4016/4017)"`
+
+#### Outcome
+
+```
+STATUS: UNCLAIMED
+BRANCH: p5/u4-values-stone (merged: -)
 COMMITS: -
 FINDINGS: -
 REVIEW: -
@@ -1963,17 +2141,19 @@ HANDOFF: -
   3. **Substitution** — `${GATEWAY_HOST}` and `${GATEWAY_FQDN}` in
      manifests and values, applied AFTER defaults-merge (D15,
      `internal/pack/helm.go:138`).
-  4. **Values** — merge order: chart defaults ← pack.cue/chart.yaml
-     defaults ← user `values:` ← substitution; numbers normalized
-     int/float64. MUST document the per-kind semantics explicitly
-     (verified against `internal/pack/render.go:33-105`): user `values:`
-     are ALWAYS validated against the pack's `#Values` CUE schema when one
-     is declared, but they are CONSUMED only by the `chart.yaml` helm
-     render — a manifests-only or kustomize pack's values are validated
-     then unused (raw manifests get only the `${GATEWAY_*}` byte
-     substitution). Contract rule: packs without `chart.yaml` SHOULD NOT
-     declare `#Values`; authors needing parametrization there use the
-     `${GATEWAY_*}` variables or add a chart.
+  4. **Values (the stone, GT15)** — merge order for helm packs: chart
+     defaults ← pack.cue/chart.yaml defaults ← user `values:` ←
+     substitution; numbers normalized int/float64. MUST state the stone
+     verbatim: **`values:` are helm values only, consumed exclusively by
+     the `chart.yaml` render**; on a pack without `chart.yaml` they are a
+     typed error (CUBE-4016 — raised at render time, since layout is
+     unknown until the ref is fetched; U4 enforces). Document
+     **`extraManifests`** in its own short section: a multi-doc YAML
+     string appended to ANY pack kind after `${GATEWAY_*}` substitution
+     (CUBE-4017 on invalid YAML), and the **CUSTOMIZED** marker on
+     `kubectl get packs` (set when values or extraManifests are present).
+     Manifests-only parametrization = `${GATEWAY_*}` variables,
+     `extraManifests`, or add a chart.
   5. **Artifact** — OCI media types exactly as `internal/oci/pushdir.go`
      produces (name them from the source), tag = pack version, digest
      immutability, `<name>/vX.Y.Z` git-tag convention (GT9).
@@ -2640,9 +2820,15 @@ HANDOFF: -
   `DeliverGit` (`internal/engine/{flux,argocd}/delivergit.go`),
   `repoCloneURL`/gitea URL derivation (`cmd/repo.go:179`).
 
-- [ ] **Step 1: Failing config test** — `delivery: repo` round-trips;
-  `delivery: bogus` rejected by CUE. Run + Expected: FAIL → implement
-  field + CUE → PASS.
+- [ ] **Step 1: Failing config tests** — (a) `delivery: repo`
+  round-trips; (b) `delivery: bogus` rejected by CUE; (c) GT-gitea
+  guarantee: a cube with a `delivery: repo` pack but NO gitea pack in
+  `spec.packs` fails load with a typed CUBE error naming the fix
+  (`add the gitea pack or use delivery: oci`); (d) the gitea pack itself
+  with `delivery: repo` fails load (self-reference). Gitea presence is
+  matched by the same substring convention `filterSelectedPacks`
+  (cmd/init.go) uses — reuse it, FINDINGS records the exact mechanism.
+  Run + Expected: FAIL → implement field + CUE + validation → PASS.
 
 - [ ] **Step 2: Up-loop branch.** Locate the pack delivery section in
   `internal/up/up.go` (the loop that calls `oci.PushRendered` — grep it;
@@ -2658,7 +2844,15 @@ HANDOFF: -
   via the up test seam with fakes for gitea/syncer (interfaces are
   narrow; if the existing test file lacks fakes for them, add minimal
   ones — the assertion is the branch: repo-delivery pack never touches
-  the OCI pusher, OCI pack never touches gitea).
+  the OCI pusher, OCI pack never touches gitea). Two more behaviors in
+  this step (the gitea guarantee, owner 2026-07-18): **ordering** — when
+  any `delivery: repo` pack exists, the pack loop delivers gitea
+  immediately after the gateway pack (extend the existing gateway-first
+  ordering seam; unit-test the sort); **readiness gate** —
+  `deliverPackRepo` begins with a bounded poll of the gitea API (the
+  same client `EnsureRepo` uses, `applyTimeout` cap) before touching it:
+  ordering makes this wait short, the gate makes the flow correct
+  (engine reconciliation is asynchronous — delivered ≠ ready).
 - [ ] **Step 3: `pack install --via repo`** — flag sets
   `Delivery: "repo"` on the written PackRef; `--via oci` (default)
   writes nothing. Test asserts the yaml.
@@ -2675,6 +2869,117 @@ HANDOFF: -
 ```
 STATUS: UNCLAIMED
 BRANCH: p5/p7-gitea-delivery (merged: -)
+COMMITS: -
+FINDINGS: -
+REVIEW: -
+BLOCKERS: -
+HANDOFF: -
+```
+
+---
+
+### P8: engine self-management from zot (`engine.selfManage`)  `[repo: $ROOT]`
+
+**Branch:** `p5/p8-engine-selfmanage` · **Depends:** P7 (lane order) + **U3**
+(cross-lane: EngineTuning/ApplyTuning and the factory carrying the full
+EngineSpec)
+
+Implements GT16. The engine's own rendered manifests become a zot
+artifact the engine watches — no gitea anywhere in this path. The four
+config scenarios (tuning × selfManage) are this task's normative test
+matrix:
+
+| tuning | selfManage | rendered | applied by | drift corrected between `up`s |
+|---|---|---|---|---|
+| — | — | up-time (no-op patch) | cube-idp SSA | no |
+| set | — | up-time | cube-idp SSA | no |
+| — | true | up-time | SSA once, then the engine | yes |
+| set | true | up-time | SSA first boot, then the engine | yes |
+
+**Files:**
+- Modify: `internal/config/types.go` (`SelfManage bool
+  `yaml:"selfManage,omitempty" json:"selfManage,omitempty"`` on
+  EngineSpec) + `internal/config/schema.cue` (`selfManage?: bool`),
+  `internal/up/up.go` (self-source step after `waitHealthy` +
+  unhealthy-at-start fallback + single-owner rule),
+  `internal/engine/flux/deliver.go` + `internal/engine/argocd/deliver.go`
+  (or sibling files: `DeliverSelf`), `internal/diag/codes.go` +
+  `registry.go` (`CodeEngineSelfManage = "CUBE-3010"`)
+- Test: `internal/engine/{flux,argocd}` unit tests for DeliverSelf
+  object shapes, `internal/up/up_test.go`, e2e leg
+
+**Interfaces:**
+- Produces:
+
+```go
+// DeliverSelf returns the engine-native self-source objects watching the
+// cube-engine artifact in the ENGINE's own namespace with pruning
+// disabled (GT16): flux → OCIRepository + Kustomization (prune: false)
+// in flux-system; argocd → Application over ns argocd (automated sync,
+// prune false). VERIFY-API: mirror each engine's existing Deliver
+// implementation for the artifact-ref/auth shape it expects from zot.
+DeliverSelf(ctx context.Context, ref engine.ArtifactRef) ([]*unstructured.Unstructured, error)
+```
+
+  `up` flow (normative pseudocode — adapt names to the real file):
+
+```go
+	rendered := eng.InstallManifests()            // embedded + ApplyTuning (U3) — ALWAYS rendered first
+	if firstInstall || engineUnhealthyAtStart {   // GT16 rules 1 + 3
+		SSA(rendered)
+	}
+	// ... registry/gateway/packs exactly as today ...
+	if cube.Spec.Engine.SelfManage {              // GT16 rule 2: engine owns itself from here
+		ref := oci.PushRendered(ctx, asRendered("cube-engine", rendered), registryAddr)
+		objs := eng.DeliverSelf(ctx, ref)
+		hub.Apply(ctx, objs, true, applyTimeout); hub.RecordInventory(ctx, objs)
+		waitHealthy(...)                          // instant when artifact == live state (no-flap)
+	}
+```
+
+- Consumes: `oci.PushRendered` (`internal/oci/push.go:77`), the
+  engine-health preflight (`eng.Health` — same call `waitHealthy` polls),
+  `apply.Applier` + inventory, U3's `ApplyTuning` inside
+  `InstallManifests`.
+
+- [ ] **Step 1: Failing config + shape tests.** (a) config: `selfManage:
+  true` round-trips, absent → false. (b) DeliverSelf shapes per engine
+  (unit, no cluster): flux objects = OCIRepository named `cube-engine` +
+  Kustomization with `spec.prune == false`, both ns `flux-system`;
+  argocd = one Application, ns `argocd`, destination its own namespace,
+  automated sync with `prune: false`. Run:
+  `go test ./internal/config/ ./internal/engine/... -run 'SelfManage|DeliverSelf' -v`
+  Expected: FAIL.
+- [ ] **Step 2: Implement** config field + CUE + `DeliverSelf` in both
+  engines (VERIFY-API: copy each engine's Deliver ref/auth handling —
+  the zot pull path with the media-type constraints is already solved
+  there; do NOT invent a second artifact shape). CUBE-3010 wraps every
+  failure arm (push, apply, wait) with a fix line naming
+  `cube-idp up` re-run as the retry. Re-run tests — Expected: PASS.
+- [ ] **Step 3: `up` wiring** per the pseudocode: the unhealthy-preflight
+  helper (one `eng.Health` call with a short timeout, tolerant of
+  not-installed-yet), the single-owner skip (selfManage && healthy →
+  no SSA), the post-packs self-source block. Unit-test with the up test
+  seam/fakes: selfManage=false → pusher never called for cube-engine;
+  selfManage=true first-run → SSA happened AND artifact pushed AND
+  self-source applied; selfManage=true healthy-rerun → NO SSA, push +
+  poke only. Run: `go test ./internal/up/ -run SelfManage -v` —
+  Expected: PASS.
+- [ ] **Step 4: e2e leg (gated, GT14).** cube.yaml with `selfManage:
+  true` + a tuning replica bump: `up`, then flip the replica count and
+  re-run `up`; assert (a) a NEW `cube-engine` digest exists in zot,
+  (b) the component Deployment's replicas changed, (c) the
+  `managedFields` owner of `spec.replicas` is the ENGINE's field manager
+  (kustomize-controller / argocd), NOT cube-idp's applier — the proof
+  the engine reconfigured itself. `down --yes` clean.
+- [ ] **Step 5: Gate + fences + commit** — full gate + fences. Commit:
+  `git add internal/ && git commit -m "feat(engine): opt-in self-management from zot — render, push, engine reconciles itself (GT16, CUBE-3010)"`
+
+#### Outcome
+
+```
+STATUS: UNCLAIMED
+BRANCH: p5/p8-engine-selfmanage (merged: -)
 COMMITS: -
 FINDINGS: -
 REVIEW: -
@@ -2779,7 +3084,8 @@ A11 STATUS: UNCLAIMED BRANCH: p5/a11-floci-ui         COMMITS: -  FINDINGS: -  R
 
 ```text
 Immediately dispatchable in parallel: S1, U1, P1     (three lanes, three agents)
-Then:  S2→S3→S4   U2→U3   P2→{P3, P5, P6}   P3→P4→P7   P3→A1..A11 (any order, parallel)
+Then:  S2→S3→S4   U2→U3→U4   P2→{P3, P5, P6}   P3→P4→P7→P8 (P8 also needs U3)
+       P3→A1..A11 (any order, parallel)
 Owner gates: P2 Step 4 (gh repo create + CUBE_IDP_READ_TOKEN),
              P4 Step 2 (publish 0.2.0), A Step 6 (tags).
 ```
