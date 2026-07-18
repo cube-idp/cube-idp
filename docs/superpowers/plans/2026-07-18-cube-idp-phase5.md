@@ -1662,6 +1662,19 @@ HANDOFF: U2 (p5/u2-http-port) is unblocked — U1 merged at 03bd237. For U2+: ki
   `packs/envoy-gateway/manifests/10-gatewayclass.yaml:83`) — NO pack
   change is needed or allowed in this task.
 
+- [ ] **Step 0: U1 follow-up (orchestrator amendment, 2026-07-18) — make
+  the engine-wait narration visible live.** U1 landed `waitHealthy`
+  narration with stage `"engine"`, but the live renderer shows log tails
+  only under an open step of the SAME stage, and the step open during
+  the wait is stage `"health"` — so the lines never render live (U1
+  FINDINGS). Fix by adopting the open step's stage: in U1's
+  `TestWaitHealthyNarratesUnhealthyWait` change the asserted
+  `StepLog{Stage:…}` from `"engine"` to `"health"` → verify FAIL → change
+  the one word in `waitHealthy`'s `con.Log("engine", …)` call to
+  `"health"` → verify PASS. JSONL stays additive (stage values are not
+  frozen), plain/JSON unaffected (StepLog renders zero bytes there).
+  Commit: `git add internal/ && git commit -m "fix(up): engine-wait narration uses the open health step's stage"`
+
 - [ ] **Step 1: Failing tests.** (a) `internal/config/load_test.go`:
   cube.yaml with `gateway: {…, httpPort: 8080}` loads and round-trips;
   `httpPort: 8443` equal to `port` fails validation; omitted → zero. (b)
