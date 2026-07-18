@@ -105,6 +105,10 @@ const (
 	// uniform extras channel for every pack kind is packs[].extraManifests.
 	CodePackValuesChartless Code = "CUBE-4016" // values: set on a pack without chart.yaml (values are helm-only, GT15)
 	CodePackExtraManifests  Code = "CUBE-4017" // packs[].extraManifests is not valid multi-doc YAML
+	// Pack dependencies (p6 DEP1, spec 2026-07-19 §3).
+	CodePackDepUnknown Code = "CUBE-4018" // dependsOn names a pack not in this cube
+	CodePackDepCycle   Code = "CUBE-4019" // pack dependency cycle (the message shows the path)
+	CodePackDepGateway Code = "CUBE-4020" // gateway pack cannot carry a dependsOn of its own
 )
 
 // 5xxx: registry

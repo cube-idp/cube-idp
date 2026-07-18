@@ -85,6 +85,11 @@ type Pack struct {
 	// the pack declares none — `up`'s gatewayServiceFQDN then falls back to
 	// the <pack>.<pack>.svc convention (traefik: zero migration).
 	GatewayService *GatewayService
+
+	// DependsOn is the optional pack.cue dependsOn: pack names this pack
+	// needs first — nil when undeclared, packs predating the field load
+	// exactly as before; spec 2026-07-19 §3.1.
+	DependsOn []string
 }
 
 // Rendered is the final set of objects a pack produces for a given set of
@@ -135,6 +140,14 @@ func loadMeta(dir string) (*Pack, error) {
 			return nil, diag.Wrap(err, diag.CodePackCueInvalid,
 				fmt.Sprintf("pack.cue images: in %s is invalid", dir),
 				`images: must be a list of strings, e.g. images: ["envoyproxy/envoy:v1.29"]`)
+		}
+	}
+
+	if dv := v.LookupPath(cue.ParsePath("dependsOn")); dv.Exists() {
+		if err := dv.Decode(&p.DependsOn); err != nil {
+			return nil, diag.Wrap(err, diag.CodePackCueInvalid,
+				fmt.Sprintf("pack.cue dependsOn: in %s is invalid", dir),
+				`dependsOn: must be a list of pack names, e.g. dependsOn: ["floci"]`)
 		}
 	}
 

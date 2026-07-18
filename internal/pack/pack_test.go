@@ -204,3 +204,54 @@ func TestRenderKustomizeFailureIsTyped(t *testing.T) {
 		t.Fatalf("want CUBE-4008, got %v", err)
 	}
 }
+
+// TestDependsOnParsed pins p6 DEP1's declaration surface: a pack.cue
+// dependsOn: list is parsed into Pack.DependsOn unchanged, in declaration
+// order (spec 2026-07-19 §3.1).
+func TestDependsOnParsed(t *testing.T) {
+	dir := writePack(t, `name: "backstage"
+version: "0.1.0"
+dependsOn: ["floci"]
+`)
+	p, err := Fetch(context.Background(), dir, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"floci"}
+	if len(p.DependsOn) != len(want) {
+		t.Fatalf("dependsOn: got %v, want %v", p.DependsOn, want)
+	}
+	for i := range want {
+		if p.DependsOn[i] != want[i] {
+			t.Fatalf("dependsOn[%d]: got %q, want %q", i, p.DependsOn[i], want[i])
+		}
+	}
+}
+
+// TestDependsOnIsOptional mirrors TestImagesIsOptional: a pack.cue predating
+// this field loads with a nil DependsOn, no error (packs-predating-the-field
+// fence).
+func TestDependsOnIsOptional(t *testing.T) {
+	p, err := Fetch(context.Background(), "testdata/demo", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.DependsOn != nil {
+		t.Fatalf("want nil DependsOn for a pack.cue with no dependsOn: field, got %v", p.DependsOn)
+	}
+}
+
+// TestDependsOnInvalidTypeIsCUBE4003 pins that a malformed dependsOn: field
+// (not a list of strings) is rejected as the existing pack.cue error code,
+// never silently dropped or accepted as an empty list.
+func TestDependsOnInvalidTypeIsCUBE4003(t *testing.T) {
+	dir := writePack(t, `name: "bad"
+version: "0.1.0"
+dependsOn: "floci"
+`)
+	_, err := Fetch(context.Background(), dir, t.TempDir())
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != "CUBE-4003" {
+		t.Fatalf("want CUBE-4003, got %v", err)
+	}
+}

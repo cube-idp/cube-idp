@@ -107,6 +107,9 @@ var registry = map[Code]Desc{
 	// GT15 values stone (Phase 5 U4):
 	CodePackValuesChartless: {Summary: "values: set on a pack without chart.yaml — values are helm values only (GT15); use packs[].extraManifests for raw resources"},
 	CodePackExtraManifests:  {Summary: "packs[].extraManifests is not valid multi-doc YAML"},
+	CodePackDepUnknown:      {Summary: "dependsOn names a pack not in this cube"},
+	CodePackDepCycle:        {Summary: "pack dependency cycle (the message shows the path)"},
+	CodePackDepGateway:      {Summary: "gateway pack cannot carry a dependsOn of its own"},
 
 	// 5xxx: registry
 	CodeZotManifestsInv:         {Summary: "embedded zot manifests invalid"},
