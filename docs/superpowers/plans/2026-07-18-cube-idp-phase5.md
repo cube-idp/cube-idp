@@ -3440,7 +3440,7 @@ HANDOFF: pack.FetchCatalog is the ONE catalog entrypoint: default
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(b67ed6f3-6188-4eca-ba99-88e5dad89e07, 2026-07-18T12:38:00Z)
 BRANCH: p5/p7-gitea-delivery (merged: -)
 COMMITS: -
 FINDINGS: -
