@@ -2739,7 +2739,7 @@ jobs:
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(p3-agent-b67ed6f3, 2026-07-18T09:42:40Z)
 BRANCH: p5/p3-conformance (merged: -)
 COMMITS: -
 FINDINGS: -
