@@ -32,11 +32,22 @@ import (
 
 const dnsTimeout = 2 * time.Minute
 
+// healthPoll and healthLogEvery are vars, not consts, so the waitHealthy
+// narration test can shrink them — this package has no fake clock.
+// Production never mutates them.
+var (
+	// healthPoll paces waitHealthy's Health polling.
+	healthPoll = 5 * time.Second
+	// healthLogEvery paces waitHealthy's StepLog narration (U1): while
+	// components stay unhealthy, one "waiting on: <components>" line per
+	// interval — live-mode-only richness, zero plain/JSON bytes.
+	healthLogEvery = 15 * time.Second
+)
+
 const (
 	clusterTimeout = 3 * time.Minute
 	applyTimeout   = 2 * time.Minute
 	healthTimeout  = 5 * time.Minute
-	healthPoll     = 5 * time.Second
 	// The gateway pack delivers the Gateway API CRDs asynchronously (the
 	// traefik pack ships them as static manifests, the envoy-gateway pack
 	// installs them via its Helm-charted controller), so the registry
@@ -119,6 +130,14 @@ func Run(ctx context.Context, opts Options) error {
 	prov, err := cluster.New(cube.Spec.Cluster, cube.Spec.Gateway)
 	if err != nil {
 		return err
+	}
+	// U1: stream the provider's own provisioning narration (kind's
+	// "Ensuring node image ..." etc., k3d's logrus lines) into the StepLog
+	// event channel — the live renderer's dim log tail under the open
+	// cluster step. Machine modes project StepLog as zero bytes (frozen
+	// matrix), so this adds no plain/JSON output.
+	if lg, ok := prov.(cluster.Loggable); ok {
+		lg.SetLogSink(func(line string) { con.Log("cluster", "%s", line) })
 	}
 	// Deviation 1 (offline): refuse an un-loadable topology up front, before
 	// any cluster mutation. `existing` cannot node-load images, so a bundle
@@ -505,6 +524,7 @@ func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, con *
 	// state transition — zero plain bytes, as before.
 	pr := con.Progress("health", "waiting for components to become ready")
 	deadline := time.Now().Add(timeout)
+	lastLog := time.Now()
 	for {
 		health, err := eng.Health(ctx, a)
 		if err != nil {
@@ -515,6 +535,19 @@ func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, con *
 		if allReady(health) {
 			pr.Done("%d component(s) ready", len(health))
 			return nil
+		}
+		// U1: narrate the silent stretch — every healthLogEvery of
+		// unhealthiness, one StepLog line naming what the wait is on.
+		// Live-only richness (dim log tail); plain and JSON project StepLog
+		// as zero bytes per the frozen mode matrix. Checked before the
+		// deadline so even a timing-out wait narrates its last state.
+		if time.Since(lastLog) >= healthLogEvery {
+			waitingOn := strings.Join(notReadyNames(health), ", ")
+			if waitingOn == "" {
+				waitingOn = "no components reported yet"
+			}
+			con.Log("engine", "waiting on: %s", waitingOn)
+			lastLog = time.Now()
 		}
 		if time.Now().After(deadline) {
 			pr.Stop()
@@ -590,6 +623,19 @@ func allReady(health []engine.ComponentHealth) bool {
 		}
 	}
 	return true
+}
+
+// notReadyNames lists the names of the not-ready components — the payload
+// of waitHealthy's U1 "waiting on: ..." narration (unreadySummary is its
+// name+message sibling for the terminal CUBE-3004).
+func notReadyNames(health []engine.ComponentHealth) []string {
+	var names []string
+	for _, h := range health {
+		if !h.Ready {
+			names = append(names, h.Name)
+		}
+	}
+	return names
 }
 
 func unreadySummary(health []engine.ComponentHealth) string {

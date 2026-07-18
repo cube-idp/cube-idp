@@ -50,6 +50,20 @@ func New(gw config.GatewaySpec) *Kind {
 	return &Kind{gw: gw, provider: kindcluster.NewProvider(opts...)}
 }
 
+// SetLogSink rebuilds the kind provider with a logger that streams kind's
+// user-facing narration ("Ensuring node image ..." etc.) line-by-line into
+// sink — cluster.Loggable, satisfied structurally: the parameter is a plain
+// `func(line string)` because importing internal/cluster from here would
+// cycle (see the note on K3d in k3dp for the shared constraint).
+func (k *Kind) SetLogSink(sink func(line string)) {
+	np, _ := kindcluster.DetectNodeProvider()
+	opts := []kindcluster.ProviderOption{kindcluster.ProviderWithLogger(newKindLogger(sink))}
+	if np != nil {
+		opts = append(opts, np)
+	}
+	k.provider = kindcluster.NewProvider(opts...)
+}
+
 // Ensure creates the named kind cluster if it doesn't already exist, then
 // returns a connection to it.
 func (k *Kind) Ensure(ctx context.Context, name string, spec config.ClusterSpec) (*kube.Conn, error) {

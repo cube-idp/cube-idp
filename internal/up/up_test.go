@@ -7,12 +7,18 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/cube-idp/cube-idp/internal/apply"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
+	"github.com/cube-idp/cube-idp/internal/engine"
 	"github.com/cube-idp/cube-idp/internal/lock"
 	"github.com/cube-idp/cube-idp/internal/pack"
 	"github.com/cube-idp/cube-idp/internal/ui"
+	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
 // TestVerifyGatewayPackRef pins F11: gateway.ref silently wins over
@@ -229,5 +235,62 @@ func TestStepFetchSourcePlainOutput(t *testing.T) {
 	}
 	if strings.Contains(offline, "oci://") {
 		t.Fatalf("bundle fetch-source output leaked an oci:// ref:\n%s", offline)
+	}
+}
+
+// stubUnhealthyEngine implements engine.Engine with one permanently
+// not-ready component — only Health matters to waitHealthy; every other
+// method is a no-op present to satisfy the interface.
+type stubUnhealthyEngine struct{}
+
+func (stubUnhealthyEngine) Install(context.Context, *apply.Applier, time.Duration) error { return nil }
+func (stubUnhealthyEngine) InstallManifests() ([]*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (stubUnhealthyEngine) Deliver(context.Context, *pack.Rendered, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (stubUnhealthyEngine) DeliverGit(context.Context, string, engine.GitSource) ([]*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (stubUnhealthyEngine) Poke(context.Context, *apply.Applier, string) error { return nil }
+func (stubUnhealthyEngine) Health(context.Context, *apply.Applier) ([]engine.ComponentHealth, error) {
+	return []engine.ComponentHealth{{Name: "kustomize-controller", Ready: false, Message: "reconciling"}}, nil
+}
+func (stubUnhealthyEngine) Uninstall(context.Context, *apply.Applier, time.Duration) error {
+	return nil
+}
+
+// TestWaitHealthyNarratesUnhealthyWait pins U1's engine-wait narration:
+// while components stay unhealthy, waitHealthy emits StepLog events with
+// stage "engine" naming the not-ready components, paced by healthLogEvery
+// (shrunk here — the package has no fake clock). The wait itself still
+// times out with CUBE-3004 as before; the narration is additive.
+func TestWaitHealthyNarratesUnhealthyWait(t *testing.T) {
+	oldPoll, oldEvery := healthPoll, healthLogEvery
+	healthPoll, healthLogEvery = 5*time.Millisecond, 30*time.Millisecond
+	defer func() { healthPoll, healthLogEvery = oldPoll, oldEvery }()
+
+	ch := make(chan event.Event, 256)
+	con := ui.NewConsole(ch)
+	err := waitHealthy(context.Background(), stubUnhealthyEngine{}, nil, con, 200*time.Millisecond)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeEngineHealthTimeout {
+		t.Fatalf("stub never becomes healthy: want CUBE-3004 timeout, got %v", err)
+	}
+	close(ch)
+	var logs []event.StepLog
+	for ev := range ch {
+		if sl, ok := ev.(event.StepLog); ok && sl.Stage == "engine" {
+			logs = append(logs, sl)
+		}
+	}
+	if len(logs) == 0 {
+		t.Fatal(`no StepLog{Stage:"engine"} events emitted during an unhealthy wait`)
+	}
+	for _, sl := range logs {
+		if !strings.Contains(sl.Line, "waiting on: ") || !strings.Contains(sl.Line, "kustomize-controller") {
+			t.Fatalf("narration line malformed: %q", sl.Line)
+		}
 	}
 }

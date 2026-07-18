@@ -21,6 +21,24 @@ import (
 // internal/config, which every party already imports.
 const GatewayNodePort = config.GatewayNodePort
 
+// LogSink receives one human-readable provisioning line at a time. It is a
+// type ALIAS (not a defined type) on purpose: kindp and k3dp cannot import
+// this package (cycle through New, the same constraint ImageLoader
+// documents), so they declare SetLogSink with a plain `func(line string)`
+// parameter — identical to the alias, which lets them satisfy Loggable
+// structurally. A defined type here would break that identity.
+type LogSink = func(line string)
+
+// Loggable providers can stream their provisioning narration (kind's
+// "Ensuring node image ..." etc.) into the caller's sink. Optional: up
+// type-asserts and wires it to StepLog events.
+type Loggable interface{ SetLogSink(LogSink) }
+
+var (
+	_ Loggable = (*kindp.Kind)(nil)
+	_ Loggable = (*k3dp.K3d)(nil)
+)
+
 // Provider seam defines the interface for all cluster implementations.
 type Provider interface {
 	Ensure(ctx context.Context, name string, spec config.ClusterSpec) (*kube.Conn, error)
