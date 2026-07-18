@@ -1,0 +1,9 @@
+{
+  "argocd": "oci://ghcr.io/cube-idp/packs/argocd@sha256:226aa3b79a57884df884df9e8d3a165df59d8fff37853bc998df44e7b2dc1c4c",
+  "backstage": "oci://ghcr.io/cube-idp/packs/backstage@sha256:c977535dd6f12d309a0c3f81454c924d29a96778311b097f6f0b938f29accd2e",
+  "cert-manager": "oci://ghcr.io/cube-idp/packs/cert-manager@sha256:e21062f4256c1a0993766f828ff2c4e67a59dad5c97059164fbd4aabe2232d48",
+  "envoy-gateway": "oci://ghcr.io/cube-idp/packs/envoy-gateway@sha256:1cbcda4f8a74f3dc7cd324e04fe2d92f2da1db3ddd9c43df1fe7c0cf3bca3e01",
+  "external-secrets": "oci://ghcr.io/cube-idp/packs/external-secrets@sha256:f5e603a507a9b6b21c1f314c20f0346465f50cc997c82d67dfbce6e9fd44169e",
+  "gitea": "oci://ghcr.io/cube-idp/packs/gitea@sha256:1559787309bc77ef29f2581ae481f45faab9a60d055acd77ff0dec8f32f7e7fa",
+  "traefik": "oci://ghcr.io/cube-idp/packs/traefik@sha256:460dc598a35f624d7d5d1a881116f14666f286ac09db94f2577ac39e88752509"
+}
