@@ -2835,7 +2835,7 @@ HANDOFF: The conformance entrypoint for every A task and CI:
   smoke (live leg, GT14). Commit ($PACKS):
   `git add packs/ && git commit -m "feat: adopt the seven cube-idp packs at 0.2.0 (contract v1)"`
 
-- [ ] **Step 2: ⚠ OWNER GATE — publish 0.2.0.** Publishing to
+- [x] **Step 2: ⚠ OWNER GATE — publish 0.2.0.** Publishing to
   ghcr.io/cube-idp requires the P2 owner gate to have run (repo + auth).
   Report NEEDS_CONTEXT with the exact commands (`git tag <name>/v0.2.0`
   ×7 + `git push --tags`, or local `cube-idp pack publish` ×7 with owner
@@ -2895,14 +2895,18 @@ HANDOFF: The conformance entrypoint for every A task and CI:
 #### Outcome
 
 ```
-STATUS: DONE_WITH_CONCERNS
-BRANCH: p5/p4-migrate-f12 (merged: yes — in BOTH repos: $ROOT 3e727aa,
-  $PACKS 2cabfaf; branch kept in both)
+STATUS: DONE
+BRANCH: p5/p4-migrate-f12 (merged: yes — in BOTH repos: $ROOT 3e727aa +
+  a40e6d9 (packs.lock follow-up merge), $PACKS 2cabfaf; branch kept in
+  both)
 COMMITS: $PACKS: e2d9974 feat: adopt the seven cube-idp packs at 0.2.0
   (contract v1); 532ee26 ci: tokenless public checkouts; conformance
-  gateway from the published ref; 2cabfaf merge: p5 P4 migrate-f12.
+  gateway from the published ref; 2cabfaf merge: p5 P4 migrate-f12; plus
+  tags <name>/v0.2.0 ×7 at 2cabfaf, pushed (the publish gate).
   $ROOT: eafdde9 feat!: packs live in cube-idp/packs — oci gateway
-  default closes F12; e2e digest-pinned; 3e727aa merge: p5 P4 migrate-f12
+  default closes F12; e2e digest-pinned; 3e727aa merge: p5 P4 migrate-f12;
+  188fb7c test(e2e): seed packs.lock — published 0.2.0 digests
+  (decision 2); a40e6d9 merge: p5 P4 migrate-f12 packs.lock
   (claim ed5182b).
 FINDINGS: (1) Step 2 OWNER GATE NOT EXECUTED despite pre-authorization —
   mechanically impossible from this seat: publish.yml builds the publisher
@@ -2918,7 +2922,28 @@ FINDINGS: (1) Step 2 OWNER GATE NOT EXECUTED despite pre-authorization —
   would leave junk tags + red runs and can never satisfy "watch until
   green" — not done; gate box deliberately unticked (P2 precedent);
   exact owner sequence in HANDOFF. The $ROOT half proceeded per the
-  step's own decoupling sentence. (2) Per the dispatch note, the unset
+  step's own decoupling sentence. — ADDENDUM (same day, gate CLOSED):
+  the owner pushed both mains (cube-idp/cube-idp → 213d5d6, packs →
+  2cabfaf, orchestrator-relayed + self-verified via ls-remote/gh api),
+  re-authorizing the gate, which then EXECUTED to completion. Two
+  REUSABLE CI TRAPS surfaced en route: (a) >3-TAGS EVENT SUPPRESSION —
+  the initial single `git push` of all 7 tags created ZERO workflow runs
+  (documented GitHub behavior: a push with more than three tags emits no
+  events); fix = delete + re-push each tag in its own push, one at a
+  time. (b) CREATING-REPO-ONLY PACKAGE WRITE — the ghcr packs/* packages
+  created 2026-07-16 by cube-idp/cube-idp's old release-packs.yaml
+  granted CI write ONLY to that repo, so every publish from
+  cube-idp/packs CI failed 403 write_package; fix (owner-authorized,
+  orchestrator-executed) = delete the stale 0.1.0 packages; the next
+  publish per pack recreated it owned by cube-idp/packs. (c) The
+  anticipated INDEX-REBUILD RACE behaved exactly as designed: each run's
+  rebuild --from-registry needs all 7 artifacts, so attempts red-ed
+  until the fleet was complete (gitea's a2 went green first with all 7,
+  publishing + attesting the index); reruns settled the board — final:
+  ALL 7 RUNS GREEN (traefik/gitea a2, other five a3). (d) A mid-gate
+  docker-daemon restart killed local containers/waiters (no artifact
+  impact — publishing is CI-side); closing legs were re-run foreground.
+  (2) Per the dispatch note, the unset
   CUBE_IDP_READ_TOKEN checkout input was DROPPED from both $PACKS
   workflows (publish.yml + conformance.yml — public checkout, tokenless).
   (3) Deviation from P3's "drop the cube-idp-src checkout": only the
@@ -2933,7 +2958,12 @@ FINDINGS: (1) Step 2 OWNER GATE NOT EXECUTED despite pre-authorization —
   (push-to-main packs/** trigger) — and they are PRIVATE (verified via
   gh api). Visibility is not changeable via REST — the owner must flip
   the 7 packages (+ packs/index once it exists) to public in the web UI
-  or anonymous standalone pulls fail. (5) $ROOT release-packs.yaml
+  or anonymous standalone pulls fail. — ADDENDUM: resolved — stale
+  packages deleted (see (1b)), recreated under cube-idp/packs ownership,
+  and the owner flipped ALL 8 (packs/* ×7 + packs/index) to PUBLIC
+  (self-verified via gh api: every package "public"). NB every FUTURE
+  new pack's first publish creates a private package — the visibility
+  flip is a per-new-pack owner chore. (5) $ROOT release-packs.yaml
   DELETED (beyond the plan's file list, justified): after the pack move
   its packs/** trigger would fire once on the deletion push with an
   unmatched glob (red run), and pack publishing is now owned by
@@ -2962,7 +2992,11 @@ FINDINGS: (1) Step 2 OWNER GATE NOT EXECUTED despite pre-authorization —
   pack.cue version). (10) tests/e2e/packs.lock NOT seeded (nothing
   published; the file's designed absent-state → TestPublishedPacksByDigest
   skips with the seeding recipe in tests/e2e/PACKS.md); the online e2e
-  leg was NOT run (nothing to pull). (11) NOTE for F1's docs sweep: README
+  leg was NOT run (nothing to pull). — ADDENDUM: packs.lock NOW SEEDED
+  (188fb7c, all 7 packs digest-pinned via `pack index build
+  --from-registry`; gitea + traefik digests cross-checked against their
+  attestation subjects) and the ONLINE LEG PASSED (see REVIEW).
+  (11) NOTE for F1's docs sweep: README
   ## Install still says "Releases are private — authenticate gh" and the
   go-install/GOPRIVATE caveat — stale now the org is public; out of P4
   scope (spec §6 release-path polish). (12) GatewaySpec.PackRef() fallback
@@ -2988,39 +3022,48 @@ REVIEW: TDD red→green: 5 tests failed first (TestDefaultProfileIncludesGitea,
   F12 behavioral proof: binary built from main, `init --name demo` in a
   scratch dir OUTSIDE any checkout → cube.yaml gateway ref
   oci://ghcr.io/cube-idp/packs/traefik:0.2.0 + gitea/argocd :0.2.0.
-BLOCKERS: none on the merged work — the pending publish is an owner
-  action recorded in FINDINGS(1) and HANDOFF, and the plan's Step 2
-  explicitly decouples it from Steps 3-6.
-HANDOFF: PUBLISH SEQUENCE FOR THE OWNER (in this order): (a) push $ROOT
-  main (makes cmd/pack_publish.go public so CI can build the publisher;
-  this same push removes packs/ + release-packs.yaml together — no
-  vestigial run fires); (b) push $PACKS main (2cabfaf); (c) in $PACKS:
-  `for p in argocd backstage cert-manager envoy-gateway external-secrets
-  gitea traefik; do git tag "$p/v0.2.0"; done && git push origin --tags`
-  → 7 publish runs; EXPECT an index-rebuild race (each run resolves the
-  OTHER packs via --from-registry, so early finishers may red on
-  not-yet-published siblings) — `gh run rerun` the failed ones once all
-  7 publish steps have run; the last green run leaves the complete
-  7-pack index; (d) `gh attestation verify
-  oci://ghcr.io/cube-idp/packs/gitea:0.2.0 --owner cube-idp` →
-  "✓ Verification succeeded!"; (e) flip the 7 packs/* packages AND
-  packs/index to PUBLIC visibility (github.com web UI — no REST
-  endpoint); (f) seed tests/e2e/packs.lock per tests/e2e/PACKS.md
-  (digests from run logs or `pack index build --from-registry`), commit
-  it, then run the online leg: CUBE_IDP_E2E_ONLINE=1
-  CUBE_IDP_E2E_GATEWAY_PORT=18443 go test ./tests/e2e/ -run
-  TestPublishedPacksByDigest -v. Until (a)-(c) happen the published
-  refs cube-idp now writes (traefik/gitea/argocd :0.2.0) resolve to
-  NOTHING — checkout users are unaffected (`init --local <packs
-  checkout>`), and the conformance template default
-  (oci://…/traefik:0.2.0) matches the traefik/v0.2.0 tag exactly as the
-  dispatch required. For P7 (next in lane): depends on P4 only, all
-  surfaces local — proceed regardless of the publish; gitea pack now
-  lives at $PACKS/packs/gitea. For A-task agents: conformance CI stays
-  red-until-owner-pushes; local runs need
-  CUBE_IDP_CONFORMANCE_GATEWAY_REF=<$PACKS>/packs/traefik until the
-  publish lands; COPY packs (never symlink, P3 caveat). The e2e +
-  tests/ knob for a non-sibling packs checkout is CUBE_IDP_E2E_PACKS_DIR.
+  PUBLISH-GATE evidence (addendum): all 7 publish runs GREEN —
+  argocd 29647769467(a3) backstage 29647845478(a3)
+  cert-manager 29647923298(a3) envoy-gateway 29648014923(a3)
+  external-secrets 29648100278(a3) gitea 29648189188(a2)
+  traefik 29648276083(a2), URLs
+  https://github.com/cube-idp/packs/actions/runs/<id>. `gh attestation
+  verify oci://ghcr.io/cube-idp/packs/{gitea,traefik}:0.2.0 --owner
+  cube-idp` exit 0; --format json: predicateType
+  https://slsa.dev/provenance/v1, signing identity
+  cube-idp/packs/.github/workflows/publish.yml@refs/tags/<name>/v0.2.0,
+  subjects sha256:1559787309bc… (gitea) / sha256:460dc598a35f… (traefik)
+  — equal to the registry digests --from-registry resolved. Real-index
+  round-trip: `pack list --available` against the published
+  oci://ghcr.io/cube-idp/packs/index:latest printed all 7 rows at
+  0.2.0 with no fallback warning. ONLINE LEG (decision 2):
+  CUBE_IDP_E2E_ONLINE=1 CUBE_IDP_E2E_GATEWAY_PORT=18443 go test
+  ./tests/e2e/ -run TestPublishedPacksByDigest → PASS (133s): up pulled
+  traefik+gitea from public ghcr BY DIGEST, both Ready (35 objects),
+  down clean; run scheduled AFTER P8's e2e-selfmanage and A-lane's
+  conf-kyverno legs released port 18443 (GT14 queue discipline).
+  Post-merge `go test ./...` on main after the packs.lock merge: 31 ok,
+  0 FAIL.
+BLOCKERS: none.
+HANDOFF: THE PUBLISH IS DONE AND LIVE. All seven packs + the catalog
+  index are published to ghcr.io/cube-idp/packs at 0.2.0, attested, and
+  PUBLIC; the standalone contract holds end-to-end (online digest leg
+  green; `pack list --available` serves the real index). packs.lock is
+  seeded and committed (188fb7c) — re-seed per tests/e2e/PACKS.md after
+  any future publish. Conformance CI is fully live: the gateway resolves
+  from the published oci://…/traefik:0.2.0 default — A-task agents need
+  NO gateway override anymore (local offline runs may still set
+  CUBE_IDP_CONFORMANCE_GATEWAY_REF); COPY packs, never symlink (P3
+  caveat); the e2e/tests knob for a non-sibling packs checkout is
+  CUBE_IDP_E2E_PACKS_DIR. TAG-PUSH DISCIPLINE for every future release
+  (A-tasks included): push each <name>/vX.Y.Z tag in its OWN `git push`
+  (>3 tags in one push = zero workflow runs, FINDINGS 1a); expect the
+  index-rebuild race on multi-pack waves — rerun red runs until the
+  board settles (FINDINGS 1c); a NEW pack's first publish creates its
+  ghcr package PRIVATE and owned by cube-idp/packs — the owner flips
+  visibility per new pack (FINDINGS 4). Remaining owner-facing docs
+  debt: README ## Install's stale private-repo wording (FINDINGS 11,
+  F1's sweep).
 ```
 
 ---
