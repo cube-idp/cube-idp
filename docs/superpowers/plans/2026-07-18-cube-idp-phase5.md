@@ -1982,7 +1982,7 @@ mentioning CUBE-3009.
 #### Outcome
 
 ```
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(u3-agent-b67ed6f3, 2026-07-18T09:43:50Z)
 BRANCH: p5/u3-engine-tuning (merged: -)
 COMMITS: -
 FINDINGS: -
