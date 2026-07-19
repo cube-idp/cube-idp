@@ -70,6 +70,16 @@ func PathFor(cfgPath string) string {
 	return filepath.Join(filepath.Dir(cfgPath), "cube.lock")
 }
 
+// PathForOrigin picks the cube.lock path: next to cube.yaml for local
+// configs, ./cube.lock in the working directory for remote -f refs
+// (spec 2026-07-19 §7.3 — dir(<ref>) is meaningless for a ref).
+func PathForOrigin(cfgPath string, remote bool) string {
+	if remote {
+		return "cube.lock"
+	}
+	return PathFor(cfgPath)
+}
+
 // Write serializes f to path deterministically (sigs.k8s.io/yaml marshals
 // via JSON with sorted map keys).
 func Write(path string, f *File) error {

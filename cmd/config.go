@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster/k3dp"
 	"github.com/cube-idp/cube-idp/internal/cluster/kindp"
 	"github.com/cube-idp/cube-idp/internal/config"
@@ -23,7 +24,7 @@ func newConfigCmd() *cobra.Command {
 		Use:   "render-cluster",
 		Short: "Print the final merged provider config that `up` would create (D10)",
 		RunE: func(c *cobra.Command, _ []string) error {
-			cube, err := config.Load(file)
+			cube, err := cfgload.Load(c.Context(), file)
 			if err != nil {
 				return err
 			}
@@ -76,7 +77,7 @@ func newConfigCmd() *cobra.Command {
 		Use:   "render-engine",
 		Short: "Print the engine install manifests that `up` would apply (rendered from the engine pack)",
 		RunE: func(c *cobra.Command, _ []string) error {
-			cube, err := config.Load(file)
+			cube, err := cfgload.Load(c.Context(), file)
 			if err != nil {
 				return err
 			}

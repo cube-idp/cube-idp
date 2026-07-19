@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/trust"
 	"github.com/cube-idp/cube-idp/internal/ui"
 )
@@ -45,7 +45,7 @@ func newTrustCmd() *cobra.Command {
 				// run before `init`) falls back to generic wording instead
 				// of asserting a host cube-idp can't back up.
 				subject := "your cube-idp gateway's HTTPS"
-				if cube, cerr := config.Load(file); cerr == nil {
+				if cube, cerr := cfgload.Load(c.Context(), file); cerr == nil {
 					subject = "https://*." + cube.Spec.Gateway.Host
 				}
 				desc := "This adds the cube-idp local CA to your OS trust stores so browsers accept\n" +

@@ -20,6 +20,7 @@ import (
 
 	"github.com/cube-idp/cube-idp/internal/apply"
 	"github.com/cube-idp/cube-idp/internal/bundle"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
@@ -97,12 +98,17 @@ type Options struct {
 func Run(ctx context.Context, opts Options) error {
 	con := opts.Con
 	cfgPath := opts.ConfigPath
-	cube, err := config.Load(cfgPath)
+	cube, err := cfgload.Load(ctx, cfgPath)
 	if err != nil {
 		return err // no RunStarted: a failed load emits only RunDone+Diagnosis
 	}
 	con.Start("up", cube.Metadata.Name)
 	con.Step("config", "cube %q loaded and validated", cube.Metadata.Name)
+	// Remote -f provenance (spec §7.3): a tag ref is not reproducible, so at
+	// minimum make the ref and the pin it resolved to visible in the log.
+	if o := cube.Origin(); o.Remote {
+		con.Step("config", "using remote config %s (%s)", o.Ref, o.Pin)
+	}
 
 	// Offline mode (spec §4.1): open and verify the bundle up front so a
 	// corrupt or incomplete bundle fails before any cluster artifact exists.
@@ -434,7 +440,7 @@ func Run(ctx context.Context, opts Options) error {
 			RenderedHash: engRH,
 			Images:       mergeImages(lock.ImagesFrom(engineRendered.Objects), enginePk.Images)},
 		Packs: entries}
-	if err := lock.Write(lock.PathFor(cfgPath), lf); err != nil {
+	if err := lock.Write(lock.PathForOrigin(cfgPath, cube.Origin().Remote), lf); err != nil {
 		return err
 	}
 	con.Step("lock", "cube.lock written (%d packs)", len(entries))
@@ -608,6 +614,11 @@ func Run(ctx context.Context, opts Options) error {
 // mid-install, so refuse before any cluster mutation (the CUBE-7005
 // fail-fast precedent). Pure and unit-testable: no bundle, no cluster.
 func bundleRailsCheck(cube *config.Cube) error {
+	if o := cube.Origin(); o.Remote {
+		return diag.New(diag.CodeBundleRemoteSource,
+			fmt.Sprintf("config was loaded from remote ref %q — remote configs are not vendored into the bundle", o.Ref),
+			"fetch the cube.yaml locally and pass the local path to -f for air-gapped installs")
+	}
 	for _, p := range cube.Spec.Packs {
 		if p.ValuesRef != "" {
 			return diag.New(diag.CodeBundleRemoteSource,

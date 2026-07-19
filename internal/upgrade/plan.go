@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/diff"
@@ -28,11 +29,11 @@ type Row struct {
 // then runs the Task 6 kernel diff. Nothing here mutates cluster or cache
 // state beyond ResolveRemote's own getter-ref probe fetch.
 func Plan(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
-	cube, err := config.Load(cfgPath)
+	cube, err := cfgload.Load(ctx, cfgPath)
 	if err != nil {
 		return false, err
 	}
-	lf, err := lock.Read(lock.PathFor(cfgPath))
+	lf, err := lock.Read(lock.PathForOrigin(cfgPath, cube.Origin().Remote))
 	if err != nil {
 		return false, err
 	}

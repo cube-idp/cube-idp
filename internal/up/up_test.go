@@ -1069,3 +1069,25 @@ func TestBundleRailsCheckRejectsValuesRef(t *testing.T) {
 		t.Fatalf("clean cube rejected: %v", err)
 	}
 }
+
+// TestBundleRailsCheckRejectsRemoteOrigin is the same rail for the OTHER
+// remote source remote -f introduced (Task 10 Step 2b): the cube.yaml itself
+// came off the network, so it is no more vendored into the bundle than a
+// valuesRef is. Same code (CUBE-7007), same fail-before-mutation posture.
+func TestBundleRailsCheckRejectsRemoteOrigin(t *testing.T) {
+	cube := &config.Cube{}
+	cube.MarkRemoteOrigin("oci://example/cfg:1", "oci:sha256:abc")
+	err := bundleRailsCheck(cube)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeBundleRemoteSource {
+		t.Fatalf("err = %v, want %s", err, diag.CodeBundleRemoteSource)
+	}
+	// The ref is named so the operator can see WHICH source is unvendored.
+	if !strings.Contains(de.Error(), "oci://example/cfg:1") {
+		t.Fatalf("error does not name the ref: %v", err)
+	}
+	// A local-origin cube with no remote sources still passes.
+	if err := bundleRailsCheck(&config.Cube{}); err != nil {
+		t.Fatalf("local cube rejected: %v", err)
+	}
+}

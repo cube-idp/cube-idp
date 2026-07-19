@@ -11,6 +11,7 @@ import (
 	huh "charm.land/huh/v2"
 	"github.com/spf13/cobra"
 
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/oci"
@@ -294,7 +295,7 @@ func newPackInstallCmd() *cobra.Command {
 					return nil
 				}
 			}
-			if err := packInstallRefs(c.OutOrStdout(), file, refs, via); err != nil {
+			if err := packInstallRefs(c.Context(), c.OutOrStdout(), file, refs, via); err != nil {
 				return err
 			}
 			if len(args) == 0 {
@@ -337,8 +338,8 @@ func runPackMenu(in io.Reader, out io.Writer, opts []huh.Option[string]) ([]stri
 // Gitea delivery; "oci" writes no delivery key at all — byte-compatible
 // with pre-P7 files. The gitea guarantee (CUBE-7304) rides the round-trip:
 // --via repo on a gitea-less cube is refused with the file untouched.
-func packInstallRefs(out io.Writer, file string, refs []string, via string) error {
-	cube, err := config.Load(file)
+func packInstallRefs(ctx context.Context, out io.Writer, file string, refs []string, via string) error {
+	cube, err := cfgload.Load(ctx, file)
 	if err != nil {
 		return err
 	}

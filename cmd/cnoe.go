@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/cnoe"
-	"github.com/cube-idp/cube-idp/internal/config"
 	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
 	"github.com/cube-idp/cube-idp/internal/oci"
 	"github.com/cube-idp/cube-idp/internal/pack"
@@ -30,7 +30,7 @@ func newCnoeCmd() *cobra.Command {
 		Short: "Ingest idpbuilder Argo Application/ApplicationSet YAMLs into the running cube (cnoe:// paths become OCI pushes)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			cube, err := config.Load(file)
+			cube, err := cfgload.Load(c.Context(), file)
 			if err != nil {
 				return err
 			}

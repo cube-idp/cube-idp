@@ -10,6 +10,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
@@ -73,7 +74,7 @@ idempotent, and --deploy re-registers the same delivery source.`,
 			name := args[0]
 			return ui.RunPipelineStatic(c.Context(), "repo", c.OutOrStdout(),
 				func(ctx context.Context, con *ui.Console) error {
-					cube, err := config.Load(file)
+					cube, err := cfgload.Load(ctx, file)
 					if err != nil {
 						return err
 					}
