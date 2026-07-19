@@ -1829,7 +1829,7 @@ Outcome: BRANCH: n/a · COMMITS: none · FINDINGS: see T3 OWNER RESOLUTION trail
 HANDOFF: n/a
 
 ### T4 — config surface (ref/values, CUBE-0012/0013) [$ROOT]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T12:45Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T5 — helm cache pinning [$ROOT]
