@@ -225,20 +225,40 @@ func Run(ctx context.Context, opts Options) error {
 
 	// Task 15.3a: the engine install (Flux/Argo CD's own controllers coming
 	// up) is the second long, previously-silent wait.
-	// P8 (GT16): the install is ALWAYS rendered first (embedded manifests +
-	// U3 tuning) — the rendered objects are what SSA applies, what the
-	// inventory records, and (selfManage) what the cube-engine artifact
+	// P8 (GT16): the install is ALWAYS rendered first (the rendered engine
+	// pack, values applied) — the rendered objects are what SSA applies, what
+	// the inventory records, and (selfManage) what the cube-engine artifact
 	// carries, so the SSA'd state and the first pushed artifact are
 	// byte-identical renders. SSA is skipped only when the engine owns
 	// itself: selfManage on AND healthy at start (rule 2); first install
 	// (rule 1) and unhealthy-at-start recovery (rule 3) SSA directly, and
 	// selfManage off keeps the pre-P8 behavior.
-	pr = con.Progress("engine", fmt.Sprintf("installing %s", cube.Spec.Engine.Type))
-	installObjs, err := eng.InstallManifests()
+	dir, err := pack.DefaultCacheDir()
 	if err != nil {
-		pr.Stop()
 		return err
 	}
+	// Engine-as-pack (spec §3.3): the engine install is fetched and rendered
+	// like any pack — the rendered objects are what SSA applies, what the
+	// inventory records, and (selfManage) what the cube-engine artifact
+	// carries. Offline: the ref resolves through the bundle like every pack.
+	engineRef := cube.Spec.Engine.PackRef()
+	if opened != nil {
+		eref, err := resolveBundleRefs([]config.PackRef{{Ref: engineRef}}, opened.Lock, opened.PackDirLookup())
+		if err != nil {
+			return err
+		}
+		engineRef = eref[0].Ref
+	}
+	epr := con.Progress("engine-pack", "fetching "+engineRef)
+	stepFetchSource(con, engineRef)
+	enginePk, engineRendered, err := pack.FetchRenderEngine(ctx, cube.Spec.Engine, cube.Spec.Gateway, engineRef, dir)
+	if err != nil {
+		epr.Stop()
+		return err
+	}
+	epr.Done("%s@%s rendered", engineRendered.Name, engineRendered.Version)
+	pr = con.Progress("engine", fmt.Sprintf("installing %s", cube.Spec.Engine.Type))
+	installObjs := engineRendered.Objects
 	ssaEngine := installNeedsSSA(ctx, eng, a, cube.Spec.Engine.SelfManage)
 	if ssaEngine {
 		if err := a.Apply(ctx, installObjs, true, applyTimeout); err != nil {
@@ -269,11 +289,6 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 	defer stop()
-
-	dir, err := pack.DefaultCacheDir()
-	if err != nil {
-		return err
-	}
 
 	// Gateway pack goes first — everything else depends on ingress existing.
 	// P7 (the gitea guarantee, decision 13): with any delivery: repo pack
@@ -400,8 +415,16 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
+	engRH, err := lock.RenderedHash(engineRendered.Objects)
+	if err != nil {
+		return err
+	}
 	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
-		Engine: lock.EngineLock{Type: cube.Spec.Engine.Type}, Packs: entries}
+		Engine: lock.EngineLock{Type: cube.Spec.Engine.Type, Ref: cube.Spec.Engine.PackRef(),
+			Name: engineRendered.Name, Version: engineRendered.Version, Resolved: enginePk.Pinned,
+			RenderedHash: engRH,
+			Images:       mergeImages(lock.ImagesFrom(engineRendered.Objects), enginePk.Images)},
+		Packs: entries}
 	if err := lock.Write(lock.PathFor(cfgPath), lf); err != nil {
 		return err
 	}
@@ -509,6 +532,15 @@ func Run(ctx context.Context, opts Options) error {
 		customized := len(refs[i].Values) > 0 || refs[i].ExtraManifests != ""
 		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name], customized, refs[i].Delivery, packDeps[pk.Name]))
 	}
+	// Engine-as-pack §3.3.7: the engine's own row. READY is true by
+	// construction here (waitHealthy gated above) unless selfManage, where
+	// the cube-engine self-source's component health is the honest answer.
+	engineReady := true
+	if cube.Spec.Engine.SelfManage {
+		engineReady = healthByName[engine.SelfArtifactName]
+	}
+	packObjs = append(packObjs, pack.PackObject(enginePk, cube.Spec.Gateway, engineReady,
+		len(cube.Spec.Engine.Values) > 0, "engine", nil))
 	if err := a.Apply(ctx, packObjs, false, applyTimeout); err != nil {
 		return err
 	}
