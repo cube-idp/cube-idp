@@ -44,12 +44,13 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// installArgoCDCRDs installs the Application CRD from the embedded install
-// manifests and creates the argocd namespace, so delivered Applications can
-// be applied and poked.
+// installArgoCDCRDs installs the Application CRD from the testdata/crds.yaml
+// fixture (crdsYAML, embedded in contract_test.go — engine-as-pack: the engine
+// no longer carries an install manifest) and creates the argocd namespace, so
+// delivered Applications can be applied and poked.
 func installArgoCDCRDs(t *testing.T) {
 	t.Helper()
-	objs, err := New().InstallManifests()
+	objs, err := apply.ParseMultiDoc(crdsYAML)
 	if err != nil {
 		t.Fatal(err)
 	}

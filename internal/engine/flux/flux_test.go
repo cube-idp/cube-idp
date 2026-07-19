@@ -49,13 +49,3 @@ func TestDeliverShapesFluxObjects(t *testing.T) {
 		t.Fatalf("sourceRef.kind: %s", src)
 	}
 }
-
-func TestInstallManifestsEmbedAndParse(t *testing.T) {
-	objs, err := InstallManifests()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(objs) < 10 {
-		t.Fatalf("flux install.yaml seems empty: %d objects — run hack/gen-flux-manifests.sh", len(objs))
-	}
-}

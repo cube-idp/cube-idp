@@ -2,11 +2,58 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// TestRenderEngineRendersPack: the command prints the engine pack render —
+// same objects `up` would SSA (engine-as-pack §3.3.10). The fixture is a
+// manifests-only cube-engine-flux pack (nil values) pointed at by
+// spec.engine.ref, since the published 0.1.0 default does not resolve until
+// the packs are published (Task 15).
+func TestRenderEngineRendersPack(t *testing.T) {
+	dir := t.TempDir()
+	pd := filepath.Join(dir, "cube-engine-flux")
+	if err := os.MkdirAll(filepath.Join(pd, "manifests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pd, "pack.cue"),
+		[]byte("name: \"cube-engine-flux\"\nversion: \"0.1.0\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A distinctive namespace name the retired embedded flux blob does NOT
+	// contain — so this test fails against the old InstallManifests() source
+	// and only passes when render-engine renders the pack at spec.engine.ref.
+	if err := os.WriteFile(filepath.Join(pd, "manifests", "ns.yaml"),
+		[]byte("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: enginepack-fixture-ns\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cy := filepath.Join(dir, "cube.yaml")
+	if err := os.WriteFile(cy, []byte(fmt.Sprintf(`apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: t}
+spec:
+  engine: {type: flux, ref: %s}
+  gateway: {host: cube-idp.localtest.me, port: 8443, pack: traefik}
+`, pd)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCmd()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"config", "render-engine", "-f", cy})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("render-engine: %v (stderr: %s)", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "kind: Namespace") || !strings.Contains(stdout.String(), "enginepack-fixture-ns") {
+		t.Fatalf("render-engine must print the pack render (at spec.engine.ref), got:\n%s", stdout.String())
+	}
+}
 
 // TestRenderClusterNotesCertsDInjection covers (g): render-cluster's output
 // is a pure/file-free rendering (cmd/config.go's comment: "no certs.d
@@ -44,60 +91,6 @@ func TestRenderClusterNotesCertsDInjection(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "certs.d") {
 		t.Fatalf("expected a stderr note that certs.d is injected at `up` time, got:\n%s", stderr.String())
-	}
-}
-
-// writeEngineTuningFixture writes a cube.yaml whose flux engine tunes the
-// named component to replicas: 2 (U3, GT1).
-func writeEngineTuningFixture(t *testing.T, component string) string {
-	t.Helper()
-	dir := t.TempDir()
-	p := filepath.Join(dir, "cube.yaml")
-	base := `apiVersion: cube-idp.dev/v1alpha1
-kind: Cube
-metadata: {name: dev}
-spec:
-  engine:
-    type: flux
-    tuning:
-      components:
-        ` + component + `: {replicas: 2}
-  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443}
-`
-	if err := os.WriteFile(p, []byte(base), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return p
-}
-
-// TestRenderEngineAppliesTuning covers U3's inspectability contract (GT1):
-// `config render-engine` prints the embedded engine install stream with
-// spec.engine.tuning already patched in — the tuned result is visible
-// before any cluster exists. The untuned flux stream contains no
-// `replicas: 2` anywhere (its Deployments ship replicas: 1), so the
-// assertion can only be satisfied by the patch.
-func TestRenderEngineAppliesTuning(t *testing.T) {
-	p := writeEngineTuningFixture(t, "source-controller")
-	out := mustRunCLI(t, "config", "render-engine", "-f", p)
-	if !strings.Contains(out, "kind: Deployment") || !strings.Contains(out, "name: source-controller") {
-		t.Fatalf("render-engine must print the flux install stream, got:\n%.2000s", out)
-	}
-	if !strings.Contains(out, "replicas: 2") {
-		t.Fatalf("tuned replicas missing from rendered stream:\n%.2000s", out)
-	}
-	if !strings.Contains(out, "\n---\n") {
-		t.Fatalf("expected a ----separated multi-doc stream, got:\n%.500s", out)
-	}
-}
-
-// TestRenderEngineUnknownComponentIsCube3009: the tuning knob set is closed
-// — a component name the engine's install manifests don't have is a typed
-// CUBE-3009 naming the valid components, never a silent ignore.
-func TestRenderEngineUnknownComponentIsCube3009(t *testing.T) {
-	p := writeEngineTuningFixture(t, "nope")
-	out, err := runCLI(t, "config", "render-engine", "-f", p)
-	if err == nil || !strings.Contains(err.Error(), "CUBE-3009") || !strings.Contains(err.Error(), "source-controller") {
-		t.Fatalf("want CUBE-3009 naming valid components, got err=%v\noutput: %s", err, out)
 	}
 }
 

@@ -14,6 +14,8 @@ const (
 	CodeUpgradeGuard          Code = "CUBE-0009" // upgrade refused: see summary (was the last un-coded user-facing error)
 	CodeConfirmRequired       Code = "CUBE-0010" // a destructive command refused to run without confirmation (--yes / --confirm)
 	CodeProviderConfigRemoved Code = "CUBE-0011" // cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)
+	CodeEngineTuningRemoved   Code = "CUBE-0012" // engine.tuning was removed (engine-as-pack) — use engine.values (chart values of the cube-engine-<type> pack)
+	CodeEnginePackMismatch    Code = "CUBE-0013" // engine.ref points at a pack whose pack.cue name != cube-engine-<engine.type>
 )
 
 // 01xx: doctor preflight checks (Phase 2)
@@ -73,13 +75,13 @@ const (
 // 3xxx: engine
 const (
 	CodeEngineTypeUnknown   Code = "CUBE-3001" // unknown engine type in config
-	CodeEngineManifestsInv  Code = "CUBE-3003" // embedded engine install manifests invalid
+	CodeEngineManifestsInv  Code = "CUBE-3003" // embedded engine install manifests invalid (RETIRED 2026-07-19 by engine-as-pack — install left the engine seam)
 	CodeEngineHealthTimeout Code = "CUBE-3004" // engine health check timed out or components not ready
 	CodeEngineUninstallFail Code = "CUBE-3005" // flux prune/uninstall timeout
 	CodeEngineArgocdRegFail Code = "CUBE-3006" // reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design
 	CodePokeTargetMissing   Code = "CUBE-3007" // Poke found no delivery source (OCIRepository/GitRepository/Application) for the pack
 	CodePokeIOFail          Code = "CUBE-3008" // Poke found the delivery source but could not read/update it (transient engine IO — retry)
-	CodeEngineTuningUnknown Code = "CUBE-3009" // engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched)
+	CodeEngineTuningUnknown Code = "CUBE-3009" // engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched) (RETIRED 2026-07-19 by engine-as-pack — never emitted since)
 	// GT16 engine self-management (Phase 5 P8):
 	CodeEngineSelfManage Code = "CUBE-3010" // engine.selfManage failed: cube-engine artifact push, self-source build/apply, or post-attach health wait — re-run `cube-idp up`
 	CodeEngineDepWait    Code = "CUBE-3011" // a pack's dependency did not become healthy before its wave-gated delivery (argocd)

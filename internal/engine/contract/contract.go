@@ -32,7 +32,11 @@ import (
 
 type Impl struct {
 	Name string
-	New  func() engine.Engine // Engine carries InstallManifests() (interface method since phase 1 Task 10)
+	New  func() engine.Engine
+	// CRDs returns the engine's own CustomResourceDefinitions (testdata —
+	// formerly extracted from the embedded install manifests) so envtest
+	// can apply the engine's delivered objects.
+	CRDs func() ([]byte, error)
 }
 
 func Run(t *testing.T, impl Impl) {
@@ -155,7 +159,7 @@ func Run(t *testing.T, impl Impl) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		installEngineCRDs(t, cfg, impl.New())
+		installEngineCRDs(t, cfg, impl)
 
 		delivered, err := impl.New().Deliver(ctx, demo, demoRef)
 		if err != nil {
@@ -185,45 +189,23 @@ func Run(t *testing.T, impl Impl) {
 		}
 	})
 
-	t.Run("install_manifests_parse", func(t *testing.T) {
-		objs, err := impl.New().InstallManifests()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(objs) < 10 {
-			t.Fatalf("install manifests look empty (%d objects) — regenerate them", len(objs))
-		}
-		hasNS := false
-		for _, o := range objs {
-			if o.GetKind() == "Namespace" {
-				hasNS = true
-			}
-		}
-		if !hasNS {
-			t.Fatal("install manifests must carry their own Namespace (offline, self-contained install)")
-		}
-	})
-
-	t.Run("install_health_uninstall_on_cluster", func(t *testing.T) {
+	// Engine-as-pack (2026-07-19): the engine's own install left the engine
+	// seam — `up` SSAs the rendered cube-engine-<type> pack, not
+	// eng.InstallManifests() (deleted). The install-manifests-parse and
+	// install-on-cluster subtests retired with it; the health/uninstall
+	// guarantee they carried survives here, leaner: Health and Uninstall must
+	// tolerate a fresh, engine-less cluster (no install step precedes them).
+	t.Run("health_tolerates_fresh_cluster", func(t *testing.T) {
 		cfg := startEnvtest(t)
 		a, err := apply.New(cfg, "contract-"+impl.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		objs, err := impl.New().InstallManifests()
-		if err != nil {
-			t.Fatal(err)
-		}
-		// wait=false: envtest runs no controllers, Deployments never go Ready.
-		// Readiness is asserted end-to-end in the CI engine matrix (Task 14).
-		if err := a.Apply(ctx, objs, false, time.Minute); err != nil {
-			t.Fatalf("install manifests must SSA-apply cleanly: %v", err)
-		}
 		if _, err := impl.New().Health(ctx, a); err != nil {
-			t.Fatalf("Health must not error on a fresh, empty install: %v", err)
+			t.Fatalf("Health must not error before the engine is installed: %v", err)
 		}
 		if err := impl.New().Uninstall(ctx, a, time.Minute); err != nil {
-			t.Fatalf("Uninstall must not error: %v", err)
+			t.Fatalf("Uninstall must not error on an empty cluster: %v", err)
 		}
 	})
 }
@@ -243,13 +225,18 @@ func marshalAll(t *testing.T, objs []*unstructured.Unstructured) string {
 }
 
 // installEngineCRDs installs an engine's own CustomResourceDefinitions (from
-// its embedded install manifests) into the envtest API server, so its
-// delivered objects (flux OCIRepository/GitRepository/Kustomization, argocd
-// Application) can be applied and poked. Engine-agnostic: each engine ships
-// exactly the CRDs its delivery shapes need.
-func installEngineCRDs(t *testing.T, cfg *rest.Config, e engine.Engine) {
+// the impl's CRDs testdata fixture — formerly extracted from the embedded
+// install manifests) into the envtest API server, so its delivered objects
+// (flux OCIRepository/GitRepository/Kustomization, argocd Application) can be
+// applied and poked. Engine-agnostic: each engine ships exactly the CRDs its
+// delivery shapes need.
+func installEngineCRDs(t *testing.T, cfg *rest.Config, impl Impl) {
 	t.Helper()
-	objs, err := e.InstallManifests()
+	raw, err := impl.CRDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	objs, err := apply.ParseMultiDoc(raw)
 	if err != nil {
 		t.Fatal(err)
 	}

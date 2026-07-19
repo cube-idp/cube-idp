@@ -97,7 +97,7 @@ func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) 
 		ref.ReleaseName = ref.Chart
 	}
 
-	settings := cli.New()
+	settings := helmSettings()
 	cfg := new(action.Configuration) // zero config: client-only, no cluster access
 
 	install := action.NewInstall(cfg)
@@ -210,6 +210,19 @@ func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) 
 		objs = append(dedupeCRDs(crdObjs, objs), objs...)
 	}
 	return objs, nil
+}
+
+// helmSettings pins helm's repo cache/config under the cube-idp cache root
+// (spec §9.3, applies to ALL chart packs): hermetic renders, no
+// interference with the operator's own helm state. Best-effort — on a
+// cache-dir failure helm's defaults still work.
+func helmSettings() *cli.EnvSettings {
+	settings := cli.New()
+	if dir, err := DefaultCacheDir(); err == nil {
+		settings.RepositoryCache = filepath.Join(dir, "helm", "repository")
+		settings.RepositoryConfig = filepath.Join(dir, "helm", "repositories.yaml")
+	}
+	return settings
 }
 
 func hasNamespaceObject(objs []*unstructured.Unstructured, name string) bool {

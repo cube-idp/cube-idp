@@ -59,8 +59,10 @@ func TestUninstallDeletesDeliveredSources(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Install the flux CRDs from the same embedded manifests `up` applies.
-	objs, err := InstallManifests()
+	// Install the flux CRDs from the testdata/crds.yaml fixture (crdsYAML,
+	// embedded in contract_test.go — engine-as-pack: the engine no longer
+	// carries an install manifest).
+	objs, err := apply.ParseMultiDoc(crdsYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +78,7 @@ func TestUninstallDeletesDeliveredSources(t *testing.T) {
 		crds = append(crds, crd)
 	}
 	if len(crds) == 0 {
-		t.Fatal("no CRDs found in flux install manifests")
+		t.Fatal("no CRDs found in flux crds fixture")
 	}
 	if _, err := envtest.InstallCRDs(testREST, envtest.CRDInstallOptions{CRDs: crds}); err != nil {
 		t.Fatal(err)

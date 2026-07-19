@@ -37,7 +37,6 @@ package argocd
 
 import (
 	"context"
-	_ "embed"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -46,96 +45,27 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
-	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/engine"
 )
 
 const Namespace = "argocd"
 
-//go:embed manifests/install.yaml
-var installYAML []byte
+// ArgoCD implements engine.Engine. Engine-as-pack (2026-07-19): argocd no
+// longer carries an embedded install manifest or the defaultNamespace
+// transform — `up` fetches and renders the cube-engine-argocd pack (whose
+// chart stamps explicit namespaces) and SSAs the result. The engine is a pure
+// translator + operator now; Install/InstallManifests left the interface.
+type ArgoCD struct{}
 
-//go:embed manifests/repo-secret.yaml
-var repoSecretYAML []byte
-
-type ArgoCD struct {
-	// tuning is the closed engine.tuning knob set (GT1, U3) applied over
-	// the embedded install manifests by InstallManifests. nil = untuned.
-	tuning *config.EngineTuning
-}
-
-// New returns an untuned ArgoCD engine (tests and callers that only need
-// the stock install).
+// New returns an ArgoCD engine.
 func New() *ArgoCD { return &ArgoCD{} }
-
-// NewTuned returns an ArgoCD engine whose InstallManifests patches the
-// embedded manifests with t (GT1). The factory is the production caller.
-func NewTuned(t *config.EngineTuning) *ArgoCD { return &ArgoCD{tuning: t} }
 
 // OrdersDeliveries reports that argocd does NOT order delivery
 // reconciliation natively — there is no cross-Application dependsOn (p6
 // DEP3). `up`'s wave gate (waitDepsHealthy) is the enforcement side; Deliver
 // still stamps the cube-idp.dev/depends-on annotation for humans/tooling.
 func (g *ArgoCD) OrdersDeliveries() bool { return false }
-
-// clusterScopedKinds are the non-namespaced kinds argo-cd's own
-// manifests/install.yaml ships (plus the Namespace object this package
-// prepends); everything else in that file is namespace-scoped.
-var clusterScopedKinds = map[string]bool{
-	"Namespace":                true,
-	"ClusterRole":              true,
-	"ClusterRoleBinding":       true,
-	"CustomResourceDefinition": true,
-}
-
-// defaultNamespace fills in metadata.namespace for namespace-scoped objects
-// that omit it. Argo CD's community install.yaml (unlike flux's `flux
-// install --export` output) never sets metadata.namespace on its own
-// resources: it's designed for `kubectl apply -n argocd -f install.yaml`,
-// relying on kubectl's -n flag / current-context namespace to supply it.
-// cube-idp's Applier SSA-applies raw unstructured objects with no such
-// implicit default-namespace behavior, so without this step every
-// namespace-scoped object (ServiceAccount, Deployment, Role, ...) would
-// fail to apply ("namespace not specified") — found the hard way running
-// the contract suite's install_health_uninstall_on_cluster subtest against
-// a real (envtest) API server.
-func defaultNamespace(objs []*unstructured.Unstructured) {
-	for _, o := range objs {
-		if o.GetNamespace() == "" && !clusterScopedKinds[o.GetKind()] {
-			o.SetNamespace(Namespace)
-		}
-	}
-}
-
-func (g *ArgoCD) InstallManifests() ([]*unstructured.Unstructured, error) {
-	objs, err := apply.ParseMultiDoc(installYAML)
-	if err != nil {
-		return nil, err
-	}
-	defaultNamespace(objs)
-	secretObjs, err := apply.ParseMultiDoc(repoSecretYAML)
-	if err != nil {
-		return nil, err
-	}
-	all := append(objs, secretObjs...)
-	// GT1 (U3): apply this engine's tuning last, so the objects Install
-	// SSAs and `up` inventories are the tuned ones. An unknown tuning
-	// component surfaces as CUBE-3009 here.
-	if err := engine.ApplyTuning(all, g.tuning); err != nil {
-		return nil, err
-	}
-	return all, nil
-}
-
-func (g *ArgoCD) Install(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
-	objs, err := g.InstallManifests()
-	if err != nil {
-		return diag.Wrap(err, diag.CodeEngineManifestsInv, "embedded argocd manifests are invalid",
-			"this is a cube-idp bug — regenerate with hack/gen-argocd-manifests.sh and report it")
-	}
-	return a.Apply(ctx, objs, true, timeout)
-}
 
 func (g *ArgoCD) Uninstall(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
 	// Same posture as flux: removal is inventory-driven by `down`; the engine

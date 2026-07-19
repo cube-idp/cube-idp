@@ -1,7 +1,7 @@
 cube-idp cnoe import | Ingest idpbuilder Argo Application/ApplicationSet YAMLs into the running cube (cnoe:// paths become OCI pushes) | 
 cube-idp cnoe | Compatibility tools for CNOE/idpbuilder setups | file=cube.yaml
 cube-idp config render-cluster | Print the final merged provider config that `up` would create (D10) | 
-cube-idp config render-engine | Print the tuned engine install manifests that `up` would apply (GT1) | 
+cube-idp config render-engine | Print the engine install manifests that `up` would apply (rendered from the engine pack) | 
 cube-idp config schema | Print the CUE schema cube.yaml is validated against | 
 cube-idp config | Inspect cube-idp configuration | file=cube.yaml
 cube-idp diff | Show what a re-run of `up` would change; exit 1 if anything would | file=cube.yaml
