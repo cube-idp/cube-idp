@@ -674,7 +674,7 @@ git add internal/pack/helm.go internal/pack/helm_test.go && git commit -m "feat(
   RenderedHash string; Images []string}` + method `Entry() Entry` (the
   projection bundle vendoring/resolution uses). Tasks 8+10 consume.
 
-- [ ] **Step 1: Failing test**
+- [x] **Step 1: Failing test**
 
 ```go
 // TestEngineLockEntryRoundTrip pins the engine-as-pack lock extension: the
@@ -711,9 +711,9 @@ func TestEngineLockEntryRoundTrip(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run** `go test ./internal/lock/ -run TestEngineLockEntry -v` — FAIL.
+- [x] **Step 2: Run** `go test ./internal/lock/ -run TestEngineLockEntry -v` — FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 // EngineLock records the GitOps engine: its type plus (engine-as-pack,
@@ -738,7 +738,7 @@ func (e EngineLock) Entry() Entry {
 }
 ```
 
-- [ ] **Step 4: Run** — PASS. **Step 5: Commit**
+- [x] **Step 4: Run** — PASS. **Step 5: Commit**
 
 ```bash
 git add internal/lock && git commit -m "feat(lock): EngineLock carries the engine pack's reproducibility entry (p7 engine-as-pack)" -- internal/lock
@@ -2032,8 +2032,63 @@ Outcome:
     churn beyond `strings` added to helm_test.go.
 
 ### T6 — cube.lock engine entry [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T17:30Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+STATUS: DONE (5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T17:30Z claimed → closed same session)
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`)
+- COMMITS:
+  - `be0434c` docs: p7 plan — claim T6 (ledger claim only).
+  - `9dfb3d7` feat(lock): EngineLock carries the engine pack's reproducibility entry (p7 engine-as-pack)
+    (2 files, +51/-2; trailer `Co-Authored-By: Claude Fable 5`). Touches:
+    internal/lock/lock.go (EngineLock grows omitempty pack fields
+    Ref/Name/Version/Resolved/RenderedHash/Images + `Entry() Entry` method),
+    internal/lock/lock_test.go (adds `TestEngineLockEntryRoundTrip`). go.mod/go.sum
+    UNCHANGED — no new module (all fields are string/[]string; Entry already existed).
+- FINDINGS: none. The plan's Task 6 code was verified against the real
+  `internal/lock/lock.go` before writing: the real `Entry` struct fields
+  (Ref, Name, Version, Resolved, RenderedHash string; Images []string) and the
+  `File` struct (Engine EngineLock; Packs []Entry) matched the plan's template
+  exactly — Steps 1 and 3 were applied verbatim, no correction needed.
+- BLOCKERS: none.
+- GATE EVIDENCE (real commands, $ROOT p7 worktree — never LSP):
+  - Step 2 (RED via real `go test`, not LSP):
+    ```
+    internal/lock/lock_test.go:101:36: unknown field Ref in struct literal of type EngineLock
+    ... (Name/Version/Resolved/RenderedHash/Images unknown; Entry undefined) ...
+    FAIL	github.com/cube-idp/cube-idp/internal/lock [build failed]
+    ```
+  - Step 4 → `go build ./...` exit 0; `go test ./internal/lock/ -run TestEngineLockEntry -v`:
+    ```
+    --- PASS: TestEngineLockEntryRoundTrip (0.00s)
+    ok  github.com/cube-idp/cube-idp/internal/lock	0.953s
+    ```
+    (The single test body exercises BOTH the new-lock round-trip incl. Entry()
+    projection AND the old-lock-compat leg — a `engine:\n  type: argocd` lock with
+    no pack fields still Reads: `old.Engine.Type=="argocd"`, `old.Engine.Ref==""`.)
+  - Gate: `go build ./...` exit 0, `go vet ./...` exit 0,
+    `go test ./internal/lock/ -count=1` → `ok  …/internal/lock  0.355s`.
+  - Broad `go test ./... -count=1` (with `CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7
+    worktree>/packs`): everything green EXCEPT the documented KNOWN PRE-EXISTING
+    RED `TestPackManifestsNoAlwaysPull` — verified it fails on ONLY the three
+    untouched packs `argo-events`/`argo-rollouts`/`cloudnativepg` (Global
+    Constraints item — NOT p7, NOT mine, no engine pack among them). Failure tally:
+    exactly one FAIL test in exactly one FAIL package (`./tests`), no other
+    failures; e2e/live legs runtime-gated (skip, not fail).
+- HANDOFF (for T8/T10 downstream):
+  - **`lock.EngineLock`** (internal/lock/lock.go) now has, in addition to
+    `Type string` (yaml `type`, NOT omitempty): `Ref`, `Name`, `Version`,
+    `Resolved`, `RenderedHash` (all `string`, yaml/json `<field>,omitempty`) and
+    `Images []string` (yaml/json `images,omitempty`). These mirror `lock.Entry`'s
+    fields 1:1. T8 (`up.Run`) populates them when it installs the engine from the
+    pack; because every pack field is omitempty, a type-only lock still Reads
+    (old-lock compat verified above — `Read` returns `Ref==""`).
+  - **`func (e EngineLock) Entry() lock.Entry`** (value receiver) projects the six
+    pack fields into a `lock.Entry{Ref,Name,Version,Resolved,RenderedHash,Images}`
+    (Type is engine-only, not part of Entry). T10 (bundle vendor + offline rails)
+    calls `f.Engine.Entry()` to treat the engine pack like every other pack for
+    vendoring / ref resolution. Signature: `Entry() Entry`, no args, no error.
+  - `File.Engine` remains `EngineLock` (yaml `engine`); `File.Packs` remains
+    `[]Entry` (yaml `packs`). Read/Write are unchanged — the new fields ride the
+    existing sigs.k8s.io/yaml (JSON-via-YAML, sorted keys) marshalling for free.
 
 ### T7 — pack.FetchRenderEngine seam [$ROOT]
 STATUS: UNCLAIMED
