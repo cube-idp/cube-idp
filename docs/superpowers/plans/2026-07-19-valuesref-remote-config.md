@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Remote-fetchable pack values (`packs[].valuesRef`), engine tuning (`engine.tuningRef`), and cube config (`-f <ref>`), all riding the existing pack ref grammar with pins recorded in `cube.lock`.
+**Goal:** Remote-fetchable pack values (`packs[].valuesRef`) and cube config (`-f <ref>`), both riding the existing pack ref grammar with pins recorded in `cube.lock`. (`engine.tuningRef` was DROPPED — see Amendment 4; the engine-values successor is a post-p7 plan.)
 
-**Architecture:** Extend `pack.FetchFile` to surface the pin it already computes; add a shared `internal/refval` resolver (fetch one YAML → map + pin) that `providerConfigRef`, `valuesRef`, `tuningRef`, and remote `-f` all consume; merge inline-over-fetched via RFC 7386 (`compose.Merge` precedent); resolve at desired-state build time (never `config.Load`), record pins in `cube.lock`, and attribute changes in `upgrade --plan`.
+**Architecture:** Extend `pack.FetchFile` to surface the pin it already computes; add a shared `internal/refval` resolver (fetch one YAML → map + pin) that `providerConfigRef`, `valuesRef`, and remote `-f` all consume; merge inline-over-fetched via RFC 7386 (`compose.Merge` precedent); resolve at desired-state build time (never `config.Load`), record pins in `cube.lock`, and attribute changes in `upgrade --plan`.
 
 **Tech Stack:** Go 1.26, CUE (config schema), `github.com/evanphx/json-patch/v5` (RFC 7386), forked `hashicorp/go-getter`, ORAS, `sigs.k8s.io/yaml`. No new dependencies.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - **CLI freeze (F1):** no new/renamed cobra flags, no changed defaults or `Short` texts. `go test ./cmd/ -run TestCommandTreeGolden` must pass WITHOUT `-update` at every commit.
-- **Diag codes:** every new code needs a constant in `internal/diag/codes.go` AND a `Desc` entry in `internal/diag/registry.go` (`TestRegistryCoversEveryDeclaredCode` enforces both directions). New codes: `CUBE-4021`, `CUBE-3012`, `CUBE-0012`, `CUBE-0013`. Errors are built with `diag.New(code, summary, fix)` / `diag.Wrap(err, code, summary, fix)`.
+- **Diag codes:** every new code needs a constant in `internal/diag/codes.go` AND a `Desc` entry in `internal/diag/registry.go` (`TestRegistryCoversEveryDeclaredCode` enforces both directions). New codes (POST-p7 ACTUALS — see Amendment 5): `CUBE-4021` (T5), `CUBE-7007` (T6), `CUBE-0014` = `CodeConfigRemoteReadOnly` + `CUBE-0015` = `CodeConfigRemoteFetch` (T8). `CUBE-3012` is NOT allocated (T7 GATED_SKIP). Errors are built with `diag.New(code, summary, fix)` / `diag.Wrap(err, code, summary, fix)`.
 - **omitempty round-trip discipline:** every new optional config/lock field carries `yaml:"…,omitempty" json:"…,omitempty"` — a nil/empty value must marshal as an ABSENT key, never an explicit `null`/`""` (CUE re-validation rejects explicit nulls; `schema.cue` optional strings are `!=""`).
 - **GT15 (values stone):** `values:`/`valuesRef:` are Helm values only — chartless pack + either = `CUBE-4016` at render time. Engine tuning is NOT values.
 - **Import direction:** `pack` imports `config`; `config` must NOT import `pack` (that is why remote `-f` dispatch lives in a new `internal/cfgload` package, a deliberate deviation from spec §7.1's "inside config.Load" — same observable contract).
@@ -42,6 +42,44 @@ providerConfigRef/forProvider, delivery, spokes, bundle mode) against this plan:
    recorded in `cube.lock` (hub cluster only, Task 11); no
    `extraManifestsRef` (future symmetry candidate).
 
+## Amendments — 2026-07-19 p7 merge (owner decision, post-PR#3)
+
+Applied after PR #3 (`p7/engine-as-pack`) merged to main and was merged into
+this branch (`0fe2f74`). These are OWNER DECISIONS and are NORMATIVE — they
+override the task bodies below wherever they conflict.
+
+- **Amendment 4 — `engine.tuningRef` is DROPPED from Task 4; do NOT add it.** Task 4
+   ships `packs[].valuesRef` ONLY. Rationale: (a) `engine.tuning` no longer
+   exists — p7 deleted `internal/engine/tune.go` and replaced the whole
+   block with `engine.ref` + open `engine.values`, so Task 4's stated CUE
+   anchor ("after the `tuning?` closing brace") is GONE; (b) `TuningRef`'s
+   only consumers were Task 7 (GATED_SKIP) and Task 11's `tuning(…)` block
+   (SKIPPED), so the field would be user-settable, CUE-valid, and silently
+   ignored by every code path — and `CUBE-7007`'s `tuningRef` clause is
+   gated with Task 7, so `up --bundle` would not even flag it as an
+   un-vendored remote source, quietly breaking the offline-rails promise;
+   (c) it would be born deprecated into a block a ratified spec just
+   removed. Concretely, Task 4 MUST NOT touch `EngineSpec`, MUST NOT add
+   `tuningRef?` to `schema.cue`, and its test asserts `valuesRef` only. The
+   remote-engine-values successor (`engine.valuesRef`, riding p7's open
+   `engine.values`) is a post-p7 plan, NOT this one.
+- **Amendment 5 — p7 is merged; diag numbers are now FIXED ACTUALS.** p7 took
+   `CUBE-0012` (`CodeEngineTuningRemoved`) and `CUBE-0013`
+   (`CodeEnginePackMismatch`), so the RENUMBER RULE has fired: Task 8
+   allocates **`CUBE-0014` = `CodeConfigRemoteReadOnly`** and
+   **`CUBE-0015` = `CodeConfigRemoteFetch`**. T9/T10/T12 consume those two
+   numbers verbatim and never re-derive them. `CUBE-4021` (T5) and
+   `CUBE-7007` (T6) were re-verified FREE and keep their planned numbers.
+   Every remaining task MUST re-verify its line anchors against the real
+   post-merge code before editing: p7 moved `internal/up/up.go`,
+   `internal/diff/diff.go`, `internal/lock/lock.go`,
+   `internal/config/types.go`, `internal/config/load.go`, `internal/config/schema.cue`,
+   `internal/pack/helm.go`, and `internal/engine/*` (the `engine.Engine`
+   interface lost `Install`/`InstallManifests` — engines are pure
+   translators now). Anchor drift is expected: use the escape hatch
+   (verify against real code, minimal correction, FINDINGS entry), not a
+   BLOCKED status.
+
 ## File Structure
 
 | File | Responsibility |
@@ -51,15 +89,15 @@ providerConfigRef/forProvider, delivery, spokes, bundle mode) against this plan:
 | `internal/pack/values.go` (create) | `EffectiveValues` + `RenderResolved` (guard → fetch → merge → render) |
 | `internal/refval/refval.go` (create) | `Resolve` (YAML→map+pin), `Merge` (RFC 7386), `NormalizeIntegral` |
 | `internal/cluster/compose/compose.go` (modify) | delegate to `refval`, surface pin |
-| `internal/config/types.go` (modify) | `PackRef.ValuesRef`, `EngineSpec.TuningRef`, `Cube` origin |
-| `internal/config/schema.cue` (modify) | `valuesRef?`, `tuningRef?` |
+| `internal/config/types.go` (modify) | `PackRef.ValuesRef`, `Cube` origin (NO `EngineSpec.TuningRef` — Amendment 4) |
+| `internal/config/schema.cue` (modify) | `valuesRef?` only (NO `tuningRef?` — Amendment 4) |
 | `internal/config/load.go` (modify) | `LoadBytes` split, `SaveValidated` remote guard |
 | `internal/cfgload/cfgload.go` (create) | local-vs-remote `-f` dispatch |
-| `internal/engine/factory/factory.go` (modify) | `NewResolved` (tuningRef resolve+merge) |
-| `internal/lock/lock.go` (modify) | `ValuesRef/ValuesPin`, `TuningRef/TuningPin`, `Cluster` section |
+| ~~`internal/engine/factory/factory.go`~~ | ~~`NewResolved` (tuningRef resolve+merge)~~ — NOT TOUCHED (Task 7 GATED_SKIP, Amendments 1+4) |
+| `internal/lock/lock.go` (modify) | `ValuesRef/ValuesPin`, `Cluster` section (NO `TuningRef/TuningPin` — Amendment 4) |
 | `internal/up/up.go` (modify) | wire `RenderResolved`, `NewResolved`, lock fields, lock CWD path |
 | `internal/diff/diff.go` (modify) | same wiring for `desiredState` |
-| `internal/upgrade/plan.go` (modify) | values/tuning/providerConfig change attribution |
+| `internal/upgrade/plan.go` (modify) | values/providerConfig change attribution (tuning block SKIPPED — Amendments 1+4) |
 | `internal/diag/codes.go` + `registry.go` (modify) | 4 new codes |
 | `cmd/*.go` (modify) | `config.Load(file)` → `cfgload.Load(cmd.Context(), file)` |
 
@@ -356,10 +394,10 @@ Expected: FAIL — package does not exist / undefined symbols
 // Package refval resolves a "one YAML document" ref — the pack ref grammar
 // (local path, oci://, bare git@rev, git::/s3::/http(s) getter forms) — to
 // a JSON-typed map plus its reproducibility pin. It is the shared resolver
-// behind cluster.providerConfigRef (compose), packs[].valuesRef,
-// engine.tuningRef, and remote -f (spec 2026-07-19 §4). Errors pass through
+// behind cluster.providerConfigRef (compose), packs[].valuesRef, and
+// remote -f (spec 2026-07-19 §4). Errors pass through
 // the pack layer's diag codes untouched; each consumer wraps with its own
-// domain code (CUBE-1005 / CUBE-4021 / CUBE-3012 / CUBE-0013).
+// domain code (CUBE-1005 / CUBE-4021 / CUBE-0015).
 package refval
 
 import (
@@ -569,20 +607,27 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/cluster/
 
 ---
 
-### Task 4: config surface — `valuesRef` + `tuningRef` fields
+### Task 4: config surface — `valuesRef` field
+
+> **AMENDMENT 4 — NORMATIVE, overrides anything below:** `engine.tuningRef`
+> is DROPPED. This task adds `packs[].valuesRef` ONLY. Do NOT touch
+> `EngineSpec`; do NOT add `tuningRef?` to `schema.cue`. `engine.tuning` no
+> longer exists (p7 deleted it in favour of `engine.ref` + open
+> `engine.values`), and `TuningRef`'s only consumers were the skipped Task 7
+> and Task 11's skipped tuning block.
 
 **Files:**
-- Modify: `internal/config/types.go` (PackRef ~line 181, EngineSpec ~line 90)
-- Modify: `internal/config/schema.cue` (engine block ~line 21, packs line ~47)
+- Modify: `internal/config/types.go` (`PackRef` — p7 moved this file; re-verify the anchor, do not trust the old line number)
+- Modify: `internal/config/schema.cue` (the `packs?` entry — p7 moved this file; re-verify the anchor)
 - Test: `internal/config/load_test.go` (extend — follow the file's existing table/temp-file conventions)
 
 **Interfaces:**
-- Produces: `config.PackRef.ValuesRef string`, `config.EngineSpec.TuningRef string` — both `yaml/json:"…,omitempty"`.
+- Produces: `config.PackRef.ValuesRef string` — `yaml:"valuesRef,omitempty" json:"valuesRef,omitempty"`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```go
-func TestLoadValuesRefAndTuningRef(t *testing.T) {
+func TestLoadValuesRef(t *testing.T) {
     f := filepath.Join(t.TempDir(), "cube.yaml")
     doc := `apiVersion: cube-idp.dev/v1alpha1
 kind: Cube
@@ -591,7 +636,6 @@ spec:
   cluster: {provider: kind}
   engine:
     type: flux
-    tuningRef: github.com/acme/tuning//flux@v1.0.0
   gateway: {}
   packs:
     - ref: oci://ghcr.io/cube-idp/packs/traefik:0.2.0
@@ -608,24 +652,21 @@ spec:
     if got := c.Spec.Packs[0].ValuesRef; got != "github.com/acme/values//traefik@v1.0.0" {
         t.Fatalf("ValuesRef = %q", got)
     }
-    if got := c.Spec.Engine.TuningRef; got != "github.com/acme/tuning//flux@v1.0.0" {
-        t.Fatalf("TuningRef = %q", got)
-    }
-    // Round-trip: absent refs must not serialize (omitempty discipline).
-    c.Spec.Packs[0].ValuesRef, c.Spec.Engine.TuningRef = "", ""
+    // Round-trip: an absent ref must not serialize (omitempty discipline).
+    c.Spec.Packs[0].ValuesRef = ""
     if err := SaveValidated(f, c); err != nil {
         t.Fatal(err)
     }
     raw, _ := os.ReadFile(f)
-    if strings.Contains(string(raw), "valuesRef") || strings.Contains(string(raw), "tuningRef") {
-        t.Fatalf("empty refs serialized: %s", raw)
+    if strings.Contains(string(raw), "valuesRef") {
+        t.Fatalf("empty ref serialized: %s", raw)
     }
 }
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `go test ./internal/config/ -run TestLoadValuesRefAndTuningRef -v`
+Run: `go test ./internal/config/ -run TestLoadValuesRef -v`
 Expected: FAIL — `c.Spec.Packs[0].ValuesRef undefined` (compile), then after types-only fix, CUE rejection `valuesRef: field not allowed`
 
 - [ ] **Step 3: Add the fields**
@@ -642,24 +683,8 @@ Expected: FAIL — `c.Spec.Packs[0].ValuesRef undefined` (compile), then after t
     ValuesRef string `yaml:"valuesRef,omitempty" json:"valuesRef,omitempty"`
 ```
 
-`internal/config/types.go` — inside `EngineSpec`, after `Type`:
-
-```go
-    // TuningRef optionally fetches a BASE tuning document (the closed GT1
-    // knob set, strict-decoded — unknown fields are CUBE-3012); inline
-    // Tuning is RFC 7386 merge-patched on top (spec 2026-07-19 §5.2). NOT
-    // helm values (GT15). The resolved pin is recorded in cube.lock
-    // (engine.tuningPin).
-    TuningRef string `yaml:"tuningRef,omitempty" json:"tuningRef,omitempty"`
-```
-
-`internal/config/schema.cue` — in the engine block, after the `tuning?` closing brace:
-
-```cue
-            tuningRef?: string & !=""
-```
-
-`internal/config/schema.cue` line ~47, the packs entry, add `valuesRef?: string & !=""` after `ref`:
+`internal/config/schema.cue` — the `packs?` entry (verified present post-p7 at
+line ~41; re-check before editing), add `valuesRef?: string & !=""` after `ref`:
 
 ```cue
         packs?: [...{ref: string & !="", valuesRef?: string & !="", values?: {...}, extraManifests?: string & !="", delivery?: "oci" | "repo", dependsOn?: [...string & !=""]}]
@@ -674,7 +699,7 @@ Expected: PASS
 
 ```bash
 git add internal/config/types.go internal/config/schema.cue internal/config/load_test.go
-git commit -m "feat(config): packs[].valuesRef + engine.tuningRef fields (RV2/RV3)
+git commit -m "feat(config): packs[].valuesRef field (RV2)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/config/types.go internal/config/schema.cue internal/config/load_test.go
 ```
@@ -1935,15 +1960,14 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/lock/lock.go
 
 - [ ] **Step 1: README**
 
-Add a "Remote values, tuning, and config" subsection next to the existing `providerConfigRef`/values docs, covering: the three ref surfaces with one YAML example each (copy the spec §3 example), the ref grammar table (spec §3.1), merge semantics (inline wins; `null` deletes; arrays replace), pin recording (`cube.lock` `valuesPin`/`tuningPin`/`cluster.providerConfigPin`), remote `-f` read-only rule + CWD `cube.lock`, and the four new CUBE codes. Keep the voice/format of the DEP4 README section added in commit `95a7b09`.
+Add a "Remote values and config" subsection next to the existing `providerConfigRef`/values docs, covering: the TWO ref surfaces shipped by this plan — `packs[].valuesRef` and remote `-f` (NOT `engine.tuningRef`, dropped by Amendment 4) — with one YAML example each (adapt the spec §3 example, omitting its tuning row), the ref grammar table (spec §3.1), merge semantics (inline wins; `null` deletes; arrays replace), pin recording (`cube.lock` `valuesPin`/`cluster.providerConfigPin`), remote `-f` read-only rule + CWD `cube.lock`, and the four new CUBE codes (`CUBE-4021`, `CUBE-7007`, `CUBE-0014`, `CUBE-0015`). Keep the voice/format of the DEP4 README section added in commit `95a7b09`.
 
 - [ ] **Step 2: e2e legs** (extend `tests/e2e/e2e_test.go`, gated by the existing `CUBE_IDP_E2E=1`; follow the file's helper conventions — it already shells the built binary and patches the generated cube.yaml)
 
-Three additions to the existing flow, at the point after the first successful `up`:
+TWO additions to the existing flow, at the point after the first successful `up` (the third, `tuningRef`, is DROPPED by Amendment 4):
 
 1. **valuesRef leg:** write a values YAML for a pack the flow already installs (override one benign knob, e.g. a label or replica count the pack's chart templates), add `valuesRef: <local path>` to that pack in the cube.yaml, re-run `up`, then assert (a) `cube.lock` entry for that pack carries `valuesRef` + a `valuesPin` starting `file:`, and (b) `kubectl get` on the affected object shows the overridden value.
-2. **remote `-f` leg:** `up -f <ref>` where the ref is the cube.yaml served remotely. Use the in-cluster gitea only if the harness already exposes a clonable URL helper; otherwise serve the file from a local `httptest`-style static server in the test process (an `http://127.0.0.1:<port>/cube.yaml` getter ref — same grammar leg). Assert `cube.lock` lands in the test's CWD and a mutating command (`cube-idp pack install … -f <same-ref>` or `spoke add`) exits non-zero mentioning `CUBE-0012`.
-3. **tuningRef leg:** serve a tuning YAML (`components.source-controller.replicas: 2` for flux), set `engine.tuningRef`, re-run `up`, assert the engine Deployment has 2 replicas and `cube.lock`'s `engine.tuningPin` is set.
+2. **remote `-f` leg:** `up -f <ref>` where the ref is the cube.yaml served remotely. Use the in-cluster gitea only if the harness already exposes a clonable URL helper; otherwise serve the file from a local `httptest`-style static server in the test process (an `http://127.0.0.1:<port>/cube.yaml` getter ref — same grammar leg). Assert `cube.lock` lands in the test's CWD and a mutating command (`cube-idp pack install … -f <same-ref>` or `spoke add`) exits non-zero mentioning `CUBE-0014` (the read-only guard's post-p7 number — Amendment 5; `CUBE-0012` now belongs to p7's `CodeEngineTuningRemoved`).
 
 Each leg re-uses the harness's existing `runCLI`/kubectl helpers; no new flags, no new env vars.
 
@@ -2093,7 +2117,7 @@ Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 STATUS: UNCLAIMED
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
-### T4 — config surface valuesRef/tuningRef [Task 4]
+### T4 — config surface valuesRef ONLY (tuningRef DROPPED, Amendment 4) [Task 4]
 STATUS: UNCLAIMED
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
@@ -2111,7 +2135,7 @@ Outcome: n/a
 
 ### T8 — config.LoadBytes + origin + SaveValidated guard [Task 8]
 STATUS: UNCLAIMED
-Outcome: COMMITS · FINDINGS (actual CUBE-001x numbers allocated) · BLOCKERS · HANDOFF (numbers T9/T10/T12 must use):
+Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF (numbers T9/T10/T12 must use). NUMBERS ARE FIXED BY AMENDMENT 5: `CUBE-0014` = `CodeConfigRemoteReadOnly`, `CUBE-0015` = `CodeConfigRemoteFetch` — do not re-derive:
 
 ### T9 — cfgload remote -f dispatch [Task 9]
 STATUS: UNCLAIMED

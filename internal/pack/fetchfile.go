@@ -17,7 +17,7 @@ import (
 // getter forms) — to the bytes of exactly ONE YAML file plus the cube.lock
 // pin of what was fetched (oci:<digest> / git+<sha> / dir:<dirhash>;
 // file:<sha256-hex> for a direct local file). It is the fetch primitive for
-// spec.cluster.providerConfigRef, packs[].valuesRef, engine.tuningRef and
+// spec.cluster.providerConfigRef, packs[].valuesRef and
 // remote -f: unlike Fetch it never parses pack.cue, and a ref that yields a
 // directory must contain exactly one top-level *.yaml/*.yml or the fetch
 // fails (a config/values document is one file, not a tree).
