@@ -1598,8 +1598,96 @@ Outcome:
     not on the p7 branch — noting here instead of appending (per §8, matching T1).
 
 ### T3 — render fences [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T11:32:48Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+STATUS: BLOCKED(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T11:32:48Z)
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`)
+- COMMITS:
+  - `df6647b` docs: p7 plan — claim T3 (ledger claim only)
+  - Fence code (`tests/packs_render_test.go`, both TestCubeEngine* tests +
+    `fetchPack`/`marshalObjects` helpers) is WRITTEN and LEFT UNCOMMITTED in the
+    worktree (a red task is not committed as done): `TestCubeEngineArgocdRenderGuards`
+    PASSES, `TestCubeEngineFluxRenderParity` FAILS against the T1 flux pack — see
+    BLOCKERS. The fence is correct; the pack it fences is defective.
+- FINDINGS:
+  - Helper substitution (plan §5 escape hatch, recorded per instruction): the plan's
+    T3 template names `fetchPack(t, name)` and `marshalObjects(t, objs)` which did NOT
+    exist in `tests/packs_render_test.go`. The file's real locator is `packsTree(t)`
+    (returns the packs/ dir) + `pack.Fetch(ctx, filepath.Join(root,name), t.TempDir())`.
+    I added two small local helpers matching the file's conventions: `fetchPack`
+    (packsTree + Fetch) and `marshalObjects` (sigs.k8s.io/yaml marshal + join, the
+    template's own "small local helper" note). API names VERIFIED against reality and
+    used verbatim: `pk.RenderFor(nil, config.GatewaySpec{})` (internal/pack/render.go:34,
+    signature matches), `r.Objects []*unstructured.Unstructured` (internal/pack/pack.go:99),
+    `o.GetKind()/GetName()/GetNamespace()`. Added imports: reflect, sort,
+    sigsyaml "sigs.k8s.io/yaml", internal/config. Also added `if testing.Short()` skip
+    to both tests to match the file's existing network-gated `TestStarterPacksRender`
+    convention (helm renders hit the network).
+  - NOTE on the packs-dir knob: the plan's Step-2 command writes
+    `CUBE_IDP_E2E_PACKS_DIR=$PACKS`, but the file's `packsTree` uses that env var as the
+    packs/ DIRECTORY (it joins pack NAMES onto it). It must therefore point at the
+    packs/ SUBDIR of the $PACKS worktree, i.e.
+    `.../cube-idp-packs/.claude/worktrees/p7-engine-packs/packs` — NOT the repo root.
+    (Consistent with how the existing tests in this file already read the var.)
+- BLOCKERS:
+  - `TestCubeEngineFluxRenderParity` fails because the T1 `cube-engine-flux` pack renders
+    its namespaced objects with NO `metadata.namespace` — they would land in `default`
+    under cube-idp's namespace-less GitOps delivery (Flux Kustomization, no
+    targetNamespace). This is the exact bug class the pre-existing `TestStarterPacksRender`
+    (tests/packs_render_test.go:47-53) guards. The fence is correct; the flux PACK is
+    defective. Fix belongs in $PACKS `packs/cube-engine-flux` (T1, DONE) — OUTSIDE this
+    $ROOT-only T3's scope (T3 modifies only tests/packs_render_test.go).
+  - Command + actual output (run in the $ROOT p7 worktree):
+    ```
+    $ CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7 worktree>/packs \
+        go test ./tests/ -run 'TestCubeEngine' -v
+    === RUN   TestCubeEngineFluxRenderParity
+        packs_render_test.go:244: kustomize-controller not in flux-system
+    --- FAIL: TestCubeEngineFluxRenderParity (2.20s)
+    === RUN   TestCubeEngineArgocdRenderGuards
+    --- PASS: TestCubeEngineArgocdRenderGuards (2.06s)
+    FAIL
+    ```
+  - Root-cause proof — raw helm render of the T1 flux pack's chart pin (2.19.0), the same
+    render cube-idp's helm path produces (internal/pack/helm.go stamps NO namespace on
+    objects that lack one; it only injects a standalone Namespace object + sets helm's
+    release namespace). yq over every NAMESPACED kind in the render:
+    ```
+    $ helm template flux fluxcd-community/flux2 --version 2.19.0 --namespace flux-system \
+        --set helmController.create=false --set notificationController.create=false \
+        --set imageAutomationController.create=false --set imageReflectionController.create=false \
+      | yq eval-all 'select(.kind=="ServiceAccount" or .kind=="Service" or .kind=="Deployment") |
+          .kind+" "+.metadata.name+" ns="+(.metadata.namespace // "<NONE>")'
+    Deployment kustomize-controller ns=<NONE>
+    Deployment source-controller   ns=<NONE>
+    Service    kustomize-controller ns=<NONE>
+    Service    source-controller    ns=<NONE>
+    ServiceAccount kustomize-controller ns=<NONE>
+    ServiceAccount source-controller    ns=<NONE>
+    ```
+  - The `fluxcd-community/flux2` chart exposes NO values key to force
+    `metadata.namespace` (`helm show values … | grep -iE 'namespace|nameOverride|
+    namespaceOverride|createNamespace'` yields nothing relevant) — the chart relies
+    entirely on the apply-time `-n` flag, which cube-idp's GitOps delivery does not supply.
+  - Contrast (why this is a flux-pack defect, not a fence bug): the cert-manager chart
+    (the T1-cited chart-only precedent) and the argo-helm chart BOTH stamp
+    `metadata.namespace` on their objects — verified:
+    `helm template cm cert-manager --repo https://charts.jetstack.io --version 1.16.3
+    --namespace cert-manager | yq … Deployment` → `ns=cert-manager`. And
+    `TestCubeEngineArgocdRenderGuards` PASSES (argo objects carry ns=argocd). The flux2
+    community chart is the outlier.
+  - Parity COUNT is otherwise correct: the render has exactly two Deployments
+    (kustomize-controller + source-controller); `flux-flux-check` is a pre-install Job
+    (helm.sh/hook: pre-install), not a third Deployment.
+  - RESOLUTION REQUIRED (out of T3 scope): $PACKS T1 `cube-engine-flux` must make its
+    rendered objects namespace-scoped to flux-system — either a chart value the flux2
+    chart honors (none found; may need a kustomization.yaml `namespace:` in the pack, the
+    pattern packs that need forced namespaces use), or a $ROOT render-path namespace-stamp
+    (a broader change than T3). Until the flux pack renders flux-system-namespaced objects,
+    the parity fence (correctly) stays red. NOT weakened to pass — per §7, a red task is
+    not closed with a workaround.
+- HANDOFF: none (task BLOCKED, not DONE). CHART_PIN/MEDIA_TYPES consumed from T1/T2 HANDOFF
+  as directed; no re-discovery. The fence code is ready to go green the moment the flux
+  pack renders namespaced objects — no fence change needed.
 
 ### T4 — config surface (ref/values, CUBE-0012/0013) [$ROOT]
 STATUS: UNCLAIMED
