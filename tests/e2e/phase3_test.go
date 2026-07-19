@@ -30,6 +30,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1064,9 +1065,53 @@ func TestEngineSelfManage(t *testing.T) {
 		}
 	}
 
-	// A converged self-managed cube reports no drift and no orphans — the
-	// diff-side regression net for the self-source identity stubs.
-	run(t, dir, bin, "diff")
+	// A converged self-managed cube reports no drift — EXCEPT one pack-level
+	// artifact: argocd ships `argocd-redis-secret-init`, a helm
+	// pre-install/pre-upgrade HOOK Job. Our render materializes hooks as plain
+	// objects (helm.go hookObjects), and a Job's pod template is immutable, so
+	// it perpetually reads `configured` on any argocd re-diff — independent of
+	// selfManage (the flux engine has no hook Jobs, which is why the flux leg
+	// keeps the strict clean-diff assertion above). We DON'T ignore diff
+	// wholesale: we assert that Job is the ONLY thing that drifts, so genuine
+	// selfManage drift still fails the leg.
+	assertOnlyExpectedDiffDrift(t, dir, bin, "batch/Job/argocd/argocd-redis-secret-init")
 
 	run(t, dir, bin, "down", "--yes")
+}
+
+// assertOnlyExpectedDiffDrift runs `cube-idp diff` (which exits 1 on any drift,
+// kubectl-diff convention) tolerating that exit code, and fails unless the sole
+// non-`unchanged` KERNEL OBJECT is expectedRef. Any other drifted/orphaned
+// object is a real regression and fails the test. See the argocd hook-Job note
+// at the call site for why the argocd leg needs this instead of a clean diff.
+func assertOnlyExpectedDiffDrift(t *testing.T, dir, bin, expectedRef string) {
+	t.Helper()
+	cmd := exec.Command(bin, "diff")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	t.Logf("$ cube-idp diff\n%s", out)
+	// exit 0 (no drift at all) is fine; exit 1 (drift) is expected because of
+	// the hook Job; any OTHER error (e.g. exit 2 / crash) is a real failure.
+	if err != nil {
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+			t.Fatalf("cube-idp diff failed unexpectedly: %v", err)
+		}
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		// KERNEL OBJECTS lines are "<action> <ref>"; skip the clean ones and
+		// section headers / blank lines.
+		if len(f) != 2 {
+			continue
+		}
+		switch f[0] {
+		case "unchanged":
+			continue
+		case "configured", "created", "deleted", "changed", "new", "orphaned":
+			if f[1] != expectedRef {
+				t.Fatalf("unexpected diff drift after converged selfManage: %q %q (only %q may drift — argocd hook Job)", f[0], f[1], expectedRef)
+			}
+		}
+	}
 }
