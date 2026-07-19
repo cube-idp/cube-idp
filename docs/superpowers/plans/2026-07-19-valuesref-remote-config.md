@@ -3806,7 +3806,7 @@ HANDOFF:
   the first outward act is still T12's.
 
 ### T12 — docs + e2e legs + full gate + PUSH + PR [Task 12, outward acts authorized]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(session-t12-opus, 2026-07-19T21:08:44Z)
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF (PR URL, e2e verdicts or deferral note):
 
 ## Self-Review Notes (already applied)
