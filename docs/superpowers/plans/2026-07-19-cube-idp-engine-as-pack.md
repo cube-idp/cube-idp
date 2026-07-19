@@ -266,7 +266,7 @@ cd $PACKS && git add packs/cube-engine-argocd && git commit -m "feat(pack): cube
   `TestCubeEngineArgocdRenderGuards` — the airgap/media-types fence that
   replaces `internal/engine/argocd/airgap_test.go`.
 
-- [ ] **Step 1: Write the failing tests** (append; adapt the locator/fetch
+- [x] **Step 1: Write the failing tests** (append; adapt the locator/fetch
 boilerplate from the file's existing tests — same cache-dir and skip
 conventions):
 
@@ -327,7 +327,7 @@ func TestCubeEngineArgocdRenderGuards(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify they fail before Tasks 1-2 land / pass after**
+- [x] **Step 2: Run to verify they fail before Tasks 1-2 land / pass after**
 
 ```bash
 CUBE_IDP_E2E_PACKS_DIR=$PACKS go test ./tests/ -run 'TestCubeEngine' -v
@@ -335,7 +335,7 @@ CUBE_IDP_E2E_PACKS_DIR=$PACKS go test ./tests/ -run 'TestCubeEngine' -v
 Expected: PASS (Tasks 1-2 done). If it fails, fix the PACK (or the chart
 pin), not the fence.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/packs_render_test.go && git commit -m "test(packs): render fences for cube-engine-flux/argocd (p7 engine-as-pack)" -- tests/packs_render_test.go
@@ -1655,16 +1655,21 @@ Outcome:
     not on the p7 branch — noting here instead of appending (per §8, matching T1).
 
 ### T3 — render fences [$ROOT]
-STATUS: BLOCKED(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T11:32:48Z)
+STATUS: DONE (5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T12:10Z — closed after T1-R made the flux fence green)
 Outcome:
 - BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`)
 - COMMITS:
-  - `df6647b` docs: p7 plan — claim T3 (ledger claim only)
-  - Fence code (`tests/packs_render_test.go`, both TestCubeEngine* tests +
-    `fetchPack`/`marshalObjects` helpers) is WRITTEN and LEFT UNCOMMITTED in the
-    worktree (a red task is not committed as done): `TestCubeEngineArgocdRenderGuards`
-    PASSES, `TestCubeEngineFluxRenderParity` FAILS against the T1 flux pack — see
-    BLOCKERS. The fence is correct; the pack it fences is defective.
+  - `3c43850` test(packs): render fences for cube-engine-flux/argocd (p7 engine-as-pack)
+    (`tests/packs_render_test.go`, +97 lines: both TestCubeEngine* tests +
+    `fetchPack`/`marshalObjects` local helpers). Trailer: `Co-Authored-By: Claude Fable 5`.
+  - `df6647b` docs: p7 plan — claim T3 (ledger claim only — earlier in history).
+  - The fence code was WRITTEN in the earlier BLOCKED run and LEFT UNCOMMITTED (a red
+    task is not committed as done); it is UNCHANGED and now green (T1-R fixed the pack
+    it fences). This close commits it verbatim. The earlier ledger-only doc commits are
+    already in history: `48db0b5` docs: p7 plan — T3 BLOCKED (flux pack renders no
+    metadata.namespace; fix is $PACKS T1); `b52b4fe` docs: p7 plan — T3 owner resolution
+    + T3a render-path namespace-stamp task; `a9754e2` docs: p7 spec §10 amendment + plan —
+    T3a WITHDRAWN, T1-R vendored-manifests flux pack (owner decision).
 - FINDINGS:
   - Helper substitution (plan §5 escape hatch, recorded per instruction): the plan's
     T3 template names `fetchPack(t, name)` and `marshalObjects(t, objs)` which did NOT
@@ -1685,8 +1690,15 @@ Outcome:
     packs/ SUBDIR of the $PACKS worktree, i.e.
     `.../cube-idp-packs/.claude/worktrees/p7-engine-packs/packs` — NOT the repo root.
     (Consistent with how the existing tests in this file already read the var.)
-- BLOCKERS:
-  - `TestCubeEngineFluxRenderParity` fails because the T1 `cube-engine-flux` pack renders
+  - RESOLVED via T1-R vendored-manifests flux pack per spec §10, T3a withdrawn: the
+    original BLOCKER below (flux2 chart renders no `metadata.namespace`) was closed by
+    T1-R replacing `cube-engine-flux`'s chart with the `flux install --export` vendored
+    manifests (self-stamped `flux-system` namespaces). The fence itself was UNCHANGED —
+    it went green the moment T1-R landed. See the OWNER RESOLUTION / FINAL OWNER
+    RESOLUTION trail below and T1-R's ledger entry.
+- BLOCKERS: none (resolved by T1-R — see below). The trail below preserves the original
+  blocker analysis and the owner's resolution path.
+  - [HISTORICAL, now resolved] `TestCubeEngineFluxRenderParity` failed because the T1 `cube-engine-flux` pack rendered
     its namespaced objects with NO `metadata.namespace` — they would land in `default`
     under cube-idp's namespace-less GitOps delivery (Flux Kustomization, no
     targetNamespace). This is the exact bug class the pre-existing `TestStarterPacksRender`
@@ -1742,9 +1754,27 @@ Outcome:
     (a broader change than T3). Until the flux pack renders flux-system-namespaced objects,
     the parity fence (correctly) stays red. NOT weakened to pass — per §7, a red task is
     not closed with a workaround.
-- HANDOFF: none (task BLOCKED, not DONE). CHART_PIN/MEDIA_TYPES consumed from T1/T2 HANDOFF
-  as directed; no re-discovery. The fence code is ready to go green the moment the flux
-  pack renders namespaced objects — no fence change needed.
+- HANDOFF: both fences PASS against the T1-R/T2 engine packs. Fresh run from the $ROOT p7
+  worktree (`CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7 worktree>/packs go test ./tests/ -run
+  'TestCubeEngine' -v -count=1`):
+  ```
+  === RUN   TestCubeEngineFluxRenderParity
+  --- PASS: TestCubeEngineFluxRenderParity (0.01s)
+  === RUN   TestCubeEngineArgocdRenderGuards
+  --- PASS: TestCubeEngineArgocdRenderGuards (2.31s)
+  PASS
+  ok  	github.com/cube-idp/cube-idp/tests	4.295s
+  ```
+  `go build ./... && go vet ./...` clean. `tests/packs_render_test.go` is now the standing
+  render guard for BOTH engine packs: flux parity (exactly source-controller +
+  kustomize-controller in `flux-system`) and argocd's baked hand-edits (no `Always` pulls,
+  OCI media-types param, `server.insecure`, zot repo Secret in ns `argocd`). CHART_PIN/
+  MEDIA_TYPES were consumed from T1/T2 HANDOFF as directed; no re-discovery.
+  NOTE (environmental, not T3): the full `./tests` package also runs the pre-existing
+  `TestPackManifestsNoAlwaysPull` (packs_airgap_test.go — not touched by T3), which FAILs on
+  OTHER packs in the $PACKS p7 worktree (argo-events, argo-rollouts, cloudnativepg pin
+  `imagePullPolicy: Always`). That is a $PACKS-content matter outside T3's scope, not a
+  regression introduced here (T3's only change is `tests/packs_render_test.go`).
 
 **OWNER RESOLUTION (2026-07-19, orchestrator escalation) → new task T3a, render-path fix:**
 The orchestrator investigated the fix options with the owner. Findings (all verified):
