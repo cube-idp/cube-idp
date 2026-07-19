@@ -2331,7 +2331,7 @@ Outcome:
     both PASS.
 
 ### T10 — bundle vendor + offline rails [$ROOT]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T21:05Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T11 — config render-engine [$ROOT]
