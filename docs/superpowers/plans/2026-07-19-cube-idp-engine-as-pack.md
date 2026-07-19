@@ -2235,7 +2235,7 @@ Outcome:
       engine/factory,upgrade}, tests/e2e.
 
 ### T9 — diff renders engine pack [$ROOT]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T13:34:46Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T10 — bundle vendor + offline rails [$ROOT]
