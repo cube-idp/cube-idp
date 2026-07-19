@@ -759,7 +759,7 @@ git add internal/lock && git commit -m "feat(lock): EngineLock carries the engin
   *Rendered, error)` and `pack.VerifyEnginePackRef(p *Pack, spec
   config.EngineSpec) error`. Tasks 8, 9, 11 consume both.
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```go
 func TestVerifyEnginePackRef(t *testing.T) {
@@ -807,9 +807,9 @@ func TestFetchRenderEngine(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run** `go test ./internal/pack/ -run 'TestVerifyEnginePackRef|TestFetchRenderEngine' -v` — FAIL.
+- [x] **Step 2: Run** `go test ./internal/pack/ -run 'TestVerifyEnginePackRef|TestFetchRenderEngine' -v` — FAIL.
 
-- [ ] **Step 3: Implement `internal/pack/enginepack.go`**
+- [x] **Step 3: Implement `internal/pack/enginepack.go`**
 
 ```go
 package pack
@@ -856,7 +856,7 @@ func VerifyEnginePackRef(p *Pack, spec config.EngineSpec) error {
 }
 ```
 
-- [ ] **Step 4: Run** — PASS. **Step 5: Commit**
+- [x] **Step 4: Run** — PASS. **Step 5: Commit**
 
 ```bash
 git add internal/pack/enginepack.go internal/pack/enginepack_test.go && git commit -m "feat(pack): FetchRenderEngine + VerifyEnginePackRef (CUBE-0013) — the engine pack seam (p7)" -- internal/pack/enginepack.go internal/pack/enginepack_test.go
@@ -2091,8 +2091,63 @@ Outcome:
     existing sigs.k8s.io/yaml (JSON-via-YAML, sorted keys) marshalling for free.
 
 ### T7 — pack.FetchRenderEngine seam [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T19:40Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+STATUS: DONE (5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T19:40Z claimed → closed same session)
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`)
+- COMMITS:
+  - `94476ef` docs: p7 plan — claim T7 (ledger claim only).
+  - `b6ed0b8` feat(pack): FetchRenderEngine + VerifyEnginePackRef (CUBE-0013) — the
+    engine pack seam (p7)
+    (2 files, +99/-0; trailer `Co-Authored-By: Claude Fable 5`). Creates
+    internal/pack/enginepack.go (FetchRenderEngine + VerifyEnginePackRef) and
+    internal/pack/enginepack_test.go (TestVerifyEnginePackRef +
+    TestFetchRenderEngine). go.mod/go.sum UNCHANGED — no new module (uses existing
+    context, fmt, config, diag; Fetch/RenderWith/DefaultCacheDir already in pkg).
+- FINDINGS: The plan's Task 7 code + fixture were verified against the REAL
+  signatures before writing — `pack.Fetch(ctx, ref, cacheDir) (*Pack, error)`
+  (source.go:33), `(*Pack).RenderWith(values, extraManifests, gw) (*Rendered, error)`
+  (render.go:129), `Rendered{Name,Version,Objects}` (pack.go:99), `Pack.Name`
+  (pack.go:48), `EngineSpec.PackName()` (types.go:122), `diag.CodeEnginePackMismatch =
+  "CUBE-0013"` (codes.go:18, registered registry.go:37), `diag.New(code,summary,rem)
+  *Error` (diag.go:23). All matched the plan's template EXACTLY — Steps 1 and 3 applied
+  verbatim, no correction needed. One environmental note (NOT mine, NOT a blocker): the
+  broader `go test ./... -count=1` shows, beyond the plan's documented pre-existing
+  `TestPackManifestsNoAlwaysPull` red, TWO Task-3 render fences failing —
+  `TestCubeEngineFluxRenderParity` + `TestCubeEngineArgocdRenderGuards`
+  (tests/packs_render_test.go) — with `CUBE-4001: pack path .../cube-engine-{flux,argocd}
+  is not a directory`. ROOT CAUSE: the default `CUBE_IDP_E2E_PACKS_DIR` resolves to the
+  `.claude/worktrees/cube-idp-packs` worktree, which is checked out to `main` and lacks the
+  T1/T2 engine packs (those live on the `$PACKS` `p7/engine-packs` branch). PROVEN not
+  mine: both failures reproduce with my two T7 files stashed out (`mv`-tested pre-commit).
+  A $PACKS-checkout matter, out of every $ROOT task's scope — same class as the plan's
+  documented `TestPackManifestsNoAlwaysPull`.
+- BLOCKERS: none.
+- GATE EVIDENCE (real commands, $ROOT p7 worktree — never LSP):
+  - Step 2 (RED via real `go test`, not LSP):
+    `go test ./internal/pack/ -run 'TestVerifyEnginePackRef|TestFetchRenderEngine' -v`
+    → `undefined: VerifyEnginePackRef` / `undefined: FetchRenderEngine`, `FAIL [build failed]`.
+  - Step 4 (GREEN): same command → `--- PASS: TestVerifyEnginePackRef` +
+    `--- PASS: TestFetchRenderEngine`, `ok  github.com/cube-idp/cube-idp/internal/pack`.
+  - GATE: `go build ./... && go vet ./... && go test ./internal/pack/ -count=1` →
+    all clean, `ok  github.com/cube-idp/cube-idp/internal/pack 4.441s`.
+- HANDOFF (exact signatures T8/T9/T11 consume — both in internal/pack/enginepack.go):
+  - `pack.FetchRenderEngine(ctx context.Context, spec config.EngineSpec, gw
+    config.GatewaySpec, ref, cacheDir string) (*pack.Pack, *pack.Rendered, error)`
+    — fetches `ref` (explicit, NOT `spec.PackRef()`: callers pass the bundle-resolved
+    dir in offline mode), verifies pack name via VerifyEnginePackRef (CUBE-0013), then
+    `pk.RenderWith(spec.Values, "", gw)`. Returns the fetched `*Pack` and its
+    `*Rendered` (Name/Version/Objects). T8 `up.Run` uses `engineRendered.Objects` as
+    installObjs + Name/Version for the lock/records; T9 `diff.desiredState` the same;
+    T11 `config render-engine` for the printed render.
+  - `pack.VerifyEnginePackRef(p *pack.Pack, spec config.EngineSpec) error` — nil iff
+    `p.Name == spec.PackName()` (`"cube-engine-"+Type`), else `diag.New(CUBE-0013, …)`
+    whose Summary names both the resolved pack and the required `cube-engine-<type>`.
+  - BY-DESIGN (spec §10): FetchRenderEngine calls `RenderWith(spec.Values, "", gw)`;
+    for the CHARTLESS flux engine pack, NON-EMPTY `engine.values` returns typed
+    **CUBE-4016** (GT15 "values are helm-only", render.go:130) — the intended
+    "flux customisation not supported this phase" surface, emitted THROUGH RenderWith.
+    T7's fixture uses nil values so it does not trip this; T8 surfaces it wrapped in the
+    `[engine-pack]` step context. NOT special-cased in FetchRenderEngine — correct as-is.
 
 ### T8 — up.Run engine-pack install [$ROOT]
 STATUS: UNCLAIMED
