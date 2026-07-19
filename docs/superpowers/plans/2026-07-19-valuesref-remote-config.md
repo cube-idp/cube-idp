@@ -1803,7 +1803,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- cmd/ internal/up/up.g
 - Consumes: `pack.ResolveRemote(ctx, ref, cacheDir) (string, error)` (existing), `refval.Resolve` (Task 2), lock fields (Tasks 6/7).
 - Produces: `lock.File.Cluster *lock.ClusterLock` (omitempty); `upgrade` rows for `values(<pack-ref>)`, `tuning(engine)`, `providerConfig(cluster)` — distinct from pack rows.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/upgrade/plan_test.go (append)
@@ -1827,12 +1827,12 @@ func TestClassifyRefRow(t *testing.T) {
 
 plus extend the file's existing end-to-end plan test fixture (whatever builds a cube+lock and runs `Plan`) with: a pack that has `ValuesRef` pointing at a local values file and a lock entry whose `ValuesPin` differs — assert the rendered table contains a row named `values(<that-ref>)` with `update available`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/upgrade/ -run TestClassifyRefRow -v`
 Expected: FAIL — `classify` takes `(*lock.Entry, string)` today
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `internal/lock/lock.go`:
 
@@ -1947,12 +1947,12 @@ func classify(current, latest string) Row {
 
 Caveat: `ResolveRemote` pins a local FILE ref via its dir/probe path and may not produce `file:<sha256>` — check its local-path branch; if it only handles dirs, extend it with the same `file:` hashing FetchFile uses (Task 1) so plan/lock pins compare like-for-like. Add a unit test for that branch if extended.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go build ./... && go test ./internal/upgrade/ ./internal/lock/ ./internal/up/ -count=1`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/lock/lock.go internal/up/up.go internal/upgrade/
@@ -3533,8 +3533,277 @@ HANDOFF:
   the first outward act is still T12's.
 
 ### T11 — upgrade --plan attribution + ClusterLock (tuning block SKIPPED) [Task 11]
-STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T20:40:11Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+COMMITS:
+- `e45cd9c` docs: rv plan — claim T11
+- `f7d2854` feat(upgrade): plan attributes values/providerConfig source drift; cluster pin in cube.lock (RV5)
+- `<this>` docs: rv plan — T11 complete
+
+FINDINGS:
+
+1. **The `tuning(…)` attribution block was SKIPPED, as Amendments 1+4 require —
+   and it could not have been written anyway.** `config.EngineSpec` is
+   `{Type, Ref, Values, SelfManage}` post-p7; there is no `TuningRef` field and
+   no `lock.EngineLock.TuningPin`, so the plan's `cube.Spec.Engine.TuningRef` /
+   `lf.Engine.TuningPin` sketch does not compile. Consequently the plan's Step-3
+   `lf := &lock.File{… Engine: lock.EngineLock{Type, TuningRef, TuningPin} …}`
+   sketch was NOT applied verbatim either: the live `EngineLock` literal in
+   `internal/up/up.go` is p7's seven-field engine-as-pack form
+   (`Type/Ref/Name/Version/Resolved/RenderedHash/Images`), and the ONLY edit made
+   to it was adding the `Cluster: clusterLock` field — exactly what T10's HANDOFF
+   predicted ("only the `lf` value changes").
+
+2. **`refRows` extracted (minimal structural correction to Step 1's untestable
+   sketch).** Step 1 says to "extend the file's existing end-to-end plan test
+   fixture (whatever builds a cube+lock and runs `Plan`)" — **no such fixture
+   exists**: `internal/upgrade/plan_test.go` at HEAD held exactly two unit tests
+   (`TestPlanRowClassification`, `TestRenderTableAligns`) and nothing calls
+   `upgrade.Plan`. Calling `Plan` from a test is not viable either — it ends in
+   `diff.Run`, which needs a live cluster, and its pack loop `ResolveRemote`s the
+   gateway pack ref (network). Minimal correction: the plan's two attribution
+   blocks were placed in one new unexported helper
+   `func refRows(ctx, cube *config.Cube, lf *lock.File, cacheDir string) ([]Row, error)`
+   and `Plan` calls it right after the pack loop. The bodies are the plan's
+   sketch verbatim (minus the gated tuning block); the assertion contract the
+   plan states — "the rendered table contains a row named `values(<that-ref>)`
+   with `update available`" — is asserted directly, network-free, in
+   `TestRefRowsValuesSourceDrift` (which also runs `renderTable` on the result).
+
+3. **The plan's `ResolveRemote` Caveat FIRED — the local branch only handled
+   directories.** Step 3's caveat asked me to check; the TDD run proved it:
+   `CUBE-4001: cannot hash pack directory: …/values.yaml is not a directory`.
+   `internal/pack/resolve.go`'s default branch now stats the abs path and, for a
+   non-directory, returns `file:<sha256-hex>` — byte-for-byte the same expression
+   `FetchFile` uses (T1) — falling through to `dirPin` otherwise. Without this,
+   `upgrade --plan` would compare a `file:` lock pin against a `dir:` probe pin
+   and report permanent, unfixable drift for every local-file values source. The
+   caveat's "add a unit test for that branch" is
+   `TestResolveRemoteLocalFileMatchesFetchFile` in `internal/pack/resolve_test.go`,
+   which asserts equality against `FetchFile`'s own pin rather than a hardcoded
+   hash. Pack-directory refs are unaffected (`TestResolveRemoteLocalDirMatchesFetch`
+   still passes).
+
+4. **Commit pathspec extended by two files, message shortened by one word.**
+   Step 5's pathspec (`internal/lock/lock.go internal/up/up.go internal/upgrade/`)
+   does not cover the finding-3 fix, so `internal/pack/resolve.go` and
+   `internal/pack/resolve_test.go` were added — the caveat is in the task body, so
+   the fix belongs in the task's commit or the task's own gate is not reproducible
+   from it. The commit subject dropped `tuning/` from
+   "values/tuning/providerConfig" because no tuning attribution shipped
+   (Amendments 1+4); everything else, including the mandated `Co-Authored-By`
+   trailer, is the step's text verbatim. `git add` was never run — all six files
+   were already tracked, so the pathspec-only commit form dodged the
+   stray-staged-files gotcha.
+
+5. **`classify` is now pin-string based, and the pre-existing test was migrated,
+   not deleted.** `classify(current, latest string)` replaces
+   `classify(*lock.Entry, string)` exactly as the plan sketches; the pack loop
+   adapts via `locked := lockEntryByRef(lf, pr.Ref); current := ""; if locked !=
+   nil { current = locked.Resolved }`. `TestPlanRowClassification` (the only
+   other caller) was rewritten to the new signature with its three verdicts
+   unchanged, so no coverage was lost. One deliberate semantic consequence,
+   inherent to the plan's sketch: a lock entry that exists but carries an EMPTY
+   pin now reads "new (not in cube.lock)" instead of "update available" — which
+   is the correct reading for the two new row kinds (a pack locked before RV2 has
+   no `valuesPin`).
+
+6. **`refRows` iterates `cube.Spec.Packs`, not `Plan`'s `refs`.** The plan's
+   sketch loops `refs` (= gateway pseudo-`PackRef` + `spec.packs`). The gateway
+   entry is synthesized as `config.PackRef{Ref: …}` with a zero `ValuesRef`, and
+   Amendment 3 records "gateway pack takes no `valuesRef`" as out of scope, so
+   the two loops are observably identical; iterating `cube.Spec.Packs` is what
+   let `refRows` take the cube instead of `Plan`'s local slice.
+
+7. **Scope fence honoured (Amendment 3).** Only the HUB cluster's
+   `cube.Spec.Cluster.ProviderConfigRef` is pinned. `cube.Spec.Spokes[].Cluster`
+   is never read by `refRows` or by the `up` lock assembly, and
+   `internal/spoke/` was not touched.
+
+8. **Diag codes: NONE allocated, none re-declared.** T11 adds no constant and no
+   registry entry; `internal/diag/` was not touched. The one code this task
+   surfaces (`CUBE-4001` from `dirPin`) is pre-existing and is now no longer
+   reachable for local-file refs.
+
+9. **`lock.File.Cluster` omitempty verified empirically, not assumed** — a
+   throwaway probe test wrote both shapes and was deleted before committing
+   (`git status --porcelain` confirmed clean afterwards). Output in EVIDENCE
+   below: a nil `Cluster` emits NO `cluster:` key, so ref-less cubes' locks stay
+   byte-identical to pre-RV5 output (spec §6 / p6 "stock records unchanged").
+
+10. **The `up` cluster-pin re-resolve is best-effort by design, per the plan's
+    own comment.** `refval.Resolve(ctx, ref, dir)` runs against the same cache
+    the cluster ensure already populated; on error the lock's cluster section is
+    simply absent and `up` still succeeds. `internal/up/up.go` gained one import
+    (`internal/refval`); no cycle (`refval` imports only `pack`, and `up` already
+    imported `pack`). `ctx`, `cube` and `dir` (the cacheDir, named `dir` at
+    `up.go:245`) were all already in scope at the lock-assembly site.
+
+11. Anchor drift, per Amendment 5: the plan's "`internal/up/up.go` lock assembly
+    (~403)" is really **437** at HEAD; located by structure (`lock.File{`
+    literal). T10's HANDOFF anchors held exactly — `lock.Write(lock.
+    PathForOrigin(cfgPath, cube.Origin().Remote), lf)` was kept untouched, and
+    `internal/upgrade/plan.go`'s load is line **32** with `cube` already in scope
+    above the `lock.Read`, so no reordering was needed.
+
+12. Machine gotchas reconfirmed (a TENTH time): commits required
+    `git -c user.name="Rafal P" -c user.email="rafal@pieniazek.nl"`; nothing was
+    written to any git config file. `go.mod`/`go.sum` unmodified — no new module.
+    `docs/superpowers/` was touched only for this task's five checkboxes and this
+    Ledger entry; `…-agent-prompt.md` was never staged, committed, or edited.
+    Editor diagnostics again reported mid-edit "errors" (`undefined: os`,
+    `undefined: refRows`) that the real toolchain resolved on the next edit —
+    ignored per doctrine; every verdict below is a real command run.
+
+BLOCKERS: none
+
+HANDOFF:
+
+- **New/changed APIs for T12:**
+  - `lock.ClusterLock{ProviderConfigRef, ProviderConfigPin string}` and
+    `lock.File.Cluster *ClusterLock` (`yaml:"cluster,omitempty"`), sitting
+    BETWEEN `engine:` and `packs:` in the struct — sigs.k8s.io/yaml sorts keys,
+    so the emitted order is `apiVersion, cluster, engine, kind, packs`.
+  - `pack.ResolveRemote` now returns `file:<sha256-hex>` for a local FILE ref
+    (unchanged `dir:<h1:…>` for a directory). Signature untouched.
+  - `upgrade.classify(current, latest string) Row` (was `(*lock.Entry, string)`)
+    and the new unexported `upgrade.refRows(ctx, cube, lf, cacheDir)`.
+- **What `upgrade --plan` prints now:** the PACK table gains, after the pack
+  rows, one row per pack `valuesRef` named `values(<ref>)` and — when
+  `spec.cluster.providerConfigRef` is set — one row named
+  `providerConfig(<ref>)`. Both use the same CURRENT/LATEST/CHANGE verdicts
+  (`up to date` / `update available` / `new (not in cube.lock)`), and either
+  being non-`up to date` flips `Plan`'s `changed` return, so
+  `upgrade --plan`'s exit-code/"changes pending" semantics now cover remote
+  sources. There is NO `tuning(…)` row and there will not be one under this plan.
+  README wording for T12: values-source drift is reported DISTINCTLY from chart
+  drift — that is the whole point of §6.
+- **T12 e2e leg 1 assertion is now backed end-to-end:** a local-path `valuesRef`
+  produces `valuesPin: file:<sha256>` in `cube.lock` (via `pack.FetchFile`, T5/T6)
+  AND the same string from `upgrade --plan`'s probe (this task) — the leg may
+  assert the `file:` prefix on both sides.
+- **`cube.lock` cluster section is HUB ONLY** (Amendment 3). Do not extend it to
+  spokes in T12's docs or e2e.
+- Evidence — Step 2, the tests FAILED FIRST, exactly the plan's Expected
+  ("`classify` takes `(*lock.Entry, string)` today"):
+  ```
+  # github.com/cube-idp/cube-idp/internal/upgrade [.../internal/upgrade.test]
+  internal/upgrade/plan_test.go:17:21: cannot use "dir:h1:old" (untyped string constant) as *lock.Entry value in argument to classify
+  internal/upgrade/plan_test.go:31:16: cannot use "dir:h1:AAA" (untyped string constant) as *lock.Entry value in argument to classify
+  internal/upgrade/plan_test.go:63:15: undefined: refRows
+  internal/upgrade/plan_test.go:106:19: unknown field Cluster in struct literal of type lock.File
+  internal/upgrade/plan_test.go:106:34: undefined: lock.ClusterLock
+  internal/upgrade/plan_test.go:106:19: too many errors
+  FAIL	github.com/cube-idp/cube-idp/internal/upgrade [build failed]
+  ```
+- Evidence — finding 3, the ResolveRemote caveat firing on the first
+  post-implementation run (before `resolve.go` was extended):
+  ```
+  === RUN   TestRefRowsValuesSourceDrift
+      plan_test.go:65: CUBE-4001: cannot hash pack directory: /var/folders/.../TestRefRowsValuesSourceDrift.../001/values.yaml is not a directory
+  --- FAIL: TestRefRowsValuesSourceDrift (0.00s)
+  === RUN   TestRefRowsProviderConfig
+      plan_test.go:97: CUBE-4001: cannot hash pack directory: /var/folders/.../TestRefRowsProviderConfig.../001/kind.yaml is not a directory
+  --- FAIL: TestRefRowsProviderConfig (0.00s)
+  ```
+- Evidence — every new/changed test green afterwards (`go test ./internal/upgrade/
+  ./internal/pack/ -run 'TestClassifyRefRow|TestRefRows|TestPlanRow|TestResolveRemote'
+  -v -count=1`):
+  ```
+  === RUN   TestPlanRowClassification
+  --- PASS: TestPlanRowClassification (0.00s)
+  === RUN   TestClassifyRefRow
+  --- PASS: TestClassifyRefRow (0.00s)
+  === RUN   TestRefRowsValuesSourceDrift
+  --- PASS: TestRefRowsValuesSourceDrift (0.00s)
+  === RUN   TestRefRowsProviderConfig
+  --- PASS: TestRefRowsProviderConfig (0.00s)
+  === RUN   TestRefRowsNoneWhenInline
+  --- PASS: TestRefRowsNoneWhenInline (0.00s)
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	1.489s
+  === RUN   TestResolveRemoteLocalFileMatchesFetchFile
+  --- PASS: TestResolveRemoteLocalFileMatchesFetchFile (0.00s)
+  === RUN   TestResolveRemoteLocalDirMatchesFetch
+  --- PASS: TestResolveRemoteLocalDirMatchesFetch (0.00s)
+  === RUN   TestResolveRemoteGitTag
+  --- PASS: TestResolveRemoteGitTag (0.09s)
+  ok  	github.com/cube-idp/cube-idp/internal/pack	2.161s
+  ```
+- Evidence — Step 4's own command, `go test ./internal/upgrade/ ./internal/lock/
+  ./internal/up/ -count=1`:
+  ```
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	1.495s
+  ok  	github.com/cube-idp/cube-idp/internal/lock	0.544s
+  ok  	github.com/cube-idp/cube-idp/internal/up	1.996s
+  ```
+- Evidence — finding 9, the deleted omitempty probe's output (nil `Cluster` → no
+  `cluster:` key; set `Cluster` → the section appears, keys sorted):
+  ```
+  NIL-CLUSTER LOCK:
+  apiVersion: cube-idp.dev/v1alpha1
+  engine:
+    type: flux
+  kind: CubeLock
+  packs: []
+
+  SET-CLUSTER LOCK:
+  apiVersion: cube-idp.dev/v1alpha1
+  cluster:
+    providerConfigPin: file:abc
+    providerConfigRef: ./kind.yaml
+  engine:
+    type: flux
+  kind: CubeLock
+  packs: []
+  ```
+- Evidence — full gate `go build ./... && go vet ./...`:
+  ```
+  BUILD_OK
+  VET_OK
+  ```
+- Evidence — full gate `go test ./... -count=1`: 38 `ok` packages, `grep -c
+  '^FAIL'` → **0**. Tail of the run:
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	10.672s
+  ok  	github.com/cube-idp/cube-idp/internal/cfgload	6.049s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/compose	2.520s
+  ok  	github.com/cube-idp/cube-idp/internal/config	8.984s
+  ok  	github.com/cube-idp/cube-idp/internal/diag	8.784s
+  ok  	github.com/cube-idp/cube-idp/internal/diff	10.718s
+  ok  	github.com/cube-idp/cube-idp/internal/lock	11.818s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	14.580s
+  ok  	github.com/cube-idp/cube-idp/internal/refval	11.831s
+  ok  	github.com/cube-idp/cube-idp/internal/up	10.802s
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	10.942s
+  ok  	github.com/cube-idp/cube-idp/tests	11.010s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	11.817s
+  FAILCOUNT=0
+  ```
+- Evidence — F1 CLI freeze, `go test ./cmd/ -run TestCommandTreeGolden -v
+  -count=1` with NO `-update`, and `git status --porcelain` immediately after —
+  six files, `cmd/testdata/clitree.golden` NOT among them:
+  ```
+  === RUN   TestCommandTreeGolden
+  --- PASS: TestCommandTreeGolden (0.00s)
+  PASS
+  ok  	github.com/cube-idp/cube-idp/cmd	1.236s
+  --- status ---
+   M internal/lock/lock.go
+   M internal/pack/resolve.go
+   M internal/pack/resolve_test.go
+   M internal/up/up.go
+   M internal/upgrade/plan.go
+   M internal/upgrade/plan_test.go
+  ```
+- Evidence — the code commit landed exactly those six files, tree clean after:
+  ```
+  [2026-07-19-valuesref-remote-config f7d2854] feat(upgrade): plan attributes values/providerConfig source drift; cluster pin in cube.lock (RV5)
+   6 files changed, 251 insertions(+), 12 deletions(-)
+  ```
+- `gofmt -l` on all six touched files: no output (all formatted).
+- No ref was pushed. Branch `2026-07-19-valuesref-remote-config` remains local;
+  the first outward act is still T12's.
 
 ### T12 — docs + e2e legs + full gate + PUSH + PR [Task 12, outward acts authorized]
 STATUS: UNCLAIMED
