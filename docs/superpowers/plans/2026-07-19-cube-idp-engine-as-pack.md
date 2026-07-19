@@ -1139,7 +1139,7 @@ git add internal/bundle && git commit -m "feat(bundle): vendor the engine pack f
 - Consumes: `pack.FetchRenderEngine`. Command NAME unchanged (golden
   fence); Short/doc text updated.
 
-- [ ] **Step 1: Failing test** (the two tuning tests were deleted in
+- [x] **Step 1: Failing test** (the two tuning tests were deleted in
 Task 4):
 
 ```go
@@ -1168,9 +1168,9 @@ spec:
 (Adapt the runner-helper name and the `-f` flag spelling to what the
 file's OTHER config tests use — copy their invocation verbatim.)
 
-- [ ] **Step 2: Run** `go test ./cmd/ -run TestRenderEngineRendersPack -v` — FAIL.
+- [x] **Step 2: Run** `go test ./cmd/ -run TestRenderEngineRendersPack -v` — FAIL.
 
-- [ ] **Step 3: Implement** — replace the renderEngine RunE body and Short:
+- [x] **Step 3: Implement** — replace the renderEngine RunE body and Short:
 
 ```go
 	renderEngine := &cobra.Command{
@@ -1205,13 +1205,13 @@ file's OTHER config tests use — copy their invocation verbatim.)
 ```
 Update the comment block above it (GT1/tuning wording → engine pack).
 
-- [ ] **Step 4: Golden fence** — run
+- [x] **Step 4: Golden fence** — run
 `go test ./cmd/ -run TestCommandTreeGolden -v`. If the Short change trips
 it, follow the failure message's regeneration instruction (the fence
 freezes the TREE; a Short-text update is a legitimate fixture refresh —
 command add/remove/rename is not).
 
-- [ ] **Step 5: Run** `go test ./cmd/ -count=1` — PASS. **Step 6: Commit**
+- [x] **Step 5: Run** `go test ./cmd/ -count=1` — PASS. **Step 6: Commit**
 
 ```bash
 git add cmd && git commit -m "feat(cmd): config render-engine prints the engine pack render (p7 engine-as-pack)" -- cmd
@@ -2463,8 +2463,49 @@ Outcome:
     bundle must include an engine entry or hit the CUBE-7001 reject guard.
 
 ### T11 — config render-engine [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-orchestrator-inline, 2026-07-19T12:20:00Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+STATUS: DONE
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`).
+  Executed INLINE by the orchestrator after two dispatched subagents returned with
+  0 tool uses (a transient non-start — each emitted only a skills system-reminder and
+  did no work; state was left clean/UNCLAIMED, verified before re-executing).
+- COMMITS:
+  - `85df323` docs: p7 plan — claim T11
+  - `78f4508` feat(cmd): config render-engine prints the engine pack render (p7 engine-as-pack)
+    (cmd/config.go RunE + Short rewritten; cmd/config_test.go +TestRenderEngineRendersPack;
+    cmd/testdata/clitree.golden refreshed — 3 files, +62/-12)
+  - `<this>` docs: p7 plan — T11 complete
+- FINDINGS:
+  - Line drift (plan cited cmd/config.go:67-101): the real renderEngine command sat at
+    :73-101; anchored on `render-engine`/`renderEngine` and edited there.
+  - Test-runner helper: the plan's template used `runCommand(t, ...)` + `-f`, which does
+    NOT exist in cmd/config_test.go. The file's real convention is
+    `root := NewRootCmd(); root.SetOut/SetErr(&bytes.Buffer{}); root.SetArgs([]string{...});
+    root.Execute()`. Used that verbatim (matching TestRenderCluster* neighbors).
+  - TEST STRENGTHENED (recorded deviation): the plan's fixture Namespace name `flux-system`
+    also appears in the retired embedded flux blob, so the test PASSED even against the OLD
+    InstallManifests() source — not a discriminating RED. Changed the fixture Namespace to
+    a distinctive `enginepack-fixture-ns` (absent from the embed) so the test genuinely
+    fails on the old path and passes only when render-engine renders the pack at
+    spec.engine.ref. Verified RED→GREEN: RED printed the embed's kustomize-controller
+    stream (no fixture ns); GREEN prints `kind: Namespace` / `enginepack-fixture-ns`.
+  - Import swap: `enginefactory` (used only by the old RunE) → `internal/pack`. `context`
+    not needed (c.Context() supplies it). No new go.mod module.
+  - Golden fence (F1): the Short-text change tripped TestCommandTreeGolden; regenerated via
+    `go test ./cmd/ -run TestCommandTreeGolden -update` (the fence's own documented refresh
+    for an edited Short). The diff is EXACTLY ONE LINE — the render-engine Short — the
+    command TREE, all other commands, and all flags are byte-identical (F1 tree freeze
+    honored; only the description refreshed). Diff:
+    ```
+    -cube-idp config render-engine | Print the tuned engine install manifests that `up` would apply (GT1) |
+    +cube-idp config render-engine | Print the engine install manifests that `up` would apply (rendered from the engine pack) |
+    ```
+- BLOCKERS: none.
+- HANDOFF: `config render-engine` now prints `pack.FetchRenderEngine(...).Objects` (same
+  objects `up` SSAs), source = the engine pack at `spec.engine.ref` / the published
+  `cube-engine-<type>` default, `spec.engine.values` applied. Command name/Use/tree
+  UNCHANGED (F1 intact). Gate: `go build ./...` + `go vet ./...` clean; `go test ./cmd/
+  -count=1` → ok (TestRenderEngineRendersPack PASS, TestCommandTreeGolden PASS).
 
 ### T12 — engine interface slimming [$ROOT]
 STATUS: UNCLAIMED
