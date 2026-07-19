@@ -2700,7 +2700,52 @@ Outcome:
   - Live infra left CLEAN: no kind cluster, 18443 free (both e2e legs' cleanup ran).
 
 ### T15 — publish 0.1.0 [$PACKS + owner, OWNER-GATED]
-STATUS: UNCLAIMED
+STATUS: DONE (2026-07-19 — owner-authorized push; all 5 steps executed; only the
+  $ROOT PR merge remains as an owner-review gate, which is outside T15's coding scope).
+
+Outcome:
+- STEP 1 (merge p7/engine-packs → $PACKS main): done via a SCOPED branch, not the
+  original branch. DISCOVERY: $PACKS main (2cabfaf) held only the 7 base packs; the 11
+  Phase-5 application packs AND the 2 engine packs all lived unmerged on p7/engine-packs
+  (p5 was published by TAG off that branch, main never fast-forwarded). Owner chose
+  "engine-only branch" → cherry-picked the 3 engine-pack commits onto p7/engine-only off
+  main; opened+merged PR cube-idp/packs#1 (7 files, only cube-engine-* — no p5 history).
+  Merge commit ded99db.
+  - SEPARATE owner-approved cleanup (this session): reconciled the 11 published-but-unmerged
+    p5 packs onto main via PR cube-idp/packs#2 (branch p5/reconcile-main, 53 files all
+    additions, each pack byte-identical to its published v0.1.0 tag — verified). MERGED at
+    582c0f9; main now holds all 20 packs = registry. 3 conformance reds merged intentionally
+    (kargo→cert-manager, kyverno-policies→kyverno, floci-ui→floci: solo-conformance can't
+    satisfy their cross-pack CRD/namespace deps and they declare no dependsOn — a
+    pre-existing p5 gap, NOT drift; documented on the PR). Owner directive: no self-driven
+    follow-ups from this thread — the dependsOn fix + kargo default-secret hardening are
+    NOT tracked here.
+- STEP 2 (tag + push, one per push): cube-engine-flux/v0.1.0 pushed → publish run
+  29697004627: PACK published+attested OK, index-rebuild step FAILED on the KNOWN multi-pack
+  race (argocd not yet in registry → CUBE-5004). cube-engine-argocd/v0.1.0 pushed → publish
+  run 29697130080 SUCCESS incl. index rebuild (both packs present by then) → index:latest
+  settled with both. Flux index failure thus self-healed by the argocd run, exactly the
+  "rerun until the board settles" note.
+- STEP 3 (public + attestation): both ghcr packages already PUBLIC on first publish (org
+  default). `gh attestation verify` exit 0 for both; provenance signer =
+  publish.yml@refs/tags/cube-engine-<type>/v0.1.0; subject digests flux 35f7308…,
+  argocd cff3cb62… (== the tag-resolved manifest digests).
+- STEP 4 (published-default proof from $ROOT): render-engine with NO engine.ref resolved
+  cube-engine-flux:0.1.0 AND cube-engine-argocd:0.1.0 from the registry (pre-publish this was
+  CUBE-4012). LIVE up/down (port 18443, cube.yaml with no engine.ref): flux engine installed
+  from the published 0.1.0 pack, all packs delivered, `kubectl get packs` → cube-engine-flux
+  0.1.0 … DELIVERY engine READY true, clean down. packs.lock RESEEDED with both engine
+  digests (commit 64bf0f2). Online digest leg TestPublishedPacksByDigest PASS (164.16s).
+- STEP 5 (merge p7/engine-as-pack → $ROOT main): PR cube-idp/cube-idp#3 OPENED for owner
+  review (57 commits, all p7; build+vet clean). Merge is the owner's gate — the only
+  outstanding action for the whole plan.
+- COMMITS added this session (on p7/engine-as-pack): 2951b4d fix(init) engine.ref;
+  eeef066 test(e2e) T14 finalize; 13a9679 + 64bf0f2 docs/reseed. $PACKS: PR#1 (ded99db),
+  PR#2 (582c0f9), tags cube-engine-{flux,argocd}/v0.1.0.
+- BLOCKERS: none. HANDOFF: owner merges PR#3 (and, if desired, addresses the two out-of-scope
+  p5 follow-ups noted above in a separate thread).
+
+--- original stub ---
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (tag push run URLs, visibility, attestation verify output):
 
 ## Plan Self-Review (performed at write time)
