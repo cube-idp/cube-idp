@@ -63,7 +63,7 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 	if err != nil {
 		return nil, nil, err
 	}
-	merged, err := compose.Compose(ctx, spec.ProviderConfigRef, spec.ForProvider, cacheDir)
+	merged, _, err := compose.Compose(ctx, spec.ProviderConfigRef, spec.ForProvider, cacheDir)
 	if err != nil {
 		return nil, nil, err
 	}
