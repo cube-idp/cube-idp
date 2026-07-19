@@ -1598,7 +1598,7 @@ Outcome:
     not on the p7 branch — noting here instead of appending (per §8, matching T1).
 
 ### T3 — render fences [$ROOT]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T11:32:48Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T4 — config surface (ref/values, CUBE-0012/0013) [$ROOT]
