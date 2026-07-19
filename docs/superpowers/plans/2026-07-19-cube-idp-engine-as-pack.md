@@ -42,6 +42,17 @@ chart render, already vendored), envtest (contract suites), kind (e2e).
 - Until Task 15 publishes, `oci://…cube-engine-*:0.1.0` does not resolve —
   every test/e2e before that must set `spec.engine.ref` to a local
   `$PACKS/packs/cube-engine-<type>` dir.
+- **KNOWN PRE-EXISTING RED (recorded p7 T3, 2026-07-19 — NOT a p7 regression):**
+  when `./tests` runs with `CUBE_IDP_E2E_PACKS_DIR` pointed at the $PACKS p7
+  worktree, `TestPackManifestsNoAlwaysPull` (tests/packs_airgap_test.go) FAILS on
+  three packs that p7 never touched — `argo-events`, `argo-rollouts`,
+  `cloudnativepg` pin `imagePullPolicy: Always` (verified present on $PACKS `main`;
+  `git log main..p7/engine-packs` for those dirs is empty). It is a $PACKS-content
+  matter, out of every $ROOT task's scope. Downstream $ROOT agents: your gate is
+  `go build ./... && go vet ./...` CLEAN + your task's own packages green + your
+  task's `./tests` subset green — treat THIS SPECIFIC pre-existing
+  `TestPackManifestsNoAlwaysPull` failure on those three packs as environmental, NOT
+  a blocker and NOT yours. Any NEW `./tests` failure you cause IS yours.
 
 ---
 
