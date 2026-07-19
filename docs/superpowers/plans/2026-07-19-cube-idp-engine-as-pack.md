@@ -1002,7 +1002,7 @@ git add internal/up && git commit -m "feat(up): engine installs from the fetched
 - Consumes: `pack.FetchRenderEngine`. `eng.InstallManifests()` disappears
   from this file.
 
-- [ ] **Step 1: Rewire desiredState** — hoist the `dir, err :=
+- [x] **Step 1: Rewire desiredState** — hoist the `dir, err :=
 pack.DefaultCacheDir()` block (currently ~:217) to before the engine
 section, then replace :191-195 (`installObjs, err :=
 eng.InstallManifests()` … append) with:
@@ -1017,7 +1017,7 @@ eng.InstallManifests()` … append) with:
 	desired = append(desired, engineRendered.Objects...)
 ```
 
-- [ ] **Step 2: Engine record stub** — next to the existing per-pack
+- [x] **Step 2: Engine record stub** — next to the existing per-pack
 Pack-record identityStub append (~:293-307; copy that line's exact helper
 usage), add the engine row:
 
@@ -1029,7 +1029,7 @@ usage), add the engine row:
 (Match the existing stub's GVK expression style — if the file already has
 a Pack GVK variable for the per-pack stubs, reuse it instead of a literal.)
 
-- [ ] **Step 3: Fix diff tests** — diff_test.go's fake engines lose
+- [x] **Step 3: Fix diff tests** — diff_test.go's fake engines lose
 `InstallManifests`/`Install` methods if present; tests that asserted
 engine objects in desired state must now point the cube's
 `Spec.Engine.Ref` at an on-disk fixture pack — reuse Task 7's fixture
@@ -1047,9 +1047,9 @@ func writeEngineFixture(t *testing.T) string {
 }
 ```
 
-- [ ] **Step 4: Run** `go build ./... && go test ./internal/diff/ -count=1` — PASS.
+- [x] **Step 4: Run** `go build ./... && go test ./internal/diff/ -count=1` — PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/diff && git commit -m "feat(diff): desiredState renders the engine pack; engine Pack-record stub (p7 engine-as-pack)" -- internal/diff
@@ -2235,8 +2235,100 @@ Outcome:
       engine/factory,upgrade}, tests/e2e.
 
 ### T9 — diff renders engine pack [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T13:34:46Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+STATUS: DONE
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`)
+- COMMITS:
+  - `10fe5a7` docs: p7 plan — claim T9
+  - `ec75c26` feat(diff): desiredState renders the engine pack; engine Pack-record
+    stub (p7 engine-as-pack) — trailer `Co-Authored-By: Claude Fable 5`;
+    2 files changed, 54 insertions(+), 12 deletions(-)
+    (`internal/diff/diff.go`, `internal/diff/diff_test.go`)
+- FINDINGS (line-drift corrections + real-name substitutions):
+  - **Line drift.** The plan's cited regions had all shifted. Real anchors used
+    instead: `eng.InstallManifests()` was at diff.go:191 (plan :191-195 — matched);
+    the `pack.DefaultCacheDir()` block was at diff.go:215 (plan said ~:217 and to
+    hoist it to *before* the engine section — in reality it sat AFTER the
+    selfManage block, so the hoist moved it from :215 up to replace the
+    InstallManifests slot at :191, then the old :215 copy was deleted as a
+    duplicate `:=` redeclaration); the per-pack Pack-record stub was at diff.go:295
+    (plan ~:293-307).
+  - **Real-name substitution — Pack GVK.** The plan Step 2 showed a GVK *literal*
+    (`schema.GroupVersionKind{Group: "cube-idp.dev", ...}`) but told me to reuse a
+    Pack GVK var if the file had one. It does: `packGVK` (diff.go var block, was
+    :313). Used `identityStub(packGVK, "", enginePk.Name)` — exact mirror of the
+    per-pack stub, not the literal.
+  - **desiredState signature/returns confirmed as plan expected.** Real signature
+    `desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine)
+    (desired, orphanOnly []*unstructured.Unstructured, entries []lock.Entry, err
+    error)` — a 4-value return; error arms return `nil, nil, nil, err` (plan's
+    "4-tuple (nil,nil,nil,err)" — matched). Append var is `desired` (matched).
+    `eng` parameter STAYS (still used by DeliverSelf/DeliverGit/Deliver; interface
+    slimming is T12).
+  - **Ref arg.** Mirrored T8's FetchRenderEngine shape but with diff's ref: diff
+    has no bundle-resolution path, so the ref arg is `cube.Spec.Engine.PackRef()`
+    directly (exactly as plan Step 1 code shows), vs up.Run's bundle-resolved
+    `engineRef`.
+  - **diff_test.go — all four desiredState tests needed the fixture, not just the
+    engine-object one.** Because desiredState now fetches the engine pack via
+    `PackRef()`, and the unpublished `oci://…cube-engine-flux:0.1.0` default does
+    not resolve until T15, EVERY test constructing `EngineSpec{Type:"flux"}` (incl.
+    `TestDesiredStateRepoDeliveredPack`, `TestDesiredStateSelfManagedEngine`,
+    `TestDesiredStateFailsOnDepCycle`) got `Ref: writeEngineFixture(t)`. The
+    dep-cycle test still reaches ResolveOrder because the fixture fetch (before the
+    pack loop) succeeds, then CUBE-4019 surfaces as before.
+  - **`writeEngineFixture` added** verbatim from the plan (tempdir pack
+    `cube-engine-flux` + one `flux-system` Namespace manifest); imports `os` +
+    `path/filepath` added.
+  - **`TestDesiredStateMatchesUpAppliedSet` want-set reworked.** Its old want-set
+    used `eng.InstallManifests()` (fakeEngine's `engine-controller` Deployment);
+    that no longer feeds desiredState. Replaced with a real
+    `pack.FetchRenderEngine(...)` of the same fixture (the Namespace) AND added the
+    engine's own D11 Pack record row (`pack.PackObject(enginePk, gw, false,
+    len(Engine.Values)>0, "engine", nil)`) so `wantApplied` covers the new engine
+    identityStub desiredState emits in orphanOnly. Size-parity assertion passes.
+  - **fakeEngine methods left intact.** `Install`/`InstallManifests` were NOT
+    removed — the `engine.Engine` interface still declares them until T12, so the
+    compiler does not flag them. Its doc comment "InstallManifests and Deliver are
+    the only methods desiredState calls" is now stale but left untouched (T12
+    rewrites this fake) to avoid scope creep.
+- BLOCKERS: none
+- HANDOFF (for T10+ and downstream):
+  - `internal/diff/diff.go` desiredState now: (1) hoists `dir, err :=
+    pack.DefaultCacheDir()` to before the engine section; (2) fetches+renders the
+    engine pack via `pack.FetchRenderEngine(ctx, cube.Spec.Engine,
+    cube.Spec.Gateway, cube.Spec.Engine.PackRef(), dir)` → `desired = append(...,
+    engineRendered.Objects...)`; (3) appends `identityStub(packGVK, "",
+    enginePk.Name)` to orphanOnly (engine's D11 Pack record). `eng.InstallManifests`
+    no longer appears in diff.go.
+  - GATE evidence (real runs, $ROOT p7 worktree):
+    ```
+    go build ./...   → BUILD_EXIT=0
+    go vet ./...     → VET_EXIT=0
+    go test ./internal/diff/ -count=1 -v:
+      --- PASS: TestDesiredStateMatchesUpAppliedSet (0.01s)
+      --- PASS: TestDesiredStateRepoDeliveredPack (0.00s)
+      --- PASS: TestDesiredStateSelfManagedEngine (0.00s)
+      --- PASS: TestDesiredStateFailsOnDepCycle (2.10s)
+      ok  github.com/cube-idp/cube-idp/internal/diff  3.308s
+    ```
+  - Broader `go test ./... -count=1`
+    (CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7 worktree>/packs): all packages `ok`
+    (incl. `internal/diff`, `internal/up`, `cmd`, `tests/e2e`) EXCEPT the single
+    KNOWN PRE-EXISTING RED:
+    ```
+    --- FAIL: TestPackManifestsNoAlwaysPull (0.02s)
+        argo-events/.../20-install.yaml:431   imagePullPolicy: Always
+        argo-events/.../30-webhook.yaml:135   imagePullPolicy: Always
+        argo-rollouts/.../20-install.yaml:18786  imagePullPolicy: Always
+        cloudnativepg/.../10-cnpg.yaml:20606  imagePullPolicy: Always
+    FAIL  github.com/cube-idp/cube-idp/tests
+    ```
+    Those three packs are the exact ones the Global Constraints (plan §"KNOWN
+    PRE-EXISTING RED", 2026-07-19) flag as $PACKS-content, out of every $ROOT
+    task's scope — NOT a T9 regression. `TestCubeEngineFluxRenderParity` +
+    `TestCubeEngineArgocdRenderGuards` (the fences T9's engine render rides on)
+    both PASS.
 
 ### T10 — bundle vendor + offline rails [$ROOT]
 STATUS: UNCLAIMED
