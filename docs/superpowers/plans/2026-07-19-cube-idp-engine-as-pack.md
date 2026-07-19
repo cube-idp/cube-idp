@@ -2091,7 +2091,7 @@ Outcome:
     existing sigs.k8s.io/yaml (JSON-via-YAML, sorted keys) marshalling for free.
 
 ### T7 — pack.FetchRenderEngine seam [$ROOT]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T19:40Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T8 — up.Run engine-pack install [$ROOT]
