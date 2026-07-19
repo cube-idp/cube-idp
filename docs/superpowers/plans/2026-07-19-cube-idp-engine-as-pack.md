@@ -2560,7 +2560,7 @@ Outcome:
     not p7) and envtest SKIPs; `tests/e2e` builds `ok`.
 
 ### T13 — docs / contract v1.1 [$ROOT]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-orchestrator-inline, 2026-07-19T12:55:00Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T14 — e2e selfManage on values + matrix [$ROOT]
