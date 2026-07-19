@@ -2986,7 +2986,7 @@ STATUS: GATED_SKIP (engine-as-pack RATIFIED 017057a; replacement engine.valuesRe
 Outcome: n/a
 
 ### T8 — config.LoadBytes + origin + SaveValidated guard [Task 8]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T20:07:54Z)
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF (numbers T9/T10/T12 must use). NUMBERS ARE FIXED BY AMENDMENT 5: `CUBE-0014` = `CodeConfigRemoteReadOnly`, `CUBE-0015` = `CodeConfigRemoteFetch` — do not re-derive:
 
 ### T9 — cfgload remote -f dispatch [Task 9]
