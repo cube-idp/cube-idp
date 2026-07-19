@@ -113,6 +113,7 @@ var registry = map[Code]Desc{
 	CodePackDepUnknown:      {Summary: "dependsOn names a pack not in this cube"},
 	CodePackDepCycle:        {Summary: "pack dependency cycle (the message shows the path)"},
 	CodePackDepGateway:      {Summary: "gateway pack cannot carry a dependsOn of its own"},
+	CodePackValuesRefFetch:  {Summary: "packs[].valuesRef fetch failed, not a YAML mapping, or merge with inline values failed"},
 
 	// 5xxx: registry
 	CodeZotManifestsInv:         {Summary: "embedded zot manifests invalid"},

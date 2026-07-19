@@ -112,6 +112,8 @@ const (
 	CodePackDepUnknown Code = "CUBE-4018" // dependsOn names a pack not in this cube
 	CodePackDepCycle   Code = "CUBE-4019" // pack dependency cycle (the message shows the path)
 	CodePackDepGateway Code = "CUBE-4020" // gateway pack cannot carry a dependsOn of its own
+	// Remote values (spec 2026-07-19 §5.1, §8).
+	CodePackValuesRefFetch Code = "CUBE-4021" // packs[].valuesRef fetch failed, not a YAML mapping, or merge with inline values failed
 )
 
 // 5xxx: registry
