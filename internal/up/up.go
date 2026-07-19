@@ -440,11 +440,15 @@ func Run(ctx context.Context, opts Options) error {
 	// surface its pin, instead of plumbing a pin return through the whole
 	// provider interface. Best-effort by design: the cluster is already up
 	// from this exact ref, so a transient re-resolve failure must not fail
-	// the whole `up` — it only leaves the lock's cluster section absent.
+	// the whole `up` — it only leaves the lock's cluster section absent. Say so
+	// out loud, though: an absent cluster section makes the next
+	// `upgrade --plan` report the providerConfigRef as "new (not in cube.lock)".
 	var clusterLock *lock.ClusterLock
 	if ref := cube.Spec.Cluster.ProviderConfigRef; ref != "" {
 		if _, pin, err := refval.Resolve(ctx, ref, dir); err == nil {
 			clusterLock = &lock.ClusterLock{ProviderConfigRef: ref, ProviderConfigPin: pin}
+		} else {
+			con.Note("warning: could not pin providerConfigRef %s (%v); cube.lock records no cluster section, so `cube-idp upgrade --plan` will report it as new", ref, err)
 		}
 	}
 	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",

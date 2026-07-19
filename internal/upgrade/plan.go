@@ -33,12 +33,17 @@ func Plan(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	lf, err := lock.Read(lock.PathForOrigin(cfgPath, cube.Origin().Remote))
+	// A remote -f ref has no directory to sit next to, so the lock lives in the
+	// working directory (lock.PathForOrigin) — name the path actually probed
+	// rather than the ref, or the error sends the user looking inside an OCI
+	// artifact for a file `up` wrote into their CWD.
+	lockPath := lock.PathForOrigin(cfgPath, cube.Origin().Remote)
+	lf, err := lock.Read(lockPath)
 	if err != nil {
 		return false, err
 	}
 	if lf == nil {
-		return false, diag.New(diag.CodeLockCorrupt, "no cube.lock found next to "+cfgPath,
+		return false, diag.New(diag.CodeLockCorrupt, "no cube.lock found at "+lockPath,
 			"run `cube-idp up` once to create it; upgrade --plan compares against it")
 	}
 

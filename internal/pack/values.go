@@ -41,6 +41,14 @@ func EffectiveValues(ctx context.Context, valuesRef string, inline map[string]an
 			fmt.Sprintf("cannot fetch valuesRef %q", valuesRef),
 			"the ref must resolve to one readable YAML mapping document (helm values shape)")
 	}
+	// No inline patch: the fetched document IS the effective values — the same
+	// short-circuit compose.Compose takes for an empty forProvider. Merging
+	// instead would marshal the absent inline map to the JSON literal `null`,
+	// and RFC 7386 reads a null patch as "replace the whole document", silently
+	// discarding the base while cube.lock still records its valuesPin.
+	if len(inline) == 0 {
+		return normalizeIntegral(base).(map[string]any), pin, nil
+	}
 	merged, err := mergeValuesPatch(base, inline)
 	if err != nil {
 		return nil, "", diag.Wrap(err, diag.CodePackValuesRefFetch,
@@ -98,8 +106,16 @@ func resolveValuesDoc(ctx context.Context, ref, cacheDir string) (map[string]any
 // mergeValuesPatch applies patch onto base per RFC 7386 — the same
 // jsonpatch.MergePatch primitive refval.Merge and compose.Merge ride, so the
 // values ladder and the forProvider ladder agree by construction. Inputs stay
-// untouched; the result is never a nil map.
+// untouched; the result is never a nil map. A nil or empty patch is a no-op
+// (json.Marshal types it as the literal `null`, which RFC 7386 would read as
+// "replace the whole document") — see refval.Merge, same guard.
 func mergeValuesPatch(base, patch map[string]any) (map[string]any, error) {
+	if len(patch) == 0 {
+		if base == nil {
+			return map[string]any{}, nil
+		}
+		return base, nil
+	}
 	bj, err := json.Marshal(base)
 	if err != nil {
 		return nil, err

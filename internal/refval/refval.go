@@ -49,8 +49,17 @@ func Resolve(ctx context.Context, ref, cacheDir string) (map[string]any, string,
 // Merge applies patch onto base per RFC 7386: maps deep-merge, lists
 // replace wholesale, null deletes. Inputs stay untouched. (Lifted verbatim
 // from compose.Merge, which now delegates here — one merge algorithm for
-// every inline-over-fetched ladder.)
+// every inline-over-fetched ladder.) A nil or empty patch is a no-op and
+// returns the base: json.Marshal types an absent map as the literal `null`,
+// which RFC 7386 reads as "replace the whole document with null" — never what
+// "no patch" means to any caller on the ladder.
 func Merge(base, patch map[string]any) (map[string]any, error) {
+	if len(patch) == 0 {
+		if base == nil {
+			return map[string]any{}, nil
+		}
+		return base, nil
+	}
 	bj, err := json.Marshal(base)
 	if err != nil {
 		return nil, err

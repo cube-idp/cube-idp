@@ -42,6 +42,29 @@ func TestEffectiveValuesMergesInlineOverFetched(t *testing.T) {
 	}
 }
 
+// Ref-only (valuesRef set, NO inline values) is the shape cube.lock records a
+// valuesPin for, so the fetched base must survive intact. Regression: an
+// absent inline map marshals to the JSON literal `null`, and RFC 7386 says a
+// null patch REPLACES the whole document — which silently rendered pure chart
+// defaults while the lock still claimed the pin had been applied.
+func TestEffectiveValuesRefOnlyKeepsFetchedBase(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "base.yaml")
+	if err := os.WriteFile(f, []byte("replicas: 2\nimage:\n  tag: v1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, pin, err := EffectiveValues(context.Background(), f, nil, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pin == "" {
+		t.Fatal("expected values pin")
+	}
+	want := map[string]any{"replicas": 2, "image": map[string]any{"tag": "v1"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v want %#v", got, want) // ints, not float64 (normalizeIntegral)
+	}
+}
+
 func TestEffectiveValuesWrapsFetchFailure(t *testing.T) {
 	_, _, err := EffectiveValues(context.Background(), filepath.Join(t.TempDir(), "absent.yaml"), nil, t.TempDir())
 	var de *diag.Error

@@ -61,6 +61,23 @@ func TestMergeNullDeletesAndArraysReplace(t *testing.T) {
 	}
 }
 
+// A nil or empty patch is a no-op, never a wipe: json.Marshal of a nil map is
+// the literal `null`, and RFC 7386 reads a null patch as "replace the whole
+// document with null". Merge must not inherit that reading.
+func TestMergeNilOrEmptyPatchKeepsBase(t *testing.T) {
+	want := map[string]any{"keep": 1.0, "nest": map[string]any{"x": 1.0}}
+	for _, patch := range []map[string]any{nil, {}} {
+		base := map[string]any{"keep": 1.0, "nest": map[string]any{"x": 1.0}}
+		got, err := Merge(base, patch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("patch %#v: got %#v want %#v", patch, got, want)
+		}
+	}
+}
+
 func TestNormalizeIntegral(t *testing.T) {
 	in := map[string]any{"r": float64(3), "f": 3.5, "deep": []any{float64(7)}}
 	got := NormalizeIntegral(in).(map[string]any)
