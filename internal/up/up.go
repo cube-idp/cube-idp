@@ -392,9 +392,11 @@ func Run(ctx context.Context, opts Options) error {
 	// deliverPack call) and the topo delivery order are unit-testable with
 	// the P7 fakes, without a live cluster. resolveAndDeliverPacks threads
 	// each pack's resolved deps into its Rendered/engine call and the wave
-	// gate itself (p6 DEP3) — its packDeps return is for callers that only
-	// need the graph (diff.desiredState), not Run.
-	if _, err := resolveAndDeliverPacks(ctx, con, deps, a, refs, packs, renders); err != nil {
+	// gate itself (p6 DEP3); Run keeps the packDeps return too, now that the
+	// D11 record-writer loop below needs each pack's resolved dep list for
+	// its DEPENDS-ON column (p6 DEP4).
+	packDeps, err := resolveAndDeliverPacks(ctx, con, deps, a, refs, packs, renders)
+	if err != nil {
 		return err
 	}
 
@@ -495,7 +497,9 @@ func Run(ctx context.Context, opts Options) error {
 	// "cube-idp-"+name is the Deliver object name convention both engines
 	// use (internal/engine/flux/deliver.go, internal/engine/argocd/deliver.go).
 	// D11 record-writer fields (append-only shared surface): U4 CUSTOMIZED,
-	// P7 DELIVERY (GT19 — PackObject maps an empty Delivery to "oci").
+	// P7 DELIVERY (GT19 — PackObject maps an empty Delivery to "oci"), p6
+	// DEP4 DEPENDS-ON (packDeps is keyed by name, packs is the DECLARED-order
+	// slice — no index remap needed against refs/packs alignment below).
 	// packs is index-aligned with refs (exactly one append per ref in the
 	// delivery loop above, any failure aborts Run), so refs[i] is the
 	// PackRef whose values/extraManifests/delivery decide packs[i]'s
@@ -503,7 +507,7 @@ func Run(ctx context.Context, opts Options) error {
 	packObjs := make([]*unstructured.Unstructured, 0, len(packs))
 	for i, pk := range packs {
 		customized := len(refs[i].Values) > 0 || refs[i].ExtraManifests != ""
-		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name], customized, refs[i].Delivery))
+		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name], customized, refs[i].Delivery, packDeps[pk.Name]))
 	}
 	if err := a.Apply(ctx, packObjs, false, applyTimeout); err != nil {
 		return err

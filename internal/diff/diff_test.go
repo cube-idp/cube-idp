@@ -207,7 +207,7 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 		// expressions; only the record's identity is compared below, but
 		// stay truthful.
 		wantPackRecords = append(wantPackRecords, pack.PackObject(p, cube.Spec.Gateway, false,
-			len(pr.Values) > 0 || pr.ExtraManifests != "", pr.Delivery))
+			len(pr.Values) > 0 || pr.ExtraManifests != "", pr.Delivery, nil))
 	}
 
 	wantApplied := identitySet(regObjs, []*unstructured.Unstructured{crd}, installObjs,

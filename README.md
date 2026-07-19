@@ -117,6 +117,7 @@ spec:
 | `spec.packs[].values` | map | — | helm values, only, always (the vocabulary stone, GT15) — consumed exclusively by the pack's `chart.yaml` render; setting them on a chartless pack is CUBE-4016. A pack with non-empty `values` is CUSTOMIZED (`kubectl get packs`) |
 | `spec.packs[].extraManifests` | string (multi-doc YAML) | — | the uniform extras channel valid for **every** pack kind (GT15): parsed, `${GATEWAY_*}`-substituted, and appended after the pack's own objects; invalid YAML is CUBE-4017. A pack with non-empty `extraManifests` is CUSTOMIZED |
 | `spec.packs[].delivery` | `oci` \| `repo` | `oci` | how `up` hands the pack to the engine (GT19, P7): `oci` (default) pushes the render to zot and registers an OCI source; `repo` pushes it into a Gitea repo (`cube-pack-<name>`) and registers a git source for an editable in-cluster fork. `repo` requires the gitea pack in `spec.packs`; gitea itself can never be repo-delivered (CUBE-7304). Shown as the `DELIVERY` column in `kubectl get packs` |
+| `spec.packs[].dependsOn` | `[string]` | — | list of pack *names* (not refs) this pack needs delivered/healthy first; unioned with the pack's own `pack.cue` `dependsOn` at graph time. Cycles and unknown names are rejected at `up`/`diff` time (CUBE-4019, CUBE-4018). `flux` orders reconciliation natively (Kustomization `spec.dependsOn`); `argocd` orders delivery only (annotation + a wave gate `up` enforces, since Argo CD has no native cross-Application ordering primitive). Shown as the `DEPENDS-ON` column in `kubectl get packs` |
 | `spec.spokes` | `[{name, cluster}]` | — | managed spoke clusters this cube's engine registers (spec §5). Each entry names a spoke and its `cluster` (`provider: kind` \| `existing` only in v1 — GT6; k3d spokes are deferred). Declared with `cube-idp spoke add`; applied on the next `cube-idp up` (hub registration prunes removed spokes). cube-idp only bootstraps and registers spokes — delivering workloads to them is engine content, not packs |
 
 **Precedence:** when both `spec.gateway.ref` and `spec.gateway.pack` are
@@ -604,6 +605,38 @@ carry, e.g. Argo CD's implicit `admin` username, never actually stored in
 `argocd-initial-admin-secret`). The older `cube-idp.dev/cli-secret` label
 convention is **deprecated** (one release of grace) in favor of this
 `expose:`-driven pivot.
+
+### Pack dependencies
+
+`up` resolves a dependency graph over every delivered pack before it
+delivers anything (p6): each pack's declared `dependsOn` (`spec.packs[].dependsOn`
+in `cube.yaml`, unioned with the pack's own `pack.cue` `dependsOn`) plus two
+**implicit** edges `up` adds on your behalf —
+
+- any pack whose `pack.cue` renders a Gateway API object (HTTPRoute, etc.)
+  implicitly depends on the gateway pack, so routes never apply before
+  their parent Gateway exists;
+- any pack delivered with `delivery: repo` implicitly depends on the gitea
+  pack, since its render is pushed into a Gitea-hosted repo the engine has
+  to be able to reach first.
+
+The resolved graph (explicit ∪ implicit) is what actually orders
+delivery — `flux` translates it into each Kustomization's native
+`spec.dependsOn`, `argocd` translates it into an annotation plus a wave
+gate `up` itself enforces (Argo CD has no native cross-Application
+ordering). The same resolved list is echoed back onto every pack's `Pack`
+record as the `DEPENDS-ON` column:
+
+```console
+$ kubectl get packs
+NAME     VERSION   URL   ...   DELIVERY   DEPENDS-ON
+argocd   0.2.0     ...   ...   oci        gitea
+gitea    0.2.0     ...   ...   oci
+```
+
+A pack with no resolved deps shows a blank `DEPENDS-ON` cell (the record
+carries no `spec.dependsOn` field at all in that case, so `kubectl get
+packs` output for dependency-free packs is unchanged from pre-p6).
 
 ## Terminal output & interactivity
 

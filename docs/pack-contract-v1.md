@@ -91,6 +91,7 @@ typed CUBE-4003 (CUBE-4011 for `expose:`). Fields:
 | `expose` | no | D11 discoverability block: `urls?: [...string]` (may carry `${GATEWAY_*}` tokens, §3), `authSecretRef?: {namespace, name}` (both required when the ref is present), `impliedFields?: {<k>: <v>}` (e.g. an implicit `username: "admin"`). Malformed → CUBE-4011. |
 | `images` | no | `[...string]` — runtime images the pack pulls that never appear in its rendered manifests (e.g. a controller's dynamically-provisioned proxy image). Consumed by lockfile assembly and `cube-idp vendor` for air-gapped bundles. |
 | `gatewayService` | no | `{name, namespace}` (both required if the block is present) — the pack's data-plane Service, used by `up` to point DNS at the data plane instead of the controller Service. Gateway packs only. |
+| `dependsOn` | no | `[...string]` — pack **names** (not refs) this pack requires delivered/healthy before it. NEW (additive, §6) — pre-p6 binaries ignore the field entirely and simply don't order the delivery. Unioned with the cube.yaml-level `packs[].dependsOn` at graph time (`up`/`diff`); an unknown name is CUBE-4018, a cycle is CUBE-4019. |
 
 Unknown top-level fields are permitted (CUE compiles them; the loader
 ignores them) — but new *meaningful* fields are added to this contract
@@ -213,6 +214,12 @@ input side — not rendered manifests):
 - Loader compatibility promise: every pack valid under this document
   loads and renders identically under every cube-idp release that
   declares contract v1.
+- **p6 conformance note (`dependsOn`):** the conformance harness delivers
+  a pack's declared dependency closure **from the monorepo, by name** —
+  superseding the pre-p6 `EXTRA_PACK` workaround the harness used to
+  reach for in-repo dependencies (packs-repo DEP5 implements the harness
+  side of this; the field itself is additive and optional per the rule
+  above, so it changes nothing for packs that declare no `dependsOn`).
 
 ## Verifying pack provenance
 

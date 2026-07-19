@@ -166,6 +166,92 @@ func TestUpStatusDown(t *testing.T) {
 	run(t, dir, bin, "down", "--yes")
 }
 
+// TestPackDependsOn proves the p6 dep-chain leg end-to-end on a real kind
+// cluster (flux engine): a cube.yaml-level `packs[].dependsOn` (DEP1-3)
+// actually orders delivery in the cluster and is echoed back on the pack's
+// D11 record (DEP4). init --local writes the default profile's packs in
+// declared order [gitea, argocd] (cmd/init.go); this test patches the
+// argocd entry to declare `dependsOn: ["gitea"]` — the cube.yaml surface,
+// since published packs don't declare their own dependsOn yet (DEP5). The
+// flux-specific kubectl assertion (Kustomization spec.dependsOn) is why
+// this test does not run the {flux, argocd} engine matrix like
+// TestUpStatusDown — it pins the flux engine, the default. Requires
+// docker; run locally with:
+//
+//	CUBE_IDP_E2E=1 CUBE_IDP_E2E_GATEWAY_PORT=18443 go test ./tests/e2e/ -run TestPackDependsOn -v -timeout 25m
+func TestPackDependsOn(t *testing.T) {
+	if os.Getenv("CUBE_IDP_E2E") != "1" {
+		t.Skip("set CUBE_IDP_E2E=1 to run")
+	}
+	port := gatewayPort(t)
+
+	// Guard against a lingering cluster from a previous aborted e2e run —
+	// this test uses the same cluster name as TestUpStatusDown, so the two
+	// must never run concurrently against the same docker host (standard
+	// `go test` sequential-by-default behavior makes that true here).
+	deleteLingeringCluster(t)
+
+	bin := build(t)
+	dir := t.TempDir()
+	packsRoot := packsCheckout(t)
+
+	t.Cleanup(func() {
+		downCmd := exec.Command(bin, "down", "--yes")
+		downCmd.Dir = dir
+		out, _ := downCmd.CombinedOutput()
+		t.Logf("cleanup: cube-idp down\n%s", out)
+		deleteLingeringCluster(t)
+	})
+
+	run(t, dir, bin, "init", "--name", cubeName, "--local", packsRoot, "--engine", "flux")
+	patchGatewayPort(t, dir, port)
+	patchCube(t, dir, func(c *config.Cube) {
+		// Default profile order is [gitea, argocd] (cmd/init.go) — find
+		// argocd by ref substring rather than assuming index 1, so this
+		// test does not silently stop exercising the real path if the
+		// default profile's order ever changes.
+		found := false
+		for i := range c.Spec.Packs {
+			if strings.Contains(c.Spec.Packs[i].Ref, "argocd") {
+				c.Spec.Packs[i].DependsOn = []string{"gitea"}
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("default profile has no argocd pack ref to patch: %+v", c.Spec.Packs)
+		}
+	})
+
+	run(t, dir, bin, "up")
+
+	// (a) flux Kustomization ordering: argocd's Kustomization carries a
+	// dependsOn on gitea's, by the cube-idp-<pack> naming convention
+	// (internal/engine/flux/deliver.go deliveryName).
+	got := strings.TrimSpace(runKubectl(t, "get", "kustomization", "cube-idp-argocd",
+		"-n", "flux-system", "-o", "jsonpath={.spec.dependsOn[0].name}"))
+	if got != "cube-idp-gitea" {
+		t.Fatalf("argocd Kustomization spec.dependsOn[0].name = %q, want %q", got, "cube-idp-gitea")
+	}
+
+	// (b) D11 Pack record echoes the resolved dep back as the DEPENDS-ON
+	// column's backing field (p6 DEP4).
+	gotDep := strings.TrimSpace(runKubectl(t, "get", "packs", "argocd", "-o", "jsonpath={.spec.dependsOn}"))
+	if gotDep != "gitea" {
+		t.Fatalf("packs/argocd spec.dependsOn = %q, want %q", gotDep, "gitea")
+	}
+
+	// (c) status/health converge as usual — the dep chain didn't wedge
+	// delivery or leave anything unhealthy.
+	out := run(t, dir, bin, "status")
+	for _, comp := range []string{"traefik", "gitea", "argocd"} {
+		if !strings.Contains(out, comp) {
+			t.Fatalf("status missing %s after the dep-chain leg:\n%s", comp, out)
+		}
+	}
+
+	run(t, dir, bin, "down", "--yes")
+}
+
 // recordUpWallTime is Task 0.5(j)'s tracked CI metric: spec §3's <60s goal
 // is now scoped to a WARM run (node images already cached — see README's
 // mounts:-based node-image cache recipe; this repo does no pre-pull

@@ -92,8 +92,9 @@ func ExposeURLs(p *Pack, gw config.GatewaySpec) []string {
 // GT19's twin bit (P7), the ref's delivery mode verbatim: an empty
 // PackRef.Delivery maps to "oci" HERE, in the record writer, so every
 // pack shows a value and repo-delivered packs stand out in the DELIVERY
-// printer column.
-func PackObject(p *Pack, gw config.GatewaySpec, ready, customized bool, delivery string) *unstructured.Unstructured {
+// printer column. dependsOn is the pack's RESOLVED dependency list —
+// explicit ∪ implicit, what actually gated delivery (p6 DEP4).
+func PackObject(p *Pack, gw config.GatewaySpec, ready, customized bool, delivery string, dependsOn []string) *unstructured.Unstructured {
 	customizedStr := "no"
 	if customized {
 		customizedStr = "yes"
@@ -102,6 +103,14 @@ func PackObject(p *Pack, gw config.GatewaySpec, ready, customized bool, delivery
 		delivery = "oci"
 	}
 	spec := map[string]any{"version": p.Version, "ready": ready, "customized": customizedStr, "delivery": delivery}
+	if len(dependsOn) > 0 {
+		list := make([]any, len(dependsOn))
+		for i, d := range dependsOn {
+			list[i] = d
+		}
+		spec["dependsOnList"] = list
+		spec["dependsOn"] = strings.Join(dependsOn, ",")
+	}
 	if urls := ExposeURLs(p, gw); len(urls) > 0 {
 		anyURLs := make([]any, len(urls))
 		for i, u := range urls {
