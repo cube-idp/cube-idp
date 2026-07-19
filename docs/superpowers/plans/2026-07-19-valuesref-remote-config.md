@@ -79,6 +79,20 @@ override the task bodies below wherever they conflict.
    translators now). Anchor drift is expected: use the escape hatch
    (verify against real code, minimal correction, FINDINGS entry), not a
    BLOCKED status.
+- **Amendment 6 — remote refs are git/oci-shaped; a raw `http(s)://…/file.yaml`
+  ref does NOT work.** Discovered empirically by T9 (probed, then the probe
+  deleted): `pack.fetchGetter` hardcodes go-getter's `ClientModeDir`, so
+  `HttpGetter` demands an `X-Terraform-Get` redirect and a plain YAML body
+  fails. This is pre-existing pack behaviour, NOT a regression, and fixing it
+  is OUT OF SCOPE for this plan. Consequences, both NORMATIVE:
+  (a) Task 12's remote-`-f` e2e leg MUST NOT use an
+  `http://127.0.0.1:<port>/cube.yaml` getter ref. Use the network-free
+  in-process OCI precedent T9 validated in its own tests — the
+  go-containerregistry in-process registry + `oci.PushPackDir` pattern from
+  `internal/pack/catalog_test.go` — and an `oci://` ref.
+  (b) Task 12's docs subsection MUST describe remote `-f` (and every other
+  ref surface) as git/oci-shaped, and must NOT show a raw `https://` object
+  URL as a working `-f` example.
 
 ## File Structure
 
@@ -1960,14 +1974,14 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/lock/lock.go
 
 - [ ] **Step 1: README**
 
-Add a "Remote values and config" subsection next to the existing `providerConfigRef`/values docs, covering: the TWO ref surfaces shipped by this plan — `packs[].valuesRef` and remote `-f` (NOT `engine.tuningRef`, dropped by Amendment 4) — with one YAML example each (adapt the spec §3 example, omitting its tuning row), the ref grammar table (spec §3.1), merge semantics (inline wins; `null` deletes; arrays replace), pin recording (`cube.lock` `valuesPin`/`cluster.providerConfigPin`), remote `-f` read-only rule + CWD `cube.lock`, and the four new CUBE codes (`CUBE-4021`, `CUBE-7007`, `CUBE-0014`, `CUBE-0015`). Keep the voice/format of the DEP4 README section added in commit `95a7b09`.
+Add a "Remote values and config" subsection next to the existing `providerConfigRef`/values docs, covering: the TWO ref surfaces shipped by this plan — `packs[].valuesRef` and remote `-f` (NOT `engine.tuningRef`, dropped by Amendment 4) — with one YAML example each (adapt the spec §3 example, omitting its tuning row), the ref grammar table (spec §3.1), merge semantics (inline wins; `null` deletes; arrays replace), pin recording (`cube.lock` `valuesPin`/`cluster.providerConfigPin`), remote `-f` read-only rule + CWD `cube.lock`, and the four new CUBE codes (`CUBE-4021`, `CUBE-7007`, `CUBE-0014`, `CUBE-0015`). Per Amendment 6, describe every ref surface as git/oci-shaped — do NOT show a raw `https://…/cube.yaml` object URL as a working `-f` example, because `pack.fetchGetter`'s `ClientModeDir` makes it fail. Keep the voice/format of the DEP4 README section added in commit `95a7b09`.
 
 - [ ] **Step 2: e2e legs** (extend `tests/e2e/e2e_test.go`, gated by the existing `CUBE_IDP_E2E=1`; follow the file's helper conventions — it already shells the built binary and patches the generated cube.yaml)
 
 TWO additions to the existing flow, at the point after the first successful `up` (the third, `tuningRef`, is DROPPED by Amendment 4):
 
 1. **valuesRef leg:** write a values YAML for a pack the flow already installs (override one benign knob, e.g. a label or replica count the pack's chart templates), add `valuesRef: <local path>` to that pack in the cube.yaml, re-run `up`, then assert (a) `cube.lock` entry for that pack carries `valuesRef` + a `valuesPin` starting `file:`, and (b) `kubectl get` on the affected object shows the overridden value.
-2. **remote `-f` leg:** `up -f <ref>` where the ref is the cube.yaml served remotely. Use the in-cluster gitea only if the harness already exposes a clonable URL helper; otherwise serve the file from a local `httptest`-style static server in the test process (an `http://127.0.0.1:<port>/cube.yaml` getter ref — same grammar leg). Assert `cube.lock` lands in the test's CWD and a mutating command (`cube-idp pack install … -f <same-ref>` or `spoke add`) exits non-zero mentioning `CUBE-0014` (the read-only guard's post-p7 number — Amendment 5; `CUBE-0012` now belongs to p7's `CodeEngineTuningRemoved`).
+2. **remote `-f` leg:** `up -f <ref>` where the ref is the cube.yaml served remotely. Use the in-cluster gitea only if the harness already exposes a clonable URL helper; otherwise use the NETWORK-FREE in-process OCI precedent T9 validated (the go-containerregistry in-process registry + `oci.PushPackDir` pattern from `internal/pack/catalog_test.go`, then an `oci://` ref). **Do NOT use an `http://127.0.0.1:<port>/cube.yaml` getter ref — Amendment 6: T9 proved `pack.fetchGetter` hardcodes `ClientModeDir`, so a plain YAML body over HTTP always fails.** Assert `cube.lock` lands in the test's CWD and a mutating command (`cube-idp pack install … -f <same-ref>` or `spoke add`) exits non-zero mentioning `CUBE-0014` (the read-only guard's post-p7 number — Amendment 5; `CUBE-0012` now belongs to p7's `CodeEngineTuningRemoved`).
 
 Each leg re-uses the harness's existing `runCLI`/kubectl helpers; no new flags, no new env vars.
 
