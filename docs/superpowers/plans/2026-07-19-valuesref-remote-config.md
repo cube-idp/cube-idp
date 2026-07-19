@@ -1526,7 +1526,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/config/load.
   - `func pack.IsRemoteRef(ref string) bool` — `oci://` OR bare-git OR explicit getter form.
   - `func cfgload.Load(ctx context.Context, pathOrRef string) (*config.Cube, error)` — stat-wins dispatch (spec §7.1): local file → `config.Load` byte-identical; missing + remote-shaped → fetch + `LoadBytes` + `MarkRemoteOrigin`; missing + not remote-shaped → `config.Load` (its `CUBE-0001`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/cfgload/cfgload_test.go
@@ -1593,12 +1593,12 @@ func TestLoadRemoteHTTPSetsOrigin(t *testing.T) {
 
 (`newYAMLServer`: an `httptest.NewServer` whose handler writes `doc` for any GET — 6 lines; if go-getter's http getter requires extras (it fetches plain files directly), mirror whatever `internal/pack`'s existing getter tests do for http fixtures. If no such precedent exists and the http leg proves brittle in a unit context, keep the first three tests and move the http assertion into Task 12's integration coverage — origin-marking is still proven via the exported pieces.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/cfgload/ -v`
 Expected: FAIL — package does not exist
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `internal/pack/getter.go` — append:
 
@@ -1665,12 +1665,12 @@ func Load(ctx context.Context, pathOrRef string) (*config.Cube, error) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go test ./internal/cfgload/ ./internal/pack/ -count=1`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/cfgload/ internal/pack/getter.go
@@ -3140,8 +3140,166 @@ HANDOFF:
   ```
 
 ### T9 — cfgload remote -f dispatch [Task 9]
-STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T20:18:18Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+COMMITS:
+- `4ba7fe0` docs: rv plan — claim T9
+- `71a3a5d` feat(cfgload): remote -f dispatch over the pack ref grammar, CUBE-0015 (RV4)
+- `<this>` docs: rv plan — T9 complete
+
+FINDINGS:
+1. **`pack.IsRemoteRef` was ADDED, not exported.** The plan's File Structure
+   row and Task 9 Step 3 both say "export `IsRemoteRef`", implying an
+   existing unexported `isRemoteRef`. No such function existed in any form:
+   ```
+   $ grep -rn "IsRemoteRef\|isRemoteRef" internal/ cmd/
+   (no matches before this task)
+   ```
+   The plan's own Step-3 body was applied verbatim as a NEW function in
+   `internal/pack/getter.go`, composed from the pre-existing unexported
+   neighbours `isGitRef` / `isGetterRef` (both already in that file, lines
+   16-35) — no logic reimplemented. Escape-hatch correction, not a redesign.
+2. **Diag number: `CUBE-0015`, per Amendment 5 / T8 HANDOFF.** The Task 9
+   heading and Step-1 sketch still say `CUBE-0013`; that number belongs to
+   p7's `CodeEnginePackMismatch`. Only the CONSTANT is used
+   (`diag.CodeConfigRemoteFetch`), which T8 already declared AND registered —
+   T9 added NO constant and NO registry entry, exactly as T8's HANDOFF
+   instructed. Verified live before writing code:
+   ```
+   internal/diag/codes.go:21:	CodeConfigRemoteReadOnly Code = "CUBE-0014"
+   internal/diag/codes.go:22:	CodeConfigRemoteFetch    Code = "CUBE-0015"
+   ```
+   The test name was corrected to `TestLoadRemoteRefFetchFailureIsCUBE0015`
+   and the package doc comment cites `CUBE-0014` for the SaveValidated
+   guard.
+3. **`diag.HasCode` does not exist** (the plan's test sketch uses it; T8
+   FINDINGS 3 already recorded this). The repo idiom — a local
+   `codeOf(t, err) diag.Code` helper over `errors.As` — was copied from
+   `internal/config/load_test.go:16-23`. No helper invented, none added to
+   the `diag` package.
+4. **The plan's HTTP fixture leg does not work with this repo's getter
+   plumbing — replaced with the OCI in-process-registry fixture** (the
+   plan's Step-1 parenthetical explicitly authorises mirroring
+   `internal/pack`'s existing fixture idiom). `pack.fetchGetter` hardcodes
+   `getter.ClientModeDir`, so go-getter's `HttpGetter` demands an
+   `X-Terraform-Get` redirect and a plain YAML body fails; a probe confirmed
+   it (probe file deleted afterwards):
+   ```
+   HTTP: err=CUBE-4006: cannot fetch pack source "http://127.0.0.1:51637/cube.yaml":
+         error downloading '…': no source URL was returned
+   FILE: err=CUBE-4006: … invalid source string: file::/var/folders/…
+   ```
+   `internal/pack/catalog_test.go` already has the network-free precedent —
+   `httptest` + go-containerregistry's in-process registry +
+   `oci.PushPackDir` — so `TestLoadRemoteOCISetsOrigin` pushes the fixture
+   `cube.yaml` as an OCI artifact and loads it through `oci://`. This is
+   STRICTLY STRONGER than the plan's sketch: it exercises the whole remote
+   path (`IsRemoteRef` → `DefaultCacheDir` → `FetchFile`/`pullOCI` →
+   `singleYAML` → `LoadBytes` → `MarkRemoteOrigin`) end to end, and asserts
+   the parsed document (`metadata.name == "demo"`) as well as the origin.
+   `t.Setenv("HOME", t.TempDir())` keeps `DefaultCacheDir` off the
+   developer's real `~/.cache` (catalog_test's `catalogEnv` precedent).
+   No http-leg assertion was deferred to T12.
+5. Two assertions ADDED beyond the plan's sketch, same contract: the
+   CUBE-0015 test also asserts the CAUSE chain still carries
+   `diag.CodePackRefUnpin` (CUBE-4007) — the plan's comment promises this
+   but its sketch never checked it — and the OCI test asserts the decoded
+   `metadata.name`.
+6. **Import direction held.** `internal/cfgload` imports `config`, `diag`,
+   `pack`; `internal/config` gained NOTHING (untouched by this task).
+   `go build ./...` + `go vet ./...` green — no cycle. `go.mod` unchanged
+   (go-containerregistry was already a test-only dependency via
+   `internal/oci/ocitest`).
+7. Scope fence respected: NO `cmd/*.go` call site migrated, no CWD lock
+   path, no info line — those are T10. `internal/config/load.go`,
+   `internal/lock/lock.go`, `internal/up/up.go`, `internal/diff/diff.go`
+   were not opened for edit. `git status --short` before the code commit
+   listed exactly `M internal/pack/getter.go` and `?? internal/cfgload/`.
+
+BLOCKERS: none
+
+HANDOFF:
+- New API live on this branch:
+  - `func pack.IsRemoteRef(ref string) bool` — `oci://` ‖ `isGitRef` ‖
+    `isGetterRef`. `internal/pack/getter.go`, immediately above
+    `NeedsGitCLI`.
+  - `func cfgload.Load(ctx context.Context, pathOrRef string) (*config.Cube, error)`
+    — `internal/cfgload/cfgload.go`. Dispatch, in order: (1) `os.Stat` OK →
+    `config.Load(path)`, byte-identical local behaviour, zero origin;
+    (2) missing + NOT remote-shaped → `config.Load(path)` so the canonical
+    `CUBE-0001` is unchanged; (3) missing + remote-shaped →
+    `pack.DefaultCacheDir` + `pack.FetchFile` (fetch error wrapped
+    `CUBE-0015`, cause preserved) + `config.LoadBytes(raw, ref)` (its own
+    codes pass through UNWRAPPED — a malformed remote cube still reports
+    CUBE-0002/0003 etc. labelled with the REF) + `cube.MarkRemoteOrigin(ref, pin)`.
+- **T10 contract:** substitute `config.Load(file)` → `cfgload.Load(cmd.Context(), file)`
+  at the listed sites; `cube.Origin().Remote` is the predicate for the CWD
+  lock path, the `using remote config <ref> (<pin>)` info line, and the
+  Step-2b `bundleRailsCheck` clause. Keep `cmd/root.go:184` and
+  `config.SaveValidated`'s internal temp-file `Load` on `config.Load`
+  (T8 FINDINGS 8).
+- `Origin().Pin` carries whatever `pack.FetchFile` returned for the form
+  used: `oci:<digest>` / `git+<sha>` / `dir:<h1:…>` / `file:<sha256-hex>`.
+- Note for T12 (docs/e2e): a remote `-f` over plain `http(s)://` pointing at
+  a bare YAML file will FAIL in `fetchGetter` (ClientModeDir +
+  X-Terraform-Get, FINDINGS 4) — this is pre-existing T1/pack behaviour, NOT
+  introduced here and NOT in T9's scope to change. The e2e legs the spec
+  §9 lists (gitea git ref, zot OCI artifact) are unaffected; document `-f`
+  as git/oci-shaped rather than promising a raw https object.
+- Evidence — Step 2, the tests failed FIRST exactly as the plan's Expected
+  ("package does not exist"):
+  ```
+  # github.com/cube-idp/cube-idp/internal/cfgload [.../cfgload.test]
+  internal/cfgload/cfgload_test.go:45:12: undefined: Load
+  internal/cfgload/cfgload_test.go:55:12: undefined: Load
+  internal/cfgload/cfgload_test.go:64:12: undefined: Load
+  internal/cfgload/cfgload_test.go:99:12: undefined: Load
+  FAIL	github.com/cube-idp/cube-idp/internal/cfgload [build failed]
+  ```
+- Evidence — Step 4, `go test ./internal/cfgload/ -v -count=1` after
+  implementing, then `go test ./internal/cfgload/ ./internal/pack/ -count=1`:
+  ```
+  === RUN   TestLoadLocalFileWins
+  --- PASS: TestLoadLocalFileWins (0.00s)
+  === RUN   TestLoadMissingLocalNonRefIsConfigRead
+  --- PASS: TestLoadMissingLocalNonRefIsConfigRead (0.00s)
+  === RUN   TestLoadRemoteRefFetchFailureIsCUBE0015
+  --- PASS: TestLoadRemoteRefFetchFailureIsCUBE0015 (0.00s)
+  === RUN   TestLoadRemoteOCISetsOrigin
+  --- PASS: TestLoadRemoteOCISetsOrigin (0.01s)
+  ok  	github.com/cube-idp/cube-idp/internal/cfgload	1.400s
+
+  ok  	github.com/cube-idp/cube-idp/internal/cfgload	0.949s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	4.710s
+  ```
+- Evidence — full gate `go build ./... && go vet ./... && go test ./...
+  -count=1`: `BUILD OK`, `VET OK`, 33 `ok` packages,
+  `go test ./... -count=1 | grep -c "^FAIL"` → `0`. Tail:
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	15.003s
+  ok  	github.com/cube-idp/cube-idp/internal/cfgload	5.891s
+  ok  	github.com/cube-idp/cube-idp/internal/config	8.396s
+  ok  	github.com/cube-idp/cube-idp/internal/diag	8.494s
+  ok  	github.com/cube-idp/cube-idp/internal/lock	11.659s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	14.973s
+  ok  	github.com/cube-idp/cube-idp/internal/refval	11.818s
+  ok  	github.com/cube-idp/cube-idp/internal/up	10.719s
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	10.463s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	11.589s
+  ```
+- Evidence — F1 CLI freeze, `go test ./cmd/ -run TestCommandTreeGolden -v
+  -count=1` with NO `-update` (this task changes no flags), and
+  `git status --short` immediately afterwards listing ONLY the intended
+  files (golden not rewritten, no stray staged file):
+  ```
+  === RUN   TestCommandTreeGolden
+  --- PASS: TestCommandTreeGolden (0.00s)
+  ok  	github.com/cube-idp/cube-idp/cmd	1.204s
+
+   M internal/pack/getter.go
+  ?? internal/cfgload/
+  ```
 
 ### T10 — call-site migration + lock CWD path + origin bundle clause [Task 10 incl. Step 2b]
 STATUS: UNCLAIMED
