@@ -778,3 +778,39 @@ spec:
 		t.Fatalf("false selfManage must marshal as an absent key:\n%s", raw)
 	}
 }
+
+func TestLoadValuesRef(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "cube.yaml")
+	doc := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: demo}
+spec:
+  cluster: {provider: kind}
+  engine:
+    type: flux
+  gateway: {}
+  packs:
+    - ref: oci://ghcr.io/cube-idp/packs/traefik:0.2.0
+      valuesRef: github.com/acme/values//traefik@v1.0.0
+      values: {replicas: 3}
+`
+	if err := os.WriteFile(f, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Spec.Packs[0].ValuesRef; got != "github.com/acme/values//traefik@v1.0.0" {
+		t.Fatalf("ValuesRef = %q", got)
+	}
+	// Round-trip: an absent ref must not serialize (omitempty discipline).
+	c.Spec.Packs[0].ValuesRef = ""
+	if err := SaveValidated(f, c); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(f)
+	if strings.Contains(string(raw), "valuesRef") {
+		t.Fatalf("empty ref serialized: %s", raw)
+	}
+}

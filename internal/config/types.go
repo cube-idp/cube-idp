@@ -185,6 +185,13 @@ func (g GatewaySpec) PackRef() string {
 // PackRef references an installable pack and its values overrides.
 type PackRef struct {
 	Ref string `yaml:"ref" json:"ref"`
+	// ValuesRef optionally fetches a BASE values document via the pack ref
+	// grammar (one YAML mapping — pack.FetchFile); inline Values are RFC
+	// 7386 merge-patched on top (null deletes, arrays replace) before the
+	// chart-defaults merge (spec 2026-07-19 §5.1). Same GT15 stone as
+	// Values: set on a chartless pack it is CUBE-4016 at render time. The
+	// resolved pin is recorded in cube.lock (valuesPin).
+	ValuesRef string `yaml:"valuesRef,omitempty" json:"valuesRef,omitempty"`
 	// Values holds pack value overrides. Numeric entries are normalized by
 	// Load to int/float64 (never int64, CUE's raw decode type). omitempty:
 	// see the ClusterSpec comment above — a nil Values map must round-trip
