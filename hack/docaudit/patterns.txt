@@ -1,0 +1,16 @@
+# hack/docaudit/patterns.txt — one ERE per line, '#' comments allowed.
+# These are PLANNING-ARTIFACT patterns. CUBE-[0-9]{4} is a product
+# identifier (diagnostic codes) and must never appear here (AUD-6).
+\bTask [0-9]+(\.[0-9]+[a-z]?)?\b
+\bTE-[0-9]+(\.[0-9]+)?\b
+\bGT[0-9]{1,3}\b
+\b[Pp]hase[- ][0-9]\b
+\bP[0-9]\b
+\bWP[0-9]+\b
+\bcheckpoint [0-9]+(\.[0-9]+)?\b
+\bdecision [0-9]+\b
+\(D[0-9]+\)
+\bF[0-9]{1,2}:\s
+docs/superpowers/(plans|specs|research)/
+spec §
+design doc §
