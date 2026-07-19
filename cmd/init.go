@@ -144,6 +144,15 @@ func newInitCmd() *cobra.Command {
 			} else {
 				cube.Spec.Gateway.Ref = publishedGatewayRef(cube.Spec.Gateway.Pack)
 			}
+			// engine-as-pack: --local must resolve the engine pack from the
+			// checkout too, else the written cube.yaml dials the published
+			// cube-engine-<type> ref and `up` fails air-gapped / pre-publish
+			// (CUBE-4012). Published mode leaves engine.ref unset so
+			// EngineSpec.PackRef() falls back to defaultEngineRefs — same as
+			// today. Mirrors the gateway.ref derivation directly above.
+			if localAbs != "" {
+				cube.Spec.Engine.Ref = filepath.Join(localAbs, "packs", cube.Spec.Engine.PackName())
+			}
 			out, err := yaml.Marshal(cube)
 			if err != nil {
 				return err
