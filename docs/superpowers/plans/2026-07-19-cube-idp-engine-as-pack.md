@@ -1563,7 +1563,7 @@ REPLICA_KNOB HANDOFF above are **VOID**. T1-R steps (in the $PACKS p7 worktree):
    `git add packs/cube-engine-flux && git commit -m "fix(pack)!: cube-engine-flux — vendored flux install --export manifests replace the chart (spec §10: flux2 chart renders no namespaces)" -- packs/cube-engine-flux`
 6. Verify: T3's fence `TestCubeEngineFluxRenderParity` must PASS against the rewritten
    pack (run from the $ROOT p7 worktree with CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7 worktree>/packs).
-T1-R STATUS: UNCLAIMED
+T1-R STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T12:30:39Z)
 
 ### T2 — cube-engine-argocd pack [$PACKS]
 STATUS: DONE
