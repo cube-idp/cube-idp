@@ -878,7 +878,7 @@ git add internal/pack/enginepack.go internal/pack/enginepack_test.go && git comm
   with `delivery: "engine"`; populated `EngineLock`. `deliverEngineSelf`
   and `installNeedsSSA` are byte-UNCHANGED.
 
-- [ ] **Step 1: Failing test** (append to up_test.go — the engine record
+- [x] **Step 1: Failing test** (append to up_test.go — the engine record
 row shape, unit-level):
 
 ```go
@@ -898,12 +898,12 @@ func TestEnginePackRecordRow(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run** `go test ./internal/up/ -run TestEnginePackRecordRow -v` —
+- [x] **Step 2: Run** `go test ./internal/up/ -run TestEnginePackRecordRow -v` —
 Expected: PASS already (PackObject passes non-empty delivery through — this
 is a pin, not new code; if it fails, PackObject needs nothing but you
 misread it: stop and re-check).
 
-- [ ] **Step 3: Rewire the engine install** — in `Run`, hoist the cache
+- [x] **Step 3: Rewire the engine install** — in `Run`, hoist the cache
 dir: move the existing `dir, err := pack.DefaultCacheDir()` block
 (currently after the TLS step, ~:270) to just BEFORE the
 `pr = con.Progress("engine", ...)` line (:240). Then replace :236-241
@@ -938,7 +938,7 @@ Everything from `ssaEngine := installNeedsSSA(...)` down is UNCHANGED.
 Update the P8 comment block above the step (:230-235):
 s/embedded manifests + U3 tuning/the rendered engine pack (values applied)/.
 
-- [ ] **Step 4: Fill the lock** — replace the `lf := &lock.File{...}`
+- [x] **Step 4: Fill the lock** — replace the `lf := &lock.File{...}`
 construction (:403-405) with:
 
 ```go
@@ -956,7 +956,7 @@ construction (:403-405) with:
 (Engine.Ref deliberately records the SPEC-level ref, not the bundle-local
 rewrite — the lock must be reproducible outside the bundle.)
 
-- [ ] **Step 5: Append the engine record row** — in the D11 record loop
+- [x] **Step 5: Append the engine record row** — in the D11 record loop
 (:507-518), after the per-pack `packObjs` loop and before the Apply:
 
 ```go
@@ -971,7 +971,7 @@ rewrite — the lock must be reproducible outside the bundle.)
 		len(cube.Spec.Engine.Values) > 0, "engine", nil))
 ```
 
-- [ ] **Step 6: Verify nothing else regressed**
+- [x] **Step 6: Verify nothing else regressed**
 
 ```bash
 go build ./... && go test ./internal/up/ -count=1
@@ -983,7 +983,7 @@ installObjs directly; the source swap is invisible to them). If a fake in
 up_test.go fails to compile because it implements `InstallManifests`/
 `Install`, delete just those two methods from the fake.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/up && git commit -m "feat(up): engine installs from the fetched+rendered engine pack — lock entry + record row (p7 engine-as-pack)" -- internal/up
@@ -2150,8 +2150,89 @@ Outcome:
     `[engine-pack]` step context. NOT special-cased in FetchRenderEngine — correct as-is.
 
 ### T8 — up.Run engine-pack install [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T13:23Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+STATUS: DONE (5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T13:23Z claimed → closed same session)
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`)
+- COMMITS:
+  - `531e3fb` docs: p7 plan — claim T8
+  - `fa29230` feat(up): engine installs from the fetched+rendered engine pack — lock entry + record row (p7 engine-as-pack)
+    (internal/up/up.go + internal/up/up_test.go; 2 files, 59 insertions, 12 deletions)
+  - (this entry) docs: p7 plan — T8 complete
+- FINDINGS (line-drift corrections + real-name substitutions):
+  - LINE DRIFT — every plan-cited region had drifted (T4 already re-wired engine
+    plumbing). Grepped the anchors the plan describes, not the numbers, and edited
+    those. Actual post-T7 locations: engine install / P8 comment `:226-262`
+    (plan said :236-257 + P8 :230-235); cache-dir block was at `:273-276` (plan
+    said ~:270); offline `resolveBundleRefs` pack call at `:289`; `lf := &lock.File{`
+    at `:418` (plan said :403-405); D11 record loop `packObjs := make(...)` at
+    `:530`, `for i, pk := range packs` at `:531` (plan said :507-518).
+  - REAL-NAME CONFIRMATIONS (all matched the plan verbatim — no substitution
+    needed): `pack.Pack.Pinned` (the resolved pin field — plan's `enginePk.Pinned`
+    is correct, NOT Resolved/Digest); `pack.Pack.Images`; `lock.RenderedHash(objs)
+    (string,error)` @internal/lock/images.go:54; `lock.ImagesFrom(objs) []string`
+    @images.go:15; `mergeImages(rendered, declared []string) []string` @up.go:762;
+    `engine.SelfArtifactName` = "cube-engine" @internal/engine/engine.go:31;
+    `pack.PackObject(p,gw,ready,customized bool,delivery string,dependsOn []string)`
+    @internal/pack/expose.go:97; `resolveBundleRefs(refs, lk *lock.File, lookup
+    func(string)(string,bool))` @internal/up/bundle.go:25; `stepFetchSource(con
+    *ui.Console, ref string)` @up.go:752; `pack.FetchRenderEngine(ctx,spec,gw,ref,
+    cacheDir)` @internal/pack/enginepack.go:16.
+  - FAKE ENGINE METHODS KEPT (deviation from Step 6's conditional note): the plan's
+    Step 6 says "if a fake fails to compile because it implements InstallManifests/
+    Install, delete just those two methods." At T8 time the `engine.Engine`
+    interface STILL declares Install + InstallManifests (their removal is T12), so
+    the up_test.go fakes (`stubUnhealthyEngine`, `fakeHealthEngine`) MUST retain
+    those two methods to satisfy the interface — deleting them now would BREAK
+    compilation. Left both fakes byte-unchanged; no fake failed to compile. The
+    conditional never triggered. (T12 will delete them then.)
+  - `installObjs` is now `installObjs := engineRendered.Objects` (was
+    `installObjs, err := eng.InstallManifests()`); `eng.InstallManifests()` call
+    removed from up.go. `eng` is still used (installNeedsSSA, deliverDeps, Health).
+  - No new go.mod module. `engine`, `pack`, `lock`, `config` were all already
+    imported in up.go — no import edits.
+- BLOCKERS: none
+- HANDOFF (for T9/T10 to mirror):
+  - selfManage trio (TestSelfManageSSADecision, TestSelfManageDeliverEngineSelf,
+    TestSelfManageDeliverEngineSelfFailureIsCube3010) PASS byte-UNCHANGED — the
+    install-source swap is invisible to them (they feed installObjs directly).
+    Evidence pasted below.
+  - ENGINE-PACK PROGRESS STEP NAME: `engine-pack` (distinct from the existing
+    `engine` step which still names the install). Emitted between `packs-crd` and
+    `engine`: `con.Progress("engine-pack", "fetching "+engineRef)` +
+    `stepFetchSource(con, engineRef)` → `epr.Done("%s@%s rendered", Name, Version)`.
+  - OFFLINE ENGINE REF: resolved through `resolveBundleRefs([]config.PackRef{{Ref:
+    engineRef}}, opened.Lock, opened.PackDirLookup())` when `opened != nil`, BEFORE
+    the pack loop's own resolveBundleRefs — T10 (bundle) must make the bundle
+    actually CONTAIN the engine dir so this lookup resolves.
+  - LOCK SHAPE T10 mirrors: `lock.EngineLock{Type, Ref: spec.PackRef(), Name:
+    rendered.Name, Version: rendered.Version, Resolved: enginePk.Pinned,
+    RenderedHash: lock.RenderedHash(rendered.Objects), Images:
+    mergeImages(lock.ImagesFrom(rendered.Objects), enginePk.Images)}`. Ref records
+    the SPEC-level ref (`cube.Spec.Engine.PackRef()`), NOT the bundle-local rewrite
+    — reproducible outside the bundle. `.Entry()` (T6) projects these for vendoring.
+  - RECORD-ROW SHAPE T9 mirrors: `pack.PackObject(enginePk, gw, engineReady,
+    len(spec.Values)>0, "engine", nil)` appended AFTER the per-pack loop, BEFORE the
+    Apply. `engineReady := true`, overridden to `healthByName[engine.SelfArtifactName]`
+    only when `spec.SelfManage`. delivery "engine", no dependsOn (nil last arg).
+  - GATE EVIDENCE (worktree, CUBE_IDP_E2E_PACKS_DIR=$PACKS/.claude/worktrees/
+    p7-engine-packs/packs):
+    - `go build ./...` → exit 0 (clean).
+    - `go vet ./...` → exit 0 (clean).
+    - `go test ./internal/up/ -count=1` → `ok  ...internal/up  1.913s`.
+    - selfManage trio + record row `-v`:
+      ```
+      --- PASS: TestSelfManageSSADecision (0.00s)
+      --- PASS: TestSelfManageDeliverEngineSelf (0.00s)
+      --- PASS: TestSelfManageDeliverEngineSelfFailureIsCube3010 (0.00s)
+      --- PASS: TestEnginePackRecordRow (0.00s)
+      ```
+    - `go test ./... -count=1` → every package `ok` EXCEPT the KNOWN PRE-EXISTING
+      `FAIL github.com/cube-idp/cube-idp/tests` (TestPackManifestsNoAlwaysPull on
+      argo-events/argo-rollouts/cloudnativepg — the three non-p7 packs the Global
+      Constraints name as environmental; verified the failing files are those three
+      packs only, none touched by T8). All packages T8 could affect green: cmd,
+      internal/{up,lock,pack,diff,bundle,config,diag,engine/argocd,engine/flux,
+      engine/factory,upgrade}, tests/e2e.
 
 ### T9 — diff renders engine pack [$ROOT]
 STATUS: UNCLAIMED
