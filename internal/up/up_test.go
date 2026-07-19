@@ -262,7 +262,7 @@ func (stubUnhealthyEngine) InstallManifests() ([]*unstructured.Unstructured, err
 func (stubUnhealthyEngine) Deliver(context.Context, *pack.Rendered, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (stubUnhealthyEngine) DeliverGit(context.Context, string, engine.GitSource) ([]*unstructured.Unstructured, error) {
+func (stubUnhealthyEngine) DeliverGit(context.Context, string, engine.GitSource, []string) ([]*unstructured.Unstructured, error) {
 	return nil, nil
 }
 func (stubUnhealthyEngine) DeliverSelf(context.Context, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
@@ -275,6 +275,7 @@ func (stubUnhealthyEngine) Health(context.Context, *apply.Applier) ([]engine.Com
 func (stubUnhealthyEngine) Uninstall(context.Context, *apply.Applier, time.Duration) error {
 	return nil
 }
+func (stubUnhealthyEngine) OrdersDeliveries() bool { return true }
 
 // TestWaitHealthyNarratesUnhealthyWait pins U1's engine-wait narration:
 // while components stay unhealthy, waitHealthy emits StepLog events with
@@ -407,23 +408,39 @@ func TestSpokeServerURL(t *testing.T) {
 // fakePackEngine records which delivery shape was asked for. It satisfies
 // packEngine (the narrow up-side seam), never the full engine.Engine.
 type fakePackEngine struct {
-	delivered    []string // pack names handed to Deliver (OCI shape)
-	gitDelivered []string // pack names handed to DeliverGit
-	gitSources   []engine.GitSource
-	selfRefs     []engine.ArtifactRef // artifacts handed to DeliverSelf (P8)
+	delivered      []string // pack names handed to Deliver (OCI shape)
+	deliveredDeps  [][]string
+	gitDelivered   []string // pack names handed to DeliverGit
+	gitSources     []engine.GitSource
+	gitDeliverDeps [][]string
+	selfRefs       []engine.ArtifactRef // artifacts handed to DeliverSelf (P8)
+
+	// wavegated backs OrdersDeliveries' negation — zero value (false) means
+	// OrdersDeliveries() returns true (flux-like: no wave gate), so every
+	// pre-DEP3 test's zero-value &fakePackEngine{} keeps its exact
+	// behavior; p6 DEP3's wave-gate tests set wavegated true (argocd-like)
+	// to exercise waitDepsHealthy.
+	wavegated bool
+	// health backs Health — the wave gate's collaborator; nil means "no
+	// components reported" (never ready), matching allReady's own posture.
+	health      []engine.ComponentHealth
+	healthErr   error
+	healthCalls int
 }
 
 func (f *fakePackEngine) Deliver(_ context.Context, r *pack.Rendered, _ engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
 	f.delivered = append(f.delivered, r.Name)
+	f.deliveredDeps = append(f.deliveredDeps, r.DependsOn)
 	o := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1", "kind": "ConfigMap",
 		"metadata": map[string]any{"name": "oci-" + r.Name, "namespace": "d"}}}
 	return []*unstructured.Unstructured{o}, nil
 }
 
-func (f *fakePackEngine) DeliverGit(_ context.Context, name string, src engine.GitSource) ([]*unstructured.Unstructured, error) {
+func (f *fakePackEngine) DeliverGit(_ context.Context, name string, src engine.GitSource, dependsOn []string) ([]*unstructured.Unstructured, error) {
 	f.gitDelivered = append(f.gitDelivered, name)
 	f.gitSources = append(f.gitSources, src)
+	f.gitDeliverDeps = append(f.gitDeliverDeps, dependsOn)
 	o := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1", "kind": "ConfigMap",
 		"metadata": map[string]any{"name": "git-" + name, "namespace": "d"}}}
@@ -436,6 +453,15 @@ func (f *fakePackEngine) DeliverSelf(_ context.Context, src engine.ArtifactRef) 
 		"apiVersion": "v1", "kind": "ConfigMap",
 		"metadata": map[string]any{"name": "self-cube-engine", "namespace": "d"}}}
 	return []*unstructured.Unstructured{o}, nil
+}
+
+// OrdersDeliveries defaults to true (flux-like — no wave gate); a test
+// opts into the argocd-like false posture by setting wavegated true.
+func (f *fakePackEngine) OrdersDeliveries() bool { return !f.wavegated }
+
+func (f *fakePackEngine) Health(context.Context, *apply.Applier) ([]engine.ComponentHealth, error) {
+	f.healthCalls++
+	return f.health, f.healthErr
 }
 
 // fakePackApplier records applied/inventoried objects — the narrow
@@ -604,12 +630,134 @@ func TestDeliverOrderRespectsDependsOn(t *testing.T) {
 	renders := []*pack.Rendered{demoRendered("gateway"), demoRendered("b"), demoRendered("a")}
 
 	con := ui.NewConsole(make(chan event.Event, 256))
-	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, refs, packs, renders); err != nil {
+	// eng.OrdersDeliveries() defaults true (flux-like) — the wave gate
+	// never runs, so a nil *apply.Applier is never dereferenced.
+	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders); err != nil {
 		t.Fatalf("resolveAndDeliverPacks: %v", err)
 	}
 	want := []string{"gateway", "a", "b"}
 	if !reflect.DeepEqual(eng.delivered, want) {
 		t.Fatalf("delivery order = %v, want %v (gateway, a, b)", eng.delivered, want)
+	}
+	wantDeps := [][]string{nil, nil, {"a"}}
+	if !reflect.DeepEqual(eng.deliveredDeps, wantDeps) {
+		t.Fatalf("Rendered.DependsOn threaded into Deliver = %v, want %v (p6 DEP3)", eng.deliveredDeps, wantDeps)
+	}
+}
+
+// TestWaitDepsHealthyTimesOutAsCUBE3011 pins p6 DEP3's argocd-side wave-gate
+// contract directly: a dependency that never reports Ready times out as
+// CUBE-3011 (bounded by the caller's timeout, no infinite spinner).
+func TestWaitDepsHealthyTimesOutAsCUBE3011(t *testing.T) {
+	eng := &fakePackEngine{health: []engine.ComponentHealth{{Name: "cube-idp-a", Ready: false}}}
+	err := waitDepsHealthy(context.Background(), eng, nil, "b", []string{"a"}, 20*time.Millisecond, 5*time.Millisecond)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeEngineDepWait {
+		t.Fatalf("want CUBE-3011, got %v", err)
+	}
+	if eng.healthCalls == 0 {
+		t.Fatal("waitDepsHealthy must poll Health at least once before timing out")
+	}
+}
+
+// TestWaitDepsHealthyReturnsOnceReady pins the success path: once every
+// dependency's component (cube-idp-<dep>) reports Ready, waitDepsHealthy
+// returns nil without waiting for the full timeout.
+func TestWaitDepsHealthyReturnsOnceReady(t *testing.T) {
+	eng := &fakePackEngine{health: []engine.ComponentHealth{{Name: "cube-idp-a", Ready: true}}}
+	if err := waitDepsHealthy(context.Background(), eng, nil, "b", []string{"a"}, time.Minute, time.Millisecond); err != nil {
+		t.Fatalf("waitDepsHealthy: %v", err)
+	}
+}
+
+// TestWaitDepsHealthyNoDepsIsNoop pins the zero-deps fast path: a
+// dependency-free pack never calls Health at all.
+func TestWaitDepsHealthyNoDepsIsNoop(t *testing.T) {
+	eng := &fakePackEngine{}
+	if err := waitDepsHealthy(context.Background(), eng, nil, "solo", nil, time.Minute, time.Millisecond); err != nil {
+		t.Fatalf("waitDepsHealthy: %v", err)
+	}
+	if eng.healthCalls != 0 {
+		t.Fatalf("a pack with no deps must never call Health, got %d calls", eng.healthCalls)
+	}
+}
+
+// TestWaveGateSkippedWhenEngineOrdersDeliveries pins p6 DEP3's flux-side
+// integration contract: an engine that answers OrdersDeliveries true (flux)
+// must see ZERO Health calls from resolveAndDeliverPacks's wave gate, even
+// for a pack with unresolved DependsOn — flux's Kustomization
+// spec.dependsOn does the ordering in-cluster, so `up` never polls Health
+// itself for this engine.
+func TestWaveGateSkippedWhenEngineOrdersDeliveries(t *testing.T) {
+	eng := &fakePackEngine{} // wavegated=false → OrdersDeliveries() true
+	ap := &fakePackApplier{}
+	deps := deliverDeps{
+		eng:     eng,
+		applier: ap,
+		pushOCI: func(_ context.Context, r *pack.Rendered, _ string) (engine.ArtifactRef, error) {
+			return engine.ArtifactRef{Repo: "packs/" + r.Name, Tag: r.Version}, nil
+		},
+		gitea: func(context.Context) (giteaPacks, error) {
+			t.Fatal("no repo-delivered pack in this cube")
+			return nil, nil
+		},
+	}
+	refs := []config.PackRef{{Ref: "gw"}, {Ref: "a"}, {Ref: "b"}}
+	packs := []*pack.Pack{
+		{Name: "gateway"},
+		{Name: "a"},
+		{Name: "b", DependsOn: []string{"a"}},
+	}
+	renders := []*pack.Rendered{demoRendered("gateway"), demoRendered("a"), demoRendered("b")}
+
+	con := ui.NewConsole(make(chan event.Event, 256))
+	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders); err != nil {
+		t.Fatalf("resolveAndDeliverPacks: %v", err)
+	}
+	if eng.healthCalls != 0 {
+		t.Fatalf("OrdersDeliveries-true engine must see zero wave-gate Health calls, got %d", eng.healthCalls)
+	}
+}
+
+// TestWaveGateBlocksDeliveryUntilDepHealthy pins p6 DEP3's argocd-side
+// integration contract end-to-end: an engine that answers OrdersDeliveries
+// false (argocd) must have resolveAndDeliverPacks poll Health via the wave
+// gate before delivering a dependent pack; here the dependency is already
+// Ready, so delivery proceeds and both packs land.
+func TestWaveGateBlocksDeliveryUntilDepHealthy(t *testing.T) {
+	eng := &fakePackEngine{
+		wavegated: true, // argocd-like: no native ordering
+		health:    []engine.ComponentHealth{{Name: "cube-idp-a", Ready: true}},
+	}
+	ap := &fakePackApplier{}
+	deps := deliverDeps{
+		eng:     eng,
+		applier: ap,
+		pushOCI: func(_ context.Context, r *pack.Rendered, _ string) (engine.ArtifactRef, error) {
+			return engine.ArtifactRef{Repo: "packs/" + r.Name, Tag: r.Version}, nil
+		},
+		gitea: func(context.Context) (giteaPacks, error) {
+			t.Fatal("no repo-delivered pack in this cube")
+			return nil, nil
+		},
+	}
+	refs := []config.PackRef{{Ref: "gw"}, {Ref: "a"}, {Ref: "b"}}
+	packs := []*pack.Pack{
+		{Name: "gateway"},
+		{Name: "a"},
+		{Name: "b", DependsOn: []string{"a"}},
+	}
+	renders := []*pack.Rendered{demoRendered("gateway"), demoRendered("a"), demoRendered("b")}
+
+	con := ui.NewConsole(make(chan event.Event, 256))
+	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders); err != nil {
+		t.Fatalf("resolveAndDeliverPacks: %v", err)
+	}
+	if !reflect.DeepEqual(eng.delivered, []string{"gateway", "a", "b"}) {
+		t.Fatalf("delivery order = %v, want [gateway a b]", eng.delivered)
+	}
+	if eng.healthCalls == 0 {
+		t.Fatal("OrdersDeliveries-false engine must have the wave gate poll Health at least once")
 	}
 }
 
@@ -641,7 +789,7 @@ func TestUpFailsFastOnDepCycle(t *testing.T) {
 	renders := []*pack.Rendered{demoRendered("gateway"), demoRendered("a"), demoRendered("b")}
 
 	con := ui.NewConsole(make(chan event.Event, 256))
-	_, err := resolveAndDeliverPacks(context.Background(), con, deps, refs, packs, renders)
+	_, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders)
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != diag.CodePackDepCycle {
 		t.Fatalf("want CUBE-4019, got %v", err)
@@ -758,7 +906,7 @@ func (f *fakeHealthEngine) InstallManifests() ([]*unstructured.Unstructured, err
 func (f *fakeHealthEngine) Deliver(context.Context, *pack.Rendered, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (f *fakeHealthEngine) DeliverGit(context.Context, string, engine.GitSource) ([]*unstructured.Unstructured, error) {
+func (f *fakeHealthEngine) DeliverGit(context.Context, string, engine.GitSource, []string) ([]*unstructured.Unstructured, error) {
 	return nil, nil
 }
 func (f *fakeHealthEngine) DeliverSelf(context.Context, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
@@ -772,6 +920,7 @@ func (f *fakeHealthEngine) Health(context.Context, *apply.Applier) ([]engine.Com
 func (f *fakeHealthEngine) Uninstall(context.Context, *apply.Applier, time.Duration) error {
 	return nil
 }
+func (f *fakeHealthEngine) OrdersDeliveries() bool { return true }
 
 // TestSelfManageSSADecision pins the GT16 SSA rules on installNeedsSSA:
 // selfManage off → always SSA, without even consulting Health (the pre-P8

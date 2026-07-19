@@ -100,6 +100,13 @@ type Rendered struct {
 	Name    string
 	Version string
 	Objects []*unstructured.Unstructured
+	// DependsOn is the pack's resolved dependency list (pack names, sorted
+	// — pack.ResolveOrder's deps entry), set by the ORCHESTRATOR after
+	// graph resolution, never by RenderWith: deps are cube-composition
+	// intent, not render output. Engines translate it (flux: Kustomization
+	// spec.dependsOn; argocd: the cube-idp.dev/depends-on annotation plus
+	// up's wave gate — argocd has no cross-Application ordering).
+	DependsOn []string
 }
 
 // loadMeta reads and validates pack.cue in dir, returning the pack's

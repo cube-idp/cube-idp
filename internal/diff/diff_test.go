@@ -53,7 +53,7 @@ func (fakeEngine) Deliver(_ context.Context, r *pack.Rendered, src engine.Artifa
 // (GitRepository, never OCIRepository) plus the shared Kustomization —
 // TestDesiredStateRepoDeliveredPack relies on the kinds differing exactly
 // the way the real engines' do.
-func (fakeEngine) DeliverGit(_ context.Context, name string, _ engine.GitSource) ([]*unstructured.Unstructured, error) {
+func (fakeEngine) DeliverGit(_ context.Context, name string, _ engine.GitSource, _ []string) ([]*unstructured.Unstructured, error) {
 	return []*unstructured.Unstructured{
 		{Object: map[string]any{
 			"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
@@ -89,6 +89,12 @@ func (fakeEngine) Health(context.Context, *apply.Applier) ([]engine.ComponentHea
 }
 
 func (fakeEngine) Uninstall(context.Context, *apply.Applier, time.Duration) error { return nil }
+
+// OrdersDeliveries: this fake mirrors flux's shapes (GitRepository +
+// Kustomization) throughout, so it answers true — desiredState's
+// DependsOn-threading is exercised by the real engines' own tests
+// (internal/engine/flux, internal/engine/argocd), not here.
+func (fakeEngine) OrdersDeliveries() bool { return true }
 
 // identityKey mirrors diff.go's refKey, keyed off group/kind/namespace/name —
 // exactly what orphanRefs (and, in production, the live inventory) compares

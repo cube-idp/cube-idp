@@ -390,12 +390,13 @@ func Run(ctx context.Context, opts Options) error {
 	// Passes 2+3: resolve the dependency graph, then deliver in that order.
 	// Split out so the fail-fast property (a graph error returns before any
 	// deliverPack call) and the topo delivery order are unit-testable with
-	// the P7 fakes, without a live cluster.
-	packDeps, err := resolveAndDeliverPacks(ctx, con, deps, refs, packs, renders)
-	if err != nil {
+	// the P7 fakes, without a live cluster. resolveAndDeliverPacks threads
+	// each pack's resolved deps into its Rendered/engine call and the wave
+	// gate itself (p6 DEP3) — its packDeps return is for callers that only
+	// need the graph (diff.desiredState), not Run.
+	if _, err := resolveAndDeliverPacks(ctx, con, deps, a, refs, packs, renders); err != nil {
 		return err
 	}
-	_ = packDeps // threaded to DEP3's Deliver calls; unused here yet
 
 	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
 		Engine: lock.EngineLock{Type: cube.Spec.Engine.Type}, Packs: entries}
@@ -566,13 +567,19 @@ func Run(ctx context.Context, opts Options) error {
 // already been delivered to the cluster. Extracted from Run so this
 // ordering/fail-fast contract is unit-testable with the P7 fakes, without a
 // live cluster (Run itself needs one).
-func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDeps, refs []config.PackRef, packs []*pack.Pack, renders []*pack.Rendered) (map[string][]string, error) {
+func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDeps, a *apply.Applier, refs []config.PackRef, packs []*pack.Pack, renders []*pack.Rendered) (map[string][]string, error) {
 	order, packDeps, err := pack.ResolveOrder(packs, refs, renders)
 	if err != nil {
 		return nil, err
 	}
 	for pos, i := range order {
 		pref, rendered := refs[i], renders[i]
+		// p6 DEP3: stamp each pack's resolved deps onto its Rendered before
+		// delivery — deliverPack's engine calls (Deliver reads
+		// rendered.DependsOn directly; DeliverGit takes it as a param) and
+		// the wave gate below both read it from here, so this is the single
+		// place the graph's packDeps enters the delivery tail.
+		rendered.DependsOn = packDeps[packs[i].Name]
 		// Each pack delivery is an enumerated open step (pack i+1/len(refs))
 		// so renderers can show n-of-m; the Done message is byte-identical to
 		// the previous con.Step line and plain never prints Dur — zero plain
@@ -580,6 +587,17 @@ func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDe
 		if err := func() error {
 			pr := con.ProgressN("pack", "delivering "+pref.Ref, pos+1, len(refs))
 			defer pr.Stop() // no-op after Done; resolves the step on any error return
+			// p6 DEP3 wave gate: engines that cannot order deliveries
+			// natively (OrdersDeliveries false — argocd) need `up` to block
+			// here until every dependency's component is healthy, before
+			// this pack's delivery is applied. Flux answers true and skips
+			// straight through — its Kustomization dependsOn (stamped above)
+			// orders reconciliation in-cluster instead.
+			if !deps.eng.OrdersDeliveries() {
+				if err := waitDepsHealthy(ctx, deps.eng, a, packs[i].Name, rendered.DependsOn, healthTimeout, healthPoll); err != nil {
+					return err
+				}
+			}
 			// P7: the delivery tail branches on the ref's delivery mode —
 			// deliverPackOCI is the pre-P7 tail moved verbatim; delivery:
 			// repo renders into an engine-watched Gitea repo instead.
@@ -593,6 +611,48 @@ func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDe
 		}
 	}
 	return packDeps, nil
+}
+
+// waitDepsHealthy is the wave gate for engines that cannot order
+// deliveries natively (OrdersDeliveries false — argocd; spec 2026-07-19
+// DD5, ratified): before applying a dependent pack's delivery, poll
+// Health until every dependency's component (cube-idp-<dep>) is Ready,
+// bounded by timeout (the no-infinite-spinner rule). Flux never enters
+// here — its Kustomization dependsOn orders reconciliation in-cluster.
+func waitDepsHealthy(ctx context.Context, eng packEngine, a *apply.Applier, packName string, deps []string, timeout, poll time.Duration) error {
+	if len(deps) == 0 {
+		return nil
+	}
+	want := make(map[string]bool, len(deps))
+	for _, d := range deps {
+		want["cube-idp-"+d] = true
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		health, err := eng.Health(ctx, a)
+		if err != nil {
+			return err
+		}
+		ready := 0
+		for _, h := range health {
+			if want[h.Name] && h.Ready {
+				ready++
+			}
+		}
+		if ready == len(want) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return diag.New(diag.CodeEngineDepWait,
+				fmt.Sprintf("pack %s waits on %s — dependency not healthy within %s", packName, strings.Join(deps, ", "), timeout),
+				"re-run `cube-idp up` (idempotent), or check the dependency with `cube-idp status`")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(poll):
+		}
+	}
 }
 
 // ensureSpoke creates/connects one spoke, bootstraps cube-idp RBAC on it,
@@ -797,7 +857,7 @@ func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, con *
 			return diag.New(diag.CodeEngineHealthTimeout,
 				fmt.Sprintf("timed out after %s waiting for components to become healthy: %s",
 					timeout, unreadySummary(health)),
-				"re-run `cube-idp up` (idempotent); inspect the listed components with kubectl")
+				"re-run `cube-idp up` (idempotent); inspect the listed components with kubectl — deep dependsOn chains serialize startup, so deps reconcile before dependents")
 		}
 		select {
 		case <-ctx.Done():
@@ -929,8 +989,13 @@ const (
 // P7 fakes.
 type packEngine interface {
 	Deliver(ctx context.Context, r *pack.Rendered, src engine.ArtifactRef) ([]*unstructured.Unstructured, error)
-	DeliverGit(ctx context.Context, name string, src engine.GitSource) ([]*unstructured.Unstructured, error)
+	DeliverGit(ctx context.Context, name string, src engine.GitSource, dependsOn []string) ([]*unstructured.Unstructured, error)
 	DeliverSelf(ctx context.Context, src engine.ArtifactRef) ([]*unstructured.Unstructured, error)
+	// OrdersDeliveries and Health back the p6 DEP3 wave gate
+	// (waitDepsHealthy): an engine that answers false needs `up` to poll
+	// Health itself before delivering a dependent pack.
+	OrdersDeliveries() bool
+	Health(ctx context.Context, a *apply.Applier) ([]engine.ComponentHealth, error)
 }
 
 // packApplier is the narrow Applier surface the delivery tail uses —
@@ -1028,7 +1093,7 @@ func deliverPackRepo(ctx context.Context, deps deliverDeps, rendered *pack.Rende
 		Branch: repo.DefaultBranch,
 		Path:   "./",
 	}
-	deliverObjs, err := deps.eng.DeliverGit(ctx, rendered.Name, src)
+	deliverObjs, err := deps.eng.DeliverGit(ctx, rendered.Name, src, rendered.DependsOn)
 	if err != nil {
 		return wrap(err)
 	}

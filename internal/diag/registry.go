@@ -87,6 +87,7 @@ var registry = map[Code]Desc{
 	CodeEngineTuningUnknown: {Summary: "engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched)"},
 	// GT16 engine self-management (Phase 5 P8):
 	CodeEngineSelfManage: {Summary: "engine.selfManage failed: cube-engine artifact push, self-source build/apply, or post-attach health wait — re-run `cube-idp up`"},
+	CodeEngineDepWait:    {Summary: "a pack's dependency did not become healthy before its wave-gated delivery (argocd)"},
 
 	// 4xxx: pack
 	CodePackRefInvalid:   {Summary: "unsupported pack ref scheme"},

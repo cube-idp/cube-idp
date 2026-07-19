@@ -82,6 +82,7 @@ const (
 	CodeEngineTuningUnknown Code = "CUBE-3009" // engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched)
 	// GT16 engine self-management (Phase 5 P8):
 	CodeEngineSelfManage Code = "CUBE-3010" // engine.selfManage failed: cube-engine artifact push, self-source build/apply, or post-attach health wait — re-run `cube-idp up`
+	CodeEngineDepWait    Code = "CUBE-3011" // a pack's dependency did not become healthy before its wave-gated delivery (argocd)
 )
 
 // 4xxx: pack

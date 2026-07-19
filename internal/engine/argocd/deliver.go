@@ -3,6 +3,7 @@ package argocd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -26,23 +27,33 @@ func (g *ArgoCD) Deliver(ctx context.Context, r *pack.Rendered, src engine.Artif
 		"repoURL":        fmt.Sprintf("oci://%s/%s", registry.InClusterURL, src.Repo),
 		"targetRevision": src.Tag,
 		"path":           ".",
-	})}, nil
+	}, r.DependsOn)}, nil
 }
 
 // application builds the cube-idp Application shape — the delivery scaffolding
 // shared by Deliver (OCI source) and DeliverGit (git source): everything is
 // identical bar spec.source, so both pass just the source block. Keeping this
 // in one place is what makes DeliverGit "copy Deliver, change only the source"
-// literally true (spec §4.1, D2).
-func application(name string, source map[string]any) *unstructured.Unstructured {
+// literally true (spec §4.1, D2). dependsOn (p6 DEP3) is argocd's half of
+// the pack-dep translation: argocd cannot order cross-Application
+// reconciliation, so a non-empty dependsOn becomes the
+// cube-idp.dev/depends-on annotation — informational for humans/tooling,
+// enforced by up's wave gate (waitDepsHealthy), not by argocd itself. A nil
+// dependsOn omits metadata.annotations entirely (byte-compat: dep-free
+// cubes stay identical to pre-p6 Applications).
+func application(name string, source map[string]any, dependsOn []string) *unstructured.Unstructured {
+	metadata := map[string]any{
+		"name":       name,
+		"namespace":  Namespace,
+		"finalizers": []any{"resources-finalizer.argocd.argoproj.io"},
+	}
+	if len(dependsOn) > 0 {
+		metadata["annotations"] = map[string]any{"cube-idp.dev/depends-on": strings.Join(dependsOn, ",")}
+	}
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "argoproj.io/v1alpha1",
 		"kind":       "Application",
-		"metadata": map[string]any{
-			"name":       name,
-			"namespace":  Namespace,
-			"finalizers": []any{"resources-finalizer.argocd.argoproj.io"},
-		},
+		"metadata":   metadata,
 		"spec": map[string]any{
 			"project":     "default",
 			"source":      source,

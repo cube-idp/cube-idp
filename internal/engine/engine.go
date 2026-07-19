@@ -68,7 +68,9 @@ type Engine interface {
 	// source). Same purity rule as Deliver: it RETURNS objects, the caller
 	// applies them — DeliverGit never touches the cluster. name matches the
 	// name Deliver/Poke use; delivered objects are named cube-idp-<name>.
-	DeliverGit(ctx context.Context, name string, src GitSource) ([]*unstructured.Unstructured, error)
+	// dependsOn is the pack's resolved dependency list (p6 DEP3), translated
+	// the same way Deliver's Rendered.DependsOn is — see OrdersDeliveries.
+	DeliverGit(ctx context.Context, name string, src GitSource, dependsOn []string) ([]*unstructured.Unstructured, error)
 	// DeliverSelf returns the engine-native self-source objects watching
 	// the cube-engine artifact (GT16, P8) in the ENGINE's own namespace
 	// with pruning disabled: flux → OCIRepository + Kustomization
@@ -90,4 +92,12 @@ type Engine interface {
 	Poke(ctx context.Context, a *apply.Applier, packName string) error
 	Health(ctx context.Context, a *apply.Applier) ([]ComponentHealth, error)
 	Uninstall(ctx context.Context, a *apply.Applier, timeout time.Duration) error
+	// OrdersDeliveries reports whether this engine natively orders delivery
+	// reconciliation by a pack's DependsOn (flux: true — Kustomization
+	// spec.dependsOn). false (argocd: no cross-Application ordering) tells
+	// `up` it must run the wave gate (waitDepsHealthy) itself before
+	// delivering a dependent pack, instead of trusting the engine to
+	// sequence reconciliation in-cluster. Every implementation must answer
+	// this consciously — see internal/engine/contract's per-impl assertion.
+	OrdersDeliveries() bool
 }
