@@ -18,7 +18,20 @@ type File struct {
 	APIVersion string     `yaml:"apiVersion" json:"apiVersion"`
 	Kind       string     `yaml:"kind" json:"kind"`
 	Engine     EngineLock `yaml:"engine" json:"engine"`
-	Packs      []Entry    `yaml:"packs" json:"packs"`
+	// Cluster records the hub cluster's remote provider-config source and
+	// pin; nil (and so an ABSENT key) for inline-only clusters, which keeps
+	// locks for ref-less cubes byte-identical to pre-RV5 output.
+	Cluster *ClusterLock `yaml:"cluster,omitempty" json:"cluster,omitempty"`
+	Packs   []Entry      `yaml:"packs" json:"packs"`
+}
+
+// ClusterLock records the cluster's remote provider-config source and pin
+// (spec 2026-07-19 §6); the whole section is absent for inline-only
+// clusters (omitempty pointer). Hub cluster only — spoke
+// cluster.providerConfigRef pins are deliberately out of scope.
+type ClusterLock struct {
+	ProviderConfigRef string `yaml:"providerConfigRef,omitempty" json:"providerConfigRef,omitempty"`
+	ProviderConfigPin string `yaml:"providerConfigPin,omitempty" json:"providerConfigPin,omitempty"`
 }
 
 // EngineLock records the GitOps engine: its type plus (engine-as-pack,

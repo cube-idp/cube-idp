@@ -56,13 +56,27 @@ func Plan(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		row := classify(lockEntryByRef(lf, pr.Ref), latest)
+		current := ""
+		if locked := lockEntryByRef(lf, pr.Ref); locked != nil {
+			current = locked.Resolved
+		}
+		row := classify(current, latest)
 		row.Name = pr.Ref
 		if row.Change != "up to date" {
 			changed = true
 		}
 		rows = append(rows, row)
 	}
+	extra, err := refRows(ctx, cube, lf, cacheDir)
+	if err != nil {
+		return false, err
+	}
+	for _, r := range extra {
+		if r.Change != "up to date" {
+			changed = true
+		}
+	}
+	rows = append(rows, extra...)
 	fmt.Fprint(out, renderTable(rows))
 
 	ui.NewFor(out).Section("\nKernel + delivery object changes:")
@@ -73,14 +87,61 @@ func Plan(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	return changed || kernelChanged, nil
 }
 
-func classify(locked *lock.Entry, latest string) Row {
+// refRows builds the attribution rows for the non-chart remote sources
+// (spec 2026-07-19 §6): one row per pack `valuesRef` and one for the hub
+// cluster's `providerConfigRef`. Each gets its OWN line item so "values
+// source changed" can never masquerade as a chart change. ResolveRemote
+// computes the would-be pin without pulling (the getter-ref probe excepted,
+// its documented exception). No `tuning(engine)` row exists: engine.tuning
+// was removed by engine-as-pack, so there is no tuningRef to attribute.
+// Hub cluster only — spoke providerConfigRef pins are out of scope.
+func refRows(ctx context.Context, cube *config.Cube, lf *lock.File, cacheDir string) ([]Row, error) {
+	var rows []Row
+	// The gateway pack takes no valuesRef (it takes no values either), so
+	// iterating spec.packs covers every values source `up` can record.
+	for _, pr := range cube.Spec.Packs {
+		if pr.ValuesRef == "" {
+			continue
+		}
+		latest, err := pack.ResolveRemote(ctx, pr.ValuesRef, cacheDir)
+		if err != nil {
+			return nil, err
+		}
+		current := ""
+		if locked := lockEntryByRef(lf, pr.Ref); locked != nil {
+			current = locked.ValuesPin
+		}
+		row := classify(current, latest)
+		row.Name = fmt.Sprintf("values(%s)", pr.ValuesRef)
+		rows = append(rows, row)
+	}
+	if pcr := cube.Spec.Cluster.ProviderConfigRef; pcr != "" {
+		latest, err := pack.ResolveRemote(ctx, pcr, cacheDir)
+		if err != nil {
+			return nil, err
+		}
+		current := ""
+		if lf.Cluster != nil {
+			current = lf.Cluster.ProviderConfigPin
+		}
+		row := classify(current, latest)
+		row.Name = fmt.Sprintf("providerConfig(%s)", pcr)
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+// classify compares a locked pin against the would-be pin. It is pin-string
+// based (not lock.Entry based) so pack rows, values rows and providerConfig
+// rows share one verdict rule; an absent locked pin reads as "new".
+func classify(current, latest string) Row {
 	switch {
-	case locked == nil:
+	case current == "":
 		return Row{Latest: latest, Change: "new (not in cube.lock)"}
-	case locked.Resolved == latest:
-		return Row{Current: locked.Resolved, Latest: latest, Change: "up to date"}
+	case current == latest:
+		return Row{Current: current, Latest: latest, Change: "up to date"}
 	default:
-		return Row{Current: locked.Resolved, Latest: latest, Change: "update available"}
+		return Row{Current: current, Latest: latest, Change: "update available"}
 	}
 }
 

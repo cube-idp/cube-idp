@@ -31,6 +31,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/lock"
 	"github.com/cube-idp/cube-idp/internal/oci"
 	"github.com/cube-idp/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/refval"
 	"github.com/cube-idp/cube-idp/internal/registry"
 	"github.com/cube-idp/cube-idp/internal/spoke"
 	"github.com/cube-idp/cube-idp/internal/trust"
@@ -434,12 +435,25 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
+	// Cluster providerConfig pin (spec 2026-07-19 §6): re-resolve the ref the
+	// cluster ensure already fetched (so this is a cache hit) purely to
+	// surface its pin, instead of plumbing a pin return through the whole
+	// provider interface. Best-effort by design: the cluster is already up
+	// from this exact ref, so a transient re-resolve failure must not fail
+	// the whole `up` — it only leaves the lock's cluster section absent.
+	var clusterLock *lock.ClusterLock
+	if ref := cube.Spec.Cluster.ProviderConfigRef; ref != "" {
+		if _, pin, err := refval.Resolve(ctx, ref, dir); err == nil {
+			clusterLock = &lock.ClusterLock{ProviderConfigRef: ref, ProviderConfigPin: pin}
+		}
+	}
 	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
 		Engine: lock.EngineLock{Type: cube.Spec.Engine.Type, Ref: cube.Spec.Engine.PackRef(),
 			Name: engineRendered.Name, Version: engineRendered.Version, Resolved: enginePk.Pinned,
 			RenderedHash: engRH,
 			Images:       mergeImages(lock.ImagesFrom(engineRendered.Objects), enginePk.Images)},
-		Packs: entries}
+		Cluster: clusterLock,
+		Packs:   entries}
 	if err := lock.Write(lock.PathForOrigin(cfgPath, cube.Origin().Remote), lf); err != nil {
 		return err
 	}
