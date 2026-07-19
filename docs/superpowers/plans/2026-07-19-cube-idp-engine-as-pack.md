@@ -1483,7 +1483,7 @@ repo convention).
 ## Ledger
 
 ### T1 — cube-engine-flux pack [$PACKS]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T11:20:08Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (CHART_PIN + REPLICA_KNOB values discovered):
 
 ### T2 — cube-engine-argocd pack [$PACKS]
