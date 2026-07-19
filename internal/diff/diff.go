@@ -188,11 +188,18 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 	}
 	desired = append(desired, crd)
 
-	installObjs, err := eng.InstallManifests()
+	dir, err := pack.DefaultCacheDir()
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	desired = append(desired, installObjs...)
+
+	// Engine-as-pack: mirror up.Run — the engine install is the rendered
+	// engine pack (warm cache in the common case).
+	enginePk, engineRendered, err := pack.FetchRenderEngine(ctx, cube.Spec.Engine, cube.Spec.Gateway, cube.Spec.Engine.PackRef(), dir)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	desired = append(desired, engineRendered.Objects...)
 
 	// P8 (GT16): a self-managed engine additionally carries the cube-engine
 	// self-source objects (flux OCIRepository + Kustomization / argocd
@@ -210,11 +217,6 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		for _, o := range selfObjs {
 			orphanOnly = append(orphanOnly, identityStub(o.GroupVersionKind(), o.GetNamespace(), o.GetName()))
 		}
-	}
-
-	dir, err := pack.DefaultCacheDir()
-	if err != nil {
-		return nil, nil, nil, err
 	}
 
 	// Gateway pack goes first, mirroring up.Run — everything else depends on
@@ -294,6 +296,11 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		// only identity, not the full spec, belongs here).
 		orphanOnly = append(orphanOnly, identityStub(packGVK, "", rendered.Name))
 	}
+
+	// Engine-as-pack §3.3.7: up.Run also appends the engine's own D11 Pack
+	// record row (delivery "engine"); its identity belongs here for the same
+	// reason as the per-pack records above.
+	orphanOnly = append(orphanOnly, identityStub(packGVK, "", enginePk.Name))
 
 	// D6: applied by up.Run right after the pack loop; pure given the
 	// gateway host alone.
