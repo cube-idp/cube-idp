@@ -1074,6 +1074,11 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/lock/ intern
 
 ### Task 7: `engine.tuningRef` — `factory.NewResolved` + `CUBE-3012` + lock fields
 
+> **DECISION LANDED 2026-07-19: engine-as-pack RATIFIED (`017057a`) — the
+> ACCEPTED outcome below applies. This task is SKIPPED in this plan; its
+> replacement (`engine.valuesRef` riding the pack machinery) is planned
+> AFTER the p7 engine-as-pack implementation lands. Do not claim T7.**
+>
 > **⛔ GATED — do not execute until the engine-as-pack decision (amendment 1).**
 > `docs/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md` (PROPOSED)
 > deletes `engine.tuning` in favor of `engine.ref` + open `engine.values`, which
@@ -1964,6 +1969,97 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- README.md tests/e2e/ 
 ```
 
 ---
+
+## Agent Execution Protocol
+
+- One agent, one task, then stop. Strict order **T1→T6, then T8→T12** (T7
+  is GATED_SKIP — engine-as-pack RATIFIED `017057a`; its replacement,
+  `engine.valuesRef`, is planned post-p7 and is NOT part of this plan).
+  Task 11 SKIPS its `tuning(…)` attribution block (marked in-task).
+- Single repo: `$ROOT` only (no `$PACKS` in this plan).
+- WORKTREE/BRANCH: all work happens on the EXISTING branch
+  `2026-07-19-valuesref-remote-config` (the branch holding this plan, the
+  spec, and this ledger) via a dedicated worktree, created once and reused:
+  `git -C $ROOT worktree add $ROOT/.claude/worktrees/rv-valuesref 2026-07-19-valuesref-remote-config`
+  (if the branch is checked out in the main tree, move that checkout to
+  another branch first, or work in the main tree directly if it already sits
+  on this branch — one checkout per branch is a git constraint). Code AND
+  ledger commits land on this branch. Never commit to main.
+- OUTWARD ACTS: none until T12. T12 ends with `git push -u origin
+  2026-07-19-valuesref-remote-config` and `gh pr create --base main`
+  (owner pre-authorized in the dispatch prompt). No tag pushes anywhere.
+- CLAIM before any code: set the task's STATUS below to
+  `IN_PROGRESS(<session>, <UTC ts>)`, commit
+  `docs: rv plan — claim T<N>` with explicit pathspec. CLOSE after the
+  task's gate passes: tick the task's checkboxes, fill EVERY Outcome field
+  (evidence = pasted command output, not paraphrase), STATUS → DONE /
+  DONE_WITH_CONCERNS / BLOCKED, commit `docs: rv plan — T<N> complete`.
+- Gate for every task: `go build ./... && go vet ./... && go test ./...
+  -count=1` in the worktree — real runs, never LSP diagnostics — PLUS
+  `go test ./cmd/ -run TestCommandTreeGolden` passing WITHOUT `-update`.
+- **DIAG-CODE RENUMBER RULE:** the p7 engine-as-pack plan also allocates
+  `CUBE-0012/0013` (its T4) — whichever plan lands second renumbers. The
+  CONSTANT NAMES in this plan (`CodeConfigRemoteReadOnly`,
+  `CodeConfigRemoteFetch`, `CodePackValuesRefFetch`,
+  `CodeBundleRemoteSource`) and their registry entries are normative; the
+  NUMBERS are not — at claim time (T5/T6/T8), take the next free number in
+  the domain block, record the actual number in FINDINGS + HANDOFF, and use
+  it consistently in tests/docs for all later tasks.
+- p7 COORDINATION: branch `p7/engine-as-pack` was created FROM this branch;
+  both plans touch `up.go`/`config`/`lock`. Before claiming any task,
+  cross-check `git log --oneline -15` for p7 merges that moved shared
+  files; treat drift via the plan's own escape hatch (verify against the
+  real code, minimal correction, FINDINGS entry).
+
+## Ledger
+
+### T1 — FetchFile returns pin [Task 1]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T2 — internal/refval resolver [Task 2]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T3 — compose migration + providerConfig pin [Task 3]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T4 — config surface valuesRef/tuningRef [Task 4]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T5 — pack.EffectiveValues + RenderResolved + CUBE-4021 [Task 5]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS (actual diag number if renumbered) · BLOCKERS · HANDOFF:
+
+### T6 — up/diff wiring + lock valuesPin + bundle guard CUBE-7007 [Task 6 incl. Step 3b]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS (actual diag number if renumbered) · BLOCKERS · HANDOFF:
+
+### T7 — engine.tuningRef [Task 7 — DO NOT CLAIM]
+STATUS: GATED_SKIP (engine-as-pack RATIFIED 017057a; replacement engine.valuesRef planned post-p7)
+Outcome: n/a
+
+### T8 — config.LoadBytes + origin + SaveValidated guard [Task 8]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS (actual CUBE-001x numbers allocated) · BLOCKERS · HANDOFF (numbers T9/T10/T12 must use):
+
+### T9 — cfgload remote -f dispatch [Task 9]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T10 — call-site migration + lock CWD path + origin bundle clause [Task 10 incl. Step 2b]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF (clitree golden verified untouched):
+
+### T11 — upgrade --plan attribution + ClusterLock (tuning block SKIPPED) [Task 11]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T12 — docs + e2e legs + full gate + PUSH + PR [Task 12, outward acts authorized]
+STATUS: UNCLAIMED
+Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF (PR URL, e2e verdicts or deferral note):
 
 ## Self-Review Notes (already applied)
 
