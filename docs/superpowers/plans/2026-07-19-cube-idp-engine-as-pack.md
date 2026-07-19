@@ -1459,6 +1459,89 @@ repo convention).
 
 ---
 
+## Agent Execution Protocol
+
+- One agent, one task, then stop. Strict order T1→T15 (T3 needs T1+T2;
+  everything after needs its predecessors — no parallel claims).
+- Branches (created ONCE, reused across tasks): $ROOT
+  `p7/engine-as-pack`, created FROM `2026-07-19-valuesref-remote-config`
+  (the branch holding the RATIFIED spec + this plan); $PACKS
+  `p7/engine-packs` from `main`. All code AND ledger commits land on the
+  feature branch of their repo — never on main, never pushed (T15's
+  owner-gated tag pushes are the only outward act in the whole plan).
+- CLAIM before any code: set the task's STATUS below to
+  `IN_PROGRESS(<session>, <UTC ts>)`, commit
+  `docs: p7 plan — claim T<N>` with explicit pathspec. CLOSE after the
+  task's gate passes: tick the task's checkboxes, fill EVERY Outcome
+  field (evidence = pasted command output, not paraphrase), STATUS →
+  DONE / DONE_WITH_CONCERNS / BLOCKED, commit
+  `docs: p7 plan — T<N> complete`.
+- Gate for every $ROOT task: `go build ./... && go vet ./... &&
+  go test ./... -count=1` in the worktree — real runs, never LSP
+  diagnostics. $PACKS tasks gate on their own steps' commands.
+
+## Ledger
+
+### T1 — cube-engine-flux pack [$PACKS]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (CHART_PIN + REPLICA_KNOB values discovered):
+
+### T2 — cube-engine-argocd pack [$PACKS]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (CHART_PIN + MEDIA_TYPES values discovered):
+
+### T3 — render fences [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T4 — config surface (ref/values, CUBE-0012/0013) [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T5 — helm cache pinning [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T6 — cube.lock engine entry [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T7 — pack.FetchRenderEngine seam [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T8 — up.Run engine-pack install [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T9 — diff renders engine pack [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T10 — bundle vendor + offline rails [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T11 — config render-engine [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T12 — engine interface slimming [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (binary size delta):
+
+### T13 — docs / contract v1.1 [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+### T14 — e2e selfManage on values + matrix [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (leg durations, engine-record row evidence):
+
+### T15 — publish 0.1.0 [$PACKS + owner, OWNER-GATED]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (tag push run URLs, visibility, attestation verify output):
+
 ## Plan Self-Review (performed at write time)
 
 - **Spec coverage:** D1/D2 → Tasks 1-2; D3 → Tasks 1-2 pack.cue + Task 4
