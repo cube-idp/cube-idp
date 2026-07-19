@@ -1362,18 +1362,18 @@ git add -A internal/engine hack && git commit -m "refactor(engine)!: drop Instal
 
 **Interfaces:** none (docs only).
 
-- [ ] **Step 1:** In `docs/pack-contract-v1.md` §4 replace the triad line
+- [x] **Step 1:** In `docs/pack-contract-v1.md` §4 replace the triad line
 `tuning → engine patches (spec.engine.tuning, not packs)` with
 `values → chart render (packs and the engine alike; the engine installs
 from the cube-engine-<type> pack — engine-as-pack spec 2026-07-19)` and
 bump the doc's revision note (v1 → v1.1, additive per §6: pack-side
 contract untouched).
 
-- [ ] **Step 2:** `grep -rn "engine.tuning\|render-engine\|selfManage" docs README.md | grep -v superpowers` —
+- [x] **Step 2:** `grep -rn "engine.tuning\|render-engine\|selfManage" docs README.md | grep -v superpowers` —
 update every stale mention (tuning → values; render-engine wording;
 selfManage docs mention the artifact is now the engine pack render).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs README.md && git commit -m "docs: pack-contract v1.1 — values replace tuning in the vocabulary triad (p7 engine-as-pack)" -- docs README.md
@@ -2560,8 +2560,34 @@ Outcome:
     not p7) and envtest SKIPs; `tests/e2e` builds `ok`.
 
 ### T13 — docs / contract v1.1 [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-orchestrator-inline, 2026-07-19T12:55:00Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+STATUS: DONE
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree). Executed INLINE by the orchestrator
+  (continuing inline after the T11/T12 subagent non-start pattern).
+- COMMITS:
+  - `<claim>` docs: p7 plan — claim T13
+  - `178bb4f` docs: pack-contract v1.1 — values replace tuning in the vocabulary triad
+    (p7 engine-as-pack) — docs/pack-contract-v1.md + README.md
+  - `<this>` docs: p7 plan — T13 complete
+- FINDINGS:
+  - Step 1: replaced the §4 triad line (`tuning → engine patches` → `values → chart
+    render (packs and the engine alike; … cube-engine-<type> pack)`) and added a v1.1
+    additive revision note (next to the "changes additively (§6)" line + inline in the
+    triad). `<type>` backtick-wrapped to avoid the markdown inline-HTML lint.
+  - Step 2 sweep: replaced README's two `spec.engine.tuning.components.<name>.{replicas,
+    resources}` config-table rows with `spec.engine.ref` (CUBE-0013 mismatch note) +
+    `spec.engine.values` (D3 open values; **argocd-only per spec §10** — flux is chartless
+    so engine.values+flux is CUBE-4016; flux customization deferred to selfManage). Updated
+    the selfManage row (rendered "tuned install manifests" → "rendered engine pack (values
+    applied)") and the render-engine prose ("`spec.engine.tuning` already patched in" →
+    "rendered from the cube-engine-<type> pack with spec.engine.values applied").
+  - Remaining `engine.tuning` mentions in docs/README are INTENTIONAL retirement references
+    (the v1.1 note "`spec.engine.tuning` is gone" + the README "the retired `engine.tuning`")
+    — describing removal, not documenting a live feature. Verified via the sweep grep.
+- BLOCKERS: none.
+- HANDOFF: docs-only, no code/gate. pack-contract now v1.1 (additive; pack-side contract
+  untouched — engine packs are ordinary packs). Only T14 (e2e) + T15 (publish, owner-gated)
+  remain.
 
 ### T14 — e2e selfManage on values + matrix [$ROOT]
 STATUS: UNCLAIMED
