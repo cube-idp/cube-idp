@@ -964,12 +964,17 @@ func TestEngineSelfManage(t *testing.T) {
 	if engineName() == "argocd" {
 		component, ns, engineManager = "argocd-repo-server", "argocd", ""
 	}
+	// TODO(T14, engine-as-pack): this selfManage leg is redesigned at T14
+	// (engine.values replace the retired engine.tuning; flux is chartless per
+	// spec §10 so the flux value-convergence assertion is reworked there). T4
+	// only removes the deleted config.EngineTuning reference so the package
+	// compiles — the values shape below is a placeholder pending T14.
 	setReplicas := func(n int) {
 		patchCube(t, dir, func(c *config.Cube) {
 			c.Spec.Engine.SelfManage = true
-			c.Spec.Engine.Tuning = &config.EngineTuning{Components: map[string]config.ComponentTuning{
-				component: {Replicas: &n},
-			}}
+			c.Spec.Engine.Values = map[string]any{
+				component: map[string]any{"replicas": n},
+			}
 		})
 	}
 

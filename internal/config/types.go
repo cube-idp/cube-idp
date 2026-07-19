@@ -86,44 +86,49 @@ type Mount struct {
 	NodePath string `yaml:"nodePath" json:"nodePath"`
 }
 
-// EngineSpec selects the GitOps reconciliation engine.
+// EngineSpec selects the GitOps reconciliation engine and its install pack
+// (engine-as-pack spec 2026-07-19).
 type EngineSpec struct {
 	Type string `yaml:"type" json:"type"` // "flux" | "argocd"
-	// Tuning optionally patches the engine's embedded install manifests
-	// before SSA (GT1, U3): a closed knob set — components.<name>.replicas
-	// and components.<name>.resources only. These are NOT helm values (the
-	// vocabulary stone, GT15): the engine installs from pre-rendered plain
-	// manifests, so tuning is an in-memory walk-and-set, never a chart
-	// re-render. nil = absent; omitempty keeps the round-trip discipline of
-	// PackRef.Values (an absent key, not an explicit YAML null).
-	Tuning *EngineTuning `yaml:"tuning,omitempty" json:"tuning,omitempty"`
+	// Ref optionally overrides the engine pack source (any pack ref form:
+	// local dir, oci://, git). Unset = the published default for Type
+	// (defaultEngineRefs). The fetched pack's declared name must be
+	// PackName() — CUBE-0013 at fetch time (pack.VerifyEnginePackRef).
+	Ref string `yaml:"ref,omitempty" json:"ref,omitempty"`
+	// Values holds the engine pack's chart values — the OPEN,
+	// operator-in-control replacement for the retired engine.tuning (D3/D6):
+	// consumed exclusively by the pack's chart.yaml render, merged over its
+	// baked defaults. Same normalization + omitempty discipline as
+	// PackRef.Values.
+	Values map[string]any `yaml:"values,omitempty" json:"values,omitempty"`
 	// SelfManage opts the engine into managing its own install from zot
-	// (GT16, P8): after the health gate, `up` pushes the rendered (tuned)
-	// install manifests as the cube-engine artifact and attaches an
-	// engine-native self-source with pruning disabled — the engine
-	// reconciles itself from then on, so drift between `up`s is corrected.
-	// First install and unhealthy-at-start recovery still SSA directly
-	// (GT16 rules 1+3). Sourced from zot only, never Gitea; works offline.
+	// (GT16, P8): after the health gate, `up` pushes the rendered engine pack
+	// as the cube-engine artifact and attaches an engine-native self-source
+	// with pruning disabled — the engine reconciles itself from then on, so
+	// drift between `up`s is corrected. First install and unhealthy-at-start
+	// recovery still SSA directly (GT16 rules 1+3). Sourced from zot only,
+	// never Gitea; works offline.
 	SelfManage bool `yaml:"selfManage,omitempty" json:"selfManage,omitempty"`
 }
 
-// EngineTuning is the closed engine.tuning knob set (GT1). Component names
-// are validated against the engine's actual Deployments when the manifests
-// are rendered (engine.ApplyTuning) — an unknown name is a typed CUBE-3009
-// listing the valid ones, never a silent ignore.
-type EngineTuning struct {
-	Components map[string]ComponentTuning `yaml:"components,omitempty" json:"components,omitempty"`
+// defaultEngineRefs pins the published engine pack per engine type — what
+// `up`/`diff` fetch when spec.engine.ref is unset (spec §9.1: 0.1.0).
+var defaultEngineRefs = map[string]string{
+	"flux":   "oci://ghcr.io/cube-idp/packs/cube-engine-flux:0.1.0",
+	"argocd": "oci://ghcr.io/cube-idp/packs/cube-engine-argocd:0.1.0",
 }
 
-// ComponentTuning tunes one engine Deployment: spec.replicas and every
-// container's resources. Replicas nil = untouched. Resources replaces each
-// container's resources block verbatim (k8s ResourceRequirements shape);
-// numeric leaves keep CUE's int64 decode type — deliberately NOT normalized
-// to int like PackRef.Values, because the consumer is unstructured SSA
-// (DeepCopyJSONValue accepts int64, not int), not helm.
-type ComponentTuning struct {
-	Replicas  *int           `yaml:"replicas,omitempty" json:"replicas,omitempty"`
-	Resources map[string]any `yaml:"resources,omitempty" json:"resources,omitempty"`
+// PackName returns the pack name engine.type requires: cube-engine-<type>.
+func (e EngineSpec) PackName() string { return "cube-engine-" + e.Type }
+
+// PackRef resolves the engine pack source: an explicit e.Ref always wins;
+// otherwise the published default for e.Type. (Unknown Type returns "" —
+// unreachable past the factory's CUBE-3001.)
+func (e EngineSpec) PackRef() string {
+	if e.Ref != "" {
+		return e.Ref
+	}
+	return defaultEngineRefs[e.Type]
 }
 
 // GatewayNodePort is the node port every cluster-creating provider (kindp,

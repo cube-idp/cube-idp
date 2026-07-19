@@ -15,15 +15,16 @@ import (
 	"github.com/cube-idp/cube-idp/internal/engine/flux"
 )
 
-// New builds the Engine named by spec.Type, carrying spec.Tuning into the
-// engine so InstallManifests returns the tuned objects (GT1, U3). "flux"
-// and "argocd" (D2) both ship; anything else is unknown (CUBE-3001).
+// New builds the Engine named by spec.Type (engine-as-pack: the engine is a
+// pure translator/operator — its install objects come from the fetched
+// engine pack, not from the engine). "flux" and "argocd" (D2) both ship;
+// anything else is unknown (CUBE-3001).
 func New(spec config.EngineSpec) (engine.Engine, error) {
 	switch spec.Type {
 	case "flux":
-		return flux.NewTuned(spec.Tuning), nil
+		return flux.New(), nil
 	case "argocd":
-		return argocd.NewTuned(spec.Tuning), nil
+		return argocd.New(), nil
 	default:
 		return nil, diag.New(diag.CodeEngineTypeUnknown, fmt.Sprintf("unknown engine type %q", spec.Type),
 			"use engine.type: flux or argocd")

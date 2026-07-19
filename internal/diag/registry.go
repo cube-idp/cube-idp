@@ -33,6 +33,8 @@ var registry = map[Code]Desc{
 	CodeUpgradeGuard:          {Summary: "upgrade refused: see summary (was the last un-coded user-facing error)"},
 	CodeConfirmRequired:       {Summary: "a destructive command refused to run without confirmation (--yes / --confirm)"},
 	CodeProviderConfigRemoved: {Summary: "cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)"},
+	CodeEngineTuningRemoved:   {Summary: "engine.tuning was removed (engine-as-pack) — move the knobs to engine.values as chart values of the cube-engine-<type> pack"},
+	CodeEnginePackMismatch:    {Summary: "engine.ref points at a pack whose pack.cue name != cube-engine-<engine.type> (F11 gateway-check analog for the engine pack)"},
 
 	// 01xx: doctor preflight checks (Phase 2)
 	CodeDoctorRuntime: {Summary: "container runtime not found"},
@@ -84,7 +86,7 @@ var registry = map[Code]Desc{
 	CodeEngineArgocdRegFail: {Summary: "reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design"},
 	CodePokeTargetMissing:   {Summary: "Poke found no delivery source (OCIRepository/GitRepository/Application) for the pack"},
 	CodePokeIOFail:          {Summary: "Poke found the delivery source but could not read/update it (transient engine IO — retry)"},
-	CodeEngineTuningUnknown: {Summary: "engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched)"},
+	CodeEngineTuningUnknown: {Summary: "engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched) (RETIRED 2026-07-19 by engine-as-pack — never emitted since)"},
 	// GT16 engine self-management (Phase 5 P8):
 	CodeEngineSelfManage: {Summary: "engine.selfManage failed: cube-engine artifact push, self-source build/apply, or post-attach health wait — re-run `cube-idp up`"},
 	CodeEngineDepWait:    {Summary: "a pack's dependency did not become healthy before its wave-gated delivery (argocd)"},
