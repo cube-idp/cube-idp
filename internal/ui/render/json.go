@@ -165,3 +165,15 @@ type jsonDiagnosis struct {
 	Remediation string `json:"remediation,omitempty"`
 	Raw         string `json:"raw"`
 }
+
+// JSONSchemas returns a zero value of every JSON envelope type this
+// package emits under --output json. It exists for hack/truthindex, which
+// reflects over these values to record the machine-output surface;
+// behaviourally it is dead code.
+func JSONSchemas() []any {
+	return []any{
+		jsonHead{}, jsonRunStarted{}, jsonStep{}, jsonStepFailed{},
+		jsonComponent{}, jsonHealthTick{}, jsonMsg{}, jsonEpilogue{},
+		jsonPack{}, jsonAccess{}, jsonRunDone{}, jsonDiagnosis{},
+	}
+}
