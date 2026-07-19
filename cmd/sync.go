@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
-	"github.com/cube-idp/cube-idp/internal/config"
 	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
 	"github.com/cube-idp/cube-idp/internal/syncer"
 	"github.com/cube-idp/cube-idp/internal/ui"
@@ -45,7 +45,7 @@ gitea pack ('cube-idp repo create').`,
 				// (internal/syncer/watch.go). This branch is byte-identical
 				// to the pre-R3 body: its own config.Load/cluster/Deps
 				// setup, never touching RunPipelineStatic.
-				cube, err := config.Load(file)
+				cube, err := cfgload.Load(c.Context(), file)
 				if err != nil {
 					return err
 				}
@@ -85,7 +85,7 @@ gitea pack ('cube-idp repo create').`,
 			// stream that is only run_done+diagnosis.
 			return ui.RunPipelineStatic(c.Context(), "sync", c.OutOrStdout(),
 				func(ctx context.Context, con *ui.Console) error {
-					cube, err := config.Load(file)
+					cube, err := cfgload.Load(ctx, file)
 					if err != nil {
 						return err
 					}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -120,5 +121,35 @@ func TestEngineLockEntryRoundTrip(t *testing.T) {
 	old, err := Read(p)
 	if err != nil || old.Engine.Type != "argocd" || old.Engine.Ref != "" {
 		t.Fatalf("old lock compat: %+v, %v", old, err)
+	}
+}
+
+// TestLockEntryValuesFieldsOmitEmpty pins RV2's omitempty discipline:
+// ref-less entries must serialize byte-identically to pre-RV2 locks (the p6
+// "stock records unchanged" rule) — absent valuesRef/valuesPin keys, never
+// empty strings — while populated fields round-trip.
+func TestLockEntryValuesFieldsOmitEmpty(t *testing.T) {
+	f := &File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
+		Engine: EngineLock{Type: "flux"},
+		Packs:  []Entry{{Ref: "packs/x", Name: "x", Version: "1", Resolved: "dir:h", RenderedHash: "h"}}}
+	p := filepath.Join(t.TempDir(), "cube.lock")
+	if err := Write(p, f); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(p)
+	if strings.Contains(string(raw), "valuesRef") || strings.Contains(string(raw), "valuesPin") {
+		t.Fatalf("empty values fields serialized:\n%s", raw)
+	}
+	// And populated fields round-trip.
+	f.Packs[0].ValuesRef, f.Packs[0].ValuesPin = "github.com/a/v//x@v1", "git+abc"
+	if err := Write(p, f); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Read(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Packs[0].ValuesRef != "github.com/a/v//x@v1" || got.Packs[0].ValuesPin != "git+abc" {
+		t.Fatalf("round-trip lost values fields: %+v", got.Packs[0])
 	}
 }

@@ -16,6 +16,10 @@ const (
 	CodeProviderConfigRemoved Code = "CUBE-0011" // cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)
 	CodeEngineTuningRemoved   Code = "CUBE-0012" // engine.tuning was removed (engine-as-pack) — use engine.values (chart values of the cube-engine-<type> pack)
 	CodeEnginePackMismatch    Code = "CUBE-0013" // engine.ref points at a pack whose pack.cue name != cube-engine-<engine.type>
+
+	// Remote -f (spec 2026-07-19 §7).
+	CodeConfigRemoteReadOnly Code = "CUBE-0014" // a config-mutating command ran against a remote -f ref (remote configs are read-only)
+	CodeConfigRemoteFetch    Code = "CUBE-0015" // remote -f ref fetch failed or did not yield one YAML document
 )
 
 // 01xx: doctor preflight checks (Phase 2)
@@ -112,6 +116,8 @@ const (
 	CodePackDepUnknown Code = "CUBE-4018" // dependsOn names a pack not in this cube
 	CodePackDepCycle   Code = "CUBE-4019" // pack dependency cycle (the message shows the path)
 	CodePackDepGateway Code = "CUBE-4020" // gateway pack cannot carry a dependsOn of its own
+	// Remote values (spec 2026-07-19 §5.1, §8).
+	CodePackValuesRefFetch Code = "CUBE-4021" // packs[].valuesRef fetch failed, not a YAML mapping, or merge with inline values failed
 )
 
 // 5xxx: registry
@@ -141,6 +147,7 @@ const (
 	CodeVendorIncomplete    Code = "CUBE-7004" // vendor bundle is missing or has corrupt content for a locked pack or image (Verify)
 	CodeBundleNoImageLoader Code = "CUBE-7005" // `up --bundle` needs a provider that node-loads images (kind/k3d); `existing` cannot
 	CodeBundleImageLoadFail Code = "CUBE-7006" // bundled image load into cluster nodes failed (kind/k3d LoadImages, consume side)
+	CodeBundleRemoteSource  Code = "CUBE-7007" // `up --bundle` with a remote values/tuning/config source — remote refs are not vendored, offline rails would be violated
 )
 
 // 71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)

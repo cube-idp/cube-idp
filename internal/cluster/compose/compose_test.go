@@ -47,7 +47,7 @@ func TestMergeVectors(t *testing.T) {
 }
 
 func TestResolveEmptyRef(t *testing.T) {
-	m, err := Resolve(context.Background(), "", t.TempDir())
+	m, _, err := Resolve(context.Background(), "", t.TempDir())
 	if err != nil || m == nil || len(m) != 0 {
 		t.Fatalf("got %v, %v; want empty map, nil", m, err)
 	}
@@ -56,7 +56,7 @@ func TestResolveEmptyRef(t *testing.T) {
 func TestResolveLocalFile(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "base.yaml")
 	os.WriteFile(p, []byte("featureGates:\n  MyFeature: true\n"), 0o644)
-	m, err := Resolve(context.Background(), p, t.TempDir())
+	m, _, err := Resolve(context.Background(), p, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestResolveLocalFile(t *testing.T) {
 }
 
 func TestResolveFetchErrorWraps1005(t *testing.T) {
-	_, err := Resolve(context.Background(), filepath.Join(t.TempDir(), "missing.yaml"), t.TempDir())
+	_, _, err := Resolve(context.Background(), filepath.Join(t.TempDir(), "missing.yaml"), t.TempDir())
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != diag.CodeProviderConfigRefFetch {
 		t.Fatalf("want CUBE-1005, got %v", err)
@@ -77,17 +77,36 @@ func TestResolveFetchErrorWraps1005(t *testing.T) {
 func TestResolveNonMappingDoc(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "list.yaml")
 	os.WriteFile(p, []byte("- just\n- a list\n"), 0o644)
-	_, err := Resolve(context.Background(), p, t.TempDir())
+	_, _, err := Resolve(context.Background(), p, t.TempDir())
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != diag.CodeProviderConfigRefFetch {
 		t.Fatalf("want CUBE-1005, got %v", err)
 	}
 }
 
+func TestResolveReturnsPin(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "base.yaml")
+	if err := os.WriteFile(f, []byte("kind: Cluster\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, pin, err := Resolve(context.Background(), f, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m["kind"] != "Cluster" || pin == "" {
+		t.Fatalf("m=%v pin=%q", m, pin)
+	}
+	// empty ref: no pin, empty non-nil map (existing contract preserved)
+	m, pin, err = Resolve(context.Background(), "", t.TempDir())
+	if err != nil || pin != "" || len(m) != 0 || m == nil {
+		t.Fatalf("empty ref: m=%v pin=%q err=%v", m, pin, err)
+	}
+}
+
 func TestComposeRefPlusForProvider(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "base.yaml")
 	os.WriteFile(p, []byte("networking:\n  ipFamily: ipv4\n  disableDefaultCNI: true\n"), 0o644)
-	m, err := Compose(context.Background(), p, map[string]any{
+	m, _, err := Compose(context.Background(), p, map[string]any{
 		"networking": map[string]any{"ipFamily": "dual"}}, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

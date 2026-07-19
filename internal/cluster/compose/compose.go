@@ -8,80 +8,42 @@ package compose
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
-	jsonpatch "github.com/evanphx/json-patch/v5"
-	sigyaml "sigs.k8s.io/yaml"
-
 	"github.com/cube-idp/cube-idp/internal/diag"
-	"github.com/cube-idp/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/refval"
 )
 
-// Resolve fetches ref (pack ref grammar, one YAML file — pack.FetchFile)
-// and decodes it to a JSON-typed map. An empty ref resolves to an empty,
-// non-nil map so Merge and the provider decode need no special case. Every
-// failure wraps as CUBE-1005 with the pack-layer cause preserved.
-func Resolve(ctx context.Context, ref, cacheDir string) (map[string]any, error) {
-	if ref == "" {
-		return map[string]any{}, nil
-	}
-	raw, err := pack.FetchFile(ctx, ref, cacheDir)
+// Resolve fetches ref (pack ref grammar, one YAML file — refval.Resolve)
+// and decodes it to a JSON-typed map plus its pin. An empty ref resolves to
+// an empty, non-nil map so Merge and the provider decode need no special
+// case. Every failure wraps as CUBE-1005 with the pack-layer cause preserved.
+func Resolve(ctx context.Context, ref, cacheDir string) (map[string]any, string, error) {
+	m, pin, err := refval.Resolve(ctx, ref, cacheDir)
 	if err != nil {
-		return nil, diag.Wrap(err, diag.CodeProviderConfigRefFetch,
+		return nil, "", diag.Wrap(err, diag.CodeProviderConfigRefFetch,
 			fmt.Sprintf("cannot fetch providerConfigRef %q", ref),
-			"the ref must resolve to one readable YAML file; inspect with `cube-idp config render-cluster`")
+			"the ref must resolve to one readable YAML mapping document; inspect with `cube-idp config render-cluster`")
 	}
-	j, err := sigyaml.YAMLToJSON(raw)
-	if err != nil {
-		return nil, diag.Wrap(err, diag.CodeProviderConfigRefFetch,
-			fmt.Sprintf("providerConfigRef %q is not valid YAML", ref), "fix the referenced file")
-	}
-	var m map[string]any
-	if err := json.Unmarshal(j, &m); err != nil {
-		return nil, diag.Wrap(err, diag.CodeProviderConfigRefFetch,
-			fmt.Sprintf("providerConfigRef %q is not a YAML mapping document", ref),
-			"the file must contain a single provider config object (e.g. a kind Cluster)")
-	}
-	if m == nil { // empty file decodes to JSON null
-		m = map[string]any{}
-	}
-	return m, nil
+	return m, pin, nil
 }
 
-// Merge applies patch onto base per RFC 7386 (decision 4): maps deep-merge,
-// lists replace wholesale, null deletes. Inputs stay untouched.
+// Merge applies patch onto base per RFC 7386 (decision 4). One algorithm
+// for every inline-over-fetched ladder — the implementation lives in refval.
 func Merge(base, patch map[string]any) (map[string]any, error) {
-	bj, err := json.Marshal(base)
-	if err != nil {
-		return nil, err
-	}
-	pj, err := json.Marshal(patch)
-	if err != nil {
-		return nil, err
-	}
-	mj, err := jsonpatch.MergePatch(bj, pj)
-	if err != nil {
-		return nil, err
-	}
-	var m map[string]any
-	if err := json.Unmarshal(mj, &m); err != nil {
-		return nil, err
-	}
-	if m == nil {
-		m = map[string]any{}
-	}
-	return m, nil
+	return refval.Merge(base, patch)
 }
 
-// Compose is Resolve + Merge: the full generic half of the ladder.
-func Compose(ctx context.Context, ref string, forProvider map[string]any, cacheDir string) (map[string]any, error) {
-	base, err := Resolve(ctx, ref, cacheDir)
+// Compose is Resolve + Merge: the full generic half of the ladder, plus
+// the pin `up` records in cube.lock's cluster section (spec 2026-07-19 §6).
+func Compose(ctx context.Context, ref string, forProvider map[string]any, cacheDir string) (map[string]any, string, error) {
+	base, pin, err := Resolve(ctx, ref, cacheDir)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if len(forProvider) == 0 {
-		return base, nil
+		return base, pin, nil
 	}
-	return Merge(base, forProvider)
+	m, err := Merge(base, forProvider)
+	return m, pin, err
 }

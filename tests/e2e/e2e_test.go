@@ -8,9 +8,14 @@
 package e2e
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
+	"log"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,9 +25,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-containerregistry/pkg/registry"
 	"sigs.k8s.io/yaml"
 
 	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/lock"
+	"github.com/cube-idp/cube-idp/internal/oci"
 )
 
 // cubeName is both the cube's metadata.name and (per internal/cluster/kindp)
@@ -261,6 +269,178 @@ func TestPackDependsOn(t *testing.T) {
 	}
 
 	run(t, dir, bin, "down", "--yes")
+}
+
+// TestRemoteValuesAndRemoteConfig proves the two remote-ref surfaces this
+// branch ships (RV2 + RV4) end-to-end on a real kind cluster, flux engine:
+//
+//  1. `packs[].valuesRef` — a values document fetched through the pack ref
+//     grammar, declared in the REF-ONLY shape (valuesRef set, NO inline
+//     `values:`). That is the feature's primary use case and the shape a
+//     nil-inline-map merge bug can silently blank out, so the leg asserts
+//     the fetched document really reached the render, plus its pin in
+//     cube.lock (`valuesPin: file:<sha256>`).
+//  2. remote `-f` — the cube.yaml itself fetched from an `oci://` ref:
+//     read-only (a config-mutating command is refused with CUBE-0014) with
+//     cube.lock written into the WORKING DIRECTORY, since dir(<ref>) is
+//     meaningless for a ref.
+//
+// The pack under test is cert-manager rather than one of the default
+// profile's packs: gitea's pack.cue declares a CLOSED `#Values: {}` (any
+// user value is CUBE-4002) and argocd is chartless (values would be
+// CUBE-4016), so neither can carry a valuesRef at all. cert-manager is the
+// lightest catalog pack with a schematized replica knob (`replicaCount`,
+// default 1), which makes the override observable with plain kubectl.
+//
+// The remote `-f` ref is served by an IN-PROCESS OCI registry
+// (go-containerregistry + internal/oci.PushPackDir — the internal/cfgload
+// test idiom, no network): a plain `http(s)://…/cube.yaml` ref cannot work,
+// because pack.fetchGetter hardcodes go-getter's ClientModeDir and the http
+// getter then demands an X-Terraform-Get redirect instead of a YAML body.
+//
+// Requires docker; run locally with:
+//
+//	CUBE_IDP_E2E=1 CUBE_IDP_E2E_GATEWAY_PORT=18443 go test ./tests/e2e/ -run TestRemoteValuesAndRemoteConfig -v -timeout 30m
+func TestRemoteValuesAndRemoteConfig(t *testing.T) {
+	if os.Getenv("CUBE_IDP_E2E") != "1" {
+		t.Skip("set CUBE_IDP_E2E=1 to run")
+	}
+	port := gatewayPort(t)
+
+	// Same cluster name as TestUpStatusDown — never run concurrently against
+	// the same docker host (`go test` is sequential by default here).
+	deleteLingeringCluster(t)
+
+	bin := build(t)
+	dir := t.TempDir()
+	packsRoot := packsCheckout(t)
+
+	t.Cleanup(func() {
+		downCmd := exec.Command(bin, "down", "--yes")
+		downCmd.Dir = dir
+		out, _ := downCmd.CombinedOutput()
+		t.Logf("cleanup: cube-idp down\n%s", out)
+		deleteLingeringCluster(t)
+	})
+
+	run(t, dir, bin, "init", "--name", cubeName, "--local", packsRoot, "--engine", "flux")
+	patchGatewayPort(t, dir, port)
+	certPack := filepath.Join(packsRoot, "packs", "cert-manager")
+	patchCube(t, dir, func(c *config.Cube) {
+		c.Spec.Packs = []config.PackRef{{Ref: certPack}}
+	})
+
+	run(t, dir, bin, "up") // baseline: no valuesRef, replicaCount defaults to 1
+
+	// ── leg 1: packs[].valuesRef, REF-ONLY (RV2) ──────────────────────
+	valuesPath := filepath.Join(dir, "cert-manager-values.yaml")
+	if err := os.WriteFile(valuesPath, []byte("replicaCount: 2\n"), 0o644); err != nil {
+		t.Fatalf("writing the remote values document: %v", err)
+	}
+	patchCube(t, dir, func(c *config.Cube) {
+		c.Spec.Packs[0].ValuesRef = valuesPath // no inline values: the ref IS the values
+	})
+	run(t, dir, bin, "up")
+
+	// (a) cube.lock records the values source and its reproducibility pin.
+	lf, err := lock.Read(filepath.Join(dir, "cube.lock"))
+	if err != nil {
+		t.Fatalf("reading cube.lock: %v", err)
+	}
+	if lf == nil {
+		t.Fatal("cube.lock missing after up")
+	}
+	var entry *lock.Entry
+	for i := range lf.Packs {
+		if lf.Packs[i].Name == "cert-manager" {
+			entry = &lf.Packs[i]
+		}
+	}
+	if entry == nil {
+		t.Fatalf("cube.lock has no cert-manager entry: %+v", lf.Packs)
+	}
+	if entry.ValuesRef != valuesPath {
+		t.Fatalf("cube.lock cert-manager valuesRef = %q, want %q", entry.ValuesRef, valuesPath)
+	}
+	if !strings.HasPrefix(entry.ValuesPin, "file:") {
+		t.Fatalf("cube.lock cert-manager valuesPin = %q, want a file:<sha256> pin", entry.ValuesPin)
+	}
+
+	// (b) the fetched document actually reached the render — with no inline
+	// values to merge over it, the whole document IS the effective values.
+	pollDeployReplicas(t, "cert-manager", "cert-manager", "2", 2*time.Minute)
+
+	// ── leg 2: remote -f over an in-process OCI registry (RV4) ────────
+	regSrv := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	t.Cleanup(regSrv.Close)
+	regURL, err := url.Parse(regSrv.URL)
+	if err != nil {
+		t.Fatalf("parsing in-process registry URL %q: %v", regSrv.URL, err)
+	}
+	// The pushed artifact must hold EXACTLY one top-level YAML document —
+	// pack.FetchFile's singleYAML contract — so push a dir holding only the
+	// cube.yaml this test has been driving (local pack/values paths and all;
+	// the ref is remote, the things it points at need not be).
+	cubeDir := t.TempDir()
+	cubeRaw, err := os.ReadFile(filepath.Join(dir, "cube.yaml"))
+	if err != nil {
+		t.Fatalf("reading cube.yaml to publish: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cubeDir, "cube.yaml"), cubeRaw, 0o644); err != nil {
+		t.Fatalf("staging cube.yaml for the OCI push: %v", err)
+	}
+	ref := "oci://" + regURL.Host + "/cubes/" + cubeName + ":1.0.0"
+	if _, err := oci.PushPackDir(context.Background(), cubeDir, ref); err != nil {
+		t.Fatalf("pushing the cube config to the in-process registry: %v", err)
+	}
+
+	// `up -f <ref>` converges the same cluster from the remote config and
+	// writes cube.lock into its WORKING DIRECTORY (spec §7.3).
+	remoteDir := t.TempDir()
+	upOut := run(t, remoteDir, bin, "up", "-f", ref)
+	if !strings.Contains(upOut, "using remote config") {
+		t.Fatalf("up -f <oci ref> did not print the remote-config info line:\n%s", upOut)
+	}
+	if _, err := os.Stat(filepath.Join(remoteDir, "cube.lock")); err != nil {
+		t.Fatalf("cube.lock did not land in the working directory of a remote -f run: %v", err)
+	}
+
+	// A config-MUTATING command against the same ref is refused: remote
+	// configs are read-only (CUBE-0014). The ref added must not already be
+	// in the cube, or `pack install` short-circuits before SaveValidated.
+	giteaPack := filepath.Join(packsRoot, "packs", "gitea")
+	mutOut, mutErr := runOut(t, bin, remoteDir, "pack", "install", giteaPack, "-f", ref)
+	if mutErr == nil {
+		t.Fatalf("pack install against a remote -f ref must fail (remote configs are read-only):\n%s", mutOut)
+	}
+	if !strings.Contains(mutOut, "CUBE-0014") {
+		t.Fatalf("pack install against a remote -f ref: want CUBE-0014, got:\n%s", mutOut)
+	}
+
+	run(t, dir, bin, "down", "--yes")
+}
+
+// pollDeployReplicas polls a Deployment's spec.replicas until it equals want
+// or the deadline passes. `up` already gates on pack health, so the value is
+// normally correct on the first read; the poll only absorbs the engine's
+// apply lag rather than turning a timing blip into a false failure.
+func pollDeployReplicas(t *testing.T, ns, name, want string, timeout time.Duration) {
+	t.Helper()
+	if _, err := exec.LookPath("kubectl"); err != nil {
+		t.Skip("kubectl not on PATH")
+	}
+	deadline := time.Now().Add(timeout)
+	var last string
+	for time.Now().Before(deadline) {
+		out, err := exec.Command("kubectl", "get", "deploy", name, "-n", ns,
+			"-o", "jsonpath={.spec.replicas}").CombinedOutput()
+		last = strings.TrimSpace(string(out))
+		if err == nil && last == want {
+			return
+		}
+		time.Sleep(5 * time.Second)
+	}
+	t.Fatalf("deployment %s/%s spec.replicas = %q, want %q (valuesRef override never reached the cluster)", ns, name, last, want)
 }
 
 // recordUpWallTime is Task 0.5(j)'s tracked CI metric: spec §3's <60s goal
