@@ -10,7 +10,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/cluster/kindp"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
-	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
+	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
 // newConfigCmd exposes read-only inspection of the loaded cube.yaml, e.g.
@@ -64,29 +64,31 @@ func newConfigCmd() *cobra.Command {
 			return nil
 		},
 	}
-	// `cube-idp config render-engine` — render-cluster's engine twin (GT1,
-	// U3): prints the engine install manifests exactly as `up` would SSA
-	// them, i.e. with spec.engine.tuning already patched in. Inspectability
-	// is the point — the tuned result is visible before any cluster exists.
-	// Unlike render-cluster there is no up-time injection gap: stdout IS
-	// the full object stream, so it stays pure YAML (pipeable into kubectl).
+	// `cube-idp config render-engine` — render-cluster's engine twin
+	// (engine-as-pack §3.3.10): prints the engine install manifests exactly
+	// as `up` would SSA them, now rendered from the engine pack at
+	// spec.engine.ref (or the published cube-engine-<type> default) with
+	// spec.engine.values applied. Inspectability is the point — the result is
+	// visible before any cluster exists. Unlike render-cluster there is no
+	// up-time injection gap: stdout IS the full object stream, so it stays
+	// pure YAML (pipeable into kubectl).
 	renderEngine := &cobra.Command{
 		Use:   "render-engine",
-		Short: "Print the tuned engine install manifests that `up` would apply (GT1)",
+		Short: "Print the engine install manifests that `up` would apply (rendered from the engine pack)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			cube, err := config.Load(file)
 			if err != nil {
 				return err
 			}
-			eng, err := enginefactory.New(cube.Spec.Engine)
+			dir, err := pack.DefaultCacheDir()
 			if err != nil {
 				return err
 			}
-			objs, err := eng.InstallManifests()
+			_, rendered, err := pack.FetchRenderEngine(c.Context(), cube.Spec.Engine, cube.Spec.Gateway, cube.Spec.Engine.PackRef(), dir)
 			if err != nil {
 				return err
 			}
-			for i, o := range objs {
+			for i, o := range rendered.Objects {
 				b, err := yaml.Marshal(o.Object)
 				if err != nil {
 					return err

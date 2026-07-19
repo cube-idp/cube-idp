@@ -2,10 +2,58 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// TestRenderEngineRendersPack: the command prints the engine pack render —
+// same objects `up` would SSA (engine-as-pack §3.3.10). The fixture is a
+// manifests-only cube-engine-flux pack (nil values) pointed at by
+// spec.engine.ref, since the published 0.1.0 default does not resolve until
+// the packs are published (Task 15).
+func TestRenderEngineRendersPack(t *testing.T) {
+	dir := t.TempDir()
+	pd := filepath.Join(dir, "cube-engine-flux")
+	if err := os.MkdirAll(filepath.Join(pd, "manifests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pd, "pack.cue"),
+		[]byte("name: \"cube-engine-flux\"\nversion: \"0.1.0\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A distinctive namespace name the retired embedded flux blob does NOT
+	// contain — so this test fails against the old InstallManifests() source
+	// and only passes when render-engine renders the pack at spec.engine.ref.
+	if err := os.WriteFile(filepath.Join(pd, "manifests", "ns.yaml"),
+		[]byte("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: enginepack-fixture-ns\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cy := filepath.Join(dir, "cube.yaml")
+	if err := os.WriteFile(cy, []byte(fmt.Sprintf(`apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: t}
+spec:
+  engine: {type: flux, ref: %s}
+  gateway: {host: cube-idp.localtest.me, port: 8443, pack: traefik}
+`, pd)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCmd()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"config", "render-engine", "-f", cy})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("render-engine: %v (stderr: %s)", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "kind: Namespace") || !strings.Contains(stdout.String(), "enginepack-fixture-ns") {
+		t.Fatalf("render-engine must print the pack render (at spec.engine.ref), got:\n%s", stdout.String())
+	}
+}
 
 // TestRenderClusterNotesCertsDInjection covers (g): render-cluster's output
 // is a pure/file-free rendering (cmd/config.go's comment: "no certs.d
