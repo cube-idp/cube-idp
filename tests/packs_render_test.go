@@ -11,12 +11,16 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	sigsyaml "sigs.k8s.io/yaml"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
@@ -187,6 +191,99 @@ func envoyProxyServiceName(t *testing.T, packDir string) string {
 	}
 	t.Fatalf("no EnvoyProxy object in %s/manifests/10-gatewayclass.yaml", packDir)
 	return ""
+}
+
+// fetchPack locates a pack by name under the cube-idp/packs checkout
+// (packsTree — the same locator + skip convention the other tests in this
+// file use) and Fetches it into a per-test cache dir. It is the engine-pack
+// fences' reuse of the file's existing locator+Fetch helper pattern.
+func fetchPack(t *testing.T, name string) *pack.Pack {
+	t.Helper()
+	dir := filepath.Join(packsTree(t), name)
+	p, err := pack.Fetch(context.Background(), dir, t.TempDir())
+	if err != nil {
+		t.Fatalf("%s: fetch: %v", dir, err)
+	}
+	return p
+}
+
+// marshalObjects yaml-marshals every rendered object and joins them into one
+// blob for substring guards (mirrors the field paths a rendered manifest
+// stream carries). sigs.k8s.io/yaml marshals via JSON tags — the correct
+// path for unstructured.Unstructured.
+func marshalObjects(t *testing.T, objs []*unstructured.Unstructured) string {
+	t.Helper()
+	var b strings.Builder
+	for _, o := range objs {
+		y, err := sigsyaml.Marshal(o.Object)
+		if err != nil {
+			t.Fatalf("marshal %s/%s: %v", o.GetKind(), o.GetName(), err)
+		}
+		b.Write(y)
+		b.WriteString("\n---\n")
+	}
+	return b.String()
+}
+
+// TestCubeEngineFluxRenderParity fences the flux engine pack (engine-as-pack
+// D2): exactly the two controllers cube-idp uses, in flux-system.
+func TestCubeEngineFluxRenderParity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("helm renders hit the network")
+	}
+	pk := fetchPack(t, "cube-engine-flux") // reuse the file's locator+Fetch helper pattern
+	r, err := pk.RenderFor(nil, config.GatewaySpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var deployments []string
+	for _, o := range r.Objects {
+		if o.GetKind() == "Deployment" {
+			deployments = append(deployments, o.GetName())
+			if o.GetNamespace() != "flux-system" {
+				t.Fatalf("%s not in flux-system", o.GetName())
+			}
+		}
+	}
+	sort.Strings(deployments)
+	want := []string{"kustomize-controller", "source-controller"}
+	if !reflect.DeepEqual(deployments, want) {
+		t.Fatalf("engine parity broken: got Deployments %v, want %v", deployments, want)
+	}
+}
+
+// TestCubeEngineArgocdRenderGuards fences the argocd engine pack's baked
+// hand-edits: no Always pulls (airgap — replaces the retired
+// internal/engine/argocd/airgap_test.go) and the OCI media-types param
+// (load-bearing for pack delivery).
+func TestCubeEngineArgocdRenderGuards(t *testing.T) {
+	if testing.Short() {
+		t.Skip("helm renders hit the network")
+	}
+	pk := fetchPack(t, "cube-engine-argocd")
+	r, err := pk.RenderFor(nil, config.GatewaySpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob := marshalObjects(t, r.Objects) // small local helper: yaml-marshal + join
+	if strings.Contains(blob, "imagePullPolicy: Always") {
+		t.Fatal("argocd engine pack renders imagePullPolicy: Always — airgap bundles would be bypassed")
+	}
+	if !strings.Contains(blob, "reposerver.oci.layer.media.types") {
+		t.Fatal("argocd engine pack lost the OCI media-types param — OCI pack delivery will fail")
+	}
+	if !strings.Contains(blob, "server.insecure") {
+		t.Fatal("argocd engine pack lost server.insecure — argocd-server will redirect-loop behind the gateway")
+	}
+	hasSecret := false
+	for _, o := range r.Objects {
+		if o.GetKind() == "Secret" && o.GetNamespace() == "argocd" {
+			hasSecret = true
+		}
+	}
+	if !hasSecret {
+		t.Fatal("argocd engine pack must carry the zot repo secret in ns argocd")
+	}
 }
 
 // TestEnvoyGatewayPackProxyService pins the F9-follow-up root cause found
