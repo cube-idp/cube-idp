@@ -305,7 +305,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/pack/fetchfi
   - `func Merge(base, patch map[string]any) (map[string]any, error)` — RFC 7386, inputs untouched, never returns nil map.
   - `func NormalizeIntegral(v any) any` — post-JSON-round-trip repair for Helm consumers: `float64` with an integral value in int range → `int`; recurses maps/slices.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/refval/refval_test.go
@@ -381,12 +381,12 @@ func TestNormalizeIntegral(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/refval/ -v`
 Expected: FAIL — package does not exist / undefined symbols
 
-- [ ] **Step 3: Implement `refval`**
+- [x] **Step 3: Implement `refval`**
 
 ```go
 // internal/refval/refval.go
@@ -496,12 +496,12 @@ func NormalizeIntegral(v any) any {
 
 Note the test asserts `Merge` output pre-normalization (floats) — normalization is a separate, explicit step for the Helm path only.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go test ./internal/refval/ -v -count=1`
 Expected: PASS (5 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/refval/
@@ -2110,8 +2110,105 @@ HANDOFF:
   ```
 
 ### T2 — internal/refval resolver [Task 2]
-STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T19:27:20Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+COMMITS:
+- `ee19943` docs: rv plan — claim T2
+- `7edbcb6` feat(refval): shared one-YAML ref resolver — Resolve/Merge/NormalizeIntegral (RV1)
+- `<this>` docs: rv plan — T2 complete
+
+FINDINGS:
+1. Amendment 4 applied to the package doc comment: the consumer list is
+   `cluster.providerConfigRef (compose), packs[].valuesRef, and remote -f`
+   (no `engine.tuningRef`) and the wrap-code list reads
+   `(CUBE-1005 / CUBE-4021 / CUBE-0015)`. The plan body at Task 2 Step 3 had
+   already been rewritten to the amended text, so the file was written
+   verbatim from the plan — no further correction needed.
+2. No anchor drift for this task: Task 2 creates two NEW files only
+   (`internal/refval/refval.go`, `internal/refval/refval_test.go`) and
+   touches nothing p7 moved. `internal/refval/` did not exist beforehand
+   (`ls internal/refval` → `No such file or directory`).
+3. T1's live signature verified before implementing:
+   `internal/pack/fetchfile.go:24` is
+   `func FetchFile(ctx context.Context, ref, cacheDir string) ([]byte, string, error)`
+   — matches the plan's Consumes contract exactly.
+4. `go.mod` gains nothing: both new imports are already DIRECT requirements —
+   `github.com/evanphx/json-patch/v5 v5.9.11` (go.mod:52, direct block) and
+   `sigs.k8s.io/yaml v1.6.0` (go.mod:31). `go.mod`/`go.sum` are unmodified by
+   this task (`git status --short` showed only `?? internal/refval/`).
+5. `NormalizeIntegral`'s doc comment retains the "NOT for engine tuning"
+   sentence exactly as the plan specifies. It is a statement about the
+   function's applicability, not a `tuningRef` implementation, so Amendment 4
+   does not touch it. `refval.Merge` is currently a verbatim copy of
+   `compose.Merge`, not yet a delegation — the compose migration is T3, as
+   planned; both exist side by side for one commit.
+6. Diag-code renumber rule: NOT applicable to T2 (allocates no codes; refval
+   deliberately passes pack-layer diag codes through unwrapped).
+7. Machine gotcha (T1 finding 4) reconfirmed: commits required
+   `git -c user.name="Rafal P" -c user.email="rafal@pieniazek.nl"`. Nothing
+   was written to any git config file.
+
+BLOCKERS: none
+
+HANDOFF:
+- `internal/refval` is live with the exact Task 2 "Interfaces" contract:
+  - `func Resolve(ctx context.Context, ref, cacheDir string) (map[string]any, string, error)`
+    — `ref == ""` → `(empty non-nil map, "", nil)`; non-mapping YAML → error;
+    empty file (JSON `null`) → empty non-nil map; pack-layer diag codes pass
+    through UNWRAPPED (each consumer adds its own domain code).
+  - `func Merge(base, patch map[string]any) (map[string]any, error)` — RFC 7386
+    via `jsonpatch.MergePatch`, inputs untouched (verified by the test), never
+    returns a nil map.
+  - `func NormalizeIntegral(v any) any` — float64 with integral value in
+    [MinInt32, MaxInt32] → `int`; recurses `map[string]any` and `[]any`
+    IN PLACE (it mutates and returns the same container — callers that must
+    preserve the original must copy first).
+- Pin forms reaching callers are T1's verbatim: `oci:<digest>`, `git+<sha>`,
+  `dir:<h1:…>`, `file:<sha256-hex>`.
+- Numbers are float64 after `Resolve`/`Merge` (sigs.k8s.io/yaml JSON typing);
+  normalization is a SEPARATE explicit step, Helm path only (T5).
+- T3 can now rewrite `compose.Resolve`/`Merge`/`Compose` as `refval` wrappers;
+  `internal/cluster/compose/compose.go` still holds its own
+  `encoding/json`/`jsonpatch`/`sigyaml`/`pack` imports and its own
+  `CUBE-1005` (`diag.CodeProviderConfigRefFetch`) wrapping, which T3 must
+  preserve while delegating.
+- Evidence — Step 2 failed exactly as the plan's Expected ("package does not
+  exist / undefined symbols"):
+  ```
+  # github.com/cube-idp/cube-idp/internal/refval [.../internal/refval.test]
+  internal/refval/refval_test.go:21:17: undefined: Resolve
+  internal/refval/refval_test.go:51:14: undefined: Merge
+  internal/refval/refval_test.go:66:9: undefined: NormalizeIntegral
+  FAIL	github.com/cube-idp/cube-idp/internal/refval [build failed]
+  ```
+- Evidence — Step 4, `go test ./internal/refval/ -v -count=1` (5 tests, PASS):
+  ```
+  --- PASS: TestResolveEmptyRef (0.00s)
+  --- PASS: TestResolveLocalFile (0.00s)
+  --- PASS: TestResolveRejectsNonMapping (0.00s)
+  --- PASS: TestMergeNullDeletesAndArraysReplace (0.00s)
+  --- PASS: TestNormalizeIntegral (0.00s)
+  ok  	github.com/cube-idp/cube-idp/internal/refval	1.390s
+  ```
+- Evidence — full gate `go build ./... && go vet ./... && go test ./... -count=1`:
+  `BUILD OK`, `VET OK`, 32 `ok` packages, ZERO FAIL lines. Tail:
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	17.969s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/compose	5.523s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	14.459s
+  ok  	github.com/cube-idp/cube-idp/internal/refval	11.594s
+  ok  	github.com/cube-idp/cube-idp/internal/up	8.901s
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	8.747s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	10.070s
+  ```
+- Evidence — F1 CLI freeze, `go test ./cmd/ -run TestCommandTreeGolden` with
+  NO `-update` (tree clean afterwards: only `?? internal/refval/`):
+  ```
+  === RUN   TestCommandTreeGolden
+  --- PASS: TestCommandTreeGolden (0.00s)
+  ok  	github.com/cube-idp/cube-idp/cmd	1.237s
+  ```
 
 ### T3 — compose migration + providerConfig pin [Task 3]
 STATUS: UNCLAIMED
