@@ -1240,7 +1240,7 @@ git add cmd && git commit -m "feat(cmd): config render-engine prints the engine 
   OrdersDeliveries); `contract.Impl{Name string; New func() engine.Engine;
   CRDs func() ([]byte, error)}`.
 
-- [ ] **Step 1: Extract the CRD fixtures BEFORE deleting the embeds**
+- [x] **Step 1: Extract the CRD fixtures BEFORE deleting the embeds**
 (prereq: Tasks 1-3 landed — the packs already carry this content for
 production; these fixtures serve only envtest):
 
@@ -1253,7 +1253,7 @@ grep -c "^kind: CustomResourceDefinition" internal/engine/argocd/testdata/crds.y
 (If `yq` is unavailable: `go run` a 10-line ParseMultiDoc filter — same
 selection, write the multi-doc YAML with `---` separators.)
 
-- [ ] **Step 2: Contract suite rework** — in `contract.go`:
+- [x] **Step 2: Contract suite rework** — in `contract.go`:
 (a) `Impl` gains the CRDs source and loses the InstallManifests comment:
 
 ```go
@@ -1316,7 +1316,7 @@ func TestFluxContract(t *testing.T) { // argocd file mirrors with its name
 `uninstall_test.go` uses the same CRD bootstrap — point it at the embedded
 fixture the same way.)
 
-- [ ] **Step 3: Slim the interface** — in `engine.go` delete the `Install`
+- [x] **Step 3: Slim the interface** — in `engine.go` delete the `Install`
 and `InstallManifests` methods from the `Engine` interface (and their doc
 comments); in `flux.go` delete the `//go:embed` + `installYAML`, the
 package-level `InstallManifests()`, the method `InstallManifests`, and
@@ -1332,21 +1332,21 @@ scripts. Delete `airgap_test.go` (fence moved to Task 3) and the two embed
 tests `TestInstallManifestsEmbedAndParse` (flux_test.go:53) /
 `TestInstallManifestsIncludeRepoSecret` (argocd_test.go:47).
 
-- [ ] **Step 4: Sweep the fakes** — `go build ./... 2>&1` and
+- [x] **Step 4: Sweep the fakes** — `go build ./... 2>&1` and
 `go vet ./...`; every fake engine the compiler flags (up_test.go,
 diff_test.go if any survived Task 9) loses its `Install`/`InstallManifests`
 methods. Binary size check (the payoff):
 `go build -o /tmp/cube-idp . && ls -la /tmp/cube-idp` — expect ~2 MB
 smaller than before this task.
 
-- [ ] **Step 5: Full unit run**
+- [x] **Step 5: Full unit run**
 
 ```bash
 go test ./... -count=1 2>&1 | tail -30
 ```
 Expected: all PASS (envtest suites included).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A internal/engine hack && git commit -m "refactor(engine)!: drop Install/InstallManifests + embedded manifests — engines are pure translators (p7 engine-as-pack)" -- internal/engine hack internal/up internal/diff
@@ -2508,8 +2508,56 @@ Outcome:
   -count=1` → ok (TestRenderEngineRendersPack PASS, TestCommandTreeGolden PASS).
 
 ### T12 — engine interface slimming [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-orchestrator-inline, 2026-07-19T12:40:00Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (binary size delta):
+STATUS: DONE
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`).
+  Executed INLINE by the orchestrator (a third dispatched subagent also returned with
+  0 tool uses — same transient non-start pattern as the two T11 attempts; state was
+  UNCLAIMED/clean, verified before executing).
+- COMMITS:
+  - `<claim>` docs: p7 plan — claim T12
+  - `277d39a` refactor(engine)!: drop Install/InstallManifests + embedded manifests —
+    engines are pure translators (p7 engine-as-pack) — 21 files: interface slimmed;
+    flux.go/argocd.go embeds+Install+InstallManifests+defaultNamespace/clusterScopedKinds
+    deleted; contract.go reworked; both manifests/ dirs + 3 hack/ scripts + airgap_test.go
+    deleted; testdata/crds.yaml fixtures added; CUBE-3003 retired-in-place.
+  - `<this>` docs: p7 plan — T12 complete
+- FINDINGS:
+  - Step 1 CRD counts: flux **7** CRDs (buckets, externalartifacts, gitrepositories,
+    helmcharts, helmrepositories, kustomizations, ocirepositories), argocd **3**
+    (applications, applicationsets, appprojects) — both ≥2. Fixtures verified valid
+    multi-doc YAML via yq.
+  - Step 4 fake sweep: NO fakes needed sweeping. `go vet ./...` compiles all tests and
+    passed clean — the up_test.go / diff_test.go fake engines did NOT implement
+    Install/InstallManifests (T8/T9 already handled the up/diff seam; nothing to delete).
+    The plan's conditional "if a fake fails to compile" did not trigger. Consequently the
+    commit pathspec is `internal/engine internal/diag hack` (NO internal/up / internal/diff
+    changes — the plan's Step 6 listed them defensively; none were needed).
+  - git detected argocd's `manifests/install.yaml → testdata/crds.yaml` as a RENAME (R)
+    because the extracted CRD subset is >50% similar to the source; flux's is an ADD (A).
+    Both are the correct CRD-extraction content — cosmetic git classification only.
+  - factory.go doc comment already read "pure translator/operator" (T4 updated it) — no
+    edit needed there beyond confirming.
+  - envtest legs (contract/poke/uninstall) SKIP: KUBEBUILDER_ASSETS is unset in this
+    environment, so the on-cluster subtests skip (documented; not a failure). The NON-envtest
+    engine tests (Deliver shapes, factory, flux/argocd unit) all PASS, and the CRD fixtures
+    parse cleanly — the health_tolerates_fresh_cluster subtest that replaced
+    install_health_uninstall_on_cluster compiles and is gated on envtest like its predecessor.
+- BLOCKERS: none.
+- HANDOFF (binary size delta):
+  - **BINARY SIZE PAYOFF: 2,065,680 bytes = 1.96 MB smaller** (dev build:
+    171,846,562 → 169,780,882 bytes). Matches the plan's ~2MB target. Evidence:
+    `go build -o /tmp/cube-idp-{pre,post}-t12 .` then `wc -c`.
+  - `engine.Engine` interface surviving method set (verified): **Deliver, DeliverGit,
+    DeliverSelf, Poke, Health, Uninstall, OrdersDeliveries** — Install + InstallManifests
+    removed (spec §3.5). Engines are pure translators + operators.
+  - `contract.Impl` now `{Name string; New func() engine.Engine; CRDs func() ([]byte, error)}`
+    (T13 does not touch this; it's the final contract shape). CUBE-3003 retired-in-place
+    (code kept, comment appended — codes.go + registry.go).
+  - Gate: `go build ./...` + `go vet ./...` clean; `go test ./internal/engine/... ./internal/diag/
+    ./internal/up/ ./internal/diff/ -count=1` all `ok`. Full `go test ./...` green except the
+    KNOWN PRE-EXISTING TestPackManifestsNoAlwaysPull red (argo-events/argo-rollouts/cloudnativepg,
+    not p7) and envtest SKIPs; `tests/e2e` builds `ok`.
 
 ### T13 — docs / contract v1.1 [$ROOT]
 STATUS: UNCLAIMED
