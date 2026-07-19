@@ -624,7 +624,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/cluster/
 **Interfaces:**
 - Produces: `config.PackRef.ValuesRef string` — `yaml:"valuesRef,omitempty" json:"valuesRef,omitempty"`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestLoadValuesRef(t *testing.T) {
@@ -664,12 +664,12 @@ spec:
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/config/ -run TestLoadValuesRef -v`
 Expected: FAIL — `c.Spec.Packs[0].ValuesRef undefined` (compile), then after types-only fix, CUE rejection `valuesRef: field not allowed`
 
-- [ ] **Step 3: Add the fields**
+- [x] **Step 3: Add the fields**
 
 `internal/config/types.go` — inside `PackRef`, after `Ref`:
 
@@ -690,12 +690,12 @@ line ~41; re-check before editing), add `valuesRef?: string & !=""` after `ref`:
         packs?: [...{ref: string & !="", valuesRef?: string & !="", values?: {...}, extraManifests?: string & !="", delivery?: "oci" | "repo", dependsOn?: [...string & !=""]}]
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go test ./internal/config/ -count=1`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/config/types.go internal/config/schema.cue internal/config/load_test.go
@@ -2342,8 +2342,120 @@ HANDOFF:
   ```
 
 ### T4 — config surface valuesRef ONLY (tuningRef DROPPED, Amendment 4) [Task 4]
-STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T19:40:10Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+COMMITS:
+- `f9a7441` docs: rv plan — claim T4
+- `acd674c` feat(config): packs[].valuesRef field (RV2)
+- `<this>` docs: rv plan — T4 complete
+
+FINDINGS:
+1. Amendment 4 honoured verbatim: `EngineSpec` was NOT touched, no
+   `tuningRef?` was added to `schema.cue`, the test is `TestLoadValuesRef`
+   (asserting `valuesRef` only), and the commit message is
+   `feat(config): packs[].valuesRef field (RV2)`. Confirmed against the real
+   post-p7 code that `engine.tuning` is gone: `grep -n "engine" internal/config/schema.cue`
+   shows the engine block carries only `ref`/`values`/`selfManage` comments —
+   no `tuning` key exists to anchor against.
+2. NO anchor drift for this task despite the p7 merge. Both anchors verified
+   against the real code before editing and both matched the plan exactly:
+   - `internal/config/types.go:186` `type PackRef struct` with
+     `Ref string \`yaml:"ref" json:"ref"\`` as its FIRST field — the plan's
+     "inside `PackRef`, after `Ref`" anchor is valid, applied there.
+   - `internal/config/schema.cue:41` read exactly
+     `packs?: [...{ref: string & !="", values?: {...}, extraManifests?: string & !="", delivery?: "oci" | "repo", dependsOn?: [...string & !=""]}]`
+     — the plan's sketch minus `valuesRef?`. `valuesRef?: string & !=""` was
+     inserted after `ref`, producing the plan's Step 3 line verbatim.
+     No correction to any plan text was required.
+3. Test placement: `internal/config/load_test.go` needed NO new imports —
+   `os`, `path/filepath`, `strings`, `testing` are already in its import
+   block (lines 3-14), matching the file's existing temp-file conventions
+   (`filepath.Join(t.TempDir(), "cube.yaml")` + `os.WriteFile` + `Load`).
+   The test was appended at end of file (line 782+), the file's convention
+   for the most recently added round-trip tests (the neighbouring
+   `selfManage` omitempty test uses the identical
+   `SaveValidated` → `os.ReadFile` → `strings.Contains` shape).
+4. Step 2's Expected was observed in BOTH of its stated phases, in order:
+   first the compile failure, then — after the types-only change — the CUE
+   rejection. See the two evidence blocks below.
+5. omitempty discipline (Global Constraints) verified by the round-trip half
+   of the test, not merely by the struct tag: `SaveValidated` marshals with
+   `sigs.k8s.io/yaml` and re-`Load`s the temp file through the full CUE
+   pipeline, so an empty `ValuesRef` emitting `valuesRef: ""` would fail
+   `schema.cue`'s `string & !=""` inside `SaveValidated` itself before the
+   `strings.Contains` assertion ever ran. It passes — the key is absent.
+6. Diag-code renumber rule: NOT applicable to T4 (allocates no codes).
+   Amendment 5's fixed numbers (`CUBE-0014`/`CUBE-0015`, T8) are untouched.
+7. `go.mod`/`go.sum` unmodified (no new module; the task adds one struct
+   field, one CUE field, one test).
+8. Machine gotcha (T1 finding 4 / T2 finding 7 / T3 finding 9) reconfirmed a
+   FOURTH time: both commits required
+   `git -c user.name="Rafal P" -c user.email="rafal@pieniazek.nl"`. Nothing
+   was written to any git config file.
+
+BLOCKERS: none
+
+HANDOFF:
+- `config.PackRef.ValuesRef string` is live with tags
+  `yaml:"valuesRef,omitempty" json:"valuesRef,omitempty"` — the exact Task 4
+  "Interfaces" contract. It sits between `Ref` and `Values` in the struct.
+- `schema.cue` now accepts `valuesRef?: string & !=""` on each `packs[]`
+  entry. An explicit empty string is REJECTED by CUE (`CUBE-0002`), so
+  consumers may treat `ValuesRef != ""` as "user set a ref" with no
+  empty-string ambiguity.
+- NOTHING reads the field yet — it is config surface only. T5
+  (`pack.EffectiveValues`/`RenderResolved` + `CUBE-4021`) is the first
+  consumer; T6 wires it into `up`/`diff`, records `valuesPin` in `cube.lock`,
+  and adds the `CUBE-7007` bundle-rails clause for it. Until T6 lands, a user
+  who sets `valuesRef` gets a CUE-valid, silently-ignored field — expected
+  mid-plan state, closed by T5+T6.
+- `EngineSpec` is untouched by this task (Amendment 4). Anyone looking for
+  remote engine values wants the post-p7 `engine.valuesRef` plan, not this one.
+- Evidence — Step 2 phase A, `go test ./internal/config/ -run TestLoadValuesRef -v`
+  (compile failure, exactly the plan's Expected):
+  ```
+  # github.com/cube-idp/cube-idp/internal/config [.../internal/config.test]
+  internal/config/load_test.go:804:28: c.Spec.Packs[0].ValuesRef undefined (type PackRef has no field or method ValuesRef)
+  internal/config/load_test.go:808:18: c.Spec.Packs[0].ValuesRef undefined (type PackRef has no field or method ValuesRef)
+  FAIL	github.com/cube-idp/cube-idp/internal/config [build failed]
+  ```
+- Evidence — Step 2 phase B, after the types-only fix, before the CUE edit
+  (the plan's "then after types-only fix, CUE rejection `valuesRef: field not
+  allowed`"):
+  ```
+  --- FAIL: TestLoadValuesRef (0.00s)
+      load_test.go:802: CUBE-0002: /var/folders/.../cube.yaml failed validation: #Cube.spec.packs.0.valuesRef: field not allowed
+  FAIL	github.com/cube-idp/cube-idp/internal/config	1.130s
+  ```
+- Evidence — Step 4, `go test ./internal/config/ -count=1` and the new test
+  verbose:
+  ```
+  ok  	github.com/cube-idp/cube-idp/internal/config	0.830s
+  === RUN   TestLoadValuesRef
+  --- PASS: TestLoadValuesRef (0.00s)
+  ok  	github.com/cube-idp/cube-idp/internal/config	0.407s
+  ```
+- Evidence — full gate `go build ./... && go vet ./... && go test ./... -count=1`:
+  `BUILD OK`, `VET OK`, 32 `ok` packages, ZERO `FAIL` lines. Tail:
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	13.352s
+  ok  	github.com/cube-idp/cube-idp/internal/config	7.485s
+  ok  	github.com/cube-idp/cube-idp/internal/lock	11.287s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	15.990s
+  ok  	github.com/cube-idp/cube-idp/internal/refval	12.568s
+  ok  	github.com/cube-idp/cube-idp/internal/up	11.247s
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	10.853s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	12.541s
+  ```
+- Evidence — F1 CLI freeze, `go test ./cmd/ -run TestCommandTreeGolden -v` with
+  NO `-update` (no flags changed by this task; `git status --porcelain`
+  afterwards listed only the three intended source files, no golden rewritten):
+  ```
+  === RUN   TestCommandTreeGolden
+  --- PASS: TestCommandTreeGolden (0.00s)
+  ok  	github.com/cube-idp/cube-idp/cmd	1.215s
+  ```
 
 ### T5 — pack.EffectiveValues + RenderResolved + CUBE-4021 [Task 5]
 STATUS: UNCLAIMED
