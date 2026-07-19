@@ -1364,7 +1364,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/engine/facto
   - `SaveValidated` fails `CUBE-0012` on remote-origin cubes.
   - `diag.CodeConfigRemoteReadOnly Code = "CUBE-0012"`
 
-- [ ] **Step 1: Add the diag code + registry entry**
+- [x] **Step 1: Add the diag code + registry entry**
 
 `internal/diag/codes.go`, 0xxx block after `CodeProviderConfigRemoved`:
 
@@ -1383,7 +1383,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/engine/facto
 
 Run: `go test ./internal/diag/ -count=1` — Expected: PASS
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```go
 // internal/config/load_test.go (append)
@@ -1423,12 +1423,12 @@ func TestSaveValidatedRefusesRemoteOrigin(t *testing.T) {
 
 (Again: use the repo's real diag inspection helper.)
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `go test ./internal/config/ -run 'TestLoadBytes|TestSaveValidatedRefuses' -v`
 Expected: FAIL — `undefined: LoadBytes` / `c.MarkRemoteOrigin undefined`
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 `internal/config/load.go` — mechanical split. `Load` becomes:
 
@@ -1497,12 +1497,12 @@ func SaveValidated(file string, cube *Cube) error {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `go test ./internal/config/ ./internal/diag/ -count=1`
 Expected: PASS (including all pre-existing Load tests — the split must be behavior-neutral)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/config/load.go internal/config/types.go internal/config/load_test.go internal/diag/codes.go internal/diag/registry.go
@@ -2986,8 +2986,158 @@ STATUS: GATED_SKIP (engine-as-pack RATIFIED 017057a; replacement engine.valuesRe
 Outcome: n/a
 
 ### T8 — config.LoadBytes + origin + SaveValidated guard [Task 8]
-STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T20:07:54Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF (numbers T9/T10/T12 must use). NUMBERS ARE FIXED BY AMENDMENT 5: `CUBE-0014` = `CodeConfigRemoteReadOnly`, `CUBE-0015` = `CodeConfigRemoteFetch` — do not re-derive:
+
+COMMITS:
+- `489c67a` docs: rv plan — claim T8
+- `3346cba` feat(config): LoadBytes split + Cube origin + SaveValidated remote guard CUBE-0014 (RV4)
+- `<this>` docs: rv plan — T8 complete
+
+FINDINGS:
+1. **DIAG NUMBERS ACTUALLY USED (Amendment 5, applied verbatim — NOT
+   re-derived):** `CodeConfigRemoteReadOnly Code = "CUBE-0014"` and
+   `CodeConfigRemoteFetch Code = "CUBE-0015"`. Verified before allocating
+   that the 0xxx block's highest taken code was `CUBE-0013`
+   (`CodeEnginePackMismatch`, from p7):
+   ```
+   16:	CodeProviderConfigRemoved Code = "CUBE-0011"
+   17:	CodeEngineTuningRemoved   Code = "CUBE-0012"
+   18:	CodeEnginePackMismatch    Code = "CUBE-0013"
+   ```
+   The Task 8 body's Step-1 sketch still shows `CUBE-0012`/`CUBE-0013` —
+   Amendment 5 overrides it; only the CONSTANT NAMES were taken from the
+   body. The plan body was NOT rewritten (out of this task's file set);
+   this FINDINGS entry is the record.
+2. Anchor drift (expected, escape hatch used): the plan says to insert the
+   codes "after `CodeProviderConfigRemoved`". p7 had already appended
+   `CUBE-0012`/`CUBE-0013` there, so the two new constants were appended
+   after `CodeEnginePackMismatch` at the END of the 0xxx const block
+   (registry entries likewise after the `CodeEnginePackMismatch` line).
+   Same block, minimal correction.
+3. `diag.HasCode` does NOT exist in this repo (the plan's sketches warn
+   about this). `internal/config/load_test.go` already carries the repo
+   idiom as a local helper — `codeOf(t, err) diag.Code` built on
+   `errors.As(err, &de)` (load_test.go:16-23) — and the new test uses it.
+   No new helper invented.
+4. `internal/config/load.go` drift from p7: `Load` now carries p7's
+   `engine.tuning` migration guard (the `legacyTuning` probe →
+   `diag.CodeEngineTuningRemoved`). It moved into `LoadBytes` UNCHANGED
+   along with the rest of the pipeline — the split is purely `os.ReadFile`
+   staying in `Load`, everything from `var doc map[string]any` onward
+   moving to `LoadBytes`, with the three `fmt.Sprintf("…%s…", path)` error
+   labels below the read (`is not valid YAML`, two × `failed validation`)
+   re-pointed at `src`. p7's guard is untouched and still covered by the
+   pre-existing `TestLoad…TuningRemoved` test (load_test.go:387).
+5. Import direction respected: `internal/config` gained NO new imports at
+   all — not `pack`, not `refval`. The remote fetch stays T9's `cfgload`
+   job. `go build ./...` + `go vet ./...` green, no cycle.
+6. omitempty/round-trip discipline for origin is met by CONSTRUCTION, not
+   by a tag: `origin` is an UNEXPORTED field on `Cube`, which both
+   `sigs.k8s.io/yaml` and `gopkg.in/yaml.v3` skip entirely — so it cannot
+   emit a key at all (no `null`, no `""`) and cannot reach CUE
+   re-validation inside `SaveValidated`. An extra test
+   (`TestOriginNeverSerializes`) pins this: marshalling a
+   `MarkRemoteOrigin`-flagged cube is byte-identical to marshalling the
+   unflagged one.
+7. Two assertions were ADDED beyond the plan's test sketch (strictly
+   additive, same contract): (a) `LoadBytes` error labelling — a bad
+   document loaded with `src = "oci://example/cfg:1"` must carry that REF
+   in the message (proves `src` really replaced `path`); (b) the
+   `SaveValidated` guard runs FIRST — neither `cube.yaml` nor
+   `cube.yaml.tmp` exists after the refusal.
+8. `SaveValidated`'s internal re-validation call is `Load(tmp)` on a
+   freshly-marshalled temp file, so the reloaded cube has a ZERO origin —
+   the guard cannot recurse or self-trip. (T10 must keep this call as
+   `config.Load`, per the Task 10 file list.)
+
+BLOCKERS: none
+
+HANDOFF:
+- **The two numbers T9/T10/T12 consume verbatim:**
+  - `diag.CodeConfigRemoteReadOnly` = **`CUBE-0014`** — SaveValidated on a
+    remote-origin cube.
+  - `diag.CodeConfigRemoteFetch` = **`CUBE-0015`** — remote `-f` fetch /
+    single-YAML failure. **Already declared AND registered by T8** (the
+    plan's "0013 lands here too — Task 9 uses it"): T9 must only USE it,
+    NOT re-add the constant or the registry entry.
+- New exported API in `internal/config` (all live on this branch):
+  - `func LoadBytes(raw []byte, src string) (*Cube, error)` — the full
+    pipeline; `src` labels errors (path for `Load`, ref for `cfgload`).
+    `Load(path)` is now exactly `os.ReadFile` + `LoadBytes(raw, path)`.
+  - `type Origin struct { Ref, Pin string; Remote bool }`
+  - `func (c *Cube) Origin() Origin` — zero value = local.
+  - `func (c *Cube) MarkRemoteOrigin(ref, pin string)`
+  - `SaveValidated` fails `CUBE-0014` on remote origin, before any write.
+- T9's `cfgload.Load` shape is unchanged from the plan except the code
+  number: `diag.Wrap(err, diag.CodeConfigRemoteFetch, …)` → CUBE-0015.
+- T10: `cube.Origin().Remote` is the branch predicate for the CWD lock
+  path and the `using remote config <ref> (<pin>)` info line; `Origin().Pin`
+  carries the pin `pack.FetchFile` returned.
+- Evidence — Step 1, `go test ./internal/diag/ -count=1` after adding both
+  constants AND both registry entries (`TestRegistryCoversEveryDeclaredCode`
+  enforces both directions):
+  ```
+  ok  	github.com/cube-idp/cube-idp/internal/diag	0.814s
+  ```
+- Evidence — Step 3, the new tests failed FIRST exactly as the plan's
+  Expected (`undefined: LoadBytes`):
+  ```
+  # github.com/cube-idp/cube-idp/internal/config [github.com/cube-idp/cube-idp/internal/config.test]
+  internal/config/load_test.go:832:20: undefined: LoadBytes
+  internal/config/load_test.go:840:11: undefined: LoadBytes
+  internal/config/load_test.go:850:12: undefined: LoadBytes
+  internal/config/load_test.go:879:16: undefined: LoadBytes
+  internal/config/load_test.go:883:17: undefined: LoadBytes
+  FAIL	github.com/cube-idp/cube-idp/internal/config [build failed]
+  ```
+- Evidence — Step 5, the three new tests after implementing:
+  ```
+  === RUN   TestLoadBytesEqualsLoad
+  --- PASS: TestLoadBytesEqualsLoad (0.00s)
+  === RUN   TestSaveValidatedRefusesRemoteOrigin
+  --- PASS: TestSaveValidatedRefusesRemoteOrigin (0.00s)
+  === RUN   TestOriginNeverSerializes
+  --- PASS: TestOriginNeverSerializes (0.00s)
+  PASS
+  ok  	github.com/cube-idp/cube-idp/internal/config	1.029s
+  ```
+- Evidence — Step 5 package-level, every pre-existing `Load` test still
+  passing (the split is behavior-neutral):
+  ```
+  ok  	github.com/cube-idp/cube-idp/internal/config	0.702s
+  ok  	github.com/cube-idp/cube-idp/internal/diag	0.355s
+  ```
+- Evidence — full gate `go build ./... && go vet ./... && go test ./...
+  -count=1`: `BUILD OK`, `VET OK`, 32 `ok` packages,
+  `go test ./... -count=1 | grep -c "^FAIL"` → `0`. Tail:
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	12.270s
+  ok  	github.com/cube-idp/cube-idp/internal/config	7.887s
+  ok  	github.com/cube-idp/cube-idp/internal/diag	8.084s
+  ok  	github.com/cube-idp/cube-idp/internal/diff	11.301s
+  ok  	github.com/cube-idp/cube-idp/internal/lock	10.317s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	15.142s
+  ok  	github.com/cube-idp/cube-idp/internal/refval	11.611s
+  ok  	github.com/cube-idp/cube-idp/internal/up	10.731s
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	11.205s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	9.725s
+  ```
+- Evidence — F1 CLI freeze, `go test ./cmd/ -run TestCommandTreeGolden -v
+  -count=1` with NO `-update` (this task changes no flags), and
+  `git status --short` immediately afterwards listing ONLY the five
+  intended files (no golden rewritten, no stray staged file):
+  ```
+  === RUN   TestCommandTreeGolden
+  --- PASS: TestCommandTreeGolden (0.00s)
+  ok  	github.com/cube-idp/cube-idp/cmd	1.213s
+
+   M internal/config/load.go
+   M internal/config/load_test.go
+   M internal/config/types.go
+   M internal/diag/codes.go
+   M internal/diag/registry.go
+  ```
 
 ### T9 — cfgload remote -f dispatch [Task 9]
 STATUS: UNCLAIMED
