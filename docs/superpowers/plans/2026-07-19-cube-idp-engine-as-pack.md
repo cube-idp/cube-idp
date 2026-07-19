@@ -1689,6 +1689,32 @@ Outcome:
   as directed; no re-discovery. The fence code is ready to go green the moment the flux
   pack renders namespaced objects — no fence change needed.
 
+**OWNER RESOLUTION (2026-07-19, orchestrator escalation) → new task T3a, render-path fix:**
+The orchestrator investigated the fix options with the owner. Findings (all verified):
+- fluxcd ships NO official install helm chart (only `flux install --export` manifests);
+  the sole chart is `fluxcd-community/flux2`, and **0 of 43 rendered objects carry
+  `metadata.namespace` at any version** — it is built for `helm install --namespace X`
+  (apply-time namespace). So "change the chart pin" has no valid target.
+- helm has **no client-only render mechanism** that stamps namespace: helm's namespace
+  defaulting lives in `KubeClient.Build`, which runs against a live cluster's REST mapper
+  and is skipped under `action.DryRunClient` (the mode cube-idp's render path uses,
+  helm.go:104, for hermetic offline renders). Verified empirically: both
+  `helm template --namespace` and `helm install --dry-run=client` emit `<NONE>`.
+- Contrast confirmed: traefik + argocd charts DO stamp `metadata.namespace` on their
+  namespaced objects (only cluster-scoped ClusterRole/CRD stay namespace-less, correctly),
+  which is why `TestStarterPacksRender` passes for them. flux2-community is the outlier.
+Owner decision: cube-idp is in control of the render, so the render path must honor its own
+`chart.yaml namespace:` field by stamping `ref.Namespace` onto rendered NAMESPACED objects
+that lack one (skipping cluster-scoped kinds via a static namespaced-kinds allowlist — the
+tree's established convention, promoted from `tests/packs_render_test.go:namespacedKinds`).
+Idempotent for well-behaved charts (traefik/argocd already stamp → no-op); fixes flux; hardens
+all chart packs. This is a $ROOT `internal/pack/helm.go` change (new task **T3a**, executed
+before T3 closes). The T3 fence is UNCHANGED — it stays the correct assertion. See T3a below.
+
+### T3a — render path stamps chart namespace onto namespace-less namespaced objects [$ROOT]
+STATUS: UNCLAIMED
+Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
 ### T4 — config surface (ref/values, CUBE-0012/0013) [$ROOT]
 STATUS: UNCLAIMED
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
