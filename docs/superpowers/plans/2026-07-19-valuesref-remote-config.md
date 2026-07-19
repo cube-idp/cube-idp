@@ -908,7 +908,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/pack/values.
 - Consumes: `pack.RenderResolved` (Task 5).
 - Produces: `lock.Entry.ValuesRef string` + `lock.Entry.ValuesPin string` (both omitempty). Both `up` and `diff` render EVERY pack through `RenderResolved` (which is a `RenderWith` pass-through when `ValuesRef == ""`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `internal/lock/lock_test.go` — append:
 
@@ -977,12 +977,12 @@ func TestDesiredStateValuesRef(t *testing.T) {
 
 (Adapt `testCube(t)` to whatever helper `TestDesiredStateMatchesUpAppliedSet` actually uses to build its cube+pack fixtures — read that test first and reuse its scaffolding verbatim; the assertion body above is the contract. If the fixture pack is chartless, point `Packs[0]` at the chart-bearing fixture the repo's render tests use, or add `chart.yaml` to the fixture; a chartless pack correctly fails CUBE-4016 here.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `go test ./internal/lock/ ./internal/diff/ -run 'TestLockEntryValuesFields|TestDesiredStateValuesRef' -v`
 Expected: FAIL — `e.ValuesRef undefined` (compile)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `internal/lock/lock.go` — add to `Entry` after `RenderedHash`:
 
@@ -1017,7 +1017,7 @@ and extend the `entries = append(entries, lock.Entry{…})` literal:
 
 `internal/diff/diff.go` `desiredState` — same two changes around lines 228-240: replace `p.RenderWith(pr.Values, pr.ExtraManifests, cube.Spec.Gateway)` with `pack.RenderResolved(ctx, p, pr, cube.Spec.Gateway, dir)` capturing `valuesPin`, and set `ValuesRef: pr.ValuesRef, ValuesPin: valuesPin` in its `lock.Entry` construction. Also update the D11 `customized` computation in `up.go` (~line 509): `customized := len(refs[i].Values) > 0 || refs[i].ValuesRef != "" || refs[i].ExtraManifests != ""` — a remotely-valued pack IS customized.
 
-- [ ] **Step 3b: Bundle-mode rails guard (`CUBE-7007`) — amendment 2**
+- [x] **Step 3b: Bundle-mode rails guard (`CUBE-7007`) — amendment 2**
 
 `up --bundle` (spec §4.1, Phase 3) promises "no fetch ever touches the network" by rewriting every PACK ref to a bundle-local dir — it knows nothing about `valuesRef`, so a bundled cube carrying one would silently reach for the network. Fail loudly before any cluster mutation (the `CUBE-7005` fail-fast precedent).
 
@@ -1081,12 +1081,12 @@ func TestBundleRailsCheckRejectsValuesRef(t *testing.T) {
 
 (Use the repo's real diag inspection helper, as in Task 5. Include `internal/diag/codes.go` + `registry.go` in this task's commit pathspec.)
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go build ./... && go test ./internal/lock/ ./internal/diff/ ./internal/up/ -count=1`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/lock/ internal/up/up.go internal/diff/
@@ -2714,8 +2714,272 @@ HANDOFF:
   ```
 
 ### T6 — up/diff wiring + lock valuesPin + bundle guard CUBE-7007 [Task 6 incl. Step 3b]
-STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T19:56:54Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS (actual diag number if renumbered) · BLOCKERS · HANDOFF:
+
+COMMITS:
+- `00591b3` docs: rv plan — claim T6
+- `cd2fd8f` feat(up,diff): render via RenderResolved — valuesRef wired, valuesPin in cube.lock (RV2)
+- `<this>` docs: rv plan — T6 complete
+
+FINDINGS:
+
+1. **ACTUAL DIAG NUMBER USED: `CUBE-7007` = `CodeBundleRemoteSource`** — the
+   planned number, NOT renumbered. Verified free pre-edit against the real
+   post-p7 catalog (`grep -n "CUBE-70" internal/diag/codes.go`): the 70xx
+   block ended at `CodeBundleImageLoadFail Code = "CUBE-7006"`. Both halves
+   landed per the Global Constraint — constant in `internal/diag/codes.go`
+   (70xx block, after `CodeBundleImageLoadFail`) AND `Desc` entry in
+   `internal/diag/registry.go` (70xx section, same position);
+   `go test ./internal/diag/ -count=1` → `ok` (registry coverage holds both
+   directions).
+
+2. **Anchor drift (p7 rewrite), `internal/up/up.go` — corrected, not blocked.**
+   The plan's "pass-1 loop, ~lines 356-383" and "~line 509" are stale. Real
+   post-p7 anchors located by structure and used:
+   - `pk.RenderWith(pref.Values, pref.ExtraManifests, cube.Spec.Gateway)` at
+     **line 378** (pass-1 fetch/render loop, inside the per-pack closure) →
+     replaced with
+     `pack.RenderResolved(ctx, pk, pref, cube.Spec.Gateway, dir)` capturing
+     `valuesPin`. The cache-dir variable at that call site is `dir` exactly as
+     the plan predicted.
+   - `entries = append(entries, lock.Entry{…})` at **line 386** → gained
+     `ValuesRef: pref.ValuesRef` + `ValuesPin: valuesPin`.
+   - the D11 `customized` expression at **line 538** (plan said ~509) →
+     `len(refs[i].Values) > 0 || refs[i].ValuesRef != "" || refs[i].ExtraManifests != ""`.
+   No new import needed (`internal/pack`, `internal/diag`, `fmt` already
+   imported), exactly as T5's HANDOFF predicted.
+
+3. **Anchor drift, `internal/diff/diff.go` — corrected.** The plan's
+   "`desiredState` pack loop, ~lines 228-240" is stale: post-p7 the loop sits
+   at **lines 228-247** (p7 inserted the `FetchRenderEngine` block above it).
+   `p.RenderWith(pr.Values, pr.ExtraManifests, cube.Spec.Gateway)` at line 237
+   → `pack.RenderResolved(ctx, p, pr, cube.Spec.Gateway, dir)`; the entry
+   append at line 245 gained `ValuesRef: pr.ValuesRef, ValuesPin: valuesPin`.
+   `dir` is `pack.DefaultCacheDir()` from line 191, already in scope.
+
+4. **Anchor drift, `internal/lock/lock.go` — corrected.** The plan's "Entry
+   struct, ~line 30" is stale: post-p7 `EngineLock` (which p7 widened with
+   `Ref/Name/Version/Resolved/RenderedHash/Images` + an `Entry()` projection)
+   occupies lines 27-42 and `Entry` now starts at **line 45**. The two new
+   fields went in after `RenderedHash` (line 49), before the `Images` comment
+   block, exactly as the plan's "add to `Entry` after `RenderedHash`" says.
+   Per Amendment 4, NO `TuningRef`/`TuningPin` was added to `EngineLock`.
+
+5. **Test correction — diff lock entries carry no `Ref` (plan sketch bug).**
+   The plan's `TestDesiredStateValuesRef` looks the entry up with
+   `entries[i].Ref == cube.Spec.Packs[0].Ref`, but `desiredState` constructs
+   `lock.Entry{Name: rendered.Name, RenderedHash: rh}` — `Ref` is deliberately
+   never set there (diff's entries exist only for content-drift comparison by
+   name). Minimal correction: the test looks the entry up **by rendered name**
+   (`e.Name == "vr-pack"`). `Ref` was NOT added to diff's entry construction —
+   that is a behavior change the plan does not specify.
+
+6. **Test correction — fixture.** `TestDesiredStateMatchesUpAppliedSet`'s cube
+   uses `../pack/testdata/demo-kustomize`, which is CHARTLESS: a `valuesRef` on
+   it correctly fails `CUBE-4016`, so it cannot carry this test (the plan's own
+   parenthetical anticipates this: "If the fixture pack is chartless, point
+   `Packs[0]` at the chart-bearing fixture … or add `chart.yaml`"). The only
+   chart-bearing fixtures are `demo-helm` (pulls a chart from ghcr.io —
+   network) and `gw-sub-pack` (whose `chart:` path is relative to
+   `internal/pack`, unusable from `internal/diff`). So a new network-free
+   helper `writeValuesChartPack(t)` materializes a local helm chart + pack in
+   `t.TempDir()` (absolute `chart:` path), mirroring the file's existing
+   `writeEngineFixture(t)` convention. Everything else in the cube fixture
+   (engine fixture, gateway `../pack/testdata/demo`, `fakeEngine{}`) is reused
+   verbatim from `TestDesiredStateMatchesUpAppliedSet`.
+
+7. **Test strengthening within the plan's stated contract.** The plan's test
+   docstring promises "fetched base + inline override visible in the rendered
+   objects, pin recorded in the lock entries", but `desiredState`'s `desired`
+   set contains the ENGINE's delivery objects (fakeEngine's OCIRepository/
+   Kustomization), never the pack's rendered manifests — so rendered content is
+   not observable there. Instead the test runs `desiredState` twice on the same
+   cube (with and without `valuesRef`) and asserts the pack's `RenderedHash`
+   DIFFERS, which is the observable proof the fetched base reached the render;
+   it also asserts the ref-less run leaves `ValuesRef`/`ValuesPin` empty. No
+   new assertion outside the test the plan specifies.
+
+8. **`bundleRailsCheck` call site — merged into the existing bundle block.**
+   The plan's sketch adds a fresh `if opts.Bundle != "" { … }`; the real
+   `Run` already has one (`internal/up/up.go:110-120`) that opens + verifies
+   the bundle. The check was placed INSIDE it, immediately after the
+   `con.Step("bundle", "bundle verified …")` line — i.e. exactly the plan's
+   "right after the bundle is opened/verified and before any cluster mutation",
+   and still ahead of the `CUBE-7005` provider check (line ~156), the CA, and
+   `prov.Ensure`. A duplicate `if` would have been dead structure. The helper
+   itself lives in `internal/up/up.go` (the plan's stated file), just above
+   `resolveAndDeliverPacks`.
+
+9. **Amendment 2 + Amendment 4 honoured — valuesRef clause ONLY.**
+   `bundleRailsCheck` has exactly one clause (`packs[].valuesRef`). No
+   `tuningRef` clause (Amendment 4 dropped `engine.tuningRef`;
+   `config.EngineSpec` has no `TuningRef` field — verified: `grep -n
+   "TuningRef" internal/config/types.go` → no match), and no remote-`-f`
+   origin clause (that is T10's Step 2b). `CUBE-3012` remains unallocated.
+
+10. **Observation for T10/T12 (no change made):** `resolveBundleRefs`
+    (`internal/up/bundle.go:39`) rebuilds each `config.PackRef` field-by-field
+    (`Ref/Values/ExtraManifests/Delivery`) and therefore DROPS `ValuesRef` in
+    bundle mode. That is now unreachable — `bundleRailsCheck` rejects any
+    `valuesRef` before `resolveBundleRefs` runs — so it is correct as-is and
+    was deliberately left untouched (the plan specifies no change there).
+
+11. **T5's HANDOFF held exactly.** `pack.RenderResolved` is a pure pass-through
+    when `ValuesRef == ""` (every pack, gateway included, is routed through it
+    unconditionally — no call-site branching); its second return feeds
+    `lock.Entry.ValuesPin`; values arrive already int-normalized (no second
+    normalization anywhere in `up`/`diff`); the GT15/`CUBE-4016` guard still
+    fires before any fetch. `internal/refval` was NOT added to `up`/`diff`.
+
+12. **`go.mod`/`go.sum` unmodified** — no new module in any form; every symbol
+    used (`pack`, `lock`, `diag`, `fmt`) was already imported in the touched
+    files.
+
+13. **Machine gotcha reconfirmed a SIXTH time** (T1 f4 / T2 f7 / T3 f9 / T4 f8
+    / T5 f9): this checkout has NO git identity, so both commits were made as
+    `git -c user.name="Rafal P" -c user.email="rafal@pieniazek.nl" commit …`.
+    Nothing was written to any git config file. Commits used explicit
+    pathspecs; `git status --short` before the code commit listed ONLY the
+    eight intended files.
+
+14. **Commit pathspec widened by two files vs. the plan's Step 5 list.** Step 5
+    lists `internal/lock/ internal/up/up.go internal/diff/`; the actual
+    pathspec adds `internal/up/up_test.go` (Step 3b's own test — the package
+    does not build without it) and `internal/diag/codes.go` +
+    `internal/diag/registry.go`, which Step 3b explicitly instructs to include
+    in this task's commit. No other file touched;
+    `docs/superpowers/plans/…-agent-prompt.md` never staged.
+
+BLOCKERS: none
+
+HANDOFF:
+
+- **`lock.Entry` now carries `ValuesRef` + `ValuesPin`** (both
+  `yaml:",omitempty" json:",omitempty"`, placed after `RenderedHash`). Ref-less
+  locks are byte-identical to pre-RV2 output. `EngineLock` is UNCHANGED
+  (Amendment 4 — no `TuningRef`/`TuningPin`); T11's `ClusterLock` section is
+  still unwritten.
+- **`up.Run` pass-1 renders EVERY pack (gateway included) through
+  `pack.RenderResolved(ctx, pk, pref, cube.Spec.Gateway, dir)`** and records
+  `ValuesRef: pref.ValuesRef` (unconditionally; omitempty drops it) +
+  `ValuesPin: valuesPin` in its `lock.Entry`. `internal/up/up.go` line numbers
+  after this task: RenderResolved call ~line 382, entry literal ~line 390,
+  `bundleRailsCheck` definition ~line 605, its call site ~line 120.
+- **`diff.desiredState` mirrors it**: same `RenderResolved` call, and its
+  `lock.Entry{Name, RenderedHash}` gained `ValuesRef`/`ValuesPin`. Its entries
+  still carry NO `Ref` — anything downstream that wants to key diff entries by
+  ref must use `Name` (T11 take note).
+- **D11 `customized` now includes `ValuesRef != ""`** — a remotely-valued pack
+  shows CUSTOMIZED in `pack ls`/the Pack record. No golden or column change
+  (DEP4 output surface untouched; `TestCommandTreeGolden` passes without
+  `-update`).
+- **`bundleRailsCheck(cube *config.Cube) error`** is live in `internal/up`
+  (unexported, pure, no cluster/bundle needed to call). It currently has ONE
+  clause — `packs[].valuesRef` → `CUBE-7007` /
+  `diag.CodeBundleRemoteSource`. **T10's Step 2b extends this same helper**
+  with the remote-`-f` origin clause: add a clause to the existing function,
+  do not create a second one; the call site (inside `Run`'s
+  `if opts.Bundle != ""` block, right after `con.Step("bundle", "bundle
+  verified …")`) already covers it. `CodeBundleRemoteSource`'s summary text
+  deliberately reads "values/tuning/config source" so the later clause needs
+  no registry edit.
+- **`CUBE-7007` is now TAKEN.** The 70xx block's next free number is
+  `CUBE-7008`. `CUBE-0014`/`CUBE-0015` (T8, Amendment 5) and `CUBE-4021` (T5)
+  are unaffected; `CUBE-3012` remains unallocated (T7 GATED_SKIP).
+- End-to-end status: `packs[].valuesRef` is now LIVE — config → fetch/merge →
+  render → `cube.lock` — for both `up` and `diff`. What is still missing after
+  T6: `upgrade --plan` attribution of values-pin drift (T11), the
+  `ClusterLock` providerConfig pin (T11), remote `-f` (T8-T10), and docs/e2e
+  (T12).
+
+- Evidence — `CUBE-7007` free before allocation (`grep -n "CUBE-70"
+  internal/diag/codes.go`, pre-edit tail):
+  ```
+  144:	CodeBundleNoImageLoader Code = "CUBE-7005" // `up --bundle` needs a provider that node-loads images (kind/k3d); `existing` cannot
+  145:	CodeBundleImageLoadFail Code = "CUBE-7006" // bundled image load into cluster nodes failed (kind/k3d LoadImages, consume side)
+  ```
+- Evidence — Step 3b, `go test ./internal/diag/ -count=1` after adding the
+  constant + registry entry:
+  ```
+  ok  	github.com/cube-idp/cube-idp/internal/diag	1.123s
+  ```
+- Evidence — Step 2, all three tests failed FIRST exactly as the plan's
+  Expected (compile errors, `e.ValuesRef undefined` / `undefined:
+  bundleRailsCheck`):
+  ```
+  # github.com/cube-idp/cube-idp/internal/lock [github.com/cube-idp/cube-idp/internal/lock.test]
+  internal/lock/lock_test.go:144:13: f.Packs[0].ValuesRef undefined (type Entry has no field or method ValuesRef)
+  internal/lock/lock_test.go:144:35: f.Packs[0].ValuesPin undefined (type Entry has no field or method ValuesPin)
+  # github.com/cube-idp/cube-idp/internal/diff [github.com/cube-idp/cube-idp/internal/diff.test]
+  internal/diff/diff_test.go:484:7: e.ValuesRef undefined (type *lock.Entry has no field or method ValuesRef)
+  internal/diff/diff_test.go:487:10: base.ValuesRef undefined (type *lock.Entry has no field or method ValuesRef)
+  # github.com/cube-idp/cube-idp/internal/up [github.com/cube-idp/cube-idp/internal/up.test]
+  internal/up/up_test.go:1062:9: undefined: bundleRailsCheck
+  internal/up/up_test.go:1064:45: undefined: diag.CodeBundleRemoteSource
+  FAIL	github.com/cube-idp/cube-idp/internal/up [build failed]
+  ```
+- Evidence — Step 4, the three new tests after implementing (`go test
+  ./internal/lock/ ./internal/diff/ ./internal/up/ -run
+  'TestLockEntryValuesFields|TestDesiredStateValuesRef|TestBundleRailsCheck'
+  -v -count=1`):
+  ```
+  === RUN   TestLockEntryValuesFieldsOmitEmpty
+  --- PASS: TestLockEntryValuesFieldsOmitEmpty (0.00s)
+  ok  	github.com/cube-idp/cube-idp/internal/lock	0.598s
+  === RUN   TestDesiredStateValuesRef
+  --- PASS: TestDesiredStateValuesRef (0.01s)
+  ok  	github.com/cube-idp/cube-idp/internal/diff	1.284s
+  === RUN   TestBundleRailsCheckRejectsValuesRef
+  --- PASS: TestBundleRailsCheckRejectsValuesRef (0.00s)
+  ok  	github.com/cube-idp/cube-idp/internal/up	1.940s
+  ```
+  (`TestDesiredStateValuesRef` is the wiring proof: the SAME cube rendered with
+  and without `valuesRef` yields DIFFERENT `RenderedHash` — so the fetched
+  base `replicas: 2` really reached the helm render over the chart default
+  `1` — while the inline `message: inline` still wins on top, and the entry
+  carries `ValuesRef: <path>` + `ValuesPin: file:<sha256>` where the ref-less
+  run carries neither.)
+- Evidence — Step 4 package-level (`go test ./internal/lock/ ./internal/diff/
+  ./internal/up/ -count=1`), no pre-existing test disturbed:
+  ```
+  ok  	github.com/cube-idp/cube-idp/internal/lock	0.329s
+  ok  	github.com/cube-idp/cube-idp/internal/diff	3.369s
+  ok  	github.com/cube-idp/cube-idp/internal/up	2.107s
+  ```
+- Evidence — full gate `go build ./... && go vet ./... && go test ./...
+  -count=1`: `BUILD OK`, `VET OK`, 32 `ok` packages, `grep -c "^FAIL"` → `0`.
+  Tail:
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	12.941s
+  ok  	github.com/cube-idp/cube-idp/internal/config	8.026s
+  ok  	github.com/cube-idp/cube-idp/internal/diag	8.242s
+  ok  	github.com/cube-idp/cube-idp/internal/diff	11.758s
+  ok  	github.com/cube-idp/cube-idp/internal/lock	10.639s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	14.375s
+  ok  	github.com/cube-idp/cube-idp/internal/refval	11.560s
+  ok  	github.com/cube-idp/cube-idp/internal/up	10.677s
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	10.285s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	11.974s
+  ```
+- Evidence — F1 CLI freeze, `go test ./cmd/ -run TestCommandTreeGolden -v
+  -count=1` with NO `-update` (this task changes no flags), and `git status
+  --short` immediately afterwards listing ONLY the eight intended files (no
+  golden rewritten, no stray staged file):
+  ```
+  === RUN   TestCommandTreeGolden
+  --- PASS: TestCommandTreeGolden (0.00s)
+  ok  	github.com/cube-idp/cube-idp/cmd	1.246s
+
+   M internal/diag/codes.go
+   M internal/diag/registry.go
+   M internal/diff/diff.go
+   M internal/diff/diff_test.go
+   M internal/lock/lock.go
+   M internal/lock/lock_test.go
+   M internal/up/up.go
+   M internal/up/up_test.go
+  ```
 
 ### T7 — engine.tuningRef [Task 7 — DO NOT CLAIM]
 STATUS: GATED_SKIP (engine-as-pack RATIFIED 017057a; replacement engine.valuesRef planned post-p7)
