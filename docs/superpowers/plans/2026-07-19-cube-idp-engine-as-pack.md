@@ -1540,6 +1540,31 @@ Outcome:
   - progress.md ledger line: `.superpowers/sdd/progress.md` is on the main
     checkout, not on the p7 branch — noting here instead of appending (per §8).
 
+**REOPENED (owner, 2026-07-19 — task T1-R; spec §10 amendment, see T3 resolution trail):**
+the chart-based pack is DEFECTIVE for cube-idp delivery — the flux2-community chart
+stamps `metadata.namespace` on NOTHING (0/43 objects, all versions; no alternative
+chart exists; helm cannot stamp client-side). The CHART_PIN(flux)=2.19.0 and
+REPLICA_KNOB HANDOFF above are **VOID**. T1-R steps (in the $PACKS p7 worktree):
+1. `git rm packs/cube-engine-flux/chart.yaml` — the pack becomes manifests-based.
+2. COPY (never symlink, CUBE-4001) the retired $ROOT embed:
+   `cp $ROOT/internal/engine/flux/manifests/install.yaml packs/cube-engine-flux/manifests/install.yaml`
+   ($ROOT p7 worktree copy; byte-identical `flux install --export
+   --components=source-controller,kustomize-controller`, v1.9.2 controllers,
+   self-stamped flux-system namespaces + Namespace object — verified).
+3. `pack.cue`: drop `#Values: {...}` (chartless pack — GT15/CUBE-4016 makes values a
+   typed error; D3 no longer applies to flux per spec §10). Keep name/version/description.
+4. README rewrite: vendored-manifests engine pack; bump procedure = regenerate via
+   `flux install --export --components=source-controller,kustomize-controller`
+   (replaces hack/gen-flux-manifests.sh); REMOVE the "Tuning knob" section — state
+   plainly: customisations are NOT possible for the flux engine pack in this phase
+   (`engine.values` + flux → CUBE-4016); flux engine customization arrives later via
+   the self-managed setup (GT16). Namespace-correctness note (why manifests, not chart).
+5. Commit (explicit pathspec):
+   `git add packs/cube-engine-flux && git commit -m "fix(pack)!: cube-engine-flux — vendored flux install --export manifests replace the chart (spec §10: flux2 chart renders no namespaces)" -- packs/cube-engine-flux`
+6. Verify: T3's fence `TestCubeEngineFluxRenderParity` must PASS against the rewritten
+   pack (run from the $ROOT p7 worktree with CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7 worktree>/packs).
+T1-R STATUS: UNCLAIMED
+
 ### T2 — cube-engine-argocd pack [$PACKS]
 STATUS: DONE
 Outcome:
@@ -1703,17 +1728,32 @@ The orchestrator investigated the fix options with the owner. Findings (all veri
 - Contrast confirmed: traefik + argocd charts DO stamp `metadata.namespace` on their
   namespaced objects (only cluster-scoped ClusterRole/CRD stay namespace-less, correctly),
   which is why `TestStarterPacksRender` passes for them. flux2-community is the outlier.
-Owner decision: cube-idp is in control of the render, so the render path must honor its own
-`chart.yaml namespace:` field by stamping `ref.Namespace` onto rendered NAMESPACED objects
-that lack one (skipping cluster-scoped kinds via a static namespaced-kinds allowlist — the
-tree's established convention, promoted from `tests/packs_render_test.go:namespacedKinds`).
-Idempotent for well-behaved charts (traefik/argocd already stamp → no-op); fixes flux; hardens
-all chart packs. This is a $ROOT `internal/pack/helm.go` change (new task **T3a**, executed
-before T3 closes). The T3 fence is UNCHANGED — it stays the correct assertion. See T3a below.
+~~Owner decision: render-path namespace stamp (T3a)~~ — **SUPERSEDED, see below.**
 
-### T3a — render path stamps chart namespace onto namespace-less namespaced objects [$ROOT]
-STATUS: UNCLAIMED
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+**FINAL OWNER RESOLUTION (2026-07-19, second review — spec §10 amendment):** the owner
+REJECTED the render-path stamp on review (silent shared-render transform; reverses the
+content-self-stamps posture T12's deletion rationale relies on). Decision instead:
+**`cube-engine-flux` becomes a vendored-manifests pack** — `manifests/install.yaml` is the
+`flux install --export --components=source-controller,kustomize-controller` output,
+initially the byte-identical retired $ROOT embed
+(`internal/engine/flux/manifests/install.yaml`, v1.9.2 controllers): parity by
+construction, self-stamped `flux-system` namespaces (verified: every namespaced object
+carries it; Namespace object included). No `chart.yaml`. D2/D3 narrow to argocd-only
+(spec §10). `engine.values` + flux → the GT15 stone fires naturally at render (typed
+CUBE-4016, "values are helm-only") — this IS the "customisations are not possible for
+flux (self-managed setup later)" surface; remediation wording reviewed at T7/T8.
+Consequences recorded: T1 REOPENED (see its ledger entry — task T1-R); the T1
+REPLICA_KNOB HANDOFF is VOID; T5 Step 4 must exercise the chart cache via
+`TestCubeEngineArgocdRenderGuards` (flux is chartless now); T14's flux values-convergence
+leg is redesigned at T14 (structural selfManage assertions remain); T12's embed deletion
+is SAFE only after T1-R's copy (order already guarantees this). T3 fence: UNCHANGED —
+goes green once T1-R lands.
+
+### T3a — render path stamps chart namespace [$ROOT] — WITHDRAWN
+STATUS: WITHDRAWN (owner, 2026-07-19 — never executed; superseded by the vendored-manifests
+resolution above / spec §10. No code was written for this task.)
+Outcome: BRANCH: n/a · COMMITS: none · FINDINGS: see T3 OWNER RESOLUTION trail · BLOCKERS: n/a ·
+HANDOFF: n/a
 
 ### T4 — config surface (ref/values, CUBE-0012/0013) [$ROOT]
 STATUS: UNCLAIMED

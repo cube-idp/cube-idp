@@ -336,3 +336,43 @@ follow-up once CubeLock-CRD (p6) and this spec have both landed.
    with the operator's own helm state, one cache root to clean. The
    one-time cost is a cold re-download per chart on first post-upgrade
    render.
+
+---
+
+## 10. Amendment (owner, 2026-07-19 — post-ratification, during p7 execution)
+
+**D2/D3 narrowed to the argocd engine pack.** Execution evidence (p7 T3
+blocker, verified): the sole existing flux chart,
+`fluxcd-community/flux2`, renders **0 of 43 objects with
+`metadata.namespace`** at every version — it is built for
+`helm install --namespace X` apply-time defaulting, which helm performs
+only against a live cluster's REST mapper and therefore never under the
+client-only `action.DryRunClient` render cube-idp uses (helm.go:104).
+fluxcd ships no official install chart (manifests only, via
+`flux install --export`). cube-idp's Applier hard-fails on
+namespace-less namespaced objects ("namespace not specified" — the
+argocd.go:92 war story). A render-path namespace stamp was considered
+and REJECTED by the owner (silent shared-render transform; reverses the
+content-self-stamps posture T12's deletion rationale relies on).
+
+**Resolution:** `packs/cube-engine-flux` becomes a **vendored-manifests
+pack**: `manifests/install.yaml` is the
+`flux install --export --components=source-controller,kustomize-controller`
+output (initially the byte-identical retired $ROOT embed — parity by
+construction; self-stamped `flux-system` namespaces; includes the
+Namespace object). No `chart.yaml`.
+
+- **D2** now reads: chart-based engine pack for **argocd**;
+  vendored-manifests engine pack for **flux** (the chart ecosystem left
+  no chart-based option).
+- **D3** (open values) applies to **argocd only**. `engine.values` with
+  `type: flux` hits the GT15 stone at render — typed **CUBE-4016**
+  ("values are helm-only") — surfacing "customisations are not possible
+  for the flux engine in this phase"; remediation text reviewed at
+  T7/T8. Flux engine customization arrives later via the self-managed
+  setup (GT16 path), owner-deferred.
+- Bump procedure: regenerate `manifests/install.yaml` with
+  `flux install --export` (pack README; replaces
+  `hack/gen-flux-manifests.sh` duty — the T12 deletions stand).
+- The T1 REPLICA_KNOB handoff is **void**; T14's flux values-convergence
+  leg is redesigned at T14 (structural selfManage assertions stay).
