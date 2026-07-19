@@ -720,7 +720,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/config/types
   - `func RenderResolved(ctx context.Context, pk *Pack, pref config.PackRef, gw config.GatewaySpec, cacheDir string) (*Rendered, string, error)` — the single render entry `up` AND `diff` share (Task 6); returns the values pin.
   - `diag.CodePackValuesRefFetch Code = "CUBE-4021"`
 
-- [ ] **Step 1: Add the diag code (registry test would fail otherwise the moment the constant exists — do both together)**
+- [x] **Step 1: Add the diag code (registry test would fail otherwise the moment the constant exists — do both together)**
 
 `internal/diag/codes.go`, inside the 4xxx const block after `CodePackDepGateway`:
 
@@ -737,7 +737,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/config/types
 
 Run: `go test ./internal/diag/ -count=1` — Expected: PASS (registry coverage holds)
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```go
 // internal/pack/values_test.go
@@ -811,12 +811,12 @@ func TestRenderResolvedChartlessValuesRef(t *testing.T) {
 
 (If `diag.HasCode` doesn't exist, check `internal/diag/diag.go` for the code-inspection helper the existing tests use — e.g. `diag.CodeOf(err) == …` — and use that instead; do NOT invent a new helper. Same for the `pack.cue` fixture shape: copy the minimal fixture pattern from an existing test in `internal/pack/` — e.g. `discovery_test.go` — rather than the sketch above if it differs.)
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `go test ./internal/pack/ -run 'TestEffectiveValues|TestRenderResolved' -v`
 Expected: FAIL — `undefined: EffectiveValues`, `undefined: RenderResolved`
 
-- [ ] **Step 4: Implement `internal/pack/values.go`**
+- [x] **Step 4: Implement `internal/pack/values.go`**
 
 ```go
 // Package-file for the valuesRef half of GT15: fetching a remote base
@@ -880,12 +880,12 @@ func RenderResolved(ctx context.Context, pk *Pack, pref config.PackRef, gw confi
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `go test ./internal/pack/ ./internal/diag/ -count=1`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/pack/values.go internal/pack/values_test.go internal/diag/codes.go internal/diag/registry.go
@@ -2458,8 +2458,260 @@ HANDOFF:
   ```
 
 ### T5 — pack.EffectiveValues + RenderResolved + CUBE-4021 [Task 5]
-STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T19:48:52Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS (actual diag number if renumbered) · BLOCKERS · HANDOFF:
+
+COMMITS:
+- `eff7d80` docs: rv plan — claim T5
+- `001a26d` feat(pack): EffectiveValues + RenderResolved — valuesRef fetch/merge, CUBE-4021 (RV2)
+- `<this>` docs: rv plan — T5 complete
+
+FINDINGS:
+
+1. **ACTUAL DIAG NUMBER USED: `CUBE-4021` = `CodePackValuesRefFetch` — the
+   planned number, NO renumber.** Re-verified against the real post-p7
+   `internal/diag/codes.go` before allocating: the 4xxx block's highest
+   allocated code was `CUBE-4020` (`CodePackDepGateway`, codes.go:114), so
+   4021 was the next free number in the domain block. Both halves added per
+   Global Constraints — the constant in `internal/diag/codes.go` (after
+   `CodePackDepGateway`, with the plan's `// Remote values (spec 2026-07-19
+   §5.1, §8).` comment) AND the `Desc` entry in `internal/diag/registry.go`
+   (after the `CodePackDepGateway` line). `TestRegistryCoversEveryDeclaredCode`
+   passes in both directions.
+
+2. **PLAN-vs-REALITY CORRECTION (escape hatch, the one substantive deviation):
+   Step 4's code sketch imports `internal/refval` from `package pack` — that
+   is an IMPORT CYCLE and cannot compile.** `internal/refval` imports
+   `internal/pack` (for `pack.FetchFile`, refval.go:19/31 — T2's shipped
+   design), so `pack → refval` closes the loop. Verified empirically, not by
+   inference: the plan's verbatim Step 4 file was written to disk first and
+   `go build ./internal/pack/` produced
+
+   ```
+   package github.com/cube-idp/cube-idp/internal/pack
+   	imports github.com/cube-idp/cube-idp/internal/refval from values.go
+   	imports github.com/cube-idp/cube-idp/internal/pack from refval.go: import cycle not allowed
+   ```
+
+   and `go list -deps ./internal/refval | grep cube-idp` confirms the edge:
+   `internal/diag`, `internal/apply`, `internal/config`, **`internal/pack`**,
+   `internal/refval`.
+
+   **Minimal correction applied** — the deviation is confined to Step 4's
+   IMPORT LIST; every normative contract the plan states elsewhere is
+   preserved unchanged: the file is still `internal/pack/values.go`, the test
+   is still `internal/pack/values_test.go` (`package pack`), the symbols are
+   still `pack.EffectiveValues` / `pack.RenderResolved` with the exact
+   signatures in Task 5's "Interfaces", and Task 6's `Consumes:
+   pack.RenderResolved` line needs NO change. Concretely, `values.go` drops
+   the `refval` import and instead:
+   - fetches through the **in-package `FetchFile`** — which is the shared
+     machinery design G5 actually names ("the same grammar, cache, auth, and
+     guard machinery"): `refval.Resolve` is itself only a decode wrapper
+     around this very function, so nothing is bypassed;
+   - merges through the **same `jsonpatch.MergePatch` primitive**
+     `refval.Merge` and `compose.Merge` ride, so spec §5.1's "the identical
+     algorithm and precedence direction as `forProvider` over
+     `providerConfigRef`" holds by construction;
+   - mirrors `refval.NormalizeIntegral` as the unexported `normalizeIntegral`
+     (identical bounds `[MinInt32, MaxInt32]`, identical in-place recursion
+     over `map[string]any`/`[]any`). This ~18-line mirror is the ONLY genuine
+     duplication introduced.
+
+   The two private helpers `resolveValuesDoc` and `mergeValuesPatch` are
+   `refval.Resolve`/`refval.Merge`'s bodies with the in-package call. A
+   package-file comment in `values.go` records the cycle and the reason so a
+   later reader does not "fix" it back into a cycle.
+
+   Precedent for choosing relocation-of-import over relocation-of-package:
+   the plan's own Global Constraints "Import direction" bullet resolves the
+   `config`/`pack` direction problem by moving code and keeping "the same
+   observable contract"; here the observable contract is kept by moving only
+   the import, which changes strictly fewer plan-normative facts (no new
+   package, no File Structure change, no downstream interface rename).
+
+3. **`diag.HasCode` does not exist** — the plan's Step 2 sketch anticipated
+   this ("If `diag.HasCode` doesn't exist, check `internal/diag/diag.go` for
+   the code-inspection helper the existing tests use … do NOT invent a new
+   helper"). `internal/diag/diag.go` exports only `New`/`Wrap`/`Error`/
+   `Unwrap`/`Render`; the repo-wide test convention is
+   `var de *diag.Error; errors.As(err, &de) && de.Code == …` (20+ sites, e.g.
+   `internal/pack/pack_test.go:37`, `source_test.go:105`). Both code
+   assertions in `values_test.go` use that form. No helper was invented.
+
+4. **Chartless fixture: used the repo's existing one instead of the sketch's
+   temp-dir pack**, per Step 2's own instruction ("copy the minimal fixture
+   pattern from an existing test in `internal/pack/` … rather than the sketch
+   above if it differs"). `internal/pack/testdata/demo` IS the repo's
+   chartless fixture (`pack.cue` + `manifests/cm.yaml`, no `chart.yaml`) and
+   is exactly what `TestRenderWithValuesOnChartlessPackIsCube4016`
+   (`render_test.go:159`) uses for the inline-values half of the same GT15
+   stone — so the `valuesRef` half now sits beside the `values` half on the
+   same fixture. No new testdata directory was created.
+
+5. **GT15 (values stone) preserved, not weakened or relocated.**
+   `RenderResolved` adds the `valuesRef` clause as a NEW guard in front of
+   `RenderWith`, checked BEFORE any fetch (`pref.ValuesRef != "" &&
+   !pk.HasChart()` → `CUBE-4016`); `RenderWith`'s existing
+   `len(values) > 0 && !p.HasChart()` guard in `internal/pack/render.go:130`
+   is untouched, so the inline-values path is byte-identical to pre-T5. Note
+   the guards are complementary, not redundant: `RenderWith` alone would
+   MISS a chartless pack whose only values come from a ref, because
+   `EffectiveValues` would have to fetch first to produce a non-empty map —
+   which is precisely why the plan puts this check before the fetch.
+
+6. **Anchor drift: NONE for this task.** Both anchors verified against the
+   real post-p7 code before editing and both matched: `codes.go`'s 4xxx block
+   ends at `CodePackDepGateway` (line 114) as the plan's "after
+   `CodePackDepGateway`" says, and `registry.go`'s 4xxx section ends at the
+   matching `CodePackDepGateway` entry (line 115). `internal/pack/values.go`
+   did not exist. p7 touched `internal/pack/helm.go` and added
+   `enginepack.go`, neither of which this task reads or writes.
+
+7. **Amendment 4 honoured:** nothing in this task references `engine.tuningRef`
+   or `EngineSpec`; `CUBE-3012` was NOT allocated. Amendment 5's fixed
+   `CUBE-0014`/`CUBE-0015` (T8) are untouched.
+
+8. `go.mod`/`go.sum` unmodified — `github.com/evanphx/json-patch/v5` and
+   `sigs.k8s.io/yaml` are already DIRECT requirements (T2 finding 4), and
+   `sigs.k8s.io/yaml` was already imported inside `internal/pack` itself
+   (`helm.go:36`). No new module in any form.
+
+9. **Machine gotcha reconfirmed a FIFTH time** (T1 f4 / T2 f7 / T3 f9 /
+   T4 f8): this checkout has NO git identity, so both commits were made as
+   `git -c user.name="Rafal P" -c user.email="rafal@pieniazek.nl" commit …`.
+   Nothing was written to any git config file.
+
+BLOCKERS: none
+
+HANDOFF:
+
+- **`pack.EffectiveValues(ctx context.Context, valuesRef string, inline map[string]any, cacheDir string) (map[string]any, string, error)`**
+  is live, exactly the Task 5 "Interfaces" signature.
+  - `valuesRef == ""` → returns `(inline, "", nil)` — the SAME map header the
+    caller passed, untouched and un-normalized, no fetch, no allocation. A
+    nil `inline` comes back nil.
+  - Otherwise: fetch → decode → RFC 7386 merge (inline patched OVER fetched;
+    `null` deletes, arrays replace wholesale) → `normalizeIntegral`. Returns
+    the values pin in T1's forms: `oci:<digest>`, `git+<sha>`, `dir:<h1:…>`,
+    `file:<sha256-hex>`.
+  - **Numbers in the returned map are `int`, not `float64`** — the
+    Helm-path-only normalization step is applied HERE, so T6 must not apply
+    it again. Non-integral and out-of-int32-range numbers stay `float64`.
+  - EVERY failure (fetch, non-mapping document, merge) is wrapped
+    `CUBE-4021` / `diag.CodePackValuesRefFetch` as the OUTERMOST code, with
+    the pack-layer cause (`CUBE-4006`/`CUBE-4001`/`CUBE-4007`/…) preserved
+    underneath via `Unwrap`, so `errors.As` finds 4021 first.
+- **`pack.RenderResolved(ctx context.Context, pk *Pack, pref config.PackRef, gw config.GatewaySpec, cacheDir string) (*Rendered, string, error)`**
+  is live — the single render entry T6 wires into BOTH `up` and `diff`.
+  - Order is: GT15 chartless guard (`CUBE-4016`, BEFORE any network) →
+    `EffectiveValues` (`CUBE-4021`) → `pk.RenderWith(values,
+    pref.ExtraManifests, gw)` (`CUBE-4002`/`4005`/`4016`/`4017` unchanged).
+  - It is a **pure pass-through to `RenderWith` when `pref.ValuesRef == ""`**
+    — same values map, same errors, same rendered objects. T6 can therefore
+    route EVERY pack through it unconditionally, as the plan says, with no
+    behaviour change for inline-only packs.
+  - Second return is the values pin, `""` for inline-only packs — feeds
+    `lock.Entry.ValuesPin` in T6 (and `ValuesRef: pref.ValuesRef` is set
+    unconditionally; `omitempty` drops it when empty).
+- **For T6 specifically:** the plan's Task 6 "Consumes: `pack.RenderResolved`"
+  is CORRECT AS WRITTEN — finding 2's correction did not move the symbol out
+  of `package pack`. `internal/up/up.go` and `internal/diff/diff.go` already
+  import `internal/pack`, so no new import is needed in either file; the call
+  is `pack.RenderResolved(ctx, pk, pref, cube.Spec.Gateway, <cacheDir var>)`.
+  Do NOT add an `internal/refval` import to `up`/`diff` for values — it is
+  not needed and `refval` is not on the values path any more.
+- **For anyone touching `internal/pack` later:** `package pack` MUST NOT
+  import `internal/refval` (cycle — finding 2). If a future task needs
+  refval's exported helpers inside `pack`, the fix is to make `refval` a leaf
+  (move the `FetchFile` call out of `refval.Resolve`), which is an
+  owner-level change to T2's shipped contract, not a mid-task correction.
+- `internal/refval`, `internal/cluster/compose`, `internal/config`,
+  `internal/lock`, `internal/up`, `internal/diff` are all UNTOUCHED by T5.
+  `valuesRef` is still silently ignored end-to-end until T6 wires it — T5
+  builds the mechanism, T6 puts it on the path.
+
+- Evidence — CUBE-4021 was free before allocation (`grep -n "CUBE-40"
+  internal/diag/codes.go | tail -3`, pre-edit):
+  ```
+  112:	CodePackDepUnknown Code = "CUBE-4018" // dependsOn names a pack not in this cube
+  113:	CodePackDepCycle   Code = "CUBE-4019" // pack dependency cycle (the message shows the path)
+  114:	CodePackDepGateway Code = "CUBE-4020" // gateway pack cannot carry a dependsOn of its own
+  ```
+- Evidence — Step 1, `go test ./internal/diag/ -count=1` (registry coverage
+  holds in both directions with the new code):
+  ```
+  ok  	github.com/cube-idp/cube-idp/internal/diag	0.809s
+  ```
+- Evidence — Step 3 failed exactly as the plan's Expected (`undefined:
+  EffectiveValues`, `undefined: RenderResolved`):
+  ```
+  # github.com/cube-idp/cube-idp/internal/pack [github.com/cube-idp/cube-idp/internal/pack.test]
+  internal/pack/values_test.go:17:19: undefined: EffectiveValues
+  internal/pack/values_test.go:32:19: undefined: EffectiveValues
+  internal/pack/values_test.go:46:15: undefined: EffectiveValues
+  internal/pack/values_test.go:64:14: undefined: RenderResolved
+  FAIL	github.com/cube-idp/cube-idp/internal/pack [build failed]
+  ```
+- Evidence — Step 4, the plan's verbatim sketch written first, `go build
+  ./internal/pack/` (the import cycle of finding 2):
+  ```
+  package github.com/cube-idp/cube-idp/internal/pack
+  	imports github.com/cube-idp/cube-idp/internal/refval from values.go
+  	imports github.com/cube-idp/cube-idp/internal/pack from refval.go: import cycle not allowed
+  ```
+- Evidence — Step 5, the four new tests after the correction (`go test
+  ./internal/pack/ -run 'TestEffectiveValues|TestRenderResolved' -v -count=1`):
+  ```
+  === RUN   TestEffectiveValuesNoRefPassesInlineThrough
+  --- PASS: TestEffectiveValuesNoRefPassesInlineThrough (0.00s)
+  === RUN   TestEffectiveValuesMergesInlineOverFetched
+  --- PASS: TestEffectiveValuesMergesInlineOverFetched (0.00s)
+  === RUN   TestEffectiveValuesWrapsFetchFailure
+  --- PASS: TestEffectiveValuesWrapsFetchFailure (0.00s)
+  === RUN   TestRenderResolvedChartlessValuesRef
+  --- PASS: TestRenderResolvedChartlessValuesRef (0.00s)
+  PASS
+  ok  	github.com/cube-idp/cube-idp/internal/pack	1.527s
+  ```
+  (`TestEffectiveValuesMergesInlineOverFetched` is the ladder proof: fetched
+  `replicas: 1, image.tag: v1, extra.a: 1` ⊕ inline `replicas: 3, extra: nil`
+  → `map[string]any{"replicas": 3, "image": map[string]any{"tag": "v1"}}` —
+  override wins, nested key survives, `null` deleted the subtree, and
+  `replicas` is `int(3)` not `float64(3)`, so `reflect.DeepEqual` against the
+  int-typed want map passes only if normalization ran.)
+- Evidence — Step 5 package-level, `go test ./internal/pack/ ./internal/diag/ -count=1`:
+  ```
+  ok  	github.com/cube-idp/cube-idp/internal/pack	4.806s
+  ok  	github.com/cube-idp/cube-idp/internal/diag	0.347s
+  ```
+- Evidence — full gate `go build ./... && go vet ./... && go test ./... -count=1`:
+  `BUILD OK`, `VET OK`, 32 `ok` packages, `grep -c "^FAIL"` → `0`. Tail:
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	16.020s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/compose	4.515s
+  ok  	github.com/cube-idp/cube-idp/internal/config	3.506s
+  ok  	github.com/cube-idp/cube-idp/internal/diag	6.511s
+  ok  	github.com/cube-idp/cube-idp/internal/diff	11.945s
+  ok  	github.com/cube-idp/cube-idp/internal/lock	10.873s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	16.007s
+  ok  	github.com/cube-idp/cube-idp/internal/refval	11.635s
+  ok  	github.com/cube-idp/cube-idp/internal/up	10.856s
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	10.557s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	11.901s
+  ```
+- Evidence — F1 CLI freeze, `go test ./cmd/ -run TestCommandTreeGolden -v
+  -count=1` with NO `-update` (this task changes no flags; `git status
+  --short` afterwards listed ONLY the four intended files —
+  `M internal/diag/codes.go`, `M internal/diag/registry.go`,
+  `?? internal/pack/values.go`, `?? internal/pack/values_test.go` — no golden
+  rewritten, no stray staged file):
+  ```
+  === RUN   TestCommandTreeGolden
+  --- PASS: TestCommandTreeGolden (0.00s)
+  PASS
+  ok  	github.com/cube-idp/cube-idp/cmd	1.235s
+  ```
 
 ### T6 — up/diff wiring + lock valuesPin + bundle guard CUBE-7007 [Task 6 incl. Step 3b]
 STATUS: UNCLAIMED
