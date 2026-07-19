@@ -523,7 +523,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/refval/
 - Consumes: `refval.Resolve`, `refval.Merge` (Task 2)
 - Produces: `compose.Resolve(ctx, ref, cacheDir) (map[string]any, string, error)` and `compose.Compose(ctx, ref, forProvider map[string]any, cacheDir string) (map[string]any, string, error)` — second return is the pin (`""` when ref is empty). `compose.Merge` stays exported, delegating to `refval.Merge`.
 
-- [ ] **Step 1: Write the failing test** (append to the existing compose test file)
+- [x] **Step 1: Write the failing test** (append to the existing compose test file)
 
 ```go
 func TestResolveReturnsPin(t *testing.T) {
@@ -546,12 +546,12 @@ func TestResolveReturnsPin(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/cluster/compose/ -run TestResolveReturnsPin -v`
 Expected: FAIL — compile error (2-value return)
 
-- [ ] **Step 3: Rewrite `Resolve`/`Compose` as `refval` wrappers**
+- [x] **Step 3: Rewrite `Resolve`/`Compose` as `refval` wrappers**
 
 ```go
 // Resolve fetches ref (pack ref grammar, one YAML file — refval.Resolve)
@@ -591,12 +591,12 @@ func Compose(ctx context.Context, ref string, forProvider map[string]any, cacheD
 
 Drop the now-unused `encoding/json`/`jsonpatch`/`sigyaml`/`pack` imports; add `refval`. Update the two call sites (`kindp/merge.go:69`, `k3dp/merge.go:66`) to discard the pin: `merged, _, err := compose.Compose(…)`. Fix compose/kindp/k3dp test call sites the same way (`grep -rn "compose.Compose\|compose.Resolve" --include="*.go" internal/`).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go build ./... && go test ./internal/cluster/... -count=1`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/cluster/
@@ -2211,8 +2211,135 @@ HANDOFF:
   ```
 
 ### T3 — compose migration + providerConfig pin [Task 3]
-STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T19:33:44Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+COMMITS:
+- `214ac42` docs: rv plan — claim T3
+- `7a4cb13` refactor(compose): delegate to refval, surface providerConfig pin (RV1)
+- `<this>` docs: rv plan — T3 complete
+
+FINDINGS:
+1. Plan Step 3's code sketch applied VERBATIM — `internal/cluster/compose/compose.go`
+   is now the plan's three functions plus the (unchanged) package doc comment,
+   with imports reduced to `context`, `fmt`, `diag`, `refval`. The dropped
+   imports were exactly the ones the plan names (`encoding/json`, `jsonpatch`,
+   `sigyaml`, `pack`).
+2. CUBE-1005 preservation verified by the pre-existing tests, unchanged:
+   `TestResolveFetchErrorWraps1005` and `TestResolveNonMappingDoc` both still
+   assert `diag.CodeProviderConfigRefFetch` and both PASS. `refval.Resolve`
+   passes pack-layer codes through unwrapped; compose's single `diag.Wrap` is
+   the outermost error, so `errors.As(err, &de).Code == CUBE-1005` still holds
+   for BOTH the fetch-failure path (was a pack `diag.Error` cause) and the
+   non-mapping path (now a plain `fmt.Errorf` cause from refval instead of the
+   old in-compose `json.Unmarshal` wrap). Observable code UNCHANGED; only the
+   wrapped cause's text differs (no test or golden asserts it).
+3. Only ONE user-facing string changed, exactly as the plan's Step 3 sketch
+   dictates: the CUBE-1005 fix hint went from "the ref must resolve to one
+   readable YAML file; …" to "the ref must resolve to one readable YAML
+   mapping document; …". Grepped `readable YAML file` across the repo — no
+   test, golden, or doc asserts it (`grep -rn "readable YAML file" .` → only
+   the old compose.go line, now gone).
+4. Line anchors held despite the p7 merge: `internal/cluster/kindp/merge.go:69`
+   and `internal/cluster/k3dp/merge.go:66` were the EXACT `compose.Compose`
+   call lines the plan names — p7 did not touch `internal/cluster/`. Both
+   updated to `merged, _, err := compose.Compose(…)`. No anchor correction
+   needed for this task.
+5. The plan's Step 3 grep (`grep -rn "compose.Compose\|compose.Resolve"
+   --include="*.go" internal/`) found NO qualified call sites in test files —
+   the only other hits were two comments in `internal/cluster/kindp/merge_test.go`
+   (lines 155, 168) and one in `internal/refval/refval.go:51`, none of which
+   are call sites. The call sites needing the 3-value fix were the FIVE
+   in-package (unqualified) ones in `internal/cluster/compose/compose_test.go`:
+   `TestResolveEmptyRef`, `TestResolveLocalFile`, `TestResolveFetchErrorWraps1005`,
+   `TestResolveNonMappingDoc`, `TestComposeRefPlusForProvider` — all changed to
+   discard the pin (`m, _, err := …`), assertions otherwise untouched. This is
+   the plan's "Fix compose/kindp/k3dp test call sites the same way" clause.
+6. `refval.Merge`'s doc comment already read "Lifted verbatim from
+   compose.Merge, which now delegates here" (written by T2 in anticipation);
+   that sentence is TRUE as of this commit. No refval file was touched by T3.
+7. Diag-code renumber rule: NOT applicable to T3 (allocates no codes; reuses
+   the existing `CUBE-1005` / `diag.CodeProviderConfigRefFetch`).
+8. Amendment 4 (tuningRef dropped): nothing in T3 references engine tuning —
+   no action needed. Amendment 5's "re-verify anchors" instruction was
+   honoured (finding 4).
+9. Machine gotcha (T1 finding 4 / T2 finding 7) reconfirmed a THIRD time:
+   commits required `git -c user.name="Rafal P" -c user.email="rafal@pieniazek.nl"`.
+   Nothing was written to any git config file. `go.mod`/`go.sum` unmodified
+   (the task removes imports, adds only the in-repo `internal/refval`).
+
+BLOCKERS: none
+
+HANDOFF:
+- `internal/cluster/compose` is now a THIN wrapper over `internal/refval`. Live
+  signatures (all three exported symbols kept their names):
+  - `func Resolve(ctx context.Context, ref, cacheDir string) (map[string]any, string, error)`
+    — delegates to `refval.Resolve`, wraps ANY error as `CUBE-1005`
+    (`diag.CodeProviderConfigRefFetch`). Empty ref → `(empty non-nil map, "", nil)`
+    (contract preserved, asserted by two tests).
+  - `func Merge(base, patch map[string]any) (map[string]any, error)` — one-line
+    delegation to `refval.Merge`. RFC 7386 behaviour is now single-sourced;
+    `TestMergeVectors`' five vectors (deep-merge, list replace, null delete,
+    empty patch, empty base) all still PASS against the refval implementation.
+  - `func Compose(ctx context.Context, ref string, forProvider map[string]any, cacheDir string) (map[string]any, string, error)`
+    — second return is the providerConfig pin, `""` when ref is empty. The pin
+    is returned EVEN when `forProvider` is empty (early-return branch), so
+    callers always get it.
+- Pin forms reaching `Compose` callers are T1's verbatim: `oci:<digest>`,
+  `git+<sha>`, `dir:<h1:…>`, `file:<sha256-hex>`.
+- The pin is currently DISCARDED at both production call sites
+  (`internal/cluster/kindp/merge.go:69`, `internal/cluster/k3dp/merge.go:66`,
+  both `merged, _, err :=`). T11 (`ClusterLock.ProviderConfigRef/Pin`) is the
+  task that plumbs it into `cube.lock` — it needs a path from
+  `kindp/k3dp.Merge` (or a direct `compose.Compose` call in `up`) to the lock
+  writer; nothing in T3 pre-builds that path.
+- Evidence — Step 2 failed exactly as the plan's Expected ("compile error
+  (2-value return)"):
+  ```
+  # github.com/cube-idp/cube-idp/internal/cluster/compose [.../compose.test]
+  internal/cluster/compose/compose_test.go:92:17: assignment mismatch: 3 variables but Resolve returns 2 values
+  internal/cluster/compose/compose_test.go:100:16: assignment mismatch: 3 variables but Resolve returns 2 values
+  FAIL	github.com/cube-idp/cube-idp/internal/cluster/compose [build failed]
+  ```
+- Evidence — Step 4, `go build ./... && go test ./internal/cluster/... -count=1`:
+  ```
+  BUILD OK
+  ok  	github.com/cube-idp/cube-idp/internal/cluster	1.494s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/compose	2.347s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/k3dp	2.991s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/kindp	3.802s
+  ```
+- Evidence — every compose test, `go test ./internal/cluster/compose/ -count=1 -v`
+  (7 top-level tests incl. the new one, ZERO failures):
+  ```
+  --- PASS: TestMergeVectors (0.00s)
+  --- PASS: TestResolveEmptyRef (0.00s)
+  --- PASS: TestResolveLocalFile (0.00s)
+  --- PASS: TestResolveFetchErrorWraps1005 (0.00s)
+  --- PASS: TestResolveNonMappingDoc (0.00s)
+  --- PASS: TestResolveReturnsPin (0.00s)
+  --- PASS: TestComposeRefPlusForProvider (0.00s)
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/compose	0.983s
+  ```
+- Evidence — full gate `go build ./... && go vet ./... && go test ./... -count=1`:
+  `BUILD OK`, `VET OK`, 32 `ok` packages, `grep -c "^FAIL"` → `0`. Tail:
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	18.753s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/compose	3.894s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/k3dp	6.671s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/kindp	2.217s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	15.376s
+  ok  	github.com/cube-idp/cube-idp/internal/refval	12.983s
+  ok  	github.com/cube-idp/cube-idp/internal/up	11.030s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	12.140s
+  ```
+- Evidence — F1 CLI freeze, `go test ./cmd/ -run TestCommandTreeGolden` with NO
+  `-update` (`git status --short` empty afterwards — no golden rewritten):
+  ```
+  === RUN   TestCommandTreeGolden
+  --- PASS: TestCommandTreeGolden (0.00s)
+  ok  	github.com/cube-idp/cube-idp/cmd	1.299s
+  ```
 
 ### T4 — config surface valuesRef ONLY (tuningRef DROPPED, Amendment 4) [Task 4]
 STATUS: UNCLAIMED
