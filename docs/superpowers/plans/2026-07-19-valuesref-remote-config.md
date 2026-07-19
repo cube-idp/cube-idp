@@ -2342,7 +2342,7 @@ HANDOFF:
   ```
 
 ### T4 — config surface valuesRef ONLY (tuningRef DROPPED, Amendment 4) [Task 4]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T19:40:10Z)
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T5 — pack.EffectiveValues + RenderResolved + CUBE-4021 [Task 5]
