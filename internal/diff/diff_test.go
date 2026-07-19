@@ -3,6 +3,8 @@ package diff
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sort"
 	"testing"
 	"time"
@@ -16,6 +18,26 @@ import (
 	"github.com/cube-idp/cube-idp/internal/pack"
 	"github.com/cube-idp/cube-idp/internal/registry"
 )
+
+// writeEngineFixture materializes a minimal on-disk engine pack (named
+// cube-engine-flux, one Namespace manifest) and returns its dir. Engine-as-pack
+// (T9): desiredState now fetches+renders the engine pack via
+// EngineSpec.PackRef(), so every test cube must point Spec.Engine.Ref at a
+// resolvable pack — the published 0.1.0 default does not exist until T15.
+func writeEngineFixture(t *testing.T) string {
+	t.Helper()
+	pd := filepath.Join(t.TempDir(), "cube-engine-flux")
+	if err := os.MkdirAll(filepath.Join(pd, "manifests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pd, "pack.cue"), []byte("name: \"cube-engine-flux\"\nversion: \"0.1.0\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pd, "manifests", "ns.yaml"), []byte("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: flux-system\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return pd
+}
 
 // fakeEngine is a minimal engine.Engine double: InstallManifests and Deliver
 // are the only methods desiredState calls, and their output only needs to be
@@ -133,10 +155,11 @@ func sortedKeys(set map[string]bool) []string {
 // every converged cube; anything expected here that up.Run doesn't actually
 // apply would silently hide a real orphan.
 func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
+	enginePack := writeEngineFixture(t)
 	cube := &config.Cube{
 		Metadata: config.Metadata{Name: "test"},
 		Spec: config.Spec{
-			Engine:  config.EngineSpec{Type: "flux"},
+			Engine:  config.EngineSpec{Type: "flux", Ref: enginePack},
 			Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
 			Packs:   []config.PackRef{{Ref: "../pack/testdata/demo-kustomize"}},
 		},
@@ -168,10 +191,18 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 		t.Fatal(err)
 	}
 	eng := fakeEngine{}
-	installObjs, err := eng.InstallManifests()
+	// Engine-as-pack (T9): the engine install is the rendered engine pack, so
+	// mirror desiredState's FetchRenderEngine call for the want-set — the fake
+	// engine's InstallManifests no longer feeds desiredState.
+	engineDir, err := pack.DefaultCacheDir()
 	if err != nil {
 		t.Fatal(err)
 	}
+	enginePk, engineRendered, err := pack.FetchRenderEngine(context.Background(), cube.Spec.Engine, cube.Spec.Gateway, cube.Spec.Engine.PackRef(), engineDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installObjs := engineRendered.Objects
 	route := registry.GatewayRoute(cube.Spec.Gateway.Host, cube.Spec.Gateway.Pack)
 	tlsNamespace := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1", "kind": "Namespace",
@@ -209,6 +240,10 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 		wantPackRecords = append(wantPackRecords, pack.PackObject(p, cube.Spec.Gateway, false,
 			len(pr.Values) > 0 || pr.ExtraManifests != "", pr.Delivery, nil))
 	}
+	// Engine-as-pack (T9): up.Run also writes the engine's own D11 Pack record
+	// (delivery "engine"); desiredState mirrors its identity in orphanOnly.
+	wantPackRecords = append(wantPackRecords, pack.PackObject(enginePk, cube.Spec.Gateway, false,
+		len(cube.Spec.Engine.Values) > 0, "engine", nil))
 
 	wantApplied := identitySet(regObjs, []*unstructured.Unstructured{crd}, installObjs,
 		[]*unstructured.Unstructured{tlsNamespace, tlsSecret}, wantDeliver, wantPackRecords,
@@ -248,7 +283,7 @@ func TestDesiredStateRepoDeliveredPack(t *testing.T) {
 	cube := &config.Cube{
 		Metadata: config.Metadata{Name: "test"},
 		Spec: config.Spec{
-			Engine:  config.EngineSpec{Type: "flux"},
+			Engine:  config.EngineSpec{Type: "flux", Ref: writeEngineFixture(t)},
 			Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
 			Packs: []config.PackRef{
 				{Ref: "../pack/testdata/demo-kustomize", Delivery: "repo"},
@@ -296,7 +331,7 @@ func TestDesiredStateSelfManagedEngine(t *testing.T) {
 	cube := &config.Cube{
 		Metadata: config.Metadata{Name: "test"},
 		Spec: config.Spec{
-			Engine:  config.EngineSpec{Type: "flux", SelfManage: true},
+			Engine:  config.EngineSpec{Type: "flux", SelfManage: true, Ref: writeEngineFixture(t)},
 			Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
 		},
 	}
@@ -338,7 +373,7 @@ func TestDesiredStateFailsOnDepCycle(t *testing.T) {
 	cube := &config.Cube{
 		Metadata: config.Metadata{Name: "test"},
 		Spec: config.Spec{
-			Engine:  config.EngineSpec{Type: "flux"},
+			Engine:  config.EngineSpec{Type: "flux", Ref: writeEngineFixture(t)},
 			Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
 			Packs: []config.PackRef{
 				{Ref: "../pack/testdata/demo-kustomize", DependsOn: []string{"demo-helm"}},

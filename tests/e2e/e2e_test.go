@@ -153,6 +153,17 @@ func TestUpStatusDown(t *testing.T) {
 		t.Fatalf("kubectl get packs URL column missing gateway port %q (Task 15.1):\n%s", wantSuffix, packs)
 	}
 
+	// engine-as-pack (§3.3.7): the engine installs from the cube-engine-<type>
+	// pack and `up` writes its Pack record like any other pack — but with
+	// DELIVERY "engine" (up.go: PackObject(enginePk, …, "engine", nil)), the
+	// bit that distinguishes the CLI-applied engine install from oci/repo pack
+	// delivery. Assert the row exists for THIS engine and carries that value.
+	enginePack := "cube-engine-" + eng
+	engineDelivery := strings.TrimSpace(runKubectl(t, "get", "pack", enginePack, "-o", "jsonpath={.spec.delivery}"))
+	if engineDelivery != "engine" {
+		t.Fatalf("engine Pack record %q: DELIVERY = %q, want %q (§3.3.7 engine record row)\nkubectl get packs:\n%s", enginePack, engineDelivery, "engine", packs)
+	}
+
 	// Phase 2: cnoe-compat import round-trips
 	writeCnoeFixture(t, dir)
 	run(t, dir, bin, "cnoe", "import", dir+"/cnoe-apps")

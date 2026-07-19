@@ -20,19 +20,13 @@ package config
 		}
 		engine: {
 			type: *"flux" | "argocd"
-			// GT1 (U3): closed tuning knob set — per-component replicas and
-			// resources, patched over the embedded engine install manifests.
-			// Component names are validated against the engine's actual
-			// Deployments at render time (CUBE-3009), not here.
-			tuning?: {
-				components?: {[=~"^[a-z0-9-]+$"]: {
-					replicas?:  int & >0
-					resources?: {...}
-				}}
-			}
-			// GT16 (P8): opt-in engine self-management — `up` pushes the
-			// rendered install as the cube-engine zot artifact and the
-			// engine reconciles itself from an engine-native self-source.
+			// Engine pack source override (engine-as-pack spec §3.1); unset =
+			// the published cube-engine-<type> default pinned in Go
+			// (config.defaultEngineRefs).
+			ref?: string & !=""
+			// OPEN chart values (D3) — content validation is helm's, not CUE's.
+			values?: {...}
+			// GT16 (P8): opt-in engine self-management — unchanged.
 			selfManage?: bool
 		}
 		gateway: {

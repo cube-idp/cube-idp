@@ -9,7 +9,6 @@ package flux
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"time"
 
@@ -20,65 +19,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
-	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
-	"github.com/cube-idp/cube-idp/internal/engine"
 )
 
-//go:embed manifests/install.yaml
-var installYAML []byte
+// Flux implements engine.Engine. Engine-as-pack (2026-07-19): flux no longer
+// carries an embedded install manifest — `up` fetches and renders the
+// cube-engine-flux pack and SSAs the result (the engine is a pure translator +
+// operator now; Install/InstallManifests left the interface).
+type Flux struct{}
 
-// Flux implements engine.Engine.
-type Flux struct {
-	// tuning is the closed engine.tuning knob set (GT1, U3) applied over
-	// the embedded install manifests by InstallManifests. nil = untuned.
-	tuning *config.EngineTuning
-}
-
-// New returns an untuned Flux engine (tests and callers that only need the
-// stock install).
+// New returns a Flux engine.
 func New() *Flux { return &Flux{} }
-
-// NewTuned returns a Flux engine whose InstallManifests patches the
-// embedded manifests with t (GT1). The factory is the production caller.
-func NewTuned(t *config.EngineTuning) *Flux { return &Flux{tuning: t} }
 
 // OrdersDeliveries reports that flux orders delivery reconciliation
 // natively via Kustomization spec.dependsOn (p6 DEP3) — `up`'s wave gate
 // never runs for this engine.
 func (f *Flux) OrdersDeliveries() bool { return true }
-
-// InstallManifests parses the embedded, pre-rendered Flux install manifest
-// (source-controller + kustomize-controller only; see
-// hack/gen-flux-manifests.sh for how it's regenerated).
-func InstallManifests() ([]*unstructured.Unstructured, error) {
-	return apply.ParseMultiDoc(installYAML)
-}
-
-func (f *Flux) Install(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
-	objs, err := f.InstallManifests()
-	if err != nil {
-		return diag.Wrap(err, diag.CodeEngineManifestsInv, "embedded flux manifests are invalid",
-			"this is a cube-idp bug — regenerate with hack/gen-flux-manifests.sh and report it")
-	}
-	return a.Apply(ctx, objs, true, timeout)
-}
-
-// InstallManifests implements engine.Engine, delegating to the package-level
-// InstallManifests func (kept for tests and for callers that only need the
-// manifests, not a Flux value) and then applying this engine's tuning
-// (GT1, U3) — the objects Install SSAs and `up` inventories are the tuned
-// ones. An unknown tuning component surfaces as CUBE-3009 here.
-func (f *Flux) InstallManifests() ([]*unstructured.Unstructured, error) {
-	objs, err := InstallManifests()
-	if err != nil {
-		return nil, err
-	}
-	if err := engine.ApplyTuning(objs, f.tuning); err != nil {
-		return nil, err
-	}
-	return objs, nil
-}
 
 // deliveredListGVKs are the engine-native kinds Deliver creates per pack;
 // Uninstall must remove exactly these, and wait for their prune finalizers.

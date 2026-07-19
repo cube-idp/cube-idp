@@ -19,9 +19,7 @@ import (
 
 	"golang.org/x/mod/sumdb/dirhash"
 
-	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
-	enginefactory "github.com/cube-idp/cube-idp/internal/engine/factory"
 	"github.com/cube-idp/cube-idp/internal/lock"
 	"github.com/cube-idp/cube-idp/internal/pack"
 	"github.com/cube-idp/cube-idp/internal/registry"
@@ -61,6 +59,11 @@ func Vendor(ctx context.Context, lockPath, outPath, platform string, con *ui.Con
 		// raw read above would already have failed), but mapped explicitly
 		// so a future refactor can't turn this into a nil-pointer panic.
 		return diag.New(diag.CodeVendorLockMissing, lockPath+" is empty or missing", "run `cube-idp up` first")
+	}
+	if lf.Engine.Ref == "" {
+		return diag.New(diag.CodeVendorLockMissing,
+			lockPath+" predates the engine-as-pack change (no engine pack entry)",
+			"re-run `cube-idp up` to regenerate cube.lock, then vendor again")
 	}
 
 	if platform == "" {
@@ -139,8 +142,12 @@ func Vendor(ctx context.Context, lockPath, outPath, platform string, con *ui.Con
 // only as the run's terminal Diagnosis — no per-pack line for a pack that
 // never finished.
 func vendorPacks(ctx context.Context, lf *lock.File, cacheDir, stage string, con *ui.Console) (map[string]string, error) {
-	packHashes := make(map[string]string, len(lf.Packs))
-	for _, entry := range lf.Packs {
+	// Engine-as-pack: the engine pack is vendored exactly like every chart
+	// pack — prepended so the bundle contains packs/<engine.Name> and up's
+	// resolveBundleRefs can rewrite the engine ref at `up --bundle` time.
+	entries := append([]lock.Entry{lf.Engine.Entry()}, lf.Packs...)
+	packHashes := make(map[string]string, len(entries))
+	for _, entry := range entries {
 		pr := con.Progress("vendor", fmt.Sprintf("pack %s (%s)", entry.Name, entry.Resolved))
 		ref := entry.Ref
 		if d, ok := strings.CutPrefix(entry.Resolved, "oci:"); ok {
@@ -177,36 +184,17 @@ func vendorPacks(ctx context.Context, lf *lock.File, cacheDir, stage string, con
 	return packHashes, nil
 }
 
-// engineInstallImages and registryInstallImages are indirections over the
-// real engine/factory + registry image derivation below (a test seam only):
-// internal/bundle's tests must stay fully local — in-process registry,
-// random.Image, no network — but the production defaults derive images from
-// the REAL Flux/Argo CD and zot manifests, which reference real registry
-// images. Production always uses defaultEngineInstallImages/
-// defaultRegistryInstallImages; bundle_test.go's TestMain neutralizes both
-// by default and specific tests restore synthetic (still local) values to
-// exercise the union logic itself.
-var (
-	engineInstallImages   = defaultEngineInstallImages
-	registryInstallImages = defaultRegistryInstallImages
-)
-
-// defaultEngineInstallImages returns every image the named GitOps engine's
-// own install manifests reference — exactly what `up` records for the
-// engine via lock.ImagesFrom(eng.InstallManifests()). The engine is built
-// untuned on purpose: engine.tuning (GT1) only patches replicas/resources,
-// never image refs, so the vendored image set is tuning-independent.
-func defaultEngineInstallImages(engineType string) ([]string, error) {
-	eng, err := enginefactory.New(config.EngineSpec{Type: engineType})
-	if err != nil {
-		return nil, err
-	}
-	objs, err := eng.InstallManifests()
-	if err != nil {
-		return nil, err
-	}
-	return lock.ImagesFrom(objs), nil
-}
+// registryInstallImages is an indirection over the real registry image
+// derivation below (a test seam only): internal/bundle's tests must stay
+// fully local — in-process registry, random.Image, no network — but the
+// production default derives images from the REAL zot manifests, which
+// reference real registry images. Production always uses
+// defaultRegistryInstallImages; bundle_test.go's TestMain neutralizes it by
+// default and specific tests restore synthetic (still local) values to
+// exercise the union logic itself. (The engine's images are no longer
+// derived here: engine-as-pack records them in the lock's engine entry —
+// lf.Engine.Images — vendored like every pack's Entry.Images.)
+var registryInstallImages = defaultRegistryInstallImages
 
 // defaultRegistryInstallImages returns every image the in-cluster zot
 // registry's own install manifests reference.
@@ -234,10 +222,6 @@ func defaultRegistryInstallImages() ([]string, error) {
 // Each image is a Progress/Done pair, mirroring vendorPacks — see its
 // doc comment for the deliberate plain-output delta on the failure path.
 func vendorImages(ctx context.Context, lf *lock.File, plat *ocispec.Platform, stage string, con *ui.Console) (index, imageHashes map[string]string, err error) {
-	engImgs, err := engineInstallImages(lf.Engine.Type)
-	if err != nil {
-		return nil, nil, err
-	}
 	regImgs, err := registryInstallImages()
 	if err != nil {
 		return nil, nil, err
@@ -249,7 +233,10 @@ func vendorImages(ctx context.Context, lf *lock.File, plat *ocispec.Platform, st
 			set[img] = struct{}{}
 		}
 	}
-	for _, img := range engImgs {
+	// Engine-as-pack: the engine's install images are recorded in the lock's
+	// engine entry (up derives them from the rendered engine pack), vendored
+	// like every pack's Entry.Images — no engine/factory embed derivation.
+	for _, img := range lf.Engine.Images {
 		set[img] = struct{}{}
 	}
 	for _, img := range regImgs {

@@ -1,8 +1,9 @@
 # cube-idp engine-as-a-pack: engine install from a pack reference, values replace tuning
 
 Date: 2026-07-19
-Status: PROPOSED (owner review pending). Plan: not yet written
-(writing-plans follows owner ratification of this spec).
+Status: RATIFIED (owner review 2026-07-19 — all three §9 questions
+answered; resolutions inline in §9). Plan:
+`docs/superpowers/plans/2026-07-19-cube-idp-engine-as-pack.md`.
 Prior art: `2026-07-18-cube-idp-phase5-roadmap-design.md` (GT1/GT15 tuning
 vocabulary, GT16 self-management — this spec amends all three),
 `2026-07-19-cube-idp-pack-depends-and-cubelock-crd-design.md` (p6 depgraph
@@ -293,7 +294,20 @@ edge survives as backstop. Owner-scoped as the follow-up phase
 (2026-07-19); deletes the two hardcoded implicit edges instead of adding
 a third mechanism.
 
-### 8.3 cube-engine artifact tag
+### 8.3 `spec.prerequisites` — CLI-delivered bootstrap packs
+
+Owner-proposed 2026-07-19, shape settled, spun out as its own DRAFT spec:
+`2026-07-19-cube-idp-prerequisites-packs-design.md`. Generalizes this
+spec's `[engine-pack]` step into a loop over `[prerequisites…, engine
+pack]` — operator-declared packs CLI-SSA'd before the engine (canonical
+case: Gateway API CRDs, which would relax D5 and degrade the
+registry-route CRD wait to a backstop). Hard-depends on this phase's
+plumbing; carries its own due-diligence list (SSA ownership collision
+with the traefik pack's vendored CRDs being the big one). Interacts with
+§8.1 (may supersede the route-only-pack shape) and §8.2 (prereq-provided
+GVKs must count as satisfied).
+
+### 8.4 cube-engine artifact tag
 
 `engineSelfTag` stays `"latest"` (up.go:1180) in this phase; switching
 the self-artifact tag to the engine pack's version is a candidate
@@ -301,13 +315,64 @@ follow-up once CubeLock-CRD (p6) and this spec have both landed.
 
 ---
 
-## 9. Open questions for owner review
+## 9. Open questions — RESOLVED (owner review 2026-07-19)
 
-1. **Published pack pins**: first release version for the two engine
-   packs (`0.1.0`?) and whether they enter the existing catalog index.
-2. **`existing`-cluster mode**: an engine already installed by other
-   means (pre-cube argocd) — is `verifyEnginePackRef` + health preflight
-   sufficient, or does first-SSA-onto-existing-install deserve a guard?
-3. **Chart pull cache**: helm's default cache dir vs cube-idp's pack
-   cache — acceptable to inherit helm's, or should the plan pin
-   `HELM_CACHE_HOME` under the cube-idp cache root?
+1. **Published pack pins** — RATIFIED: both engine packs release at
+   `0.1.0`, through the same $PACKS publish CI (attested, public, GT10
+   verbatim). They enter the existing catalog index — zero CI changes;
+   filtering `cube-engine-*` out of the `pack list --available` wizard
+   is a cosmetic follow-up, not a gate.
+2. **`existing`-cluster mode** — RATIFIED: no extra guard. cube-idp does
+   not solve operator problems: `verifyEnginePackRef` plus the existing
+   health preflight (`engineHealthyAtStart`, up.go:1202) is sufficient.
+   SSA onto a foreign pre-existing engine install is operator error —
+   documented, never guarded.
+3. **Chart pull cache** — RATIFIED (recommended approach accepted): pin
+   helm's cache under the cube-idp cache root by setting the
+   `cli.EnvSettings` cache paths in `renderChartRef`
+   (internal/pack/helm.go) — not process env, which would leak to
+   subprocesses. Applies uniformly to ALL chart packs (traefik today
+   inherits helm's default cache): hermetic renders, no interference
+   with the operator's own helm state, one cache root to clean. The
+   one-time cost is a cold re-download per chart on first post-upgrade
+   render.
+
+---
+
+## 10. Amendment (owner, 2026-07-19 — post-ratification, during p7 execution)
+
+**D2/D3 narrowed to the argocd engine pack.** Execution evidence (p7 T3
+blocker, verified): the sole existing flux chart,
+`fluxcd-community/flux2`, renders **0 of 43 objects with
+`metadata.namespace`** at every version — it is built for
+`helm install --namespace X` apply-time defaulting, which helm performs
+only against a live cluster's REST mapper and therefore never under the
+client-only `action.DryRunClient` render cube-idp uses (helm.go:104).
+fluxcd ships no official install chart (manifests only, via
+`flux install --export`). cube-idp's Applier hard-fails on
+namespace-less namespaced objects ("namespace not specified" — the
+argocd.go:92 war story). A render-path namespace stamp was considered
+and REJECTED by the owner (silent shared-render transform; reverses the
+content-self-stamps posture T12's deletion rationale relies on).
+
+**Resolution:** `packs/cube-engine-flux` becomes a **vendored-manifests
+pack**: `manifests/install.yaml` is the
+`flux install --export --components=source-controller,kustomize-controller`
+output (initially the byte-identical retired $ROOT embed — parity by
+construction; self-stamped `flux-system` namespaces; includes the
+Namespace object). No `chart.yaml`.
+
+- **D2** now reads: chart-based engine pack for **argocd**;
+  vendored-manifests engine pack for **flux** (the chart ecosystem left
+  no chart-based option).
+- **D3** (open values) applies to **argocd only**. `engine.values` with
+  `type: flux` hits the GT15 stone at render — typed **CUBE-4016**
+  ("values are helm-only") — surfacing "customisations are not possible
+  for the flux engine in this phase"; remediation text reviewed at
+  T7/T8. Flux engine customization arrives later via the self-managed
+  setup (GT16 path), owner-deferred.
+- Bump procedure: regenerate `manifests/install.yaml` with
+  `flux install --export` (pack README; replaces
+  `hack/gen-flux-manifests.sh` duty — the T12 deletions stand).
+- The T1 REPLICA_KNOB handoff is **void**; T14's flux values-convergence
+  leg is redesigned at T14 (structural selfManage assertions stay).

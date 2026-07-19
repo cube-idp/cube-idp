@@ -158,7 +158,7 @@ func TestDefaultRoundTripsThroughLoad(t *testing.T) {
 		if loaded.Spec.Cluster.Provider != def.Spec.Cluster.Provider {
 			t.Fatalf("provider: got %q, want %q", loaded.Spec.Cluster.Provider, def.Spec.Cluster.Provider)
 		}
-		if loaded.Spec.Engine != def.Spec.Engine {
+		if !reflect.DeepEqual(loaded.Spec.Engine, def.Spec.Engine) {
 			t.Fatalf("engine: got %+v, want %+v", loaded.Spec.Engine, def.Spec.Engine)
 		}
 		if loaded.Spec.Gateway != def.Spec.Gateway {
@@ -333,76 +333,62 @@ spec:
 	}
 }
 
-// TestEngineTuningRoundTripAndValidation covers U3's spec.engine.tuning
-// (GT1): set → decoded (typed *int replicas, int64-leaved resources — CUE's
-// decode type, deliberately NOT normalized to int like PackRef.Values,
-// because the consumer is unstructured SSA) and round-tripped through
-// SaveValidated; a knob outside the closed set (replicas: 0) → CUBE-0002;
-// omitted → nil pointer, an absent key on re-marshal (PackRef.Values
-// discipline).
-func TestEngineTuningRoundTripAndValidation(t *testing.T) {
+func TestEngineRefValuesRoundTripAndDefaults(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "cube.yaml")
-	base := `apiVersion: cube-idp.dev/v1alpha1
+	os.WriteFile(p, []byte(`apiVersion: cube-idp.dev/v1alpha1
 kind: Cube
-metadata: {name: dev}
+metadata: {name: t}
+spec:
+  engine:
+    type: argocd
+    ref: /tmp/packs/cube-engine-argocd
+    values:
+      controller: {replicas: 2}
+  gateway: {host: cube-idp.localtest.me, port: 8443, pack: traefik}
+`), 0o644)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Spec.Engine.Ref != "/tmp/packs/cube-engine-argocd" || c.Spec.Engine.PackRef() != c.Spec.Engine.Ref {
+		t.Fatalf("explicit ref must win: %+v", c.Spec.Engine)
+	}
+	if c.Spec.Engine.PackName() != "cube-engine-argocd" {
+		t.Fatalf("PackName: %q", c.Spec.Engine.PackName())
+	}
+	// Values normalized like PackRef.Values: int, never CUE's int64.
+	if r := c.Spec.Engine.Values["controller"].(map[string]any)["replicas"]; r != int(2) {
+		t.Fatalf("engine values not normalized: %T %v", r, r)
+	}
+	// Defaults: no ref → the published pin per type.
+	if got := (EngineSpec{Type: "flux"}).PackRef(); got != "oci://ghcr.io/cube-idp/packs/cube-engine-flux:0.1.0" {
+		t.Fatalf("default flux ref: %q", got)
+	}
+	if got := (EngineSpec{Type: "argocd"}).PackRef(); got != "oci://ghcr.io/cube-idp/packs/cube-engine-argocd:0.1.0" {
+		t.Fatalf("default argocd ref: %q", got)
+	}
+}
+
+func TestEngineTuningRemovedIsCube0012(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.yaml")
+	os.WriteFile(p, []byte(`apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: t}
 spec:
   engine:
     type: flux
-    tuning:
-      components:
-        source-controller:
-          replicas: 2
-          resources: {limits: {memory: 512Mi, cpu: 1}}
-  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443}
-`
-	if err := os.WriteFile(p, []byte(base), 0o644); err != nil {
-		t.Fatal(err)
+    tuning: {components: {kustomize-controller: {replicas: 2}}}
+  gateway: {host: cube-idp.localtest.me, port: 8443, pack: traefik}
+`), 0o644)
+	_, err := Load(p)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeEngineTuningRemoved {
+		t.Fatalf("want CUBE-0012 migration error, got %v", err)
 	}
-	c, err := Load(p)
-	if err != nil {
-		t.Fatalf("valid tuning rejected: %v", err)
-	}
-	ct, ok := c.Spec.Engine.Tuning.Components["source-controller"]
-	if !ok || ct.Replicas == nil || *ct.Replicas != 2 {
-		t.Fatalf("tuning not decoded: %+v", c.Spec.Engine.Tuning)
-	}
-	limits, _ := ct.Resources["limits"].(map[string]any)
-	if limits["memory"] != "512Mi" {
-		t.Fatalf("resources not decoded: %+v", ct.Resources)
-	}
-	if cpu, isInt64 := limits["cpu"].(int64); !isInt64 || cpu != 1 {
-		t.Fatalf("tuning numbers must stay int64 (unstructured-safe), got %T %v", limits["cpu"], limits["cpu"])
-	}
-	if err := SaveValidated(p, c); err != nil {
-		t.Fatalf("tuning does not round-trip through SaveValidated: %v", err)
-	}
-	c, err = Load(p)
-	if err != nil || c.Spec.Engine.Tuning == nil || *c.Spec.Engine.Tuning.Components["source-controller"].Replicas != 2 {
-		t.Fatalf("tuning lost on round-trip: %v %+v", err, c.Spec.Engine)
-	}
-
-	// The knob set is closed: replicas must be > 0 per schema.cue.
-	bad := strings.Replace(base, "replicas: 2", "replicas: 0", 1)
-	if err := os.WriteFile(p, []byte(bad), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Load(p); err == nil || codeOf(t, err) != "CUBE-0002" {
-		t.Fatalf("replicas: 0 must be CUBE-0002, got: %v", err)
-	}
-
-	// Omitted → nil: no tuning block, no patch, and re-marshal writes no
-	// explicit `tuning: null` (omitempty discipline).
-	mc, err := Load("testdata/minimal.yaml")
-	if err != nil || mc.Spec.Engine.Tuning != nil {
-		t.Fatalf("omitted tuning must be nil, got %v %+v", err, mc.Spec.Engine)
-	}
-	raw, err := sigyaml.Marshal(mc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), "tuning") {
-		t.Fatalf("nil tuning must marshal as an absent key:\n%s", raw)
+	if !strings.Contains(de.Remediation, "engine.values") {
+		t.Fatalf("remediation must point at engine.values: %q", de.Remediation)
 	}
 }
 

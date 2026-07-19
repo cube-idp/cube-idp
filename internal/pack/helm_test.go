@@ -2,6 +2,7 @@ package pack
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/yaml"
@@ -176,5 +177,22 @@ func TestMergeValuesOverrideWins(t *testing.T) {
 	// inputs must not be mutated
 	if base["replicas"] != 1 || base["image"].(map[string]any)["tag"] != "v1" {
 		t.Fatalf("mergeValues mutated base: %+v", base)
+	}
+}
+
+// TestHelmSettingsPinnedUnderCacheRoot pins spec §9.3: helm's chart cache
+// lives under cube-idp's own cache root (hermetic, one cache to clean) —
+// EnvSettings fields, never process env.
+func TestHelmSettingsPinnedUnderCacheRoot(t *testing.T) {
+	dir, err := DefaultCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := helmSettings()
+	if !strings.HasPrefix(s.RepositoryCache, dir) {
+		t.Fatalf("RepositoryCache %q not under cache root %q", s.RepositoryCache, dir)
+	}
+	if !strings.HasPrefix(s.RepositoryConfig, dir) {
+		t.Fatalf("RepositoryConfig %q not under cache root %q", s.RepositoryConfig, dir)
 	}
 }

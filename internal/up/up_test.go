@@ -1036,3 +1036,18 @@ func TestSelfManageDeliverEngineSelfFailureIsCube3010(t *testing.T) {
 		t.Fatalf("remediation must name the `cube-idp up` re-run, got: %q", de.Remediation)
 	}
 }
+
+// TestEnginePackRecordRow pins the engine's kubectl-get-packs row
+// (engine-as-pack §3.3.7): delivery "engine", CUSTOMIZED tracks
+// engine.values, no dependsOn.
+func TestEnginePackRecordRow(t *testing.T) {
+	pk := &pack.Pack{Name: "cube-engine-flux", Version: "0.1.0"}
+	obj := pack.PackObject(pk, config.GatewaySpec{}, true, true, "engine", nil)
+	spec := obj.Object["spec"].(map[string]any)
+	if spec["delivery"] != "engine" || spec["customized"] != "yes" || spec["ready"] != true {
+		t.Fatalf("engine record spec: %+v", spec)
+	}
+	if _, has := spec["dependsOn"]; has {
+		t.Fatalf("engine record must carry no dependsOn: %+v", spec)
+	}
+}

@@ -82,6 +82,23 @@ func Load(path string) (*Cube, error) {
 		}
 	}
 
+	// Migration guard (engine-as-pack spec D6): engine.tuning was removed.
+	// Probed pre-CUE like providerConfig above — the closed schema would
+	// otherwise reject the key with a generic CUBE-0002 instead of the
+	// migration recipe.
+	var legacyTuning struct {
+		Spec struct {
+			Engine struct {
+				Tuning map[string]any `yaml:"tuning"`
+			} `yaml:"engine"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(raw, &legacyTuning); err == nil && len(legacyTuning.Spec.Engine.Tuning) > 0 {
+		return nil, diag.New(diag.CodeEngineTuningRemoved,
+			"engine.tuning has been removed — the engine now installs from a pack whose chart values replace it",
+			"move the knobs to engine.values as chart values of the cube-engine-<type> pack (see its README for the replica/resources value paths); run `cube-idp config schema` for the shape")
+	}
+
 	ctx := cuecontext.New()
 	schema := ctx.CompileString(schemaCUE).LookupPath(cuePath("#Cube"))
 	val := schema.Unify(ctx.Encode(doc))
@@ -140,6 +157,7 @@ func normalizePackValues(c *Cube) {
 	for i := range c.Spec.Packs {
 		c.Spec.Packs[i].Values = normalizeAny(c.Spec.Packs[i].Values).(map[string]any)
 	}
+	c.Spec.Engine.Values = normalizeAny(c.Spec.Engine.Values).(map[string]any)
 }
 
 func normalizeAny(v any) any {

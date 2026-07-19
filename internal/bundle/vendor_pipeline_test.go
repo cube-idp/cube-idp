@@ -13,10 +13,11 @@ import (
 
 // TestVendorPlainByteStable is Step 2's golden test (Task R3): Vendor driven
 // through ui.RunPipeline with ModePlain forced must emit exactly today's
-// three-line plain sequence — one "pack" line, no image lines (the fixture
-// pins no Entry.Images), then the final "bundle written:" line — byte for
-// byte, per G7's pinned bytes. This is the byte-identity arbiter for
-// Vendor's io.Writer -> *ui.Console signature migration.
+// plain sequence — the engine pack line (engine-as-pack: vendored first,
+// like every pack), the demo "pack" line, no image lines (the fixture pins
+// no Entry.Images), then the final "bundle written:" line — per G7's pinned
+// bytes. This is the byte-identity arbiter for Vendor's io.Writer ->
+// *ui.Console signature migration.
 func TestVendorPlainByteStable(t *testing.T) {
 	lockPath := writeLockFixture(t)
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
@@ -31,20 +32,24 @@ func TestVendorPlainByteStable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := "▸ [vendor] pack demo (oci:sha256:" // digest varies per push; prefix-match the pack line
 	got := buf.String()
-	if !bytes.HasPrefix([]byte(got), []byte(want)) {
-		t.Fatalf("plain projection missing expected pack line prefix:\ngot:  %q\nwant prefix: %q", got, want)
+	// Engine-as-pack: the engine pack is vendored first, so the leading line
+	// is now its start line; the demo pack line still appears.
+	wantEngine := "▸ [vendor] pack cube-engine-flux (oci:sha256:" // digest varies per push
+	if !bytes.HasPrefix([]byte(got), []byte(wantEngine)) {
+		t.Fatalf("plain projection missing expected engine pack line prefix:\ngot:  %q\nwant prefix: %q", got, wantEngine)
+	}
+	if !bytes.Contains([]byte(got), []byte("▸ [vendor] pack demo (oci:sha256:")) {
+		t.Fatalf("plain projection missing expected demo pack line:\ngot: %q", got)
 	}
 	const wantSuffix = "packs, 0 images)\n"
 	if !bytes.HasSuffix([]byte(got), []byte(wantSuffix)) {
 		t.Fatalf("plain projection missing expected bundle-written suffix:\ngot: %q\nwant suffix: %q", got, wantSuffix)
 	}
-	// Exactly three lines: the pack start line (ratified R1, TUI spec §5),
-	// the pack done line, and the bundle-written line (no image lines — the
-	// fixture's lock pins no Entry.Images).
-	if n := bytes.Count([]byte(got), []byte("\n")); n != 3 {
-		t.Fatalf("want exactly 3 plain lines (pack start + pack + bundle written), got %d:\n%q", n, got)
+	// Exactly five lines: engine pack start+done, demo pack start+done, and
+	// the bundle-written line (no image lines — the fixture pins no images).
+	if n := bytes.Count([]byte(got), []byte("\n")); n != 5 {
+		t.Fatalf("want exactly 5 plain lines (engine+demo pack start/done + bundle written), got %d:\n%q", n, got)
 	}
 }
 
@@ -69,9 +74,11 @@ func TestVendorImagePlainByteStable(t *testing.T) {
 	if !bytes.Contains([]byte(got), []byte(wantImageLine)) {
 		t.Fatalf("plain projection missing image line %q, got:\n%q", wantImageLine, got)
 	}
-	// R1 start lines for the pack and image steps double their line count.
-	if n := bytes.Count([]byte(got), []byte("\n")); n != 5 {
-		t.Fatalf("want exactly 5 plain lines (pack start+done, image start+done, bundle written), got %d:\n%q", n, got)
+	// R1 start lines for the pack and image steps double their line count;
+	// engine-as-pack adds the engine pack's start+done pair, so: engine pack
+	// start+done, demo pack start+done, image start+done, bundle written.
+	if n := bytes.Count([]byte(got), []byte("\n")); n != 7 {
+		t.Fatalf("want exactly 7 plain lines (engine+demo pack start/done, image start/done, bundle written), got %d:\n%q", n, got)
 	}
 }
 

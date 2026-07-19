@@ -22,12 +22,14 @@ import (
 	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
-// installFluxCRDs installs the flux CRDs from the embedded install manifests
-// into the envtest API server and creates the flux-system namespace, so
-// delivered OCIRepository/GitRepository/Kustomization objects can be applied.
+// installFluxCRDs installs the flux CRDs from the testdata/crds.yaml fixture
+// (embedded as crdsYAML in contract_test.go — engine-as-pack: the engine no
+// longer carries an install manifest) into the envtest API server and creates
+// the flux-system namespace, so delivered
+// OCIRepository/GitRepository/Kustomization objects can be applied.
 func installFluxCRDs(t *testing.T) {
 	t.Helper()
-	objs, err := InstallManifests()
+	objs, err := apply.ParseMultiDoc(crdsYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
