@@ -928,16 +928,30 @@ Open the phase-2 PR (ADRs + archive together — the ADR set is reviewable again
 
 Batches, in order (delicate first, mechanical last):
 
-| # | Scope | Sites (approx, from `$S/sites.jsonl`) |
-| --- | --- | --- |
-| B1 | `internal/diag/` (codes.go + registry.go + tests) | ~120 |
-| B2 | `internal/config/` | ~60 |
-| B3 | `internal/pack/` | ~50 |
-| B4 | `internal/up/` + `internal/engine/` + `internal/bundle/` | ~80 |
-| B5 | `internal/cluster/` + `internal/gitea/` + remaining `internal/` | ~90 |
-| B6 | `cmd/` | ~120 |
-| B7 | `tests/e2e/` | ~60 |
-| B8 | `Makefile`, `.github/workflows/`, `docs/vhs/`, misc | ~10 |
+Batch sizes below are **measured** from `$S/sites.jsonl` (763 sites total), not estimated.
+The original estimates were written before the inventory existed and were wrong in both
+directions — B5 in particular was undersized 2.5× because `internal/ui/` (94 sites) was
+assigned to no batch at all. It is now split out as B5a.
+
+| # | Scope | Sites (measured) | Files |
+| --- | --- | --- | --- |
+| B1 | `internal/diag/` (codes.go + registry.go + tests) | 72 | 4 |
+| B2 | `internal/config/` | 28 | 3 |
+| B3 | `internal/pack/` | 68 | 22 |
+| B4 | `internal/up/` + `internal/engine/` + `internal/bundle/` | 120 | 21 |
+| B5a | `internal/ui/` | ~94 | ~20 |
+| B5b | `internal/cluster/` + `internal/gitea/` + remaining `internal/` | ~132 | ~50 |
+| B6 | `cmd/` + `main.go` | 133 | 34 |
+| B7 | `tests/e2e/` | 57 | 3 |
+| B8 | `.github/`, `.goreleaser.yaml`, `tests/*.go` (non-e2e), misc | 7 | 4 |
+
+Not a comment batch: **52 sites in top-level docs** (`README.md` 35, `docs/cube-yaml-reference.md` 5,
+`docs/pack-contract-v1.md` 5, `docs/outstanding-todos.md` 4, `docs/machine-readable-output.md` 3)
+— these are Phase 4 (Task 15) work, driven by the findings report, not by site inventory.
+
+Two boundary calls, both small and reversible: `main.go` rides with B6 (`cmd/`); the two
+non-e2e `tests/*.go` files ride with B8. Per-batch site lists are pre-computed in
+`$S/sites-by-batch.json` so batch agents consume their slice directly.
 
 ### Task 12: **[WORKFLOW]** Classification fan-out (read-only)
 
