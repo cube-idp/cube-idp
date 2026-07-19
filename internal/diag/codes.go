@@ -16,6 +16,10 @@ const (
 	CodeProviderConfigRemoved Code = "CUBE-0011" // cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)
 	CodeEngineTuningRemoved   Code = "CUBE-0012" // engine.tuning was removed (engine-as-pack) — use engine.values (chart values of the cube-engine-<type> pack)
 	CodeEnginePackMismatch    Code = "CUBE-0013" // engine.ref points at a pack whose pack.cue name != cube-engine-<engine.type>
+
+	// Remote -f (spec 2026-07-19 §7).
+	CodeConfigRemoteReadOnly Code = "CUBE-0014" // a config-mutating command ran against a remote -f ref (remote configs are read-only)
+	CodeConfigRemoteFetch    Code = "CUBE-0015" // remote -f ref fetch failed or did not yield one YAML document
 )
 
 // 01xx: doctor preflight checks (Phase 2)

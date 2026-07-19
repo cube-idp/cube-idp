@@ -35,6 +35,8 @@ var registry = map[Code]Desc{
 	CodeProviderConfigRemoved: {Summary: "cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)"},
 	CodeEngineTuningRemoved:   {Summary: "engine.tuning was removed (engine-as-pack) — move the knobs to engine.values as chart values of the cube-engine-<type> pack"},
 	CodeEnginePackMismatch:    {Summary: "engine.ref points at a pack whose pack.cue name != cube-engine-<engine.type> (F11 gateway-check analog for the engine pack)"},
+	CodeConfigRemoteReadOnly:  {Summary: "a config-mutating command ran against a remote -f ref (remote configs are read-only)"},
+	CodeConfigRemoteFetch:     {Summary: "remote -f ref fetch failed or did not yield one YAML document"},
 
 	// 01xx: doctor preflight checks (Phase 2)
 	CodeDoctorRuntime: {Summary: "container runtime not found"},

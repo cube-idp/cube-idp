@@ -814,3 +814,89 @@ spec:
 		t.Fatalf("empty ref serialized: %s", raw)
 	}
 }
+
+// LoadBytes must be Load minus the os.ReadFile: the same document parsed
+// from bytes (labelled by a REF, not a path) yields the same Spec as the
+// on-disk path — the split is behavior-neutral, which is what lets remote
+// -f reuse the whole CUE pipeline (spec 2026-07-19 §7.1).
+func TestLoadBytesEqualsLoad(t *testing.T) {
+	doc := []byte("apiVersion: cube-idp.dev/v1alpha1\nkind: Cube\nmetadata: {name: demo}\nspec:\n  cluster: {provider: kind}\n  engine: {type: flux}\n  gateway: {}\n")
+	f := filepath.Join(t.TempDir(), "cube.yaml")
+	if err := os.WriteFile(f, doc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fromFile, err := Load(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromBytes, err := LoadBytes(doc, "oci://example/cfg:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(fromFile.Spec, fromBytes.Spec) {
+		t.Fatal("LoadBytes result diverges from Load")
+	}
+	// src labels errors: a REF, not a path, must reach the diag summary.
+	_, err = LoadBytes([]byte("apiVersion: cube-idp.dev/v1alpha1\nkind: Cube\nspec: {bogus: 1}\n"), "oci://example/cfg:1")
+	if err == nil || !strings.Contains(err.Error(), "oci://example/cfg:1") {
+		t.Fatalf("err = %v, want the ref in the message", err)
+	}
+}
+
+// Remote configs are read-only (spec 2026-07-19 §7.2): the single guard in
+// SaveValidated covers every config-mutating call site.
+func TestSaveValidatedRefusesRemoteOrigin(t *testing.T) {
+	doc := []byte("apiVersion: cube-idp.dev/v1alpha1\nkind: Cube\nmetadata: {name: demo}\nspec:\n  cluster: {provider: kind}\n  engine: {type: flux}\n  gateway: {}\n")
+	c, err := LoadBytes(doc, "oci://example/cfg:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Origin(); got.Remote || got.Ref != "" || got.Pin != "" {
+		t.Fatalf("fresh cube origin = %+v, want zero value (local)", got)
+	}
+	c.MarkRemoteOrigin("oci://example/cfg:1", "oci:sha256:abc")
+	if got := c.Origin(); !got.Remote || got.Ref != "oci://example/cfg:1" || got.Pin != "oci:sha256:abc" {
+		t.Fatalf("origin = %+v", got)
+	}
+	target := filepath.Join(t.TempDir(), "cube.yaml")
+	err = SaveValidated(target, c)
+	if code := codeOf(t, err); code != diag.CodeConfigRemoteReadOnly {
+		t.Fatalf("code = %s, want %s", code, diag.CodeConfigRemoteReadOnly)
+	}
+	// The guard runs FIRST: nothing was written, not even the temp file.
+	if _, statErr := os.Stat(target); statErr == nil {
+		t.Fatal("SaveValidated wrote the file despite the remote guard")
+	}
+	if _, statErr := os.Stat(target + ".tmp"); statErr == nil {
+		t.Fatal("SaveValidated left a temp file despite the remote guard")
+	}
+}
+
+// Origin is never serialized: an unexported field cannot round-trip through
+// yaml/json, so a marked cube marshals byte-identically to an unmarked one.
+func TestOriginNeverSerializes(t *testing.T) {
+	doc := []byte("apiVersion: cube-idp.dev/v1alpha1\nkind: Cube\nmetadata: {name: demo}\nspec:\n  cluster: {provider: kind}\n  engine: {type: flux}\n  gateway: {}\n")
+	plain, err := LoadBytes(doc, "cube.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	marked, err := LoadBytes(doc, "cube.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	marked.MarkRemoteOrigin("oci://example/cfg:1", "oci:sha256:abc")
+	a, err := sigyaml.Marshal(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := sigyaml.Marshal(marked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(a) != string(b) {
+		t.Fatalf("origin leaked into the document:\n%s\n---\n%s", a, b)
+	}
+	if strings.Contains(string(b), "origin") || strings.Contains(string(b), "oci://") {
+		t.Fatalf("origin serialized: %s", b)
+	}
+}
