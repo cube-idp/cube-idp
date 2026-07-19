@@ -97,6 +97,12 @@ spec:
 
     # A chart pack CUSTOMIZED with helm values (→ CUSTOMIZED in `kubectl get packs`):
     - ref: oci://ghcr.io/cube-idp/packs/prometheus-stack:0.1.0
+      # Optional fetched values BASE — same ref grammar as `ref` (oci:// ,
+      # git subdir, or a local path; NOT a raw https object URL). Resolved by
+      # up/diff only; pinned in cube.lock as valuesPin. Fetch/shape/merge
+      # failure = CUBE-4021. Inline `values:` below are merge-patched ON TOP
+      # (RFC 7386: inline wins, null deletes, arrays replace).
+      valuesRef: oci://ghcr.io/acme/values/prometheus-stack:1.2.0
       values:                          # helm values, only, always (chartless pack + values = CUBE-4016)
         grafana:
           adminPassword: changeme
@@ -156,6 +162,9 @@ spec:
 | **`httpPort`** | Opt-in only; must differ from `gateway.port` and every `extraPorts.hostPort` (CUBE-0002). Cluster-shape field — recreate the cluster to change it. |
 | **`providerConfigRef` vs `forProvider`** | Two escape-hatch layers (named-ref vs inline). Usually one or the other; both shown only to exhaust the schema. |
 | **`values` normalization** | CUE ints round-trip as Go `int`, never `int64` — relevant if you script cube.yaml generation. |
+| **`valuesRef` is git/oci-shaped** | A raw `https://…/values.yaml` object URL does NOT work (every `http(s)://` ref is fetched as a directory). Use an OCI artifact, a git `//subdir`, or a local path; a directory-shaped ref must hold exactly one top-level `*.yaml`. Bare-git refs need `@rev` (CUBE-4007). |
+| **`valuesRef` + chartless pack** | CUBE-4016, same stone as `values` (GT15) — a `valuesRef` is helm values, nothing else. |
+| **remote `-f`** | The same grammar loads the whole cube (`cube-idp up -f oci://…`). Read-only: `pack install` / `spoke add` / `spoke remove` against a remote ref are CUBE-0014, and a fetch failure is CUBE-0015. `cube.lock` is then written to `./cube.lock` in the working directory. A local file of the same name always wins over a ref. |
 | **`engine.tuning`** | **Removed** (CUBE-0012 migration error) — replaced by `engine.ref`/`engine.values`. Don't add it. |
 | **Retired but reserved codes** | `CUBE-3003`, `CUBE-3009` are retired-in-place (never emitted) — you won't see them. |
 
