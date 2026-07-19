@@ -89,3 +89,36 @@ func TestReadCorrupt(t *testing.T) {
 		t.Fatalf("want %s, got %v", diag.CodeLockCorrupt, err)
 	}
 }
+
+// TestEngineLockEntryRoundTrip pins the engine-as-pack lock extension: the
+// engine is a first-class reproducibility entry (spec §3.3.6), old locks
+// (type-only) still read, and Entry() projects the pack fields for bundle
+// vendoring.
+func TestEngineLockEntryRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.lock")
+	f := &File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
+		Engine: EngineLock{Type: "flux", Ref: "oci://ghcr.io/cube-idp/packs/cube-engine-flux:0.1.0",
+			Name: "cube-engine-flux", Version: "0.1.0", Resolved: "oci:sha256:abc",
+			RenderedHash: "h1", Images: []string{"ghcr.io/fluxcd/source-controller:v1.0.0"}}}
+	if err := Write(p, f); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Read(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Engine, f.Engine) {
+		t.Fatalf("engine lock round-trip: %+v != %+v", got.Engine, f.Engine)
+	}
+	e := got.Engine.Entry()
+	if e.Ref != f.Engine.Ref || e.Name != "cube-engine-flux" || e.RenderedHash != "h1" || len(e.Images) != 1 {
+		t.Fatalf("Entry projection: %+v", e)
+	}
+	// Pre-engine-as-pack lock (type only) still reads.
+	os.WriteFile(p, []byte("apiVersion: cube-idp.dev/v1alpha1\nkind: CubeLock\nengine:\n  type: argocd\npacks: []\n"), 0o644)
+	old, err := Read(p)
+	if err != nil || old.Engine.Type != "argocd" || old.Engine.Ref != "" {
+		t.Fatalf("old lock compat: %+v, %v", old, err)
+	}
+}

@@ -21,9 +21,25 @@ type File struct {
 	Packs      []Entry    `yaml:"packs" json:"packs"`
 }
 
-// EngineLock records which GitOps reconciliation engine this cube uses.
+// EngineLock records the GitOps engine: its type plus (engine-as-pack,
+// 2026-07-19) the same reproducibility fields every pack Entry carries —
+// the engine pack is pinnable and vendorable. All pack fields omitempty:
+// locks written before engine-as-pack carried only type.
 type EngineLock struct {
-	Type string `yaml:"type" json:"type"`
+	Type         string   `yaml:"type" json:"type"`
+	Ref          string   `yaml:"ref,omitempty" json:"ref,omitempty"`
+	Name         string   `yaml:"name,omitempty" json:"name,omitempty"`
+	Version      string   `yaml:"version,omitempty" json:"version,omitempty"`
+	Resolved     string   `yaml:"resolved,omitempty" json:"resolved,omitempty"`
+	RenderedHash string   `yaml:"renderedHash,omitempty" json:"renderedHash,omitempty"`
+	Images       []string `yaml:"images,omitempty" json:"images,omitempty"`
+}
+
+// Entry projects the engine's pack fields as a lock.Entry so bundle
+// vendoring and ref resolution treat the engine pack like every pack.
+func (e EngineLock) Entry() Entry {
+	return Entry{Ref: e.Ref, Name: e.Name, Version: e.Version,
+		Resolved: e.Resolved, RenderedHash: e.RenderedHash, Images: e.Images}
 }
 
 // Entry is the reproducibility record for one delivered pack.
