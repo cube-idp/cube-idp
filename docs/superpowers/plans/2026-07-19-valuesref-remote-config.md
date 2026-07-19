@@ -1972,11 +1972,11 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/lock/lock.go
 
 **Interfaces:** consumes everything above; produces no new APIs.
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 Add a "Remote values and config" subsection next to the existing `providerConfigRef`/values docs, covering: the TWO ref surfaces shipped by this plan — `packs[].valuesRef` and remote `-f` (NOT `engine.tuningRef`, dropped by Amendment 4) — with one YAML example each (adapt the spec §3 example, omitting its tuning row), the ref grammar table (spec §3.1), merge semantics (inline wins; `null` deletes; arrays replace), pin recording (`cube.lock` `valuesPin`/`cluster.providerConfigPin`), remote `-f` read-only rule + CWD `cube.lock`, and the four new CUBE codes (`CUBE-4021`, `CUBE-7007`, `CUBE-0014`, `CUBE-0015`). Per Amendment 6, describe every ref surface as git/oci-shaped — do NOT show a raw `https://…/cube.yaml` object URL as a working `-f` example, because `pack.fetchGetter`'s `ClientModeDir` makes it fail. Keep the voice/format of the DEP4 README section added in commit `95a7b09`.
 
-- [ ] **Step 2: e2e legs** (extend `tests/e2e/e2e_test.go`, gated by the existing `CUBE_IDP_E2E=1`; follow the file's helper conventions — it already shells the built binary and patches the generated cube.yaml)
+- [x] **Step 2: e2e legs** (extend `tests/e2e/e2e_test.go`, gated by the existing `CUBE_IDP_E2E=1`; follow the file's helper conventions — it already shells the built binary and patches the generated cube.yaml)
 
 TWO additions to the existing flow, at the point after the first successful `up` (the third, `tuningRef`, is DROPPED by Amendment 4):
 
@@ -1985,7 +1985,7 @@ TWO additions to the existing flow, at the point after the first successful `up`
 
 Each leg re-uses the harness's existing `runCLI`/kubectl helpers; no new flags, no new env vars.
 
-- [ ] **Step 3: Full verification**
+- [x] **Step 3: Full verification**
 
 Run:
 ```bash
@@ -1997,7 +1997,7 @@ Expected: all PASS. Then, if a docker-capable machine is at hand (owner decision
 CUBE_IDP_E2E=1 CUBE_IDP_E2E_GATEWAY_PORT=18443 go test ./tests/e2e/ -run TestE2E -v -timeout 30m
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md tests/e2e/ docs/
@@ -3806,8 +3806,254 @@ HANDOFF:
   the first outward act is still T12's.
 
 ### T12 — docs + e2e legs + full gate + PUSH + PR [Task 12, outward acts authorized]
-STATUS: IN_PROGRESS(session-t12-opus, 2026-07-19T21:08:44Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF (PR URL, e2e verdicts or deferral note):
+
+COMMITS:
+- `b01f405` docs: rv plan — claim T12
+- `9deae1c` docs+e2e: remote values/config — README section, e2e legs (RV5)
+- `<this>` docs: rv plan — T12 complete
+
+FINDINGS:
+
+1. **Step 2's "a pack the flow already installs" is IMPOSSIBLE — proved
+   empirically, not assumed.** The default profile's packs are `gitea` and
+   `argocd` (plus the `traefik` GATEWAY, which Amendment 3 puts out of scope).
+   `gitea/pack.cue` declares `#Values: {}` — a CUE *definition*, therefore
+   CLOSED — so ANY user value is rejected, and `argocd` is chartless (values
+   would be `CUBE-4016`). A throwaway probe test in `internal/pack` (written,
+   run, deleted before committing — the T11 precedent; `git status` clean
+   afterwards) called `validateValues` directly against both real pack dirs:
+   ```
+   PROBE gitea        -> out=map[] err=CUBE-4002: values for pack "" do not match its #Values schema: #Values.gitea: field not allowed
+   PROBE cert-manager -> out=map[replicaCount:2] err=<nil>
+   ```
+   Minimal correction: the leg drives `cert-manager` — the lightest catalog
+   pack with a schematized replica knob (`replicaCount: int & >0 | *1`,
+   default 1, so the override is observable) — and the leg's cube sets
+   `spec.packs` to that one pack. Everything else about the leg is the step's
+   text verbatim.
+
+2. **The legs landed as ONE NEW TEST, `TestRemoteValuesAndRemoteConfig`, not as
+   inserts into `TestUpStatusDown`.** Step 2 says "additions to the existing
+   flow, at the point after the first successful `up`"; the legs sit exactly
+   there inside their own flow (`init` → patch → `up` → leg 1 → leg 2 →
+   `down`). Rationale, in the file's own idiom: `TestPackDependsOn` and
+   `TestSpokeKindRegistration` are both feature legs expressed as dedicated
+   tests reusing `run`/`runOut`/`patchCube`/`runKubectl`/`packsCheckout`, and
+   finding 1 forces a different pack set — splicing cert-manager into
+   `TestUpStatusDown` would have changed the primary `{flux, argocd}` matrix
+   test's pack list and its idempotency semantics (its second `up` is an
+   explicit no-config-change assertion). No new flags, no new env vars; gated
+   by the existing `CUBE_IDP_E2E=1` and honouring `CUBE_IDP_E2E_GATEWAY_PORT`.
+
+3. **Leg 1 is written REF-ONLY (`valuesRef` set, NO inline `values:`)** — the
+   shape the whole-branch review found broken and `09989d4` fixed (a nil inline
+   map marshals to `null`, which under RFC 7386 REPLACES the fetched document).
+   That is the feature's primary use case and precisely what the unit tests had
+   missed, so it is what the live leg asserts end to end.
+
+4. **Step 3's optional live command is unrunnable as written.** `-run TestE2E`
+   matches NO test in this repo (the names are `TestUpStatusDown`,
+   `TestPackDependsOn`, `TestSpokeKindRegistration`,
+   `TestPublishedPacksByDigest`, and now `TestRemoteValuesAndRemoteConfig`) — it
+   would report "no tests to run" and look like a pass. Ran the new leg by name
+   instead, then `TestUpStatusDown` as a regression check. Both green (evidence
+   below). Also needed `CUBE_IDP_E2E_PACKS_DIR` on this machine: the packs
+   checkout lives at `…/cube-idp/packs`, not `packsCheckout`'s default sibling
+   `../cube-idp-packs`, so an unset run SKIPS rather than fails.
+
+5. **Commit subject dropped `tuning/`** — "remote values/tuning/config" →
+   "remote values/config", the same Amendment-4 correction T11 made to its own
+   subject. No doc, test, or code string in this task mentions
+   `engine.tuningRef`, `tuningPin`, or engine tuning.
+
+6. **Docs pathspec: two files beyond the step's "check" list, one file dropped.**
+   - `docs/pack-contract-v1.md` — the "check" condition FIRED: it documents the
+     `packs[].values` merge ladder (§ "Merge order for helm packs", layer 3) and
+     the CUSTOMIZED rule, both of which are now wrong without `valuesRef`.
+     Updated: layer 3 is now the fetched base ⊕ inline merge-patch (CUBE-4021),
+     the chartless guard names `valuesRef:` too, and CUSTOMIZED includes it.
+   - `docs/cube-yaml-reference.md` — NOT in the plan's file list (it postdates
+     it), but it bills itself as "Every field, option, and twist is exercised
+     below" and is derived from `schema.cue`, so it was stale the moment T4
+     added `valuesRef?`. Added the field to the maxed-out example plus three
+     "Twists" rows (git/oci-shaped refs, chartless guard, remote `-f`). Covered
+     by Step 4's `docs/` pathspec.
+   - `docs/machine-readable-output.md` — the "check" condition did NOT fire: it
+     documents the `-o json` event stream and mentions `cube.lock` only in
+     passing (vendor is "a pure cube.lock consumer"); it carries no lock schema.
+     NOT touched.
+
+7. **README placement.** The subsection went under `## Pack sources` (the
+   section that owns the ref-grammar table it extends), NOT "next to the
+   existing `providerConfigRef`/values docs" as Step 1 says — README documents
+   `spec.cluster.providerConfig`, never `providerConfigRef` (that lives in
+   `docs/cube-yaml-reference.md`), so the stated anchor does not exist. Voice
+   and format follow the DEP4 "Pack dependencies" section (`95a7b09`) as
+   instructed. Per Amendment 6 the section states plainly that a raw
+   `https://…/values.yaml` object URL is NOT a working ref and shows only
+   `oci://` and bare-git examples for `-f`.
+
+8. **Diag codes: NONE allocated.** `internal/diag/` was not touched. The four
+   codes the docs cite were read out of the real
+   `internal/diag/codes.go`/`registry.go` before being written down:
+   ```
+   internal/diag/codes.go:21:  CodeConfigRemoteReadOnly Code = "CUBE-0014"
+   internal/diag/codes.go:22:  CodeConfigRemoteFetch    Code = "CUBE-0015"
+   internal/diag/codes.go:120: CodePackValuesRefFetch   Code = "CUBE-4021"
+   internal/diag/codes.go:150: CodeBundleRemoteSource   Code = "CUBE-7007"
+   ```
+
+9. **One necessary deviation from "ONE push".** The branch had to be pushed
+   before `gh pr create` could reference it, and the PR URL had to exist before
+   it could be recorded in this HANDOFF — so the same branch ref is pushed
+   twice (code+docs, then this ledger commit). One branch, one PR, NO tags and
+   no other refs, exactly as authorized. `gh pr list --head … --state all`
+   returned `[]` before creating, so PR #4 is the only one.
+
+10. **`go.mod`/`go.sum` unmodified — no new module.** The e2e leg's two new
+    imports (`github.com/google/go-containerregistry/pkg/registry`,
+    `internal/oci`) are already direct dependencies used by
+    `internal/cfgload/cfgload_test.go` and `internal/pack/catalog_test.go`.
+
+11. Machine gotchas reconfirmed (an ELEVENTH time): every commit needed
+    `git -c user.name="Rafal P" -c user.email="rafal@pieniazek.nl"`; nothing was
+    written to any git config file. Explicit pathspecs everywhere — `git add`
+    was never run, and the untracked
+    `docs/superpowers/specs/2026-07-19-docs-comment-audit-design.md` (not this
+    plan's) is still untracked and uncommitted. `…-agent-prompt.md` was never
+    touched. Editor diagnostics fired only markdownlint style noise
+    (`MD060`/`MD014` on PRE-EXISTING tables); the two that were actually mine
+    (a `console` fence with no output) were resolved by switching to a `bash`
+    fence. Every verdict below is a real command run.
+
+BLOCKERS: none
+
+HANDOFF:
+
+- **PR: https://github.com/cube-idp/cube-idp/pull/4** —
+  "feat: valuesRef remote pack values + remote -f cube config (RV1/RV2/RV4/RV5)",
+  base `main`, head `2026-07-19-valuesref-remote-config`. Body summarizes the
+  four lanes and explicitly flags: `engine.tuningRef` dropped (Amendment 4),
+  codes are CUBE-4021/7007/0014/0015 because p7 took 0012/0013 (Amendment 5),
+  refs are git/oci-shaped (Amendment 6), and the Critical review fix `09989d4`.
+  Ends with the standard generated-with line.
+- **E2E VERDICT: RUN LIVE, BOTH GREEN — not deferred.** docker was available and
+  the exclusive legs were free (`kind get clusters` → "No kind clusters found",
+  18443 unbound) before each run; one live leg at a time, always
+  `CUBE_IDP_E2E_GATEWAY_PORT=18443`, and the cluster was gone again afterwards.
+- **Progress line for the owner** (`.superpowers/sdd/progress.md` does not exist
+  on this branch and was deliberately NOT created): `2026-07-19 — RV plan T12
+  done: README/cube-yaml-reference/pack-contract updated, e2e legs
+  TestRemoteValuesAndRemoteConfig added (both live legs green), full gate green,
+  branch pushed, PR #4 opened.`
+- **The plan is now fully executed.** T1-T6 and T8-T12 are DONE; **T7 remains
+  GATED_SKIP** (`engine.tuningRef`), and its successor is `engine.valuesRef` on
+  a separate post-p7 plan. Nothing in this branch should be read as shipping
+  engine tuning.
+- **New test surface for whoever touches `tests/e2e/` next:**
+  `TestRemoteValuesAndRemoteConfig` and the helper
+  `pollDeployReplicas(t, ns, name, want, timeout)`. The test uses the same
+  cluster name (`e2e`) as `TestUpStatusDown`/`TestPackDependsOn`, so it must
+  never run concurrently with them on one docker host (`go test` is sequential
+  by default, which is what makes that true today).
+
+- Evidence — the deleted probe that proved finding 1 (`go test ./internal/pack/
+  -run TestZZProbeClosedValues -v -count=1`, file removed immediately after):
+  ```
+  === RUN   TestZZProbeClosedValues
+      zzprobe_test.go:16: PROBE gitea -> out=map[] err=CUBE-4002: values for pack "" do not match its #Values schema: #Values.gitea: field not allowed
+      zzprobe_test.go:16: PROBE cert-manager -> out=map[replicaCount:2] err=<nil>
+  --- PASS: TestZZProbeClosedValues (0.00s)
+  ```
+- Evidence — Step 3 gate, `go build ./... && go vet ./...`:
+  ```
+  BUILD_OK
+  VET_OK
+  ```
+- Evidence — Step 3 gate, `go test ./... -count=1`: 33 `ok` packages,
+  `grep -c '^FAIL'` → **0**. Tail of the run:
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	18.190s
+  ok  	github.com/cube-idp/cube-idp/internal/cfgload	2.335s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/compose	1.461s
+  ok  	github.com/cube-idp/cube-idp/internal/config	8.926s
+  ok  	github.com/cube-idp/cube-idp/internal/diag	8.867s
+  ok  	github.com/cube-idp/cube-idp/internal/diff	11.748s
+  ok  	github.com/cube-idp/cube-idp/internal/lock	12.157s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	15.546s
+  ok  	github.com/cube-idp/cube-idp/internal/refval	12.272s
+  ok  	github.com/cube-idp/cube-idp/internal/up	11.111s
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	10.830s
+  ok  	github.com/cube-idp/cube-idp/tests	11.607s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	12.190s
+  FAILCOUNT=0
+  OKCOUNT=33
+  ```
+- Evidence — F1 CLI freeze, `go test ./cmd/ -run TestCommandTreeGolden -v
+  -count=1` with NO `-update`, and `git status --short` immediately after —
+  four files, `cmd/testdata/clitree.golden` NOT among them:
+  ```
+  === RUN   TestCommandTreeGolden
+  --- PASS: TestCommandTreeGolden (0.00s)
+  PASS
+  ok  	github.com/cube-idp/cube-idp/cmd	1.256s
+  --- status ---
+   M README.md
+   M docs/cube-yaml-reference.md
+   M docs/pack-contract-v1.md
+   M tests/e2e/e2e_test.go
+  ?? docs/superpowers/specs/2026-07-19-docs-comment-audit-design.md
+  ```
+- Evidence — the code/docs commit landed exactly those four files:
+  ```
+  [2026-07-19-valuesref-remote-config 9deae1c] docs+e2e: remote values/config — README section, e2e legs (RV5)
+   4 files changed, 307 insertions(+), 9 deletions(-)
+  ```
+- Evidence — LIVE LEG 1+2, `CUBE_IDP_E2E=1 CUBE_IDP_E2E_GATEWAY_PORT=18443
+  CUBE_IDP_E2E_PACKS_DIR=…/cube-idp/packs/packs go test ./tests/e2e/ -run
+  TestRemoteValuesAndRemoteConfig -v -timeout 30m` — PASS on the FIRST run.
+  The remote-`-f` info line and the read-only refusal, quoted from the log:
+  ```
+  e2e_test.go:400: $ cube-idp up -f oci://127.0.0.1:59988/cubes/e2e:1.0.0
+      ▸ [config] cube "e2e" loaded and validated
+      ▸ [config] using remote config oci://127.0.0.1:59988/cubes/e2e:1.0.0 (oci:sha256:1087d801a86cebdd28406b9531cf7674fce45647c24e9cdb1fec887f519301b1)
+  e2e_test.go:412: $ cube-idp pack install …/packs/gitea -f oci://127.0.0.1:59988/cubes/e2e:1.0.0
+      ✗ CUBE-0014  config was loaded from remote ref "oci://127.0.0.1:59988/cubes/e2e:1.0.0" — remote configs are read-only
+        fix:   fetch the file locally (git clone / curl / oras pull), edit it, and pass the local path to -f
+  --- PASS: TestRemoteValuesAndRemoteConfig (201.19s)
+  PASS
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	202.335s
+  ```
+  Leg 1's three assertions (`cube.lock` `valuesRef` equals the ref, `valuesPin`
+  has the `file:` prefix, and `kubectl get deploy cert-manager -n cert-manager
+  -o jsonpath={.spec.replicas}` equals `2`) all `t.Fatalf` on mismatch, so the
+  PASS above IS their verdict — the ref-only fetched document reached the render.
+- Evidence — LIVE REGRESSION, the pre-existing primary flow re-run unchanged
+  (`-run TestUpStatusDown`, same env):
+  ```
+  --- PASS: TestUpStatusDown (191.47s)
+  PASS
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	193.013s
+  ```
+- Evidence — exclusive-leg hygiene, checked before each live run and after the
+  last one:
+  ```
+  No kind clusters found.
+  18443 FREE
+  ```
+- Evidence — the single branch push (fast-forward; the branch already existed on
+  origin at `394b39b`) and the PR:
+  ```
+  To https://github.com/cube-idp/cube-idp.git
+     394b39b..9deae1c  2026-07-19-valuesref-remote-config -> 2026-07-19-valuesref-remote-config
+  branch '2026-07-19-valuesref-remote-config' set up to track 'origin/2026-07-19-valuesref-remote-config'.
+
+  https://github.com/cube-idp/cube-idp/pull/4
+  ```
+- `gofmt -l tests/e2e/e2e_test.go`: no output (formatted). No tag was pushed and
+  no ref other than this branch was touched.
 
 ## Self-Review Notes (already applied)
 
