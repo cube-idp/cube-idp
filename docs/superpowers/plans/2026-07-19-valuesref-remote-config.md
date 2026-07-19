@@ -2014,7 +2014,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- README.md tests/e2e/ 
 ## Ledger
 
 ### T1 — FetchFile returns pin [Task 1]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T19:09:31Z)
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T2 — internal/refval resolver [Task 2]
