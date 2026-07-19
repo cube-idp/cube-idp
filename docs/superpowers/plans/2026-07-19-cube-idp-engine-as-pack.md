@@ -2150,7 +2150,7 @@ Outcome:
     `[engine-pack]` step context. NOT special-cased in FetchRenderEngine — correct as-is.
 
 ### T8 — up.Run engine-pack install [$ROOT]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T13:23Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T9 — diff renders engine pack [$ROOT]
