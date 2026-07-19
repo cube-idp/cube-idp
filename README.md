@@ -105,9 +105,9 @@ spec:
 | `spec.cluster.mounts` | `[{hostPath, nodePath}]` | — | D10 layer 1: host paths mounted into the node |
 | `spec.cluster.providerConfig` | string | — | D10 layer 2 escape hatch: a file path or inline provider-native config (e.g. a full kind config). cube-idp merges in only what it *requires* and fails with a typed error on real conflicts; inspect the merged result with `cube-idp config render-cluster` |
 | `spec.engine.type` | `flux` \| `argocd` | `flux` | GitOps reconciler; `argocd` ships in Phase 2 (D2) |
-| `spec.engine.tuning.components.<name>.replicas` | int | — | patch the named engine Deployment's replica count before `up` applies the install manifests (GT1). The closed knob set: an unknown component name is CUBE-3009 (it lists the valid ones). Not helm values — the engine installs from pre-rendered plain manifests, so tuning is an in-memory patch, never a chart re-render. Preview with `cube-idp config render-engine` |
-| `spec.engine.tuning.components.<name>.resources` | map (k8s `ResourceRequirements`) | — | replaces the named engine component's container `resources` block verbatim before `up` (GT1); same closed-knob validation as `replicas` |
-| `spec.engine.selfManage` | bool | `false` | **opt-in** engine self-management (GT16): after the health gate, `up` pushes the rendered (tuned) install manifests to the in-cluster registry (zot) as the `cube-engine` artifact and attaches an engine-native self-source with pruning disabled — the engine reconciles its own install from then on, correcting drift between `up`s. First install and unhealthy-at-start recovery still apply directly. Sourced from zot only (never Gitea); works offline |
+| `spec.engine.ref` | string | published `cube-engine-<type>` pin | optional override for the engine pack source (`oci://…`, a local dir, or an absolute path) the engine now installs from (engine-as-pack, 2026-07-19). Unset = the published `oci://ghcr.io/cube-idp/packs/cube-engine-<type>:<pin>` default. `up` verifies the fetched pack's `pack.cue` name equals `cube-engine-<type>` and fails with CUBE-0013 on mismatch |
+| `spec.engine.values` | map | — | open chart values for the engine pack (D3), merged over its baked defaults — the operator-in-control replacement for the retired `engine.tuning`. **argocd only** in this phase: the `cube-engine-flux` pack is vendored-manifests (chartless), so `engine.values` with `type: flux` is CUBE-4016 (values are helm-only) — flux engine customization arrives later via `selfManage`. Preview the render with `cube-idp config render-engine` |
+| `spec.engine.selfManage` | bool | `false` | **opt-in** engine self-management (GT16): after the health gate, `up` pushes the rendered engine pack (values applied) to the in-cluster registry (zot) as the `cube-engine` artifact and attaches an engine-native self-source with pruning disabled — the engine reconciles its own install from then on, correcting drift between `up`s. First install and unhealthy-at-start recovery still apply directly. Sourced from zot only (never Gitea); works offline |
 | `spec.gateway.pack` | `traefik` \| `envoy-gateway` (any pack name is accepted when paired with `spec.gateway.ref`) | `traefik` | Gateway API implementation; `cube-idp init --gateway-pack` writes this and `spec.gateway.ref` coherently |
 | `spec.gateway.host` | string | `cube-idp.localtest.me` | routable hostname for delivered packs |
 | `spec.gateway.port` | int | `8443` | host port mapped to the gateway's `websecure` (HTTPS) listener — see the note below |
@@ -128,10 +128,11 @@ always writes the two coherently (`--gateway-pack`).
 Run `cube-idp config render-cluster` to preview the final merged kind
 provider config (D10 layer 2) before `up` creates anything. Run `cube-idp
 config render-engine` to preview the engine install manifests `up` would
-apply — with `spec.engine.tuning` already patched in (GT1), so the tuned
-result is inspectable before any cluster exists. Run `cube-idp config
-schema` to print the CUE schema `cube.yaml` is validated against — every
-CUBE-0002 (config validation failure) remediation points here.
+apply — rendered from the `cube-engine-<type>` pack with `spec.engine.values`
+applied (engine-as-pack, 2026-07-19), so the result is inspectable before any
+cluster exists. Run `cube-idp config schema` to print the CUE schema
+`cube.yaml` is validated against — every CUBE-0002 (config validation
+failure) remediation points here.
 
 > **Phase 1 → Phase 2 behavior change:** Phase 1 mapped host
 > `spec.gateway.port` (default `8443`) to Traefik's plain-HTTP NodePort

@@ -9,7 +9,11 @@ the cube-idp main repo is normative; `CONTRACT.md` in the
 every pack in the tree; the packs-repo conformance harness (W0.T3) runs the
 same gate per pack.
 
-Within v1 this contract only ever changes additively (§6).
+Within v1 this contract only ever changes additively (§6). **v1.1
+(2026-07-19, engine-as-pack):** the §4 vocabulary triad's `tuning` noun
+retired in favour of `values` for the engine too (the engine now installs
+from the `cube-engine-<type>` pack). Additive per §6 — the pack-side
+contract is untouched; engine packs are ordinary packs.
 
 ## 1. Layout
 
@@ -161,8 +165,12 @@ A pack installed with non-empty `values` or `extraManifests` is
 **CUSTOMIZED**: recorded on its in-cluster Pack record and shown as a
 printer column in `kubectl get packs`. A vanilla install shows no marker.
 
-Vocabulary triad, fixed: **values → helm render · tuning → engine patches
-(`spec.engine.tuning`, not packs) · extraManifests → appended objects.**
+Vocabulary triad, fixed: **values → chart render (packs and the engine
+alike; the engine installs from the `cube-engine-<type>` pack — engine-as-pack
+spec 2026-07-19) · extraManifests → appended objects.** (v1.1 amendment: the
+`tuning` noun retired — `spec.engine.tuning` is gone, the engine joined the
+`values` vocabulary. The pack-side contract is UNCHANGED: engine packs are
+ordinary packs, so this is additive per §6.)
 Manifests-only packs parametrize via `${GATEWAY_*}` tokens,
 `extraManifests`, or by growing a chart — never via `values:`.
 
