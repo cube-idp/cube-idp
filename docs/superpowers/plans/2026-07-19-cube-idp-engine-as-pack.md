@@ -1071,7 +1071,7 @@ git add internal/diff && git commit -m "feat(diff): desiredState renders the eng
   (Task 8 Step 3) already routes the engine ref through
   `resolveBundleRefs` — this task makes the bundle actually CONTAIN it.
 
-- [ ] **Step 1: Failing test** — add to the vendor test file:
+- [x] **Step 1: Failing test** — add to the vendor test file:
 
 ```go
 // TestVendorRejectsPreEnginePackLock pins the migration posture: a lock
@@ -1091,10 +1091,10 @@ func TestVendorRejectsPreEnginePackLock(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run** — FAIL (Vendor currently derives engine images from
+- [x] **Step 2: Run** — FAIL (Vendor currently derives engine images from
 the embed and succeeds).
 
-- [ ] **Step 3: Implement** — in `Vendor`, right after the `lf == nil`
+- [x] **Step 3: Implement** — in `Vendor`, right after the `lf == nil`
 guard:
 
 ```go
@@ -1119,9 +1119,9 @@ lock fixtures in those tests gain an engine entry
 (`engine: {type, ref, name, version, resolved, renderedHash, images}`)
 mirroring the shape from Task 6's test.
 
-- [ ] **Step 4: Run** `go build ./... && go test ./internal/bundle/ -count=1` — PASS.
+- [x] **Step 4: Run** `go build ./... && go test ./internal/bundle/ -count=1` — PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/bundle && git commit -m "feat(bundle): vendor the engine pack from its lock entry; drop embed-derived engine images (p7 engine-as-pack)" -- internal/bundle
@@ -2331,8 +2331,136 @@ Outcome:
     both PASS.
 
 ### T10 — bundle vendor + offline rails [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T21:05Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+STATUS: DONE (5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T21:05Z claimed → closed same session)
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`)
+- COMMITS:
+  - `c4aa614` docs: p7 plan — claim T10 (ledger claim only).
+  - `53d4bad` feat(bundle): vendor the engine pack from its lock entry; drop
+    embed-derived engine images (p7 engine-as-pack) — trailer
+    `Co-Authored-By: Claude Fable 5`. 3 files, +112/-70:
+    `internal/bundle/vendor.go`, `internal/bundle/bundle_test.go`,
+    `internal/bundle/vendor_pipeline_test.go`. go.mod/go.sum UNCHANGED — no new
+    module (in fact DROPS the internal `config` + `engine/factory` imports from
+    vendor.go, now unused after the embed-derivation deletion).
+  - (this entry) docs: p7 plan — T10 complete.
+- FINDINGS (line-drift corrections + real-name substitutions):
+  - REAL TEST HELPER (plan Step 1 substitution). The plan's failing test used
+    `Vendor(ctx, lp, out, "", testConsole(t))`, but `internal/bundle` has NO
+    `testConsole` helper. The real sanctioned test-construction path is
+    `vendorForTest(t, lockPath, outPath, platform)` (bundle_test.go:35), which
+    wraps `Vendor` in `ui.RunPipeline` with ModePlain. Used it verbatim — the
+    plan's own parenthetical "reuse the file's existing console/test helpers"
+    authorises this. Test added to `internal/bundle/bundle_test.go` (the file
+    that neutralized `engineInstallImages`), asserting `diag.CodeVendorLockMissing`
+    (= CUBE-7001, confirmed codes.go:138 — the plan's name is correct).
+  - UNION POINT IS `vendorImages`, NOT `Vendor` (plan's :189-209/:199 line hints
+    were stale). The real shape: `engineInstallImages` was a package var
+    (`= defaultEngineInstallImages`, vendor.go:190) unioned inside `vendorImages`
+    via `engImgs, err := engineInstallImages(lf.Engine.Type)` (vendor.go:237).
+    Deleted `defaultEngineInstallImages` + the `engineInstallImages` var
+    (kept `registryInstallImages` — NOT in T10's scope); replaced the union with
+    a direct `for _, img := range lf.Engine.Images` loop. Removed the now-unused
+    `config` + `enginefactory` imports.
+  - VENDOR-SOURCES ITERATION IS `vendorPacks`, NOT `Vendor` (plan said "where
+    Vendor iterates lf.Packs"). `vendorPacks` (vendor.go:141) iterates `lf.Packs`;
+    prepended the engine entry exactly as the plan directs:
+    `entries := append([]lock.Entry{lf.Engine.Entry()}, lf.Packs...)` and iterate
+    `entries`. This stages the engine pack under `stage/packs/<engine.Name>`
+    (e.g. `packs/cube-engine-flux`).
+  - `resolveBundleRefs` NEEDED NO CHANGE (plan's "extend its call-site input the
+    same way if it takes the lock/entries" — verified it does NOT need it).
+    `resolveBundleRefs` lives on the UP side (internal/up/bundle.go:25), consumes
+    `bundle.Opened.PackDirLookup()`, and resolves the engine ref via
+    `bundlePackName` → `refBaseName("oci://…/cube-engine-flux:0.1.0")` =
+    `cube-engine-flux`, then `lookup("cube-engine-flux")`. `PackDirLookup`
+    (internal/bundle/bundle.go:158) keys on `packs/<name>/pack.cue` — which now
+    exists because vendorPacks staged it under `entry.Name`. So the offline
+    rewrite resolves with zero signature changes on either side; T10 only had to
+    make the bundle CONTAIN the dir (T8 already wired up's engine-ref resolve).
+  - TEST-FILE FIXTURES (plan Step 3(c), extended reach). Removed the
+    `engineInstallImages` neutralization from bundle_test.go TestMain (kept the
+    `registryInstallImages` one — still a live seam). Added shared helper
+    `writeEngineLockEntry(t, host, images)` that pushes a minimal
+    `cube-engine-flux` pack to the fixture's in-process registry and returns a
+    fully-pinned `lock.EngineLock` mirroring T6's shape (Type + Ref/Name/Version/
+    Resolved/RenderedHash/Images). All three `lock.File{...}` fixtures
+    (`writeLockFixture`, `writeLockFixtureWithImage`,
+    `TestVendorImagesIncludesEngineAndRegistry`) now carry a fetchable engine
+    entry instead of the bare `EngineLock{Type:"flux"}` — required because
+    vendorPacks now fetches the engine pack too and Vendor rejects `engine.ref==""`.
+    `TestVendorImagesIncludesEngineAndRegistry` (which stubbed `engineInstallImages`)
+    now sets the engine's images via `writeEngineLockEntry(t, host, []string{engImgRef})`.
+  - PIPELINE GOLDEN TESTS (plan named bundle_test.go; the fixture reach also hits
+    `vendor_pipeline_test.go` — recorded as a FINDING). Because the engine pack is
+    vendored FIRST, the plain-output line counts grew by the engine pack's
+    start+done pair: `TestVendorPlainByteStable` 3→5 lines (leading line is now
+    `pack cube-engine-flux`, demo pack line still asserted via Contains);
+    `TestVendorImagePlainByteStable` 5→7 lines. Updated both counts + comments.
+    `TestVendorJSONStreamEmitsExpectedEventTypes` uses substring Contains + only
+    first/last-line ordering (no exact count) — its `pack demo` assertions still
+    hold, no change needed.
+  - No new go.mod module. `go build`/`go vet` clean via REAL runs (LSP squiggles
+    during mid-edit were the documented stale-diagnostics gotcha; ignored).
+- BLOCKERS: none.
+- GATE EVIDENCE (real commands, $ROOT p7 worktree — never LSP):
+  - Step 2 (RED via real `go test`): `go test ./internal/bundle/ -run
+    TestVendorRejectsPreEnginePackLock -v` →
+    ```
+    bundle_test.go:223: want CUBE-7001-family rejection, got <nil>
+    --- FAIL: TestVendorRejectsPreEnginePackLock (0.00s)
+    ```
+    (Vendor derived engine images from the embed — with TestMain's neutralized
+    seam it built a complete bundle and returned nil.)
+  - Step 4 (GREEN): `go build ./...` exit 0; `go test ./internal/bundle/ -count=1`
+    → `ok  github.com/cube-idp/cube-idp/internal/bundle`. Key tests `-v`:
+    ```
+    --- PASS: TestVendorThenOpenRoundTrip (0.02s)          (now vendors the engine pack too)
+    --- PASS: TestVendorRejectsPreEnginePackLock (0.00s)
+    --- PASS: TestVendorBundlesImages (0.09s)
+    --- PASS: TestVendorImagesIncludesEngineAndRegistry (0.12s)
+    --- PASS: TestVendorPlainByteStable (0.01s)            (5-line golden)
+    --- PASS: TestVendorImagePlainByteStable (0.06s)       (7-line golden)
+    --- PASS: TestVendorJSONStreamEmitsExpectedEventTypes (0.06s)
+    ```
+  - GATE: `go build ./...` exit 0, `go vet ./...` exit 0,
+    `go test ./internal/bundle/ -count=1` → `ok`.
+  - Broad `go test ./... -count=1`
+    (CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7 worktree>/packs): EVERY package `ok`
+    (incl. `internal/bundle`, `internal/up`, `internal/diff`, `cmd`, `tests/e2e`)
+    EXCEPT the single KNOWN PRE-EXISTING RED:
+    ```
+    --- FAIL: TestPackManifestsNoAlwaysPull (0.02s)
+        argo-events/.../20-install.yaml:431   imagePullPolicy: Always
+        argo-events/.../30-webhook.yaml:135   imagePullPolicy: Always
+        argo-rollouts/.../20-install.yaml:18786  imagePullPolicy: Always
+        cloudnativepg/.../10-cnpg.yaml:20606  imagePullPolicy: Always
+    FAIL  github.com/cube-idp/cube-idp/tests
+    ```
+    Verified it is the SOLE failing test in `./tests` (`--- FAIL` count = 1) and
+    fires only on the three non-p7 packs the Global Constraints name as
+    environmental — NOT a T10 regression. The engine render fences
+    `TestCubeEngineFluxRenderParity` + `TestCubeEngineArgocdRenderGuards` PASS.
+- HANDOFF (for T11+ and downstream):
+  - `internal/bundle/vendor.go`: `Vendor` now rejects a lock with
+    `lf.Engine.Ref == ""` up front (CUBE-7001, summary names "engine pack
+    entry" — migration posture: re-run `up` to regenerate cube.lock).
+    `vendorPacks` vendors `append([]lock.Entry{lf.Engine.Entry()}, lf.Packs...)`
+    so the bundle carries `packs/<engine.Name>`. `vendorImages` unions
+    `lf.Engine.Images` directly (engine/factory embed derivation deleted).
+    The engine pack rides the SAME offline rails as every chart pack — up's
+    `resolveBundleRefs` (unchanged) rewrites the engine ref to the bundle-local
+    dir via `PackDirLookup(refBaseName(engineRef))`. No signature changes.
+  - CAVEAT (not a defect, out of T10 scope): `Opened.Verify` (bundle.go:196)
+    iterates `o.Lock.Packs` for its pack-hash floor — the engine pack is in
+    `PackHashes` (vendorPacks hashes every staged entry incl. the engine) but is
+    NOT re-checked against the lock by Verify, because the engine is `Lock.Engine`,
+    not a `Lock.Packs` member. This matches the pre-T10 posture (engine was never
+    a Verify-anchored pack) and the plan does not touch Verify.
+  - Test seam now: `internal/bundle` fixtures MUST carry a fetchable engine entry
+    (helper `writeEngineLockEntry`); the `engineInstallImages` var seam is GONE
+    (only `registryInstallImages` remains). Any future bundle test that builds a
+    bundle must include an engine entry or hit the CUBE-7001 reject guard.
 
 ### T11 — config render-engine [$ROOT]
 STATUS: UNCLAIMED
