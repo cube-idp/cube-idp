@@ -373,7 +373,7 @@ git add tests/packs_render_test.go && git commit -m "test(packs): render fences 
   and its same-task fixes to `factory.go`/`flux.go`/`argocd.go` references
   — see Step 4.
 
-- [ ] **Step 1: Write the failing tests** (in `internal/config/load_test.go`;
+- [x] **Step 1: Write the failing tests** (in `internal/config/load_test.go`;
 delete `TestEngineTuningRoundTripAndValidation` at :343 in the same edit):
 
 ```go
@@ -437,14 +437,14 @@ spec:
 }
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 go test ./internal/config/ -run 'TestEngineRefValues|TestEngineTuningRemoved' -v
 ```
 Expected: FAIL (`c.Spec.Engine.Ref undefined`, unknown code).
 
-- [ ] **Step 3: Implement types.go** — replace the `Tuning` field and DELETE
+- [x] **Step 3: Implement types.go** — replace the `Tuning` field and DELETE
 `EngineTuning` + `ComponentTuning` (types.go:110-127) entirely:
 
 ```go
@@ -489,7 +489,7 @@ func (e EngineSpec) PackRef() string {
 }
 ```
 
-- [ ] **Step 4: Quiet the two compile breaks this causes** — `factory.go`
+- [x] **Step 4: Quiet the two compile breaks this causes** — `factory.go`
 and both engines still reference `config.EngineTuning`. Apply the MINIMAL
 bridge now (full slimming is Task 12): in
 `internal/engine/factory/factory.go` change `flux.NewTuned(spec.Tuning)` →
@@ -511,7 +511,7 @@ tuning-flavored tests — DELETE `TestRenderEngineAppliesTuning`,
 and any test constructing `config.EngineTuning`, adjusting diff_test's
 selfManage cases to plain `EngineSpec{Type: ..., SelfManage: true}`).
 
-- [ ] **Step 5: schema.cue** — replace the whole `engine:` block
+- [x] **Step 5: schema.cue** — replace the whole `engine:` block
 (schema.cue:26-37):
 
 ```cue
@@ -528,7 +528,7 @@ selfManage cases to plain `EngineSpec{Type: ..., SelfManage: true}`).
 		}
 ```
 
-- [ ] **Step 6: load.go** — (a) insert the migration guard AFTER the
+- [x] **Step 6: load.go** — (a) insert the migration guard AFTER the
 existing `providerConfig` guard (the CUBE-0011 block ending ~line 85),
 same probe pattern:
 
@@ -562,7 +562,7 @@ func normalizePackValues(c *Cube) {
 }
 ```
 
-- [ ] **Step 7: diag codes** — append to the 0xxx block in
+- [x] **Step 7: diag codes** — append to the 0xxx block in
 `internal/diag/codes.go` (after CUBE-0011):
 
 ```go
@@ -575,7 +575,7 @@ new codes to `internal/diag/registry.go` following its existing entry
 shape (one-line Summary each, mirroring the remediation texts above), and
 append the same RETIRED note to its CUBE-3009 entry.
 
-- [ ] **Step 8: Run the tests**
+- [x] **Step 8: Run the tests**
 
 ```bash
 go build ./... && go test ./internal/config/ ./internal/diag/ ./internal/engine/... ./cmd/ -count=1
@@ -583,7 +583,7 @@ go build ./... && go test ./internal/config/ ./internal/diag/ ./internal/engine/
 Expected: PASS (diag registry tests enforce code/registry sync — fix any
 listing it flags).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git checkout -b p7/engine-as-pack
@@ -1829,8 +1829,123 @@ Outcome: BRANCH: n/a · COMMITS: none · FINDINGS: see T3 OWNER RESOLUTION trail
 HANDOFF: n/a
 
 ### T4 — config surface (ref/values, CUBE-0012/0013) [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T12:45Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+STATUS: DONE (5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T12:45Z claimed → closed same session)
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`)
+- COMMITS:
+  - `3052002` docs: p7 plan — claim T4 (ledger claim only).
+  - `e7dea35` feat(config): engine.ref+values replace engine.tuning — CUBE-0012 migration
+    guard, CUBE-0013 reserved (p7 engine-as-pack)
+    (13 files, +128/-370; trailer `Co-Authored-By: Claude Fable 5`). Touches:
+    internal/config/{types.go,schema.cue,load.go,load_test.go},
+    internal/diag/{codes.go,registry.go},
+    internal/engine/factory/factory.go, internal/engine/flux/flux.go,
+    internal/engine/argocd/argocd.go, cmd/config_test.go,
+    tests/e2e/phase3_test.go (compile-only, see FINDINGS); DELETES
+    internal/engine/{tune.go,tune_test.go}.
+- FINDINGS (deviations, all escape-hatched per §5 "verify against real code, minimal correction"):
+  - **F1 (Expected-mismatch, Step 8 command):** the plan's Step 8 test command omits
+    `internal/pack/` etc. and reads `go build ./... && go test ./internal/config/
+    ./internal/diag/ ./internal/engine/... ./cmd/ -count=1`. Ran verbatim → all PASS
+    (evidence below). No correction needed; recorded for completeness.
+  - **F2 (compile break the plan's Step 4 list did NOT name — the material deviation):**
+    removing `config.EngineTuning`/`ComponentTuning` broke `tests/e2e/phase3_test.go:970`
+    (`TestEngineSelfManage`'s `setReplicas` constructs `config.EngineTuning`). The e2e
+    package has NO build tag — it is gated at RUNTIME (`requireE2E`/`CUBE_IDP_E2E=1`
+    t.Skip), so `go vet ./...` and `go test ./...` DO compile it, and the T4 gate
+    ("go build/vet/test all green") cannot pass while it references a deleted type. The
+    plan assigns the `TestEngineSelfManage` REDESIGN to T14 (+ spec §10: flux
+    value-convergence leg reworked at T14). Minimal correction applied: replaced ONLY the
+    deleted-type construction — `c.Spec.Engine.Tuning = &config.EngineTuning{...}` →
+    `c.Spec.Engine.Values = map[string]any{component: {"replicas": n}}` — with a
+    `// TODO(T14, engine-as-pack)` marker stating T14 owns the redesign (flux is chartless
+    per §10). No test LOGIC/assertions changed; the leg stays runtime-gated and does not
+    run in this gate. `tests/e2e/phase3_test.go` therefore appears in the code commit's
+    pathspec (the plan's Step-9 list was `internal/config internal/diag internal/engine
+    cmd` — extended by this one file so the tree compiles at the commit).
+  - **F3 (new compile break from the map-typed field, mine to fix):**
+    `EngineSpec` now carries `Values map[string]any`, so the struct is no longer
+    comparable with `!=`. `internal/config/load_test.go`
+    `TestDefaultRoundTripsThroughLoad` compared `loaded.Spec.Engine != def.Spec.Engine`
+    → switched that one line to `reflect.DeepEqual(...)` (already imported + used two lines
+    down for Packs). Minimal, in-scope (load_test.go is a T4 file).
+  - **F4 (Step 4 helper deletion, sanctioned by "delete ... any test constructing
+    config.EngineTuning"):** `cmd/config_test.go`'s `writeEngineTuningFixture` helper (used
+    ONLY by the two deleted tuning tests) was removed with them; its now-unused
+    `path/filepath` import was dropped. No other cmd test referenced it.
+  - **F5 (import hygiene from Step 4):** flux.go lost its now-unused `internal/config` +
+    `internal/engine` imports; argocd.go lost `internal/config` (kept `internal/engine` —
+    still used by `Health`'s `[]engine.ComponentHealth` return). `InstallManifests` (the
+    method) + `Install` + embeds + argocd's `defaultNamespace`/`clusterScopedKinds` all
+    RETAINED per Step 4 ("leave everything else for Task 12").
+  - `normalizePackValues` engine leg is nil-safe: a nil `map[string]any` is a typed-nil
+    map, matched by `normalizeAny`'s `case map[string]any` (returns the typed-nil map),
+    so `.(map[string]any)` never panics — identical to the existing per-pack path.
+- BLOCKERS: none.
+- GATE EVIDENCE (real commands, $ROOT p7 worktree — never LSP):
+  - `go build ./... && go vet ./...` → CLEAN (no output, exit 0).
+  - Package set (plan Step 8 / gate): `go test ./internal/config/ ./internal/diag/
+    ./internal/engine/... ./cmd/ -count=1` →
+    ```
+    ok  github.com/cube-idp/cube-idp/internal/config          0.440s
+    ok  github.com/cube-idp/cube-idp/internal/diag            0.647s
+    ?   github.com/cube-idp/cube-idp/internal/engine          [no test files]
+    ok  github.com/cube-idp/cube-idp/internal/engine/argocd   1.826s
+    ?   github.com/cube-idp/cube-idp/internal/engine/contract [no test files]
+    ok  github.com/cube-idp/cube-idp/internal/engine/factory  0.984s
+    ok  github.com/cube-idp/cube-idp/internal/engine/flux     2.489s
+    ok  github.com/cube-idp/cube-idp/cmd                      4.183s
+    ```
+  - New tests (targeted): `go test ./internal/config/ -run
+    'TestEngineRefValues|TestEngineTuningRemoved' -v` →
+    `--- PASS: TestEngineRefValuesRoundTripAndDefaults` +
+    `--- PASS: TestEngineTuningRemovedIsCube0012`.
+  - Broader `go test ./... -count=1` (with
+    `CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7 worktree>/packs` so the T3 fences + airgap test can
+    locate the engine packs) → EVERYTHING green EXCEPT the documented KNOWN PRE-EXISTING
+    RED `TestPackManifestsNoAlwaysPull` on `argo-events`/`argo-rollouts`/`cloudnativepg`
+    (Global Constraints item — not p7, not mine); T3's `TestCubeEngineFluxRenderParity` +
+    `TestCubeEngineArgocdRenderGuards` PASS; e2e legs SKIP (no kind cluster). Proof the
+    T3-fence failures seen WITHOUT the env var are purely environmental (empty
+    `CUBE_IDP_E2E_PACKS_DIR` → stale default checkout lacking the engine packs):
+    ```
+    --- PASS: TestCubeEngineFluxRenderParity (0.01s)
+    --- PASS: TestCubeEngineArgocdRenderGuards (2.54s)
+    ok  github.com/cube-idp/cube-idp/tests   3.633s   (run 'TestCubeEngine' only)
+    ```
+- HANDOFF (exact signatures T7/T8/T9/T11 consume):
+  - **`config.EngineSpec`** (internal/config/types.go) final shape:
+    ```go
+    type EngineSpec struct {
+        Type       string         `yaml:"type" json:"type"`                 // "flux" | "argocd"
+        Ref        string         `yaml:"ref,omitempty" json:"ref,omitempty"`
+        Values     map[string]any `yaml:"values,omitempty" json:"values,omitempty"`
+        SelfManage bool           `yaml:"selfManage,omitempty" json:"selfManage,omitempty"`
+    }
+    ```
+    `EngineTuning`/`ComponentTuning` are GONE. `Values` is normalized by Load
+    (int, never CUE int64 — same as PackRef.Values); nil round-trips as an absent key.
+  - **`func (e EngineSpec) PackName() string`** → `"cube-engine-" + e.Type`
+    (e.g. `cube-engine-argocd`). Used by T7 `VerifyEnginePackRef` (CUBE-0013).
+  - **`func (e EngineSpec) PackRef() string`** → `e.Ref` if non-empty, else
+    `defaultEngineRefs[e.Type]`. Unknown Type → `""` (unreachable past factory CUBE-3001).
+    Consumed by T8/T9/T11 to source the engine pack.
+  - **`defaultEngineRefs` (unexported, internal/config/types.go)** — the two published pins:
+    `flux → oci://ghcr.io/cube-idp/packs/cube-engine-flux:0.1.0`,
+    `argocd → oci://ghcr.io/cube-idp/packs/cube-engine-argocd:0.1.0`.
+  - **Diag codes** (internal/diag/codes.go + registry.go, both in sync):
+    `diag.CodeEngineTuningRemoved = "CUBE-0012"` (load-time migration reject, remediation
+    names `engine.values`); `diag.CodeEnginePackMismatch = "CUBE-0013"` (RESERVED here —
+    declared + registered; T7 `pack.VerifyEnginePackRef` is the emitter).
+    `CUBE-3009` (CodeEngineTuningUnknown) retained-in-place, comment + registry entry
+    marked `(RETIRED 2026-07-19 by engine-as-pack — never emitted since)`.
+  - **schema.cue** `engine:` block now: `type` (default flux|argocd), `ref?: string & !=""`,
+    `values?: {...}` (OPEN, D3), `selfManage?: bool`. `tuning` removed — a present
+    `engine.tuning` key is caught pre-CUE by the load.go migration guard (CUBE-0012),
+    not by the schema.
+  - **Engines**: `flux.New()` / `argocd.New()` take NO config now (factory calls them
+    directly). `InstallManifests()` method still exists on both (T12 removes it from the
+    interface); it no longer applies tuning.
 
 ### T5 — helm cache pinning [$ROOT]
 STATUS: UNCLAIMED
