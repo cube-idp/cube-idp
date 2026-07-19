@@ -49,6 +49,11 @@ type Entry struct {
 	Version      string `yaml:"version" json:"version"`
 	Resolved     string `yaml:"resolved" json:"resolved"`
 	RenderedHash string `yaml:"renderedHash" json:"renderedHash"`
+	// ValuesRef/ValuesPin record the pack's remote values source and its
+	// resolved pin (spec 2026-07-19 §6) — absent for inline-only packs, so
+	// ref-less locks stay byte-identical to pre-RV2 output (omitempty).
+	ValuesRef string `yaml:"valuesRef,omitempty" json:"valuesRef,omitempty"`
+	ValuesPin string `yaml:"valuesPin,omitempty" json:"valuesPin,omitempty"`
 	// Images is the sorted union of every container image this pack pulls:
 	// images found by walking the rendered manifests (lock.ImagesFrom) PLUS
 	// any images the pack declares itself via pack.cue's optional images:

@@ -137,6 +137,7 @@ var registry = map[Code]Desc{
 	CodeVendorIncomplete:    {Summary: "vendor bundle is missing or has corrupt content for a locked pack or image (Verify)"},
 	CodeBundleNoImageLoader: {Summary: "`up --bundle` needs a provider that node-loads images (kind/k3d); `existing` cannot"},
 	CodeBundleImageLoadFail: {Summary: "bundled image load into cluster nodes failed (kind/k3d LoadImages, consume side)"},
+	CodeBundleRemoteSource:  {Summary: "`up --bundle` with a remote values/tuning/config source — remote refs are not vendored, offline rails would be violated"},
 
 	// 71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)
 	CodePluginNotFound:    {Summary: "unknown command and no cube-idp-<name> plugin found on PATH"},

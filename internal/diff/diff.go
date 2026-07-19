@@ -231,10 +231,12 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		// GT15 (U4): mirror up.Run — RenderWith enforces the values stone
-		// and appends extraManifests, so diff previews exactly what up
-		// would deliver (including CUBE-4016/4017 failures).
-		rendered, err := p.RenderWith(pr.Values, pr.ExtraManifests, cube.Spec.Gateway)
+		// GT15 (U4) + RV2: mirror up.Run — RenderResolved resolves valuesRef
+		// (CUBE-4021) and merges inline over it, then RenderWith enforces the
+		// values stone and appends extraManifests, so diff previews exactly
+		// what up would deliver (including CUBE-4016/4017 failures) and a
+		// changed remote values file shows up as manifest drift.
+		rendered, valuesPin, err := pack.RenderResolved(ctx, p, pr, cube.Spec.Gateway, dir)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -242,7 +244,8 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		entries = append(entries, lock.Entry{Name: rendered.Name, RenderedHash: rh})
+		entries = append(entries, lock.Entry{Name: rendered.Name, RenderedHash: rh,
+			ValuesRef: pr.ValuesRef, ValuesPin: valuesPin})
 		dPacks = append(dPacks, p)
 		dRenders = append(dRenders, rendered)
 	}

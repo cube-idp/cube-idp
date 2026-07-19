@@ -117,6 +117,9 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		con.Step("bundle", "bundle verified — content hashes OK, %d packs / %d images present",
 			len(opened.Lock.Packs), len(opened.Manifest.Images))
+		if err := bundleRailsCheck(cube); err != nil {
+			return err
+		}
 	}
 
 	// D12 ("cert material is generated before cluster creation"): ensure the
@@ -372,10 +375,14 @@ func Run(ctx context.Context, opts Options) error {
 				}
 			}
 			packs = append(packs, pk)
-			// GT15 (U4): RenderWith is RenderFor plus the values stone —
-			// values on a chartless pack is CUBE-4016, and extraManifests
-			// (any pack kind) are substituted + appended (CUBE-4017).
-			rendered, err := pk.RenderWith(pref.Values, pref.ExtraManifests, cube.Spec.Gateway)
+			// GT15 (U4) + RV2: RenderResolved is RenderWith plus the values
+			// stone extended to valuesRef — the remote base fetch
+			// (CUBE-4021) and the RFC 7386 inline-over-fetched merge run
+			// first, then RenderWith enforces the stone itself (values or
+			// valuesRef on a chartless pack is CUBE-4016) and substitutes +
+			// appends extraManifests (CUBE-4017). Inline-only packs pass
+			// straight through, unchanged.
+			rendered, valuesPin, err := pack.RenderResolved(ctx, pk, pref, cube.Spec.Gateway, dir)
 			if err != nil {
 				return err
 			}
@@ -389,6 +396,8 @@ func Run(ctx context.Context, opts Options) error {
 				Version:      rendered.Version,
 				Resolved:     pk.Pinned,
 				RenderedHash: rh,
+				ValuesRef:    pref.ValuesRef,
+				ValuesPin:    valuesPin,
 				// D14: union rendered-manifest images with the pack's own
 				// declared images (pack.cue images:) — see the Entry.Images
 				// field comment for why both sources matter.
@@ -529,7 +538,9 @@ func Run(ctx context.Context, opts Options) error {
 	// CUSTOMIZED and DELIVERY columns.
 	packObjs := make([]*unstructured.Unstructured, 0, len(packs))
 	for i, pk := range packs {
-		customized := len(refs[i].Values) > 0 || refs[i].ExtraManifests != ""
+		// RV2: a remotely-valued pack IS customized — valuesRef carries the
+		// same "not the pack author's stock render" meaning as inline values.
+		customized := len(refs[i].Values) > 0 || refs[i].ValuesRef != "" || refs[i].ExtraManifests != ""
 		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name], customized, refs[i].Delivery, packDeps[pk.Name]))
 	}
 	// Engine-as-pack §3.3.7: the engine's own row. READY is true by
@@ -588,6 +599,22 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 	con.Access(access, "credentials: cube-idp get secrets")
+	return nil
+}
+
+// bundleRailsCheck enforces offline honesty for --bundle runs (CUBE-7007):
+// the bundle vendors pack refs and images, NOT remote values/config sources —
+// any of those alongside a bundle would either touch the network or fail
+// mid-install, so refuse before any cluster mutation (the CUBE-7005
+// fail-fast precedent). Pure and unit-testable: no bundle, no cluster.
+func bundleRailsCheck(cube *config.Cube) error {
+	for _, p := range cube.Spec.Packs {
+		if p.ValuesRef != "" {
+			return diag.New(diag.CodeBundleRemoteSource,
+				fmt.Sprintf("pack %q has valuesRef %q — remote values are not vendored into the bundle", p.Ref, p.ValuesRef),
+				"inline the values (remove valuesRef) for air-gapped installs, or run without --bundle")
+		}
+	}
 	return nil
 }
 

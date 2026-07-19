@@ -1051,3 +1051,21 @@ func TestEnginePackRecordRow(t *testing.T) {
 		t.Fatalf("engine record must carry no dependsOn: %+v", spec)
 	}
 }
+
+// TestBundleRailsCheckRejectsValuesRef pins amendment 2's offline-honesty
+// rail (CUBE-7007): --bundle vendors pack refs and images, never remote
+// values sources, so a bundled cube carrying valuesRef must fail before any
+// cluster mutation rather than silently reach for the network.
+func TestBundleRailsCheckRejectsValuesRef(t *testing.T) {
+	cube := &config.Cube{}
+	cube.Spec.Packs = []config.PackRef{{Ref: "packs/x", ValuesRef: "github.com/a/v//x@v1"}}
+	err := bundleRailsCheck(cube)
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeBundleRemoteSource {
+		t.Fatalf("err = %v, want %s", err, diag.CodeBundleRemoteSource)
+	}
+	cube.Spec.Packs[0].ValuesRef = ""
+	if err := bundleRailsCheck(cube); err != nil {
+		t.Fatalf("clean cube rejected: %v", err)
+	}
+}
