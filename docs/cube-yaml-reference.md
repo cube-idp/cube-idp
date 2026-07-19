@@ -1,0 +1,186 @@
+# cube.yaml — full reference (maxed-out example)
+
+Derived from the authoritative CUE schema (`internal/config/schema.cue`) and
+field docs (`internal/config/types.go`) as of the engine-as-pack change
+(2026-07-19). Every field, option, and twist is exercised below.
+
+> **This is a "kitchen-sink" document for illustration.** Several combinations
+> here are mutually exclusive or unusual in practice — they're flagged inline
+> and summarised in the "Twists" table. For the smallest valid config, see
+> [Minimal](#minimal-valid-cubeyaml) at the bottom.
+
+## Maxed-out example
+
+```yaml
+apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata:
+  name: maxed-cube                     # ^[a-z0-9][a-z0-9-]{0,30}$
+
+spec:
+  # ─────────────────────────────────────────────────────────────
+  # CLUSTER — how/where the k8s cluster is provisioned
+  # ─────────────────────────────────────────────────────────────
+  cluster:
+    provider: kind                      # kind (default) | k3d | existing
+    context: kind-maxed-cube            # kubeconfig context (esp. for provider: existing)
+    kubernetesVersion: v1.33.1          # node image version — REJECTED (CUBE-1003) if provider: existing
+    # Extra host→node port mappings beyond the gateway port:
+    extraPorts:
+      - {hostPort: 15432, nodePort: 30432}   # e.g. expose a NodePort DB locally
+      - {hostPort: 19000, nodePort: 30900}
+    # Layer-1 registry config for the node's containerd:
+    registry:
+      mirrors:
+        docker.io: https://mirror.gcr.io
+        ghcr.io:   https://ghcr.io
+      insecure:
+        - zot.cube-idp-system.svc.cluster.local:5000
+        - my-corp-registry.local:5000
+    # Host paths bind-mounted into the node:
+    mounts:
+      - {hostPath: /Users/me/data,   nodePath: /mnt/data}
+      - {hostPath: /Users/me/certs,  nodePath: /mnt/certs}
+    # Layer-1 escape hatch: a NAMED reference to provider-native config
+    # (a file path / registered config). Merged in; real conflicts fail typed.
+    providerConfigRef: ./kind-extra.yaml
+    # Layer-2 escape hatch: inline provider-native config (full kind/k3d config).
+    # (providerConfigRef and forProvider are both "escape hatches" — usually you
+    #  use one, not both; shown together only to exhaust the schema.)
+    forProvider:
+      nodes:
+        - role: control-plane
+        - role: worker
+        - role: worker
+
+  # ─────────────────────────────────────────────────────────────
+  # ENGINE — the GitOps reconciler (engine-as-pack, 2026-07-19)
+  # ─────────────────────────────────────────────────────────────
+  engine:
+    type: argocd                        # flux (default) | argocd
+    # Optional engine-pack source override; unset = published default
+    #   oci://ghcr.io/cube-idp/packs/cube-engine-argocd:0.1.0
+    # (accepts oci:// , a local dir, or an absolute path)
+    ref: oci://ghcr.io/cube-idp/packs/cube-engine-argocd:0.1.0
+    # OPEN chart values for the engine pack (validated by helm, not CUE).
+    # ⚠ argocd ONLY — the flux engine pack is chartless (vendored manifests),
+    #    so engine.values with type: flux is CUBE-4016. Under argocd:
+    values:
+      repoServer:
+        replicas: 2
+      server:
+        insecure: true
+      global:
+        image:
+          imagePullPolicy: IfNotPresent
+    # Opt-in engine self-management (GT16): after install, the engine
+    # reconciles its own install from the cube-engine zot artifact.
+    selfManage: true
+
+  # ─────────────────────────────────────────────────────────────
+  # GATEWAY — the ingress / Gateway API implementation
+  # ─────────────────────────────────────────────────────────────
+  gateway:
+    pack: traefik                       # traefik (default) | envoy-gateway | any pack name (with ref)
+    host: cube-idp.localtest.me         # routable hostname for delivered packs
+    port: 8443                          # host port → gateway's HTTPS (websecure) listener
+    httpPort: 8080                      # OPT-IN host port → gateway's plain-HTTP listener (NodePort 30080)
+    # If pack != the ref'd pack.cue name → CUBE-0008. Unset ref falls back to published default.
+    ref: oci://ghcr.io/cube-idp/packs/traefik:0.2.0
+
+  # ─────────────────────────────────────────────────────────────
+  # PACKS — workloads delivered after the gateway (extensibility tier 1)
+  # ─────────────────────────────────────────────────────────────
+  packs:
+    # A vanilla published pack (no customization):
+    - ref: oci://ghcr.io/cube-idp/packs/gitea:0.2.0
+
+    # A chart pack CUSTOMIZED with helm values (→ CUSTOMIZED in `kubectl get packs`):
+    - ref: oci://ghcr.io/cube-idp/packs/prometheus-stack:0.1.0
+      values:                          # helm values, only, always (chartless pack + values = CUBE-4016)
+        grafana:
+          adminPassword: changeme
+        prometheus:
+          prometheusSpec:
+            retention: 15d
+
+    # A pack with appended extra manifests (works for ANY pack kind):
+    - ref: oci://ghcr.io/cube-idp/packs/cert-manager:0.1.0
+      extraManifests: |
+        apiVersion: cert-manager.io/v1
+        kind: ClusterIssuer
+        metadata:
+          name: selfsigned
+        spec:
+          selfSigned: {}
+
+    # A LOCAL-dir pack, REPO-delivered (editable in-cluster fork via Gitea),
+    # with explicit dependency ordering:
+    - ref: ./packs/my-app                # oci:// | local dir | (git refs: future)
+      delivery: repo                     # oci (default) | repo — repo REQUIRES the gitea pack present
+      dependsOn:                         # pack NAMES (not refs); unioned with pack.cue dependsOn
+        - gitea
+        - cert-manager
+
+  # ─────────────────────────────────────────────────────────────
+  # SPOKES — managed spoke clusters this cube's engine registers (Phase 5)
+  # ─────────────────────────────────────────────────────────────
+  spokes:
+    - name: spoke-dev                   # ^[a-z0-9][a-z0-9-]{0,30}$
+      cluster:
+        provider: kind                  # kind | existing (k3d spokes deferred — GT6)
+        kubernetesVersion: v1.33.1
+        # spokes reuse ClusterSpec but extraPorts/mounts are disallowed (GT6):
+        registry:
+          mirrors:
+            docker.io: https://mirror.gcr.io
+        providerConfigRef: ./spoke-extra.yaml
+        forProvider:
+          nodes:
+            - role: control-plane
+    - name: spoke-prod
+      cluster:
+        provider: existing
+        context: prod-cluster-context
+```
+
+## Twists worth calling out (easy to miss)
+
+| Twist | Rule |
+|---|---|
+| **`engine.values` + flux** | CUBE-4016 — the flux engine pack is chartless (vendored `flux install --export`); values only work with **argocd**. |
+| **No `engine.pack` field** | Unlike `gateway.pack`, the engine pack name is fixed by `type` (`cube-engine-<type>`). Only `ref` overrides the source; `up` verifies the fetched name matches → CUBE-0013. |
+| **`kubernetesVersion` + `provider: existing`** | Rejected (CUBE-1003) — you can't set a node-creation field on a cluster you don't create. |
+| **`delivery: repo`** | Requires the `gitea` pack in `spec.packs`; gitea itself can never be repo-delivered (CUBE-7304). |
+| **`gateway.pack` vs `gateway.ref`** | If both set, the ref decides what's fetched; mismatch with `pack` → CUBE-0008. |
+| **`httpPort`** | Opt-in only; must differ from `gateway.port` and every `extraPorts.hostPort` (CUBE-0002). Cluster-shape field — recreate the cluster to change it. |
+| **`providerConfigRef` vs `forProvider`** | Two escape-hatch layers (named-ref vs inline). Usually one or the other; both shown only to exhaust the schema. |
+| **`values` normalization** | CUE ints round-trip as Go `int`, never `int64` — relevant if you script cube.yaml generation. |
+| **`engine.tuning`** | **Removed** (CUBE-0012 migration error) — replaced by `engine.ref`/`engine.values`. Don't add it. |
+| **Retired but reserved codes** | `CUBE-3003`, `CUBE-3009` are retired-in-place (never emitted) — you won't see them. |
+
+## Defaults (what you get if you omit things)
+
+- `cluster.provider: kind`, `cluster.kubernetesVersion: v1.33.1` (kind only)
+- `engine.type: flux` + the published engine ref
+  `oci://ghcr.io/cube-idp/packs/cube-engine-flux:0.1.0`
+- `gateway`: `pack: traefik`, `host: cube-idp.localtest.me`, `port: 8443`,
+  ref `oci://ghcr.io/cube-idp/packs/traefik:0.2.0`
+- `spec.packs`: gitea + argocd (D9) when omitted
+
+## Minimal valid cube.yaml
+
+```yaml
+apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata:
+  name: dev
+spec: {}
+```
+
+## See also
+
+- `internal/config/schema.cue` — the authoritative schema (`cube-idp config schema` prints it)
+- `docs/pack-contract-v1.md` — the pack format contract (v1.1)
+- `cube-idp config render-cluster` / `render-engine` — preview the rendered
+  provider config and engine install before `up`
