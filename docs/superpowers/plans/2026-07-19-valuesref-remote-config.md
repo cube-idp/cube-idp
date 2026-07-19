@@ -3316,7 +3316,7 @@ HANDOFF:
   ```
 
 ### T10 — call-site migration + lock CWD path + origin bundle clause [Task 10 incl. Step 2b]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T00:00:00Z)
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF (clitree golden verified untouched):
 
 ### T11 — upgrade --plan attribution + ClusterLock (tuning block SKIPPED) [Task 11]
