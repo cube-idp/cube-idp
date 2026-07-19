@@ -603,7 +603,7 @@ git add internal/config internal/diag internal/engine cmd && git commit -m "feat
 - Produces: unexported `helmSettings() *cli.EnvSettings` used by
   `renderChartRef`.
 
-- [ ] **Step 1: Failing test**
+- [x] **Step 1: Failing test**
 
 ```go
 // TestHelmSettingsPinnedUnderCacheRoot pins spec §9.3: helm's chart cache
@@ -624,10 +624,10 @@ func TestHelmSettingsPinnedUnderCacheRoot(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run** `go test ./internal/pack/ -run TestHelmSettings -v` —
+- [x] **Step 2: Run** `go test ./internal/pack/ -run TestHelmSettings -v` —
 Expected: FAIL (`helmSettings` undefined).
 
-- [ ] **Step 3: Implement** — in helm.go add, and replace `settings :=
+- [x] **Step 3: Implement** — in helm.go add, and replace `settings :=
 cli.New()` in `renderChartRef` with `settings := helmSettings()`:
 
 ```go
@@ -645,12 +645,17 @@ func helmSettings() *cli.EnvSettings {
 }
 ```
 
-- [ ] **Step 4: Run** the test (PASS) plus a real chart render:
+- [x] **Step 4: Run** the test (PASS) plus a real chart render:
 `CUBE_IDP_E2E_PACKS_DIR=$PACKS go test ./tests/ -run TestCubeEngineFluxRenderParity -v`
 (exercises LocateChart through the new cache; expect PASS and
 `<cache>/helm/repository/` to now exist).
+  - **PLAN DEVIATION (spec §10, escape hatch):** the flux engine pack is now
+    vendored-manifests (CHARTLESS) so `TestCubeEngineFluxRenderParity` does NOT
+    exercise LocateChart/the helm cache. Substituted the **argocd** engine fence
+    (`TestCubeEngineArgocdRenderGuards`), which still renders a real chart through
+    `renderChartRef`. See T5 Ledger FINDINGS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/pack/helm.go internal/pack/helm_test.go && git commit -m "feat(pack): pin helm chart cache under the cube-idp cache root (spec §9.3)" -- internal/pack/helm.go internal/pack/helm_test.go
@@ -1948,8 +1953,83 @@ Outcome:
     interface); it no longer applies tuning.
 
 ### T5 — helm cache pinning [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T13:00Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+STATUS: DONE (5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T13:00Z claimed → closed same session)
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree `.claude/worktrees/p7-engine-as-pack`)
+- COMMITS:
+  - `c157194` docs: p7 plan — claim T5 (ledger claim only).
+  - `d7d2ae4` feat(pack): pin helm chart cache under the cube-idp cache root (spec §9.3)
+    (2 files, +32/-1; trailer `Co-Authored-By: Claude Fable 5`). Touches:
+    internal/pack/helm.go (adds `helmSettings()`; `settings := cli.New()` →
+    `settings := helmSettings()` in `renderChartRef`),
+    internal/pack/helm_test.go (adds `TestHelmSettingsPinnedUnderCacheRoot` +
+    `strings` import). go.mod UNCHANGED (no new module — `cli.EnvSettings`,
+    `filepath`, `DefaultCacheDir` all already present).
+- FINDINGS:
+  - **Step-4 flux→argocd substitution (PLAN DEVIATION, spec §10 escape hatch —
+    §5 "verify against real code, minimal correction"):** the plan's Step 4 says
+    exercise LocateChart-through-the-new-cache by running
+    `TestCubeEngineFluxRenderParity`. Per spec §10 the flux engine pack became a
+    **vendored-manifests / CHARTLESS** pack (no `chart.yaml`), so its render path
+    never touches `renderChartRef`/`LocateChart`/the helm cache — the flux fence
+    would exercise nothing of T5's change. Substituted the **argocd** engine fence
+    `TestCubeEngineArgocdRenderGuards`, which still renders the real argo-cd chart
+    through `renderChartRef` (hence through `helmSettings()` + `LocateChart`).
+    Verified: fence PASS AND the pinned `<DefaultCacheDir>/helm/repository/` dir
+    was created by the render (absent before, present at 16:02 after — evidence
+    below). No code change from this deviation — verification-target only.
+  - `RepositoryConfig` (`<cache>/helm/repositories.yaml`) is set on the
+    EnvSettings but the file is not materialized by this render: the argo-cd
+    chart is located via `ChartPathOptions.RepoURL`, not a named repo entry, so
+    helm writes no repositories.yaml. The plan's Step 4 only requires verifying
+    `<DefaultCacheDir>/helm/repository/` exists (it does); the test asserts the
+    EnvSettings *field prefixes*, which pass. Not a defect, recorded for clarity.
+- BLOCKERS: none.
+- GATE EVIDENCE (real commands, $ROOT p7 worktree — never LSP):
+  - Step 2 (RED via real `go test`, not LSP):
+    ```
+    internal/pack/helm_test.go:191:7: undefined: helmSettings
+    FAIL	github.com/cube-idp/cube-idp/internal/pack [build failed]
+    ```
+  - Step 3 → `go build ./...` exit 0; `go test ./internal/pack/ -run TestHelmSettings -v`:
+    ```
+    --- PASS: TestHelmSettingsPinnedUnderCacheRoot (0.00s)
+    ok  github.com/cube-idp/cube-idp/internal/pack   1.558s
+    ```
+  - Step 4 argocd fence (substituted; `CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7 worktree>/packs`):
+    ```
+    --- PASS: TestCubeEngineArgocdRenderGuards (1.81s)
+    ok  github.com/cube-idp/cube-idp/tests   2.989s
+    ```
+  - Pinned cache dir created by the render (`<DefaultCacheDir>` =
+    `$HOME/.cache/cube-idp/packs`): BEFORE →
+    `.../helm/repository/: No such file or directory`; AFTER →
+    `.../helm/repository/` exists (drwxr-xr-x, created Jul 19 16:02).
+  - Gate: `go build ./...` exit 0, `go vet ./...` exit 0,
+    `go test ./internal/pack/ -count=1` → `ok  …/internal/pack  4.832s`.
+  - Broad `go test ./... -count=1` (with `CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7
+    worktree>/packs`): everything green EXCEPT the documented KNOWN PRE-EXISTING
+    RED `TestPackManifestsNoAlwaysPull` on `argo-events`/`argo-rollouts`/
+    `cloudnativepg` (Global Constraints item — NOT p7, NOT mine); e2e legs
+    runtime-gated. Failure tally over the whole run: exactly one FAIL test
+    (`TestPackManifestsNoAlwaysPull`) in exactly one FAIL package (`./tests`),
+    no other failures. My fence `TestCubeEngineArgocdRenderGuards` PASS in the
+    same run. (The `cert-manager` "unable to find exact version … falling back
+    to closest available version … selected=v1.16.3" line is a benign helm WARN,
+    not a failure.)
+- HANDOFF (for T7/T8/T9 downstream):
+  - **`helmSettings() *cli.EnvSettings`** (unexported, internal/pack/helm.go) now
+    exists and is the ONLY constructor of EnvSettings used by `renderChartRef`.
+    It pins `RepositoryCache = <DefaultCacheDir>/helm/repository` and
+    `RepositoryConfig = <DefaultCacheDir>/helm/repositories.yaml`; best-effort —
+    on a `DefaultCacheDir()` error it falls back to `cli.New()` defaults. Applies
+    uniformly to ALL chart packs (traefik, cube-engine-argocd, cnoe RenderChart).
+  - Cache dir layout under `$HOME/.cache/cube-idp/packs/` (= `DefaultCacheDir()`):
+    `helm/repository/` (chart tarball cache, created on first chart render) and
+    `helm/repositories.yaml` (RepositoryConfig path; only materialized if helm
+    adds a named repo entry — RepoURL-located charts don't write it).
+  - `cli` import in helm.go is still used (inside `helmSettings`); no import
+    churn beyond `strings` added to helm_test.go.
 
 ### T6 — cube.lock engine entry [$ROOT]
 STATUS: UNCLAIMED
