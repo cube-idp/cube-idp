@@ -80,7 +80,7 @@ var registry = map[Code]Desc{
 
 	// 3xxx: engine
 	CodeEngineTypeUnknown:   {Summary: "unknown engine type in config"},
-	CodeEngineManifestsInv:  {Summary: "embedded engine install manifests invalid"},
+	CodeEngineManifestsInv:  {Summary: "embedded engine install manifests invalid (RETIRED 2026-07-19 by engine-as-pack — install left the engine seam)"},
 	CodeEngineHealthTimeout: {Summary: "engine health check timed out or components not ready"},
 	CodeEngineUninstallFail: {Summary: "flux prune/uninstall timeout"},
 	CodeEngineArgocdRegFail: {Summary: "reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design"},

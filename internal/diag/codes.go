@@ -75,7 +75,7 @@ const (
 // 3xxx: engine
 const (
 	CodeEngineTypeUnknown   Code = "CUBE-3001" // unknown engine type in config
-	CodeEngineManifestsInv  Code = "CUBE-3003" // embedded engine install manifests invalid
+	CodeEngineManifestsInv  Code = "CUBE-3003" // embedded engine install manifests invalid (RETIRED 2026-07-19 by engine-as-pack — install left the engine seam)
 	CodeEngineHealthTimeout Code = "CUBE-3004" // engine health check timed out or components not ready
 	CodeEngineUninstallFail Code = "CUBE-3005" // flux prune/uninstall timeout
 	CodeEngineArgocdRegFail Code = "CUBE-3006" // reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design

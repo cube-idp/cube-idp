@@ -50,16 +50,13 @@ type GitSource struct {
 }
 
 // Engine is the seam between packs (intent) and a concrete GitOps
-// controller (delivery). Implementations install their own controllers,
-// translate a rendered pack + pushed artifact into engine-native objects,
-// report component health, and clean up on uninstall.
+// controller (delivery). Implementations translate a rendered pack + pushed
+// artifact into engine-native objects, report component health, and clean up
+// on uninstall. Engine-as-pack (2026-07-19): the engine's OWN install is no
+// longer the engine's concern — `up` fetches+renders the cube-engine-<type>
+// pack and SSAs it (§3.2 bootstrap asymmetry), so Install/InstallManifests
+// left this interface. Engines are pure translators + operators.
 type Engine interface {
-	Install(ctx context.Context, a *apply.Applier, timeout time.Duration) error
-	// InstallManifests returns the objects Install applies, so the caller
-	// (the `up` orchestrator) can record them in the inventory without
-	// importing an engine implementation package directly — `down` needs to
-	// remove the engine's own controllers too.
-	InstallManifests() ([]*unstructured.Unstructured, error)
 	// Deliver RETURNS engine-native objects; the caller applies them via the
 	// Applier (keeps Deliver pure/testable and one apply path).
 	Deliver(ctx context.Context, r *pack.Rendered, src ArtifactRef) ([]*unstructured.Unstructured, error)

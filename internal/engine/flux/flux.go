@@ -9,7 +9,6 @@ package flux
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"time"
 
@@ -23,10 +22,10 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-//go:embed manifests/install.yaml
-var installYAML []byte
-
-// Flux implements engine.Engine.
+// Flux implements engine.Engine. Engine-as-pack (2026-07-19): flux no longer
+// carries an embedded install manifest — `up` fetches and renders the
+// cube-engine-flux pack and SSAs the result (the engine is a pure translator +
+// operator now; Install/InstallManifests left the interface).
 type Flux struct{}
 
 // New returns a Flux engine.
@@ -36,29 +35,6 @@ func New() *Flux { return &Flux{} }
 // natively via Kustomization spec.dependsOn (p6 DEP3) — `up`'s wave gate
 // never runs for this engine.
 func (f *Flux) OrdersDeliveries() bool { return true }
-
-// InstallManifests parses the embedded, pre-rendered Flux install manifest
-// (source-controller + kustomize-controller only; see
-// hack/gen-flux-manifests.sh for how it's regenerated).
-func InstallManifests() ([]*unstructured.Unstructured, error) {
-	return apply.ParseMultiDoc(installYAML)
-}
-
-func (f *Flux) Install(ctx context.Context, a *apply.Applier, timeout time.Duration) error {
-	objs, err := f.InstallManifests()
-	if err != nil {
-		return diag.Wrap(err, diag.CodeEngineManifestsInv, "embedded flux manifests are invalid",
-			"this is a cube-idp bug — regenerate with hack/gen-flux-manifests.sh and report it")
-	}
-	return a.Apply(ctx, objs, true, timeout)
-}
-
-// InstallManifests implements engine.Engine, delegating to the package-level
-// InstallManifests func (kept for tests and for callers that only need the
-// manifests, not a Flux value).
-func (f *Flux) InstallManifests() ([]*unstructured.Unstructured, error) {
-	return InstallManifests()
-}
 
 // deliveredListGVKs are the engine-native kinds Deliver creates per pack;
 // Uninstall must remove exactly these, and wait for their prune finalizers.

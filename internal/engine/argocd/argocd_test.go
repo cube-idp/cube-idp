@@ -43,19 +43,3 @@ func TestDeliverShapesApplication(t *testing.T) {
 		t.Fatalf("destination: %s", got)
 	}
 }
-
-func TestInstallManifestsIncludeRepoSecret(t *testing.T) {
-	objs, err := New().InstallManifests()
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, o := range objs {
-		if o.GetKind() == "Secret" && o.GetName() == "cube-idp-zot-repo" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("install manifests must register the zot OCI repository (engine-specific requirement)")
-	}
-}
