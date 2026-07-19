@@ -59,7 +59,7 @@ chart render, already vendored), envtest (contract suites), kind (e2e).
   `spec.engine.ref`. The README documents the REPLICA KNOB (the chart
   values path that sets kustomize-controller replicas) — Task 14 reads it.
 
-- [ ] **Step 1: Discover the flux version the embedded blob pins**
+- [x] **Step 1: Discover the flux version the embedded blob pins**
 
 Run in $ROOT:
 ```bash
@@ -68,7 +68,7 @@ grep -o 'ghcr.io/fluxcd/[a-z-]*:v[0-9.]*' internal/engine/flux/manifests/install
 Note the controller image tags (e.g. `source-controller:vX.Y.Z`). The
 matching flux distribution version is what the chart pin must ship.
 
-- [ ] **Step 2: Discover the chart pin and its values keys**
+- [x] **Step 2: Discover the chart pin and its values keys**
 
 ```bash
 helm repo add fluxcd-community https://fluxcd-community.github.io/helm-charts
@@ -83,7 +83,7 @@ key that disables a controller (expected `<name>.create: false` — verify),
 `resources:` key instead and note that Task 14 will assert resources, not
 replicas).
 
-- [ ] **Step 3: Write chart.yaml** (substitute CHART_PIN and the verified
+- [x] **Step 3: Write chart.yaml** (substitute CHART_PIN and the verified
 disable keys from Step 2 — everything else verbatim)
 
 ```yaml
@@ -105,7 +105,7 @@ values:
   imageReflectionController: {create: false}
 ```
 
-- [ ] **Step 4: Write pack.cue**
+- [x] **Step 4: Write pack.cue**
 
 ```cue
 name:        "cube-engine-flux"
@@ -117,7 +117,7 @@ description: "flux GitOps engine (cube-idp engine pack)"
 #Values: {...}
 ```
 
-- [ ] **Step 5: Sanity-render and verify parity**
+- [x] **Step 5: Sanity-render and verify parity**
 
 ```bash
 helm template flux fluxcd-community/flux2 --version CHART_PIN \
@@ -130,14 +130,14 @@ Expected: exactly 2 Deployments (source-controller, kustomize-controller).
 Also verify the replica knob: re-run with the Step 2(c) key overridden to 2
 and grep `replicas: 2`.
 
-- [ ] **Step 6: Write README.md** — cover: what this pack is (engine pack,
+- [x] **Step 6: Write README.md** — cover: what this pack is (engine pack,
 referenced by `spec.engine.ref`/the published default, NOT for
 `spec.packs`), the chart pin + bump procedure (replaces
 `hack/gen-flux-manifests.sh`), the verified replica knob path from Step
 2(c) (state it explicitly — the $ROOT e2e reads this), and the D3
 open-values note.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd $PACKS && git checkout -b p7/engine-packs
@@ -1483,8 +1483,62 @@ repo convention).
 ## Ledger
 
 ### T1 — cube-engine-flux pack [$PACKS]
-STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T11:20:08Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (CHART_PIN + REPLICA_KNOB values discovered):
+STATUS: DONE
+Outcome:
+- BRANCH: `p7/engine-packs` ($PACKS worktree `.claude/worktrees/p7-engine-packs`)
+- COMMITS:
+  - `ca98894` feat(pack): cube-engine-flux — flux engine install as a chart pack (engine-as-pack D1/D2)
+    (creates packs/cube-engine-flux/{pack.cue,chart.yaml,README.md}; 3 files, 111 insertions)
+- FINDINGS:
+  - CHART_PIN determined empirically, NOT from the Step-1 heuristic guess. Step 1
+    showed the embedded blob pins `source-controller:v1.9.2` +
+    `kustomize-controller:v1.9.2`. Rendering candidate charts and matching those
+    exact controller tags identified `fluxcd-community/flux2` chart **2.19.0**
+    (app v2.9.1) as the parity pin — 2.18.4 ships v1.8.5, 2.17.2 ships v1.7.x.
+    Evidence:
+    ```
+    === chart 2.19.0 ===  ghcr.io/fluxcd/kustomize-controller:v1.9.2  ghcr.io/fluxcd/source-controller:v1.9.2
+    === chart 2.18.4 ===  v1.8.5
+    === chart 2.17.2 ===  v1.7.x
+    ```
+    (The plan's Step-2 "newest whose appVersion matches step 1's flux version"
+    wording assumed appVersion == controller version; controllers are versioned
+    independently of the flux distribution, so I matched on the controller image
+    tags the blob actually pins. §5 escape hatch: verify against the real chart.)
+  - REPLICA_KNOB: the flux2 chart models controllers as **singletons** —
+    `kustomizeController:` exposes NO replica key (verified against
+    `helm show values fluxcd-community/flux2 --version 2.19.0`). Per Step 2(c)'s
+    stated escape hatch, the knob becomes a **resources** knob, not replicas:
+    `kustomizeController.resources.requests.cpu` (default `100m`). Task 14 must
+    assert on this resources field, not `replicas: 2`. Verified overridable:
+    `--set kustomizeController.resources.requests.cpu=250m` → `cpu: 250m` lands
+    in the rendered kustomize-controller Deployment (grep -c = 1).
+  - Disable key confirmed exactly as expected: `<controller>.create: false`.
+  - `.claude/worktrees/p7-engine-packs` already existed on branch
+    `p7/engine-packs` (orchestrator-created); did NOT re-run `git checkout -b`
+    from Step 7 — used the existing worktree/branch.
+- BLOCKERS: none
+- HANDOFF (for T3, T14, and downstream):
+  - **CHART_PIN = `2.19.0`** (app v2.9.1; source/kustomize-controller v1.9.2).
+  - **REPLICA_KNOB (resources form) = `kustomizeController.resources.requests.cpu`**
+    (default `100m`; override e.g. to `250m`). No replica key exists — Task 14
+    asserts resources, not replicas. Documented in the pack README's "Tuning knob"
+    section.
+  - Parity render (Step 5): exactly **2 Deployments** — `source-controller` +
+    `kustomize-controller` — with the four unused controllers disabled:
+    ```
+    === Deployment count (expect 2) === 2
+    (yq) kustomize-controller, source-controller
+    ```
+  - Baked-disable values in chart.yaml: `helmController/notificationController/
+    imageAutomationController/imageReflectionController .create: false`.
+  - Pack dir has NO `manifests/` (chart-only pack; cert-manager is the precedent).
+    Namespace `flux-system`, releaseName `flux`. Values are OPEN (`#Values: {...}`).
+  - T3's `TestCubeEngineFluxRenderParity` should pass against this pack via
+    `CUBE_IDP_E2E_PACKS_DIR=$PACKS`; the render fence checks Deployments ==
+    {kustomize-controller, source-controller} in ns flux-system.
+  - progress.md ledger line: `.superpowers/sdd/progress.md` is on the main
+    checkout, not on the p7 branch — noting here instead of appending (per §8).
 
 ### T2 — cube-engine-argocd pack [$PACKS]
 STATUS: UNCLAIMED
