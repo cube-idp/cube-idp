@@ -2590,7 +2590,44 @@ Outcome:
   remain.
 
 ### T14 — e2e selfManage on values + matrix [$ROOT]
-STATUS: IN_PROGRESS (paused by owner 2026-07-19 — code written + partially live-verified;
+STATUS: DONE (2026-07-19 — resumed after owner pause; all four live legs GREEN, committed).
+  Original IN_PROGRESS notes preserved below for context; CLOSE-OUT is the first block.
+
+CLOSE-OUT (2026-07-19):
+- COMMITS (on p7/engine-as-pack, after the WIP `f0a394a`):
+  - `2951b4d` fix(init)!: --local resolves the engine pack from the checkout too — a
+    PRODUCT gap surfaced by the matrix leg (Step 4): `init --local` rewrote gateway.ref
+    but not engine.ref, so the written cube.yaml dialed the published cube-engine-<type>
+    :0.1.0 and `up` failed pre-publish/air-gapped (CUBE-4012). Fixed by deriving
+    engine.ref from the checkout via EngineSpec.PackName(); published mode unchanged
+    (engine.ref stays unset → defaultEngineRefs). cmd/init.go, +9.
+  - `eeef066` test(e2e): finalize T14 — argocd diff tolerates the hook Job (new helper
+    assertOnlyExpectedDiffDrift: only batch/Job/argocd/argocd-redis-secret-init may drift,
+    all else still fails); TestUpStatusDown asserts the engine Pack record
+    cube-engine-<type> carries DELIVERY "engine" (§3.3.7). tests/e2e/{phase3,e2e}_test.go.
+- RESUME STEP RESULTS (the four HANDOFF steps below, all executed):
+  1. ✓ argocd diff-clean assertion replaced with assertOnlyExpectedDiffDrift (hook-Job note
+     in code). flux keeps the strict clean diff (no hook Jobs).
+  2. ✓ argocd selfManage leg re-run LIVE → PASS (205.70s). Diff showed exactly one drift:
+     `configured batch/Job/argocd/argocd-redis-secret-init`, everything else `unchanged`.
+  3. ✓ engine-matrix smoke TestUpStatusDown run for BOTH engines LIVE:
+     flux PASS (234.72s), argocd PASS (181.64s). Both `init --local` now emit a local
+     engine.ref (`[engine-pack] fetching …/cube-engine-<type>`, `…@0.1.0 rendered`), and
+     the DELIVERY="engine" record-row assertion passed for cube-engine-flux and
+     cube-engine-argocd.
+  4. ✓ T14 closed (this block).
+- FULL LIVE MATRIX (port 18443, local engine packs at
+  $PACKS/.claude/worktrees/p7-engine-packs/packs), all GREEN:
+    selfManage    flux 247.6s · argocd 205.7s
+    TestUpStatusDown  flux 234.7s · argocd 181.6s
+- UNIT GATE: `go build ./...` 0, `go vet ./tests/e2e/` 0, `go test ./... -count=1` all
+  packages ok EXCEPT the two engine render fences (TestCubeEngineFluxRenderParity,
+  TestCubeEngineArgocdRenderGuards) which need CUBE_IDP_E2E_PACKS_DIR — both PASS when
+  pointed at the p7 engine-packs checkout (env issue, not a code regression).
+- INFRA: left CLEAN — no kind cluster, 18443 free (all four legs' cleanup ran).
+
+--- original IN_PROGRESS notes (context) ---
+PRIOR STATUS: IN_PROGRESS (paused by owner 2026-07-19 — code written + partially live-verified;
   NOT closed. Resume steps in HANDOFF below.)
 Outcome:
 - BRANCH: `p7/engine-as-pack` ($ROOT worktree). T14 code lives in ONE modified file,
