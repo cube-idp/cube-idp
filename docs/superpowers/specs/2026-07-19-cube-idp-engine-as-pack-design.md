@@ -293,7 +293,20 @@ edge survives as backstop. Owner-scoped as the follow-up phase
 (2026-07-19); deletes the two hardcoded implicit edges instead of adding
 a third mechanism.
 
-### 8.3 cube-engine artifact tag
+### 8.3 `spec.prerequisites` — CLI-delivered bootstrap packs
+
+Owner-proposed 2026-07-19, shape settled, spun out as its own DRAFT spec:
+`2026-07-19-cube-idp-prerequisites-packs-design.md`. Generalizes this
+spec's `[engine-pack]` step into a loop over `[prerequisites…, engine
+pack]` — operator-declared packs CLI-SSA'd before the engine (canonical
+case: Gateway API CRDs, which would relax D5 and degrade the
+registry-route CRD wait to a backstop). Hard-depends on this phase's
+plumbing; carries its own due-diligence list (SSA ownership collision
+with the traefik pack's vendored CRDs being the big one). Interacts with
+§8.1 (may supersede the route-only-pack shape) and §8.2 (prereq-provided
+GVKs must count as satisfied).
+
+### 8.4 cube-engine artifact tag
 
 `engineSelfTag` stays `"latest"` (up.go:1180) in this phase; switching
 the self-artifact tag to the engine pack's version is a candidate
