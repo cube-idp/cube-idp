@@ -1,8 +1,9 @@
 # cube-idp engine-as-a-pack: engine install from a pack reference, values replace tuning
 
 Date: 2026-07-19
-Status: PROPOSED (owner review pending). Plan: not yet written
-(writing-plans follows owner ratification of this spec).
+Status: RATIFIED (owner review 2026-07-19 — all three §9 questions
+answered; resolutions inline in §9). Plan:
+`docs/superpowers/plans/2026-07-19-cube-idp-engine-as-pack.md`.
 Prior art: `2026-07-18-cube-idp-phase5-roadmap-design.md` (GT1/GT15 tuning
 vocabulary, GT16 self-management — this spec amends all three),
 `2026-07-19-cube-idp-pack-depends-and-cubelock-crd-design.md` (p6 depgraph
@@ -314,13 +315,24 @@ follow-up once CubeLock-CRD (p6) and this spec have both landed.
 
 ---
 
-## 9. Open questions for owner review
+## 9. Open questions — RESOLVED (owner review 2026-07-19)
 
-1. **Published pack pins**: first release version for the two engine
-   packs (`0.1.0`?) and whether they enter the existing catalog index.
-2. **`existing`-cluster mode**: an engine already installed by other
-   means (pre-cube argocd) — is `verifyEnginePackRef` + health preflight
-   sufficient, or does first-SSA-onto-existing-install deserve a guard?
-3. **Chart pull cache**: helm's default cache dir vs cube-idp's pack
-   cache — acceptable to inherit helm's, or should the plan pin
-   `HELM_CACHE_HOME` under the cube-idp cache root?
+1. **Published pack pins** — RATIFIED: both engine packs release at
+   `0.1.0`, through the same $PACKS publish CI (attested, public, GT10
+   verbatim). They enter the existing catalog index — zero CI changes;
+   filtering `cube-engine-*` out of the `pack list --available` wizard
+   is a cosmetic follow-up, not a gate.
+2. **`existing`-cluster mode** — RATIFIED: no extra guard. cube-idp does
+   not solve operator problems: `verifyEnginePackRef` plus the existing
+   health preflight (`engineHealthyAtStart`, up.go:1202) is sufficient.
+   SSA onto a foreign pre-existing engine install is operator error —
+   documented, never guarded.
+3. **Chart pull cache** — RATIFIED (recommended approach accepted): pin
+   helm's cache under the cube-idp cache root by setting the
+   `cli.EnvSettings` cache paths in `renderChartRef`
+   (internal/pack/helm.go) — not process env, which would leak to
+   subprocesses. Applies uniformly to ALL chart packs (traefik today
+   inherits helm's default cache): hermetic renders, no interference
+   with the operator's own helm state, one cache root to clean. The
+   one-time cost is a cold re-download per chart on first post-upgrade
+   render.
