@@ -1563,7 +1563,39 @@ REPLICA_KNOB HANDOFF above are **VOID**. T1-R steps (in the $PACKS p7 worktree):
    `git add packs/cube-engine-flux && git commit -m "fix(pack)!: cube-engine-flux — vendored flux install --export manifests replace the chart (spec §10: flux2 chart renders no namespaces)" -- packs/cube-engine-flux`
 6. Verify: T3's fence `TestCubeEngineFluxRenderParity` must PASS against the rewritten
    pack (run from the $ROOT p7 worktree with CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7 worktree>/packs).
-T1-R STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T12:30:39Z)
+T1-R STATUS: DONE
+  Outcome (T1-R):
+  - COMMITS ($PACKS `p7/engine-packs`, worktree `.claude/worktrees/p7-engine-packs`):
+    - `a1cf100` fix(pack)!: cube-engine-flux — vendored flux install --export manifests
+      replace the chart (spec §10: flux2 chart renders no namespaces)
+      (4 files: `chart.yaml` deleted; `manifests/install.yaml` added, 3583 lines;
+      `pack.cue` + `README.md` rewritten). Trailer: `Co-Authored-By: Claude Fable 5`.
+      (Claim commit `65832d0 docs: p7 plan — claim T1-R` landed on $ROOT p7 earlier.)
+  - FINDINGS: none. All 6 T1-R steps executed verbatim. `pack.cue` keeps
+    name/version/description, `#Values` removed with the §10 chartless comment.
+    README covers: vendored-manifests role, `flux install --export
+    --components=source-controller,kustomize-controller` bump procedure (replaces
+    `hack/gen-flux-manifests.sh`), Tuning-knob section removed, customisation-not-possible
+    note (`engine.values` + flux → CUBE-4016, later via GT16 self-managed setup),
+    spec.engine.ref/published-default vs NOT spec.packs, and the why-manifests-not-chart
+    namespace-correctness note.
+  - HANDOFF:
+    - Fence run (from $ROOT p7 worktree,
+      `CUBE_IDP_E2E_PACKS_DIR=<$PACKS p7 worktree>/packs go test ./tests/ -run 'TestCubeEngine' -v`):
+      ```
+      --- PASS: TestCubeEngineFluxRenderParity (0.01s)
+      --- PASS: TestCubeEngineArgocdRenderGuards (2.24s)
+      PASS
+      ok  	github.com/cube-idp/cube-idp/tests	3.778s
+      ```
+    - `chart.yaml` is GONE (`ls …/cube-engine-flux/chart.yaml` → No such file or directory).
+    - `manifests/install.yaml` is a regular file (not symlink), 153058 bytes (~150KB),
+      byte-identical to the $ROOT embed:
+      `cmp <$ROOT embed> <$PACKS copy>` → exit 0 (no output).
+      `grep -o 'ghcr.io/fluxcd/[a-z-]*:v[0-9.]*' | sort -u` →
+      `ghcr.io/fluxcd/kustomize-controller:v1.9.2`, `ghcr.io/fluxcd/source-controller:v1.9.2`.
+    - The T3 fence code (`tests/packs_render_test.go`) remains UNCOMMITTED in the $ROOT
+      p7 worktree — untouched by T1-R; its commit is T3's close.
 
 ### T2 — cube-engine-argocd pack [$PACKS]
 STATUS: DONE
