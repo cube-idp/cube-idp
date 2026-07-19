@@ -2458,7 +2458,7 @@ HANDOFF:
   ```
 
 ### T5 — pack.EffectiveValues + RenderResolved + CUBE-4021 [Task 5]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T19:48:52Z)
 Outcome: COMMITS · FINDINGS (actual diag number if renumbered) · BLOCKERS · HANDOFF:
 
 ### T6 — up/diff wiring + lock valuesPin + bundle guard CUBE-7007 [Task 6 incl. Step 3b]
