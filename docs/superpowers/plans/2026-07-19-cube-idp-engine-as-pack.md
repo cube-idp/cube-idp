@@ -1948,7 +1948,7 @@ Outcome:
     interface); it no longer applies tuning.
 
 ### T5 — helm cache pinning [$ROOT]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T13:00Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T6 — cube.lock engine entry [$ROOT]
