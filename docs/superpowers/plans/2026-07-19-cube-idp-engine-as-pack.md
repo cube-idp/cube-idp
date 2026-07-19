@@ -2032,7 +2032,7 @@ Outcome:
     churn beyond `strings` added to helm_test.go.
 
 ### T6 — cube.lock engine entry [$ROOT]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T17:30Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T7 — pack.FetchRenderEngine seam [$ROOT]
