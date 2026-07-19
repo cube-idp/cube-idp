@@ -3533,7 +3533,7 @@ HANDOFF:
   the first outward act is still T12's.
 
 ### T11 — upgrade --plan attribution + ClusterLock (tuning block SKIPPED) [Task 11]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T20:40:11Z)
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
 
 ### T12 — docs + e2e legs + full gate + PUSH + PR [Task 12, outward acts authorized]
