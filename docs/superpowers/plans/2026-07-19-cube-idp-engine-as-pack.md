@@ -1541,7 +1541,7 @@ Outcome:
     checkout, not on the p7 branch — noting here instead of appending (per §8).
 
 ### T2 — cube-engine-argocd pack [$PACKS]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-203a-4cf4-9a68-34028389d088, 2026-07-19T11:27:14Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (CHART_PIN + MEDIA_TYPES values discovered):
 
 ### T3 — render fences [$ROOT]
