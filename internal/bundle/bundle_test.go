@@ -44,15 +44,47 @@ func vendorForTest(t *testing.T, lockPath, outPath, platform string) error {
 
 // TestMain keeps every test in this file fully local (in-process registry,
 // random.Image — no network, per Task 6's constraints): the production
-// defaults for engineInstallImages/registryInstallImages derive images from
-// the REAL Flux/Argo CD and zot manifests, which reference real registry
-// images (e.g. ghcr.io/fluxcd/...). Tests neutralize both seams here;
-// TestVendorImagesIncludesEngineAndRegistry restores synthetic (still
-// local) values to prove the union logic itself.
+// default for registryInstallImages derives images from the REAL zot
+// manifests, which reference real registry images. Tests neutralize that
+// seam here; TestVendorImagesIncludesEngineAndRegistry restores a synthetic
+// (still local) value to prove the union logic itself. (Engine-as-pack: the
+// engine's images now ride the lock's engine entry — lf.Engine.Images —
+// vendored like every pack's Entry.Images, so there is no engine image seam
+// to neutralize; fixtures point the engine entry at a local in-process pack.)
 func TestMain(m *testing.M) {
-	engineInstallImages = func(string) ([]string, error) { return nil, nil }
 	registryInstallImages = func() ([]string, error) { return nil, nil }
 	os.Exit(m.Run())
+}
+
+// writeEngineLockEntry pushes a minimal cube-engine-flux pack to host (the
+// caller's in-process registry) and returns a fully-pinned lock.EngineLock
+// mirroring Task 6's shape (type + the six pack fields). Engine-as-pack
+// vendors the engine pack like every chart pack, so every lock fixture in
+// this file must carry a fetchable engine entry — Vendor now rejects a lock
+// with no engine.ref and vendorPacks fetches the engine pack.
+func writeEngineLockEntry(t *testing.T, host string, images []string) lock.EngineLock {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pack.cue"),
+		[]byte("name: \"cube-engine-flux\"\nversion: \"0.1.0\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "manifests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifests", "ns.yaml"),
+		[]byte("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: flux-system\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ref := "oci://" + host + "/packs/cube-engine-flux:0.1.0"
+	digest, err := oci.PushPackDir(context.Background(), dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return lock.EngineLock{
+		Type: "flux", Ref: ref, Name: "cube-engine-flux", Version: "0.1.0",
+		Resolved: "oci:" + digest, RenderedHash: "h1", Images: images,
+	}
 }
 
 // writeLockFixture pushes ocitest's demo pack to an in-process registry and
@@ -72,7 +104,7 @@ func writeLockFixture(t *testing.T) string {
 
 	lf := &lock.File{
 		APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
-		Engine: lock.EngineLock{Type: "flux"},
+		Engine: writeEngineLockEntry(t, host, nil),
 		Packs: []lock.Entry{{
 			Ref: ref, Name: "demo", Version: "0.9.9",
 			Resolved: "oci:" + digest, Images: nil,
@@ -104,7 +136,7 @@ func writeLockFixtureWithImage(t *testing.T, goos, goarch string) (lockPath, img
 
 	lf := &lock.File{
 		APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
-		Engine: lock.EngineLock{Type: "flux"},
+		Engine: writeEngineLockEntry(t, host, nil),
 		Packs: []lock.Entry{{
 			Ref: ref, Name: "demo", Version: "0.9.9",
 			Resolved: "oci:" + digest, Images: []string{imgRef},
@@ -208,6 +240,22 @@ func TestVendorMissingLock(t *testing.T) {
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != "CUBE-7001" {
 		t.Fatalf("want CUBE-7001, got %v", err)
+	}
+}
+
+// TestVendorRejectsPreEnginePackLock pins the migration posture: a lock
+// with no engine pack entry cannot produce a complete bundle.
+func TestVendorRejectsPreEnginePackLock(t *testing.T) {
+	dir := t.TempDir()
+	lp := filepath.Join(dir, "cube.lock")
+	os.WriteFile(lp, []byte("apiVersion: cube-idp.dev/v1alpha1\nkind: CubeLock\nengine:\n  type: flux\npacks: []\n"), 0o644)
+	err := vendorForTest(t, lp, filepath.Join(dir, "out.tar"), "") // reuse the file's existing console/test helper
+	var de *diag.Error
+	if !errors.As(err, &de) || de.Code != diag.CodeVendorLockMissing {
+		t.Fatalf("want CUBE-7001-family rejection, got %v", err)
+	}
+	if !strings.Contains(de.Summary, "engine") {
+		t.Fatalf("summary must say the engine entry is missing: %q", de.Summary)
 	}
 }
 
@@ -370,10 +418,11 @@ func TestOCIRefWithDigest(t *testing.T) {
 
 // TestVendorImagesIncludesEngineAndRegistry proves the image union itself
 // (per-pack Entry.Images + engine install images + registry install
-// images): it temporarily overrides engineInstallImages/
-// registryInstallImages (TestMain's no-op defaults) with synthetic values
-// pointing at two more images on the same in-process registry, so the whole
-// test stays network-free while still exercising the real union/pull path.
+// images): the engine images ride the lock's engine entry (lf.Engine.Images,
+// engine-as-pack) and the registry seam is overridden (TestMain's no-op
+// default) with synthetic values pointing at two more images on the same
+// in-process registry, so the whole test stays network-free while still
+// exercising the real union/pull path.
 func TestVendorImagesIncludesEngineAndRegistry(t *testing.T) {
 	host := ocitest.LocalRegistry(t)
 	packDir := ocitest.WriteDemoPack(t)
@@ -388,14 +437,13 @@ func TestVendorImagesIncludesEngineAndRegistry(t *testing.T) {
 	pushTestImage(t, engImgRef, "linux", runtime.GOARCH)
 	pushTestImage(t, regImgRef, "linux", runtime.GOARCH)
 
-	origEng, origReg := engineInstallImages, registryInstallImages
-	engineInstallImages = func(string) ([]string, error) { return []string{engImgRef}, nil }
+	origReg := registryInstallImages
 	registryInstallImages = func() ([]string, error) { return []string{regImgRef}, nil }
-	t.Cleanup(func() { engineInstallImages, registryInstallImages = origEng, origReg })
+	t.Cleanup(func() { registryInstallImages = origReg })
 
 	lf := &lock.File{
 		APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
-		Engine: lock.EngineLock{Type: "flux"},
+		Engine: writeEngineLockEntry(t, host, []string{engImgRef}),
 		Packs: []lock.Entry{{
 			Ref: packRef, Name: "demo", Version: "0.9.9", Resolved: "oci:" + digest,
 		}},
