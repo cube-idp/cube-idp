@@ -2590,8 +2590,77 @@ Outcome:
   remain.
 
 ### T14 — e2e selfManage on values + matrix [$ROOT]
-STATUS: IN_PROGRESS(5c0a16fa-orchestrator-inline, 2026-07-19T13:05:00Z)
-Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (leg durations, engine-record row evidence):
+STATUS: IN_PROGRESS (paused by owner 2026-07-19 — code written + partially live-verified;
+  NOT closed. Resume steps in HANDOFF below.)
+Outcome:
+- BRANCH: `p7/engine-as-pack` ($ROOT worktree). T14 code lives in ONE modified file,
+  `tests/e2e/phase3_test.go`, committed as a WIP commit (see COMMITS) so it survives the pause.
+- COMMITS:
+  - `7474a22` docs: p7 plan — claim T14
+  - `<wip>` test(e2e): WIP TestEngineSelfManage redesign for engine-as-pack (§10) — NOT
+    final; argocd diff-clean assertion still trips on a pre-existing hook-Job artifact
+    (see FINDINGS). Committed to preserve progress across the owner pause.
+- WHAT THE CODE DOES (tests/e2e/phase3_test.go, TestEngineSelfManage rewritten):
+  - Points `spec.engine.ref` at the LOCAL engine pack
+    (`<packsCheckout>/packs/cube-engine-<type>`) — published 0.1.0 doesn't resolve pre-T15.
+  - §10 SPLIT: flux is chartless (engine.values → CUBE-4016), so the value-convergence
+    proof runs on ARGOCD only (engine.values sets `repoServer.replicas` 1→2). FLUX runs a
+    STRUCTURAL selfManage proof (engine's field manager co-owns kustomize-controller's
+    spec.replicas after selfManage `up` — proves selfManage engaged; no value flip).
+  - Build+vet clean (`go build ./...`, `go vet ./tests/e2e/` both exit 0). TODO(T14)
+    placeholder from T4 resolved.
+- LIVE RESULTS (port 18443, CUBE_IDP_E2E_PACKS_DIR=$PACKS p7 worktree packs):
+  - **FLUX selfManage leg: PASS (247.6s)** — 2nd run. (1st run failed on an over-strict
+    assertion — "cube-idp must NOT co-own spec.replicas" — which was WRONG for the no-value-
+    change case: cube-idp legitimately co-owns from the first-install SSA. Corrected to
+    "the engine's field manager MUST co-own" — the sound structural signal; passed. `up`
+    end-to-end worked: engine installed from the vendored-manifests pack, selfManage engaged
+    (`[engine-self] engine self-managed from oci://…cube-engine:latest`), 4 components ready.)
+  - **ARGOCD selfManage leg: core proof PASS, then FAILS on the trailing diff-clean (189.9s).**
+    (a) new cube-engine digest after up2 (8c04ee… → 7d62d5…) ✓; (b) repoServer.replicas
+    converged 1→2 ✓; (c) engine owns spec.replicas, not cube-idp's applier ✓. THEN the final
+    `run(diff)` returned exit 1 on drift: exactly one object, `configured
+    batch/Job/argocd/argocd-redis-secret-init` (all else `unchanged`).
+- FINDINGS:
+  - The argocd diff drift is a PRE-EXISTING argocd-pack/helm-hook artifact, NOT a selfManage
+    failure and NOT introduced by T14: `argocd-redis-secret-init` is a `pre-install,pre-upgrade`
+    helm HOOK Job (verified via `helm template … | yq`). Our render converts hooks to plain
+    objects (helm.go hookObjects); a Job's pod template is immutable, so it perpetually reads
+    as `configured` on any argocd re-diff — independent of selfManage. The original test only
+    ran flux (no hook Jobs), so this diff-clean assertion was never exercised against argocd.
+  - OWNER ARCHITECTURE Q (2026-07-19, recorded for context): "could the applier just ensure
+    the namespace + use it as SSA context like kubectl -n, instead of vendoring flux manifests?"
+    ANSWER (verified against internal/apply/applier.go + flux/deliverself.go): the Applier uses
+    fluxcd/pkg/ssa over a controller-runtime client with a REST mapper — it COULD namespace-
+    default the DIRECT engine install like `kubectl -n`. BUT that only covers the first,
+    cube-idp-applied install. Pack delivery AND selfManage re-apply the rendered artifact via
+    the ENGINE's own controller (flux Kustomization / argocd Application) with NO targetNamespace
+    (deliverself.go:48 — the self Kustomization reconciles the cube-engine artifact as-rendered).
+    So a namespace-less render lands engine controllers in `default` the moment selfManage is on.
+    The vendored-manifests fix (self-stamped flux-system + Namespace object) is namespace-correct
+    across ALL three paths; applier-side stamping would silently break selfManage. Vendored
+    manifests is the robust choice — confirms the spec §10 decision.
+- BLOCKERS: none technical — the remaining work is a scoped decision the owner deferred:
+  whether to DROP the trailing diff-clean assertion from the ARGOCD branch (recommended —
+  it's a pack-level hook-Job artifact, and the argocd selfManage core proof already passes
+  live) or investigate the hook-Job drift as a render bug (larger, shared-render scope).
+- HANDOFF (resume steps — T14 is NOT done):
+  1. Apply the deferred fix: in tests/e2e/phase3_test.go, REMOVE the trailing
+     `run(t, dir, bin, "diff")` clean-drift assertion from the ARGOCD branch only (keep it in
+     the flux branch, where the install has no hook Jobs and the check is meaningful). Add a
+     code comment: argocd's `argocd-redis-secret-init` is a helm pre-install hook Job whose
+     immutable pod template reads as `configured` on any re-diff — a pack-level artifact, not
+     drift. (Optionally: assert the diff shows ONLY that one Job configured, everything else
+     unchanged, so real drift still fails the leg.)
+  2. Re-run the ARGOCD selfManage leg (~4 min live, port 18443) → expect PASS.
+  3. Plan Step 4 STILL TODO: the engine-matrix smoke — `TestUpStatusDown` for BOTH engines
+     (CUBE_IDP_E2E_ENGINE=flux then argocd), verifying `kubectl get packs` shows the
+     `cube-engine-<type>` row with DELIVERY `engine` (the §3.3.7 record row). Not yet run.
+  4. Then close T14 DONE with leg durations + the engine-record-row evidence.
+  - Discovered/confirmed values for the resumer: argocd chart replica knob = `repoServer.replicas`
+    (argo-cd chart 10.1.4). flux structural leg asserts engine co-ownership of
+    kustomize-controller spec.replicas (flux is chartless — no value knob, per §10).
+  - Live infra left CLEAN: no kind cluster, 18443 free (both e2e legs' cleanup ran).
 
 ### T15 — publish 0.1.0 [$PACKS + owner, OWNER-GATED]
 STATUS: UNCLAIMED
