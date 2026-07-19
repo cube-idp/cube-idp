@@ -31,7 +31,7 @@ func diagCode(t *testing.T, err error) diag.Code {
 func TestFetchFileLocalFile(t *testing.T) {
 	dir := t.TempDir()
 	p := writeTestFile(t, dir, "base.yaml", "kind: Cluster\n")
-	got, err := FetchFile(context.Background(), p, t.TempDir())
+	got, _, err := FetchFile(context.Background(), p, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestFetchFileLocalDirSingleYAML(t *testing.T) {
 	dir := t.TempDir()
 	writeTestFile(t, dir, "cfg.yaml", "a: 1\n")
 	writeTestFile(t, dir, "README.md", "not yaml\n")
-	got, err := FetchFile(context.Background(), dir, t.TempDir())
+	got, _, err := FetchFile(context.Background(), dir, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,28 +57,28 @@ func TestFetchFileLocalDirAmbiguous(t *testing.T) {
 	dir := t.TempDir()
 	writeTestFile(t, dir, "one.yaml", "a: 1\n")
 	writeTestFile(t, dir, "two.yml", "b: 2\n")
-	_, err := FetchFile(context.Background(), dir, t.TempDir())
+	_, _, err := FetchFile(context.Background(), dir, t.TempDir())
 	if c := diagCode(t, err); c != diag.CodePackFetchFail {
 		t.Fatalf("code = %s, want %s", c, diag.CodePackFetchFail)
 	}
 }
 
 func TestFetchFileLocalDirEmpty(t *testing.T) {
-	_, err := FetchFile(context.Background(), t.TempDir(), t.TempDir())
+	_, _, err := FetchFile(context.Background(), t.TempDir(), t.TempDir())
 	if c := diagCode(t, err); c != diag.CodePackFetchFail {
 		t.Fatalf("code = %s, want %s", c, diag.CodePackFetchFail)
 	}
 }
 
 func TestFetchFileMissingPath(t *testing.T) {
-	_, err := FetchFile(context.Background(), filepath.Join(t.TempDir(), "nope.yaml"), t.TempDir())
+	_, _, err := FetchFile(context.Background(), filepath.Join(t.TempDir(), "nope.yaml"), t.TempDir())
 	if c := diagCode(t, err); c != diag.CodePackFetchFail {
 		t.Fatalf("code = %s, want %s", c, diag.CodePackFetchFail)
 	}
 }
 
 func TestFetchFileBadScheme(t *testing.T) {
-	_, err := FetchFile(context.Background(), "ftp://example.com/x.yaml", t.TempDir())
+	_, _, err := FetchFile(context.Background(), "ftp://example.com/x.yaml", t.TempDir())
 	if c := diagCode(t, err); c != diag.CodePackRefInvalid {
 		t.Fatalf("code = %s, want %s", c, diag.CodePackRefInvalid)
 	}

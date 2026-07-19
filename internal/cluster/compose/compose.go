@@ -26,7 +26,7 @@ func Resolve(ctx context.Context, ref, cacheDir string) (map[string]any, error) 
 	if ref == "" {
 		return map[string]any{}, nil
 	}
-	raw, err := pack.FetchFile(ctx, ref, cacheDir)
+	raw, _, err := pack.FetchFile(ctx, ref, cacheDir)
 	if err != nil {
 		return nil, diag.Wrap(err, diag.CodeProviderConfigRefFetch,
 			fmt.Sprintf("cannot fetch providerConfigRef %q", ref),
