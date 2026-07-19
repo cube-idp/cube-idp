@@ -2590,7 +2590,7 @@ Outcome:
   remain.
 
 ### T14 — e2e selfManage on values + matrix [$ROOT]
-STATUS: UNCLAIMED
+STATUS: IN_PROGRESS(5c0a16fa-orchestrator-inline, 2026-07-19T13:05:00Z)
 Outcome: BRANCH · COMMITS · FINDINGS · BLOCKERS · HANDOFF (leg durations, engine-record row evidence):
 
 ### T15 — publish 0.1.0 [$PACKS + owner, OWNER-GATED]
