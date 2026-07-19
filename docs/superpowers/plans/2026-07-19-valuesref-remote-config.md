@@ -21,6 +21,27 @@
 - Commits end with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` and use explicit pathspecs (`git commit -- <paths>`), never bare `git commit -a`.
 - Verify with real `go build ./...` / `go test`, not editor diagnostics (stale-LSP gotcha from p6).
 
+## Amendments — 2026-07-19 capability assessment
+
+Applied after reviewing the existing config surface (dependsOn, extraManifests,
+providerConfigRef/forProvider, delivery, spokes, bundle mode) against this plan:
+
+1. **Task 7 is GATED** on the engine-as-pack decision
+   (`docs/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md`,
+   PROPOSED): that spec deletes `engine.tuning` in favor of `engine.ref` +
+   open `engine.values`. Do NOT execute Task 7 until the owner rules.
+   Execution order: 1-6, 8-12, then 7 (or its replacement). Details in the
+   Task 7 banner; Task 11's `tuning(…)` attribution block moves with it.
+2. **Bundle-mode rails guard** (`CUBE-7007`): `up --bundle` promises no
+   network, but remote values/config sources are not vendored. Task 6 adds
+   a `bundleRailsCheck` (valuesRef clause), Task 10 extends it (remote `-f`
+   origin clause), Task 7 extends it (tuningRef clause, gated with the task).
+3. **Recorded as out of scope** (no task): gateway pack takes no
+   `valuesRef` (it takes no `values` today either — the CUBE-4020 "gateway
+   is special" precedent); spoke `cluster.providerConfigRef` pins are NOT
+   recorded in `cube.lock` (hub cluster only, Task 11); no
+   `extraManifestsRef` (future symmetry candidate).
+
 ## File Structure
 
 | File | Responsibility |
@@ -971,6 +992,70 @@ and extend the `entries = append(entries, lock.Entry{…})` literal:
 
 `internal/diff/diff.go` `desiredState` — same two changes around lines 228-240: replace `p.RenderWith(pr.Values, pr.ExtraManifests, cube.Spec.Gateway)` with `pack.RenderResolved(ctx, p, pr, cube.Spec.Gateway, dir)` capturing `valuesPin`, and set `ValuesRef: pr.ValuesRef, ValuesPin: valuesPin` in its `lock.Entry` construction. Also update the D11 `customized` computation in `up.go` (~line 509): `customized := len(refs[i].Values) > 0 || refs[i].ValuesRef != "" || refs[i].ExtraManifests != ""` — a remotely-valued pack IS customized.
 
+- [ ] **Step 3b: Bundle-mode rails guard (`CUBE-7007`) — amendment 2**
+
+`up --bundle` (spec §4.1, Phase 3) promises "no fetch ever touches the network" by rewriting every PACK ref to a bundle-local dir — it knows nothing about `valuesRef`, so a bundled cube carrying one would silently reach for the network. Fail loudly before any cluster mutation (the `CUBE-7005` fail-fast precedent).
+
+`internal/diag/codes.go`, 70xx block after `CodeBundleImageLoadFail`:
+
+```go
+    CodeBundleRemoteSource Code = "CUBE-7007" // `up --bundle` with a remote values/tuning/config source — remote refs are not vendored, offline rails would be violated
+```
+
+`internal/diag/registry.go`, 70xx section:
+
+```go
+    CodeBundleRemoteSource: {Summary: "`up --bundle` with a remote values/tuning/config source — remote refs are not vendored, offline rails would be violated"},
+```
+
+`internal/up/up.go` — a pure, unit-testable helper (this task's clause covers `valuesRef`; Task 10 adds the remote-`-f` origin clause, gated Task 7 adds `tuningRef`):
+
+```go
+// bundleRailsCheck enforces offline honesty for --bundle runs (CUBE-7007):
+// the bundle vendors pack refs and images, NOT remote values/tuning/config
+// sources — any of those alongside a bundle would either touch the network
+// or fail mid-install, so refuse before any cluster mutation.
+func bundleRailsCheck(cube *config.Cube) error {
+    for _, p := range cube.Spec.Packs {
+        if p.ValuesRef != "" {
+            return diag.New(diag.CodeBundleRemoteSource,
+                fmt.Sprintf("pack %q has valuesRef %q — remote values are not vendored into the bundle", p.Ref, p.ValuesRef),
+                "inline the values (remove valuesRef) for air-gapped installs, or run without --bundle")
+        }
+    }
+    return nil
+}
+```
+
+called in `Run` right after the bundle is opened/verified and before any cluster mutation (next to the existing `CUBE-7005` provider check):
+
+```go
+    if opts.Bundle != "" {
+        if err := bundleRailsCheck(cube); err != nil {
+            return err
+        }
+    }
+```
+
+Test (append to the up package's existing bundle/offline tests, calling the helper directly — no cluster needed):
+
+```go
+func TestBundleRailsCheckRejectsValuesRef(t *testing.T) {
+    cube := &config.Cube{}
+    cube.Spec.Packs = []config.PackRef{{Ref: "packs/x", ValuesRef: "github.com/a/v//x@v1"}}
+    err := bundleRailsCheck(cube)
+    if err == nil || !diag.HasCode(err, diag.CodeBundleRemoteSource) {
+        t.Fatalf("err = %v, want CUBE-7007", err)
+    }
+    cube.Spec.Packs[0].ValuesRef = ""
+    if err := bundleRailsCheck(cube); err != nil {
+        t.Fatalf("clean cube rejected: %v", err)
+    }
+}
+```
+
+(Use the repo's real diag inspection helper, as in Task 5. Include `internal/diag/codes.go` + `registry.go` in this task's commit pathspec.)
+
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `go build ./... && go test ./internal/lock/ ./internal/diff/ ./internal/up/ -count=1`
@@ -988,6 +1073,24 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/lock/ intern
 ---
 
 ### Task 7: `engine.tuningRef` — `factory.NewResolved` + `CUBE-3012` + lock fields
+
+> **⛔ GATED — do not execute until the engine-as-pack decision (amendment 1).**
+> `docs/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md` (PROPOSED)
+> deletes `engine.tuning` in favor of `engine.ref` + open `engine.values`, which
+> would make everything below dead on arrival. Outcomes:
+>
+> - **Engine-as-pack REJECTED** → execute this task exactly as written, and add
+>   a `tuningRef` clause to `bundleRailsCheck` (Task 6 Step 3b):
+>   `if cube.Spec.Engine.TuningRef != "" { return diag.New(diag.CodeBundleRemoteSource, …) }`.
+> - **Engine-as-pack ACCEPTED** → replace this task: the engine renders through
+>   the pack machinery, so remote engine values become `engine.valuesRef` riding
+>   `pack.EffectiveValues`/`RenderResolved` (Task 5) — same GT15 chartless guard
+>   (flux engine pack + values = CUBE-4016), same merge, same pin plumbing into
+>   the engine's lock section. `CUBE-3012` is then not needed; re-plan the thin
+>   remainder against the accepted engine-as-pack spec.
+>
+> Skipping this task also skips Task 11's `tuning(…)` attribution block (marked there).
+> All other tasks are independent of this one — execution order 1-6, 8-12, then 7.
 
 **Files:**
 - Modify: `internal/engine/factory/factory.go`
@@ -1591,6 +1694,31 @@ func PathForOrigin(cfgPath string, remote bool) string {
 
 and call `lock.PathForOrigin(cfgPath, cube.Origin().Remote)` at all three sites.
 
+- [ ] **Step 2b: Extend `bundleRailsCheck` with the remote-origin clause (amendment 2)**
+
+Now that remote `-f` exists, a bundled run must also refuse a remote config source. In `internal/up/up.go`'s `bundleRailsCheck` (Task 6 Step 3b), add as the first check:
+
+```go
+    if cube.Origin().Remote {
+        return diag.New(diag.CodeBundleRemoteSource,
+            fmt.Sprintf("config was loaded from remote ref %q — remote configs are not vendored into the bundle", cube.Origin().Ref),
+            "fetch the cube.yaml locally and pass the local path to -f for air-gapped installs")
+    }
+```
+
+Test (append next to `TestBundleRailsCheckRejectsValuesRef`):
+
+```go
+func TestBundleRailsCheckRejectsRemoteOrigin(t *testing.T) {
+    cube := &config.Cube{}
+    cube.MarkRemoteOrigin("oci://example/cfg:1", "oci:sha256:abc")
+    err := bundleRailsCheck(cube)
+    if err == nil || !diag.HasCode(err, diag.CodeBundleRemoteSource) {
+        t.Fatalf("err = %v, want CUBE-7007", err)
+    }
+}
+```
+
 - [ ] **Step 3: Remote info line (spec §7.3, deviation 3)**
 
 `internal/up/up.go` right after the existing `con.Step("config", …)` line (~104):
@@ -1741,6 +1869,8 @@ func classify(current, latest string) Row {
         }
         rows = append(rows, row)
     }
+    // GATED with Task 7 (amendment 1): include this tuning block ONLY if
+    // Task 7 was executed; skip it entirely if Task 7 is held/replaced.
     if tr := cube.Spec.Engine.TuningRef; tr != "" {
         latest, err := pack.ResolveRemote(ctx, tr, cacheDir)
         if err != nil {
@@ -1838,4 +1968,5 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- README.md tests/e2e/ 
 ## Self-Review Notes (already applied)
 
 - **Spec coverage:** §3 config surface → Task 4; §3.1 grammar + §4/§4.1/§4.2 resolver → Tasks 1-3; §5.1 values ladder → Tasks 5-6; §5.2 tuning ladder → Task 7; §5.3 resolution site → Tasks 6-7 (up/diff only, `config.Load` stays offline); §6 pins/lock/plan → Tasks 6, 7, 11; §7 remote `-f` → Tasks 8-10; §8 codes → Tasks 5, 7, 8; §9 testing → per-task + Task 12; §10 lanes → task ordering.
+- **Amendments applied (2026-07-19 capability assessment):** Task 7 gated on the engine-as-pack decision (banner in-task; Task 11's tuning block marked); bundle-mode rails guard `CUBE-7007` added (Task 6 Step 3b valuesRef clause, Task 10 Step 2b remote-origin clause, tuningRef clause travels with gated Task 7); gateway-valuesRef / spoke-providerConfig-pins / extraManifestsRef recorded as out of scope.
 - **Known judgment calls an implementer may hit:** (1) exact fixture helpers in `diff_test.go`/`plan_test.go`/e2e — reuse what exists, the assertions above are the contract; (2) the diag error-inspection helper name — use the repo's, don't invent; (3) `ResolveRemote` local-file pin parity (Task 11 caveat); (4) if `engine/factory` importing `refval` ever cycles (it should not — `pack` does not import `engine`), fall back to resolving tuning in `up`/`diff` before `factory.New` and keep `New` untouched.
