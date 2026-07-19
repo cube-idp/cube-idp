@@ -1706,11 +1706,11 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- internal/cfgload/ int
 **Interfaces:**
 - Consumes: `cfgload.Load(ctx, pathOrRef)` (Task 9). Every cobra site has `cmd.Context()`; `up.Run`/`diff.Run`/`upgrade.Plan` have `ctx`.
 
-- [ ] **Step 1: Mechanical substitution**
+- [x] **Step 1: Mechanical substitution**
 
 In each listed `cmd/` site: `config.Load(file)` → `cfgload.Load(cmd.Context(), file)` (add the `cfgload` import; drop `config` import only where now unused). In `internal/up/up.go:100`, `internal/diff/diff.go:47`, `internal/upgrade/plan.go:31`: `config.Load(cfgPath)` → `cfgload.Load(ctx, cfgPath)`.
 
-- [ ] **Step 2: Remote lock path (spec §7.3)**
+- [x] **Step 2: Remote lock path (spec §7.3)**
 
 `internal/up/up.go` (~line 405) — replace `lock.PathFor(cfgPath)`:
 
@@ -1738,7 +1738,7 @@ func PathForOrigin(cfgPath string, remote bool) string {
 
 and call `lock.PathForOrigin(cfgPath, cube.Origin().Remote)` at all three sites.
 
-- [ ] **Step 2b: Extend `bundleRailsCheck` with the remote-origin clause (amendment 2)**
+- [x] **Step 2b: Extend `bundleRailsCheck` with the remote-origin clause (amendment 2)**
 
 Now that remote `-f` exists, a bundled run must also refuse a remote config source. In `internal/up/up.go`'s `bundleRailsCheck` (Task 6 Step 3b), add as the first check:
 
@@ -1763,7 +1763,7 @@ func TestBundleRailsCheckRejectsRemoteOrigin(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Remote info line (spec §7.3, deviation 3)**
+- [x] **Step 3: Remote info line (spec §7.3, deviation 3)**
 
 `internal/up/up.go` right after the existing `con.Step("config", …)` line (~104):
 
@@ -1775,12 +1775,12 @@ func TestBundleRailsCheckRejectsRemoteOrigin(t *testing.T) {
 
 `internal/diff/diff.go` — after its load, print through its `out io.Writer` via the same `ui` helper the file already uses for sections: `ui.NewFor(out).Section(fmt.Sprintf("using remote config %s (%s)", o.Ref, o.Pin))` guarded by `o.Remote` (match the file's existing ui call style).
 
-- [ ] **Step 4: Verify — build, full test, CLI freeze**
+- [x] **Step 4: Verify — build, full test, CLI freeze**
 
 Run: `go build ./... && go test ./... -count=1`
 Expected: PASS everywhere; specifically `go test ./cmd/ -run TestCommandTreeGolden -v` PASSES WITHOUT `-update` (no flag surface changed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cmd/ internal/up/up.go internal/diff/diff.go internal/upgrade/plan.go internal/lock/lock.go
@@ -3316,8 +3316,221 @@ HANDOFF:
   ```
 
 ### T10 — call-site migration + lock CWD path + origin bundle clause [Task 10 incl. Step 2b]
-STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T00:00:00Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF (clitree golden verified untouched):
+
+COMMITS:
+- `8951646` docs: rv plan — claim T10
+- `8bc714c` feat(cmd): every -f accepts remote refs via cfgload — read-only, CWD lock path (RV4)
+- `<this>` docs: rv plan — T10 complete
+
+FINDINGS:
+
+1. **All 16 planned `cmd/` sites migrated; the two exclusions were honoured
+   verbatim.** After the substitution the ONLY remaining `config.Load` in
+   `cmd/` is `root.go:184` (shell completion, literal `"cube.yaml"`), and
+   `SaveValidated`'s internal temp-file `Load` in `internal/config/load.go`
+   was never opened (T8 FINDINGS 8 / T9 HANDOFF respected — a re-loaded cube
+   has a ZERO origin, so migrating it would let the CUBE-0014 guard
+   self-trip):
+   ```
+   $ grep -rn "config\.Load(" cmd/ --include="*.go" | grep -v _test.go
+   cmd/root.go:184:	cube, err := config.Load("cube.yaml")
+   ```
+   Two line anchors in the plan's file list drifted by a line or two and were
+   located by structure instead: `cmd/config.go:77` is really **79**, and
+   `cmd/repo.go:76` was correct. No other anchor moved.
+
+2. **`cmd/pack.go:341` needed a signature widening, not a substitution
+   (escape-hatch correction).** `packInstallRefs(out io.Writer, file string,
+   refs []string, via string)` is a plain helper with NO cobra command and NO
+   `ctx` in scope, so `cfgload.Load(ctx, …)` had nowhere to get a context.
+   Minimal fix: the helper gained a leading `ctx context.Context` param and
+   its single caller (`cmd/pack.go:297`, inside a cobra `RunE`) passes
+   `c.Context()`. `context` was already imported in that file; the helper is
+   unexported with exactly one caller and no test callers
+   (`grep -rn "packInstallRefs" cmd/*_test.go` → no matches), so nothing else
+   moved. No flag, no `Short`, no command tree change.
+
+3. **Context sources actually used, per call-site shape** (all four kinds
+   already existed in the tree — nothing was plumbed): `c.Context()` inside a
+   cobra `RunE` (config×2, sync watch-branch, down consent-gate, trust, cnoe,
+   spoke×3, get, doctor, pack's caller); the closure's own `ctx` inside
+   `ui.RunPipelineStatic(...)` (sync one-shot, repo); the function's existing
+   `ctx` param (`runDown`, `connectStatus`, `up.Run`, `diff.Run`,
+   `upgrade.Plan`).
+
+4. **Five files dropped the now-unused `config` import**
+   (`cmd/sync.go`, `cmd/trust.go`, `cmd/cnoe.go`, `cmd/status.go`,
+   `cmd/get.go`) — the plan's "drop `config` import only where now unused".
+   `sync.go`'s two remaining `config.Load` hits are COMMENT prose, not code,
+   so its import genuinely became unused. The other nine kept `config` for
+   `config.Cube` / `config.PackRef` / `config.Schema()` / `config.Default` /
+   `config.SaveValidated` / `config.GatewaySpec`. `goimports` is NOT
+   installed on this machine (`goenv: goimports: command not found`), so the
+   import lines were inserted by hand in the repo's sorted third block
+   (`internal/cfgload` sorts before `internal/cluster*` and `internal/cnoe`,
+   after `internal/bundle`/`internal/apply`); `gofmt -l` on every touched
+   file is clean except `cmd/status.go`, which was ALREADY unformatted at
+   HEAD (verified: `git show HEAD:cmd/status.go > /tmp/st.go && gofmt -l
+   /tmp/st.go` → `/tmp/st.go`, an unrelated struct-tag alignment at line 477)
+   and was deliberately left alone rather than reformatted into this diff.
+
+5. **Step 2's `lock.PathForOrigin` helper landed exactly as sketched** in
+   `internal/lock/lock.go` (right after `PathFor`), and all three sites call
+   it with `cube.Origin().Remote`: `internal/up/up.go:443`
+   (`lock.Write`), `internal/diff/diff.go:117` and
+   `internal/upgrade/plan.go:36` (`lock.Read`). `cube` is in scope at every
+   one of the three (all three functions load the cube first) — no plumbing
+   needed.
+
+6. **Step 2b extended the EXISTING `bundleRailsCheck`, no second helper and
+   no new diag code.** `diag.CodeBundleRemoteSource` (**CUBE-7007**) was
+   already declared AND registered by T6, and its registry summary already
+   reads "values/tuning/config source", so `internal/diag/` was NOT touched
+   at all by this task. The remote-origin clause is the FIRST check in the
+   helper (before the valuesRef loop), matching the plan. NO `tuningRef`
+   clause was added — Amendment 4 dropped the field and `config.EngineSpec`
+   has none.
+
+7. **`diag.HasCode` does not exist** (the plan's Step-2b test sketch uses
+   it; T8 FINDINGS 3 and T9 FINDINGS 3 already recorded this). The repo
+   idiom — `var de *diag.Error; errors.As(err, &de); de.Code` — was used, and
+   `internal/up/up_test.go` already had it in the neighbouring
+   `TestBundleRailsCheckRejectsValuesRef`, so the new test simply mirrors its
+   sibling. `errors` and `strings` were already imported there.
+
+8. **Two assertions ADDED beyond the plan's test sketch, same contract:** the
+   error must NAME the offending ref (`strings.Contains(de.Error(),
+   "oci://example/cfg:1")` — otherwise an operator cannot tell WHICH source is
+   unvendored), and a plain local-origin `&config.Cube{}` must still PASS
+   (proves the new first-position clause did not turn the guard into a blanket
+   refusal).
+
+9. **Step 5's commit pathspec was extended by ONE file:**
+   `internal/up/up_test.go`. The plan lists `internal/up/up.go` only, but
+   Step 2b's test lives in `up_test.go` and must ride the same commit or the
+   task's own gate is not reproducible from that commit. `git add` was NOT
+   needed and NOT run — every file in the set was already tracked
+   (`git status --short` showed 16 `M` entries and zero `??`), so the
+   pathspec-only commit form was used, dodging the stray-staged-files gotcha
+   entirely.
+
+10. `go.mod` gained no module. `docs/superpowers/` was touched only for this
+    task's checkboxes and this Ledger entry;
+    `…-agent-prompt.md` was never staged, committed, or edited.
+
+BLOCKERS: none
+
+HANDOFF:
+
+- **CLI FREEZE HOLDS — the clitree golden is UNTOUCHED.** `TestCommandTreeGolden`
+  was run WITHOUT `-update` and `cmd/testdata/clitree.golden` never appears in
+  `git status` (the post-Step-4 status below lists 16 files, none of them the
+  golden; `git show --stat 8bc714c` likewise). This task added no flag, renamed
+  none, changed no default and no `Short` text — the only cobra-visible edit is
+  `packInstallRefs` gaining an unexported `ctx` param.
+- **Remote `-f` is now LIVE on every command.** `cfgload.Load(ctx, file)` is
+  the `-f` entry point at all 16 migrated `cmd/` sites plus `up.Run`,
+  `diff.Run`, `upgrade.Plan`. A user passing `-f oci://…` or
+  `-f github.com/org/repo//dir@<sha>` now gets a remote-origin cube on every
+  read-side command; mutating commands (`pack install`, `spoke add`,
+  `spoke remove`) reach `config.SaveValidated`, which refuses with
+  **CUBE-0014**.
+- **Excluded on purpose, do not "finish" them later:** `cmd/root.go:184`
+  (`config.Load("cube.yaml")`, completion) and `SaveValidated`'s internal
+  `Load(tmp)`. Both stay on `config.Load` permanently — see FINDINGS 1.
+- **New API for T11/T12:** `func lock.PathForOrigin(cfgPath string, remote bool) string`
+  — returns `"cube.lock"` (CWD) when remote, else `PathFor(cfgPath)`.
+  T11 adds `lock.File.Cluster` to the SAME `lock.Write` call in
+  `internal/up/up.go` whose path expression is now
+  `lock.PathForOrigin(cfgPath, cube.Origin().Remote)` — keep that expression,
+  only the `lf` value changes.
+- **T11 anchor note:** the plan's `internal/upgrade/plan.go:31` is now line
+  **32** (the `cfgload` import shifted it by one),
+  `cube, err := cfgload.Load(ctx, cfgPath)`, and line 36 is
+  `lock.Read(lock.PathForOrigin(cfgPath, cube.Origin().Remote))`. `cube` is
+  therefore already in scope above the `lf` read — T11's
+  `cube.Spec.Cluster.ProviderConfigRef` block needs no reordering. Task 11
+  still SKIPS its `tuning(…)` attribution block (Amendments 1+4).
+- **T12 note:** the two user-visible strings this task introduced, for the
+  README/e2e to assert against, are `using remote config <ref> (<pin>)`
+  (`up` via `con.Step("config", …)`, `diff` via `ui.NewFor(out).Section(…)`)
+  and the bundle refusal `config was loaded from remote ref %q — remote
+  configs are not vendored into the bundle` (CUBE-7007). Per Amendment 6, a
+  raw `http(s)://…/cube.yaml` `-f` still fails in `fetchGetter` — e2e must use
+  the in-process OCI precedent.
+- Evidence — Step 2b, the new test FAILED FIRST (TDD), before the clause was
+  added to `bundleRailsCheck`:
+  ```
+  --- FAIL: TestBundleRailsCheckRejectsRemoteOrigin (0.00s)
+      up_test.go:1083: err = <nil>, want CUBE-7007
+  FAIL
+  FAIL	github.com/cube-idp/cube-idp/internal/up	1.338s
+  ```
+- Evidence — Step 2b after implementing, both rails clauses green together:
+  ```
+  === RUN   TestBundleRailsCheckRejectsValuesRef
+  --- PASS: TestBundleRailsCheckRejectsValuesRef (0.00s)
+  === RUN   TestBundleRailsCheckRejectsRemoteOrigin
+  --- PASS: TestBundleRailsCheckRejectsRemoteOrigin (0.00s)
+  PASS
+  ok  	github.com/cube-idp/cube-idp/internal/up	1.309s
+  ```
+- Evidence — Step 4 gate, `go build ./... && go vet ./...`:
+  ```
+  BUILD_OK
+  VET_OK
+  ```
+- Evidence — Step 4 gate, `go test ./... -count=1`: 38 `ok` packages, and
+  `go test ./... -count=1 | grep -c "^FAIL"` → `0`. Tail of the run:
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	10.821s
+  ok  	github.com/cube-idp/cube-idp/internal/cfgload	8.973s
+  ok  	github.com/cube-idp/cube-idp/internal/config	9.186s
+  ok  	github.com/cube-idp/cube-idp/internal/diag	9.226s
+  ok  	github.com/cube-idp/cube-idp/internal/diff	10.742s
+  ok  	github.com/cube-idp/cube-idp/internal/lock	11.683s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	15.632s
+  ok  	github.com/cube-idp/cube-idp/internal/refval	11.974s
+  ok  	github.com/cube-idp/cube-idp/internal/up	11.274s
+  ok  	github.com/cube-idp/cube-idp/internal/upgrade	11.662s
+  ok  	github.com/cube-idp/cube-idp/tests	11.839s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	12.587s
+  ```
+- Evidence — F1 CLI freeze, `go test ./cmd/ -run TestCommandTreeGolden -v
+  -count=1` with NO `-update`, and `git status --short` immediately
+  afterwards — 16 files, the golden NOT among them:
+  ```
+  === RUN   TestCommandTreeGolden
+  --- PASS: TestCommandTreeGolden (0.00s)
+  PASS
+  ok  	github.com/cube-idp/cube-idp/cmd	1.259s
+
+   M cmd/cnoe.go
+   M cmd/config.go
+   M cmd/doctor.go
+   M cmd/down.go
+   M cmd/get.go
+   M cmd/pack.go
+   M cmd/repo.go
+   M cmd/spoke.go
+   M cmd/status.go
+   M cmd/sync.go
+   M cmd/trust.go
+   M internal/diff/diff.go
+   M internal/lock/lock.go
+   M internal/up/up.go
+   M internal/up/up_test.go
+   M internal/upgrade/plan.go
+  ```
+- Evidence — the code commit landed exactly those 16 files, tree clean after:
+  ```
+  [2026-07-19-valuesref-remote-config 8bc714c] feat(cmd): every -f accepts remote refs via cfgload — read-only, CWD lock path (RV4)
+   16 files changed, 85 insertions(+), 29 deletions(-)
+  ```
+- No ref was pushed. Branch `2026-07-19-valuesref-remote-config` remains local;
+  the first outward act is still T12's.
 
 ### T11 — upgrade --plan attribution + ClusterLock (tuning block SKIPPED) [Task 11]
 STATUS: UNCLAIMED
