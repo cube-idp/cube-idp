@@ -75,7 +75,7 @@ providerConfigRef/forProvider, delivery, spokes, bundle mode) against this plan:
 **Interfaces:**
 - Produces: `func FetchFile(ctx context.Context, ref, cacheDir string) ([]byte, string, error)` — pin forms: `oci:<digest>`, `git+<sha>`, `dir:<dirhash-h1>`, `file:<sha256-hex>` (local single file).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/pack/fetchfile_pin_test.go
@@ -138,12 +138,12 @@ func TestFetchFilePinLocalDir(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/pack/ -run 'TestFetchFilePin' -v`
 Expected: FAIL — compile error `assignment mismatch: 3 variables but pack.FetchFile returns 2 values`
 
-- [ ] **Step 3: Widen `FetchFile` to return the pin**
+- [x] **Step 3: Widen `FetchFile` to return the pin**
 
 In `internal/pack/fetchfile.go`, change the signature and every branch (`pullOCI` and `fetchGitTree` already return the pin components; getter/local-dir use the existing `dirPin`; local file hashes its bytes). Full replacement for the function body:
 
@@ -238,12 +238,12 @@ Compile-fix the one production call site, `internal/cluster/compose/compose.go:2
 
 Also grep for test call sites and fix the same way: `grep -rn "FetchFile(" --include="*_test.go" internal/`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go build ./... && go test ./internal/pack/ ./internal/cluster/... -count=1`
 Expected: PASS (all — including pre-existing fetchfile/compose tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/pack/fetchfile.go internal/pack/fetchfile_pin_test.go internal/cluster/compose/compose.go
@@ -2014,8 +2014,76 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- README.md tests/e2e/ 
 ## Ledger
 
 ### T1 — FetchFile returns pin [Task 1]
-STATUS: IN_PROGRESS(4a9e20e0-d82f-4974-b1c1-99d2adacd233, 2026-07-19T19:09:31Z)
+STATUS: DONE
 Outcome: COMMITS · FINDINGS · BLOCKERS · HANDOFF:
+
+COMMITS:
+- `a8c1cb6` docs: rv plan — claim T1
+- `6d67f61` feat(pack): FetchFile returns the reproducibility pin (RV1)
+- `<this>` docs: rv plan — T1 complete
+
+FINDINGS:
+1. Plan Step 3's code sketch matched the real `internal/pack/fetchfile.go`
+   verbatim (same branches, same helper names `pullOCI`/`fetchGitTree`/
+   `isGetterRef`/`sanitizeRef`/`fetchGetter`/`dirPin`/`singleYAML`) — applied
+   as written, no correction needed. `dirPin` (`internal/pack/source.go:93`)
+   already returns the `dir:`-prefixed form, so the getter/local-dir branches
+   return it unmodified; `fetchGitTree` already returns the `git+<sha>` pin.
+2. Step 5's commit pathspec list was extended by ONE file:
+   `internal/pack/fetchfile_test.go`. Step 3 explicitly instructs to grep and
+   fix test call sites (6 of them in that file); they must ride the same
+   commit or the tree does not build. No other file touched.
+3. Untracked new test file required `git add` before the pathspec commit
+   (the plan's `git add` line covers this — the commit-with-pathspec form
+   alone errors `did not match any file(s) known to git` for a new file).
+4. Machine gotcha (affects every later task): this checkout has NO git
+   identity configured (`~/.gitconfig` has no `[user]`, `.git/config` has
+   none). Commits must be made as
+   `git -c user.name="Rafal P" -c user.email="rafal@pieniazek.nl" commit …`
+   (matching every prior commit's author on this branch). Nothing was written
+   to any git config file.
+5. No p7 (engine-as-pack) merges on this branch — `git log --oneline -15`
+   head was `394b39b` as the dispatcher stated; no shared-file drift.
+6. Diag-code renumber rule: NOT applicable to T1 (allocates no codes).
+
+BLOCKERS: none
+
+HANDOFF:
+- `pack.FetchFile(ctx, ref, cacheDir) ([]byte, string, error)` is live. Pin
+  forms actually produced: `oci:<digest>` (oci://), `git+<sha>` (bare git),
+  `dir:<h1:…>` (getter refs + local directories, via `dirPin`),
+  `file:<sha256-hex>` (direct local FILE — the spec-deviation-ledger item 2
+  form, implemented as `"file:" + hex(sha256(bytes))`).
+- Pin is returned alongside a non-nil `singleYAML` error on the oci/git/getter
+  branches (callers check err first); error branches return `""`.
+- `internal/cluster/compose/compose.go:29` is a compile-fix only
+  (`raw, _, err := pack.FetchFile(...)`) — the real `refval` migration is T3.
+- The ONLY production call site remains compose.go:29; test call sites live in
+  `internal/pack/fetchfile_test.go` (all updated).
+- Evidence — `go build ./... && go vet ./... && go test ./... -count=1`
+  (all green, 0 failures; tail):
+  ```
+  ok  	github.com/cube-idp/cube-idp/cmd	11.703s
+  ok  	github.com/cube-idp/cube-idp/internal/cluster/compose	5.756s
+  ok  	github.com/cube-idp/cube-idp/internal/pack	15.410s
+  ok  	github.com/cube-idp/cube-idp/internal/up	11.633s
+  ok  	github.com/cube-idp/cube-idp/tests/e2e	11.759s
+  ```
+- Evidence — new tests (Step 2 failed first with
+  `assignment mismatch: 3 variables but FetchFile returns 2 values`, exactly
+  the plan's Expected):
+  ```
+  === RUN   TestFetchFilePinLocalFile
+  --- PASS: TestFetchFilePinLocalFile (0.00s)
+  === RUN   TestFetchFilePinLocalDir
+  --- PASS: TestFetchFilePinLocalDir (0.00s)
+  ok  	github.com/cube-idp/cube-idp/internal/pack	1.119s
+  ```
+- Evidence — F1 CLI freeze (no `-update`, `cmd/` tree clean afterwards):
+  ```
+  --- PASS: TestCommandTreeGolden (0.00s)
+  ok  	github.com/cube-idp/cube-idp/cmd	1.257s
+  ```
 
 ### T2 — internal/refval resolver [Task 2]
 STATUS: UNCLAIMED
