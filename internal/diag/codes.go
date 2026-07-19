@@ -82,6 +82,7 @@ const (
 	CodeEngineTuningUnknown Code = "CUBE-3009" // engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched)
 	// GT16 engine self-management (Phase 5 P8):
 	CodeEngineSelfManage Code = "CUBE-3010" // engine.selfManage failed: cube-engine artifact push, self-source build/apply, or post-attach health wait — re-run `cube-idp up`
+	CodeEngineDepWait    Code = "CUBE-3011" // a pack's dependency did not become healthy before its wave-gated delivery (argocd)
 )
 
 // 4xxx: pack
@@ -105,6 +106,10 @@ const (
 	// uniform extras channel for every pack kind is packs[].extraManifests.
 	CodePackValuesChartless Code = "CUBE-4016" // values: set on a pack without chart.yaml (values are helm-only, GT15)
 	CodePackExtraManifests  Code = "CUBE-4017" // packs[].extraManifests is not valid multi-doc YAML
+	// Pack dependencies (p6 DEP1, spec 2026-07-19 §3).
+	CodePackDepUnknown Code = "CUBE-4018" // dependsOn names a pack not in this cube
+	CodePackDepCycle   Code = "CUBE-4019" // pack dependency cycle (the message shows the path)
+	CodePackDepGateway Code = "CUBE-4020" // gateway pack cannot carry a dependsOn of its own
 )
 
 // 5xxx: registry

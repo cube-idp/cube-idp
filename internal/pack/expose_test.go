@@ -5,8 +5,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
+	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
@@ -48,6 +50,36 @@ func TestExposeIsOptional(t *testing.T) {
 	}
 	if p.Expose != nil {
 		t.Fatalf("no expose block must mean nil, got %+v", p.Expose)
+	}
+}
+
+func TestPackObjectDependsOn(t *testing.T) {
+	p := &Pack{Name: "argocd", Version: "0.1.0"}
+	gw := config.GatewaySpec{}
+
+	obj := PackObject(p, gw, true, false, "oci", []string{"floci", "gitea"})
+	spec, ok := obj.Object["spec"].(map[string]any)
+	if !ok {
+		t.Fatalf("spec not a map: %#v", obj.Object["spec"])
+	}
+	wantList := []any{"floci", "gitea"}
+	if got := spec["dependsOnList"]; !reflect.DeepEqual(got, wantList) {
+		t.Fatalf("dependsOnList = %#v, want %#v", got, wantList)
+	}
+	if got := spec["dependsOn"]; got != "floci,gitea" {
+		t.Fatalf("dependsOn = %#v, want %q", got, "floci,gitea")
+	}
+
+	// nil deps: NEITHER key present — stock records byte-identical to
+	// pre-p6 (unlike customized/delivery, absence already communicates
+	// "no deps" via the blank DEPENDS-ON column cell).
+	obj2 := PackObject(p, gw, true, false, "oci", nil)
+	spec2 := obj2.Object["spec"].(map[string]any)
+	if _, ok := spec2["dependsOnList"]; ok {
+		t.Fatalf("nil deps must omit dependsOnList, got %#v", spec2["dependsOnList"])
+	}
+	if _, ok := spec2["dependsOn"]; ok {
+		t.Fatalf("nil deps must omit dependsOn, got %#v", spec2["dependsOn"])
 	}
 }
 

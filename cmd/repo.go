@@ -159,7 +159,10 @@ func deployRepo(ctx context.Context, a *apply.Applier, eng engine.Engine, name s
 		Branch: repoInfo.DefaultBranch,
 		Path:   repoDeliverGitDefault,
 	}
-	objs, err := eng.DeliverGit(ctx, name, src)
+	// nil dependsOn: repo create --deploy registers a standalone git source
+	// outside the pack dependency graph (p6 DEP3 concerns packs delivered
+	// via `up`, not this manual command).
+	objs, err := eng.DeliverGit(ctx, name, src, nil)
 	if err != nil {
 		return wrap(err)
 	}

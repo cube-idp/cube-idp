@@ -2,6 +2,7 @@ package diff
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cube-idp/cube-idp/internal/apply"
 	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/engine"
 	"github.com/cube-idp/cube-idp/internal/pack"
 	"github.com/cube-idp/cube-idp/internal/registry"
@@ -51,7 +53,7 @@ func (fakeEngine) Deliver(_ context.Context, r *pack.Rendered, src engine.Artifa
 // (GitRepository, never OCIRepository) plus the shared Kustomization —
 // TestDesiredStateRepoDeliveredPack relies on the kinds differing exactly
 // the way the real engines' do.
-func (fakeEngine) DeliverGit(_ context.Context, name string, _ engine.GitSource) ([]*unstructured.Unstructured, error) {
+func (fakeEngine) DeliverGit(_ context.Context, name string, _ engine.GitSource, _ []string) ([]*unstructured.Unstructured, error) {
 	return []*unstructured.Unstructured{
 		{Object: map[string]any{
 			"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
@@ -87,6 +89,12 @@ func (fakeEngine) Health(context.Context, *apply.Applier) ([]engine.ComponentHea
 }
 
 func (fakeEngine) Uninstall(context.Context, *apply.Applier, time.Duration) error { return nil }
+
+// OrdersDeliveries: this fake mirrors flux's shapes (GitRepository +
+// Kustomization) throughout, so it answers true — desiredState's
+// DependsOn-threading is exercised by the real engines' own tests
+// (internal/engine/flux, internal/engine/argocd), not here.
+func (fakeEngine) OrdersDeliveries() bool { return true }
 
 // identityKey mirrors diff.go's refKey, keyed off group/kind/namespace/name —
 // exactly what orphanRefs (and, in production, the live inventory) compares
@@ -199,7 +207,7 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 		// expressions; only the record's identity is compared below, but
 		// stay truthful.
 		wantPackRecords = append(wantPackRecords, pack.PackObject(p, cube.Spec.Gateway, false,
-			len(pr.Values) > 0 || pr.ExtraManifests != "", pr.Delivery))
+			len(pr.Values) > 0 || pr.ExtraManifests != "", pr.Delivery, nil))
 	}
 
 	wantApplied := identitySet(regObjs, []*unstructured.Unstructured{crd}, installObjs,
@@ -233,12 +241,19 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 // repo-delivered cube free of false orphans AND of phantom OCI-source
 // drift. The gateway pack (always OCI) keeps its full-spec diff.
 func TestDesiredStateRepoDeliveredPack(t *testing.T) {
+	// pack.ResolveOrder (p6 DEP1/DEP2) requires a "gitea" pack whenever any
+	// delivery: repo pack is declared (decision 13, CUBE-4018 otherwise) —
+	// desiredState now validates the graph, so the test cube must satisfy
+	// that same rule config.Load already enforces in production.
 	cube := &config.Cube{
 		Metadata: config.Metadata{Name: "test"},
 		Spec: config.Spec{
 			Engine:  config.EngineSpec{Type: "flux"},
 			Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
-			Packs:   []config.PackRef{{Ref: "../pack/testdata/demo-kustomize", Delivery: "repo"}},
+			Packs: []config.PackRef{
+				{Ref: "../pack/testdata/demo-kustomize", Delivery: "repo"},
+				{Ref: "../pack/testdata/gitea"},
+			},
 		},
 	}
 
@@ -246,7 +261,7 @@ func TestDesiredStateRepoDeliveredPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("desiredState: %v", err)
 	}
-	if len(entries) != 2 {
+	if len(entries) != 3 {
 		t.Fatalf("repo-delivered packs still get lock entries: %d", len(entries))
 	}
 
@@ -311,5 +326,36 @@ func TestDesiredStateSelfManagedEngine(t *testing.T) {
 	off := identitySet(desired, orphanOnly)
 	if off[selfSrc] || off[selfKust] {
 		t.Fatalf("selfManage off must contribute no self-source identities:\n%v", sortedKeys(off))
+	}
+}
+
+// TestDesiredStateFailsOnDepCycle pins p6 DEP2's diff-side wiring: desiredState
+// now calls pack.ResolveOrder (mirroring up.Run's pass 2) over the fetched+
+// rendered pack set, so a cube whose packs.dependsOn forms a cycle must fail
+// desiredState itself with CUBE-4019 — a `cube-idp diff` on such a cube must
+// surface the cycle instead of silently rendering a stale/partial diff.
+func TestDesiredStateFailsOnDepCycle(t *testing.T) {
+	cube := &config.Cube{
+		Metadata: config.Metadata{Name: "test"},
+		Spec: config.Spec{
+			Engine:  config.EngineSpec{Type: "flux"},
+			Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
+			Packs: []config.PackRef{
+				{Ref: "../pack/testdata/demo-kustomize", DependsOn: []string{"demo-helm"}},
+				{Ref: "../pack/testdata/demo-helm", DependsOn: []string{"demo-kustomize"}},
+			},
+		},
+	}
+
+	_, _, _, err := desiredState(context.Background(), cube, fakeEngine{})
+	if err == nil {
+		t.Fatal("want an error for a cube whose packs form a dependency cycle")
+	}
+	var de *diag.Error
+	if !errors.As(err, &de) {
+		t.Fatalf("want a *diag.Error, got %v (%T)", err, err)
+	}
+	if de.Code != diag.CodePackDepCycle {
+		t.Fatalf("want CUBE-4019, got %v", de.Code)
 	}
 }

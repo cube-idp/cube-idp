@@ -105,7 +105,7 @@ func Run(t *testing.T, impl Impl) {
 	})
 
 	t.Run("deliver_git_returns_addressable_objects", func(t *testing.T) {
-		objs, err := impl.New().DeliverGit(ctx, "demo", demoGit)
+		objs, err := impl.New().DeliverGit(ctx, "demo", demoGit, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -123,6 +123,29 @@ func Run(t *testing.T, impl Impl) {
 		}
 		if !strings.Contains(blob, demoGit.Branch) {
 			t.Fatalf("git delivery objects never reference branch %q:\n%s", demoGit.Branch, blob)
+		}
+	})
+
+	// p6 DEP3: every engine must answer OrdersDeliveries consciously and
+	// translate a resolved DependsOn into SOME engine-native ordering
+	// intent — this is deliberately format-agnostic (flux: spec.dependsOn;
+	// argocd: the cube-idp.dev/depends-on annotation) so a future engine
+	// can pick its own shape, but it cannot silently drop the dependency.
+	t.Run("deliver_translates_depends_on", func(t *testing.T) {
+		depRendered := &pack.Rendered{Name: "demo", Version: "0.1.0", DependsOn: []string{"x"}}
+		objs, err := impl.New().Deliver(ctx, depRendered, demoRef)
+		if err != nil {
+			t.Fatal(err)
+		}
+		blob := marshalAll(t, objs)
+		if impl.New().OrdersDeliveries() {
+			if !strings.Contains(blob, "dependsOn") {
+				t.Fatalf("%s orders deliveries natively but Deliver with DependsOn produced no dependsOn reference:\n%s", impl.Name, blob)
+			}
+		} else {
+			if !strings.Contains(blob, "cube-idp.dev/depends-on") {
+				t.Fatalf("%s does not order deliveries natively but Deliver with DependsOn produced no cube-idp.dev/depends-on annotation:\n%s", impl.Name, blob)
+			}
 		}
 	})
 

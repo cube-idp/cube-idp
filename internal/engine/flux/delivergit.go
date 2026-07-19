@@ -12,8 +12,9 @@ import (
 // continuously-synced git source into a Flux GitRepository (source) + a
 // Kustomization (apply), both named cube-idp-<name>, in flux-system. Same
 // purity rule as Deliver — it RETURNS objects, the caller applies them.
-// Empty Branch defaults to "main" and empty Path to "./".
-func (f *Flux) DeliverGit(ctx context.Context, name string, src engine.GitSource) ([]*unstructured.Unstructured, error) {
+// Empty Branch defaults to "main" and empty Path to "./". dependsOn is
+// translated exactly as Deliver's Rendered.DependsOn is (p6 DEP3).
+func (f *Flux) DeliverGit(ctx context.Context, name string, src engine.GitSource, dependsOn []string) ([]*unstructured.Unstructured, error) {
 	dName := deliveryName(name)
 	branch := src.Branch
 	if branch == "" {
@@ -49,5 +50,8 @@ func (f *Flux) DeliverGit(ctx context.Context, name string, src engine.GitSource
 			},
 		},
 	}}
+	if len(dependsOn) > 0 {
+		kust.Object["spec"].(map[string]any)["dependsOn"] = dependsOnRefs(dependsOn)
+	}
 	return []*unstructured.Unstructured{repo, kust}, nil
 }

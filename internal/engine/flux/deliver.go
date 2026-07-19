@@ -52,5 +52,19 @@ func (f *Flux) Deliver(ctx context.Context, r *pack.Rendered, src engine.Artifac
 			},
 		},
 	}}
+	if len(r.DependsOn) > 0 {
+		kust.Object["spec"].(map[string]any)["dependsOn"] = dependsOnRefs(r.DependsOn)
+	}
 	return []*unstructured.Unstructured{repo, kust}, nil
+}
+
+// dependsOnRefs renders resolved dep names as flux dependency references
+// (name-only: every cube-idp Kustomization lives in flux-system). Input
+// is sorted (ResolveOrder), so the render is deterministic.
+func dependsOnRefs(deps []string) []any {
+	out := make([]any, len(deps))
+	for i, d := range deps {
+		out[i] = map[string]any{"name": deliveryName(d)}
+	}
+	return out
 }

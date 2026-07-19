@@ -140,7 +140,7 @@ func TestPokeFallsBackToGitRepository(t *testing.T) {
 
 	// git delivery: no OCIRepository, only a GitRepository named cube-idp-gitpack.
 	delivered, err := f.DeliverGit(ctx, "gitpack",
-		engine.GitSource{URL: "http://gitea-http.gitea.svc.cluster.local:3000/gitea_admin/gitpack.git", Branch: "main", Path: "./"})
+		engine.GitSource{URL: "http://gitea-http.gitea.svc.cluster.local:3000/gitea_admin/gitpack.git", Branch: "main", Path: "./"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

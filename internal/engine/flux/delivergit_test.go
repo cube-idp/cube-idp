@@ -4,13 +4,15 @@ import (
 	"context"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/cube-idp/cube-idp/internal/engine"
 )
 
 func TestDeliverGitShapesFluxObjects(t *testing.T) {
 	f := New()
 	objs, err := f.DeliverGit(context.Background(), "app",
-		engine.GitSource{URL: "http://gitea-http.gitea.svc.cluster.local:3000/gitea_admin/app.git", Branch: "main", Path: "./"})
+		engine.GitSource{URL: "http://gitea-http.gitea.svc.cluster.local:3000/gitea_admin/app.git", Branch: "main", Path: "./"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +54,7 @@ func TestDeliverGitShapesFluxObjects(t *testing.T) {
 func TestDeliverGitDefaultsBranchAndPath(t *testing.T) {
 	f := New()
 	objs, err := f.DeliverGit(context.Background(), "app",
-		engine.GitSource{URL: "http://gitea-http.gitea.svc.cluster.local:3000/gitea_admin/app.git"})
+		engine.GitSource{URL: "http://gitea-http.gitea.svc.cluster.local:3000/gitea_admin/app.git"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,5 +65,55 @@ func TestDeliverGitDefaultsBranchAndPath(t *testing.T) {
 	path, _, _ := unstructuredNestedString(objs[1], "spec", "path")
 	if path != "./" {
 		t.Fatalf("empty Path must default to ./, got %q", path)
+	}
+}
+
+// TestDeliverGitDependsOnSetsKustomizationSpec mirrors Deliver's pin for the
+// git-sourced path (p6 DEP3): dependsOn is a DeliverGit param now, not part
+// of GitSource, so it flows in as a trailing argument.
+func TestDeliverGitDependsOnSetsKustomizationSpec(t *testing.T) {
+	f := New()
+	objs, err := f.DeliverGit(context.Background(), "app",
+		engine.GitSource{URL: "http://gitea-http.gitea.svc.cluster.local:3000/gitea_admin/app.git"},
+		[]string{"floci", "gitea"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kust := objs[1]
+	got, found, err := unstructured.NestedSlice(kust.Object, "spec", "dependsOn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("spec.dependsOn missing")
+	}
+	want := []any{
+		map[string]any{"name": "cube-idp-floci"},
+		map[string]any{"name": "cube-idp-gitea"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("spec.dependsOn = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].(map[string]any)["name"] != want[i].(map[string]any)["name"] {
+			t.Fatalf("spec.dependsOn[%d] = %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestDeliverGitNilDependsOnOmitsKey is DeliverGit's half of the byte-compat
+// fence: nil (or empty) dependsOn must produce NO dependsOn key.
+func TestDeliverGitNilDependsOnOmitsKey(t *testing.T) {
+	f := New()
+	objs, err := f.DeliverGit(context.Background(), "app",
+		engine.GitSource{URL: "http://gitea-http.gitea.svc.cluster.local:3000/gitea_admin/app.git"},
+		nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kust := objs[1]
+	spec, _, _ := unstructured.NestedMap(kust.Object, "spec")
+	if _, ok := spec["dependsOn"]; ok {
+		t.Fatalf("spec.dependsOn present with nil dependsOn: %v", spec["dependsOn"])
 	}
 }

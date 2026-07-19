@@ -43,6 +43,11 @@ func New() *Flux { return &Flux{} }
 // embedded manifests with t (GT1). The factory is the production caller.
 func NewTuned(t *config.EngineTuning) *Flux { return &Flux{tuning: t} }
 
+// OrdersDeliveries reports that flux orders delivery reconciliation
+// natively via Kustomization spec.dependsOn (p6 DEP3) — `up`'s wave gate
+// never runs for this engine.
+func (f *Flux) OrdersDeliveries() bool { return true }
+
 // InstallManifests parses the embedded, pre-rendered Flux install manifest
 // (source-controller + kustomize-controller only; see
 // hack/gen-flux-manifests.sh for how it's regenerated).

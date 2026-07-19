@@ -13,8 +13,9 @@ import (
 // branch + path) instead of the zot OCI registry. It reuses the exact same
 // Application scaffolding as Deliver, changing only spec.source. Same purity
 // rule — it RETURNS the object, the caller applies it. Empty Branch defaults
-// to "main" and empty Path to "./".
-func (g *ArgoCD) DeliverGit(ctx context.Context, name string, src engine.GitSource) ([]*unstructured.Unstructured, error) {
+// to "main" and empty Path to "./". dependsOn is translated exactly as
+// Deliver's Rendered.DependsOn is (p6 DEP3).
+func (g *ArgoCD) DeliverGit(ctx context.Context, name string, src engine.GitSource, dependsOn []string) ([]*unstructured.Unstructured, error) {
 	branch := src.Branch
 	if branch == "" {
 		branch = "main"
@@ -27,5 +28,5 @@ func (g *ArgoCD) DeliverGit(ctx context.Context, name string, src engine.GitSour
 		"repoURL":        src.URL,
 		"targetRevision": branch,
 		"path":           path,
-	})}, nil
+	}, dependsOn)}, nil
 }

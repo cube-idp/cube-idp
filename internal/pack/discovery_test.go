@@ -51,7 +51,7 @@ func TestPackObjectShape(t *testing.T) {
 		AuthSecretRef: &SecretRef{Namespace: "gitea", Name: "gitea-admin"},
 		ImpliedFields: map[string]string{"username": "gitea_admin"},
 	}}
-	o := PackObject(p, config.GatewaySpec{Host: "cube-idp.localtest.me", Port: 8443}, true, false, "")
+	o := PackObject(p, config.GatewaySpec{Host: "cube-idp.localtest.me", Port: 8443}, true, false, "", nil)
 	if o.GetKind() != "Pack" || o.GetName() != "gitea" || o.GetNamespace() != "" {
 		t.Fatalf("Pack object identity: %s %s/%s", o.GetKind(), o.GetNamespace(), o.GetName())
 	}
@@ -79,7 +79,7 @@ func TestPackObjectCustomized(t *testing.T) {
 		customized bool
 		want       string
 	}{{true, "yes"}, {false, "no"}} {
-		o := PackObject(&Pack{Name: "p", Version: "0.1.0"}, config.GatewaySpec{Host: "h", Port: 8443}, true, tt.customized, "")
+		o := PackObject(&Pack{Name: "p", Version: "0.1.0"}, config.GatewaySpec{Host: "h", Port: 8443}, true, tt.customized, "", nil)
 		got, found, _ := unstructured.NestedString(o.Object, "spec", "customized")
 		if !found || got != tt.want {
 			t.Fatalf("customized=%v: spec.customized = %q (found=%v), want %q", tt.customized, got, found, tt.want)
@@ -96,7 +96,7 @@ func TestPackObjectDelivery(t *testing.T) {
 		delivery string
 		want     string
 	}{{"", "oci"}, {"oci", "oci"}, {"repo", "repo"}} {
-		o := PackObject(&Pack{Name: "p", Version: "0.1.0"}, config.GatewaySpec{Host: "h", Port: 8443}, true, false, tt.delivery)
+		o := PackObject(&Pack{Name: "p", Version: "0.1.0"}, config.GatewaySpec{Host: "h", Port: 8443}, true, false, tt.delivery, nil)
 		got, found, _ := unstructured.NestedString(o.Object, "spec", "delivery")
 		if !found || got != tt.want {
 			t.Fatalf("delivery=%q: spec.delivery = %q (found=%v), want %q", tt.delivery, got, found, tt.want)
@@ -105,7 +105,7 @@ func TestPackObjectDelivery(t *testing.T) {
 }
 
 func TestPackObjectWithoutExpose(t *testing.T) {
-	o := PackObject(&Pack{Name: "plain", Version: "0.1.0"}, config.GatewaySpec{Host: "h", Port: 8443}, false, false, "")
+	o := PackObject(&Pack{Name: "plain", Version: "0.1.0"}, config.GatewaySpec{Host: "h", Port: 8443}, false, false, "", nil)
 	if o.GetName() != "plain" {
 		t.Fatal("packs without expose still get a record (VERSION/READY are useful alone)")
 	}
@@ -138,7 +138,7 @@ func TestPackObjectGatewayPortSubstitution(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			o := PackObject(newPack(), tt.gw, true, false, "")
+			o := PackObject(newPack(), tt.gw, true, false, "", nil)
 			url, _, _ := unstructured.NestedString(o.Object, "spec", "url")
 			if url != tt.want {
 				t.Fatalf("gw=%+v: got %q, want %q", tt.gw, url, tt.want)

@@ -44,7 +44,7 @@ package config
 			httpPort?: int & >0 & <65536
 			ref?: string & !=""
 		}
-		packs?: [...{ref: string & !="", values?: {...}, extraManifests?: string & !="", delivery?: "oci" | "repo"}]
+		packs?: [...{ref: string & !="", values?: {...}, extraManifests?: string & !="", delivery?: "oci" | "repo", dependsOn?: [...string & !=""]}]
 		spokes?: [...{
 			name: =~"^[a-z0-9][a-z0-9-]{0,30}$"
 			cluster: {

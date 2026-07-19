@@ -556,6 +556,55 @@ spec:
 	}
 }
 
+// TestPackDependsOnRoundTrip pins p6 DEP1's config declaration surface:
+// packs[].dependsOn decodes, survives a SaveValidated round-trip, and an
+// entry containing an empty string is rejected by schema.cue
+// (`dependsOn?: [...string & !=""]`) with CUBE-0002.
+func TestPackDependsOnRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cube.yaml")
+	base := `apiVersion: cube-idp.dev/v1alpha1
+kind: Cube
+metadata: {name: dev}
+spec:
+  engine: {type: flux}
+  gateway: {pack: traefik, host: cube-idp.localtest.me, port: 8443}
+  packs:
+    - ref: oci://ghcr.io/cube-idp/packs/gitea:0.2.0
+    - ref: oci://ghcr.io/cube-idp/packs/backstage:0.2.0
+      dependsOn: ["gitea"]
+`
+	if err := os.WriteFile(p, []byte(base), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatalf("valid dependsOn rejected: %v", err)
+	}
+	if len(c.Spec.Packs[0].DependsOn) != 0 {
+		t.Fatalf("dependsOn must be absent on the first pack: %+v", c.Spec.Packs[0])
+	}
+	if len(c.Spec.Packs[1].DependsOn) != 1 || c.Spec.Packs[1].DependsOn[0] != "gitea" {
+		t.Fatalf("dependsOn not decoded: %+v", c.Spec.Packs[1])
+	}
+	if err := SaveValidated(p, c); err != nil {
+		t.Fatalf("dependsOn does not round-trip through SaveValidated: %v", err)
+	}
+	c, err = Load(p)
+	if err != nil || len(c.Spec.Packs[1].DependsOn) != 1 || c.Spec.Packs[1].DependsOn[0] != "gitea" {
+		t.Fatalf("dependsOn lost on round-trip: %v %+v", err, c.Spec.Packs)
+	}
+
+	// dependsOn: [""] is rejected by schema.cue (string & !="").
+	bad := strings.Replace(base, `dependsOn: ["gitea"]`, `dependsOn: [""]`, 1)
+	if err := os.WriteFile(p, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "CUBE-0002") {
+		t.Fatalf("dependsOn: [\"\"] must fail CUE validation with CUBE-0002, got: %v", err)
+	}
+}
+
 func TestLoadForProviderRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "cube.yaml")

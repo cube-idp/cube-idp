@@ -43,6 +43,15 @@ spec:
                 # pack; the record writer maps absent to "oci", so always
                 # present.
                 delivery: {type: string}
+                # p6 DEP4: the pack's RESOLVED dependency list (explicit ∪
+                # implicit) — what actually gated delivery. Comma-joined
+                # string for the printer column (dependsOnList below is the
+                # machine-readable array twin, the authSecretRef/authSecret
+                # flattened-twin precedent). Absent when the pack has no
+                # deps — no deps is the common case, so absence keeps stock
+                # records byte-identical to pre-p6.
+                dependsOn: {type: string}
+                dependsOnList: {type: array, items: {type: string}}
       additionalPrinterColumns:
         - {name: VERSION, type: string, jsonPath: .spec.version}
         - {name: URL, type: string, jsonPath: .spec.url}
@@ -50,3 +59,4 @@ spec:
         - {name: READY, type: boolean, jsonPath: .spec.ready}
         - {name: CUSTOMIZED, type: string, jsonPath: .spec.customized}
         - {name: DELIVERY, type: string, jsonPath: .spec.delivery}
+        - {name: DEPENDS-ON, type: string, jsonPath: .spec.dependsOn}

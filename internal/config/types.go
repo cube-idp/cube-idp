@@ -210,6 +210,13 @@ type PackRef struct {
 	// round-trip as an absent key — schema.cue's `delivery?: "oci"|"repo"`
 	// rejects an explicit "" (same discipline as Values/ExtraManifests).
 	Delivery string `yaml:"delivery,omitempty" json:"delivery,omitempty"`
+	// DependsOn lists pack NAMES (pack.cue name — never refs; DD1) that
+	// must be delivered, and per engine semantics healthy, before this
+	// pack (spec 2026-07-19 §3.1). Unioned with the pack's own pack.cue
+	// dependsOn at graph time (pack.ResolveOrder). omitempty: absent must
+	// round-trip as an absent key, not an explicit YAML null — same
+	// discipline as Values above.
+	DependsOn []string `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
 }
 
 // SpokeSpec declares a managed spoke cluster (spec §5, Phase 5). cube-idp

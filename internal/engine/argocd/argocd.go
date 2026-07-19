@@ -73,6 +73,12 @@ func New() *ArgoCD { return &ArgoCD{} }
 // embedded manifests with t (GT1). The factory is the production caller.
 func NewTuned(t *config.EngineTuning) *ArgoCD { return &ArgoCD{tuning: t} }
 
+// OrdersDeliveries reports that argocd does NOT order delivery
+// reconciliation natively — there is no cross-Application dependsOn (p6
+// DEP3). `up`'s wave gate (waitDepsHealthy) is the enforcement side; Deliver
+// still stamps the cube-idp.dev/depends-on annotation for humans/tooling.
+func (g *ArgoCD) OrdersDeliveries() bool { return false }
+
 // clusterScopedKinds are the non-namespaced kinds argo-cd's own
 // manifests/install.yaml ships (plus the Namespace object this package
 // prepends); everything else in that file is namespace-scoped.

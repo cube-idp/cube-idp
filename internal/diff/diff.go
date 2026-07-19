@@ -218,8 +218,12 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 	}
 
 	// Gateway pack goes first, mirroring up.Run — everything else depends on
-	// ingress existing.
+	// ingress existing. Fetch+render every pack first (declared order), same
+	// as up.Run's pass 1, accumulating dPacks/dRenders alongside refs so
+	// ResolveOrder can validate the graph after the loop.
 	refs := append([]config.PackRef{{Ref: cube.Spec.Gateway.PackRef()}}, cube.Spec.Packs...)
+	var dPacks []*pack.Pack
+	var dRenders []*pack.Rendered
 	for _, pr := range refs {
 		p, err := pack.Fetch(ctx, pr.Ref, dir)
 		if err != nil {
@@ -237,6 +241,27 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 			return nil, nil, nil, err
 		}
 		entries = append(entries, lock.Entry{Name: rendered.Name, RenderedHash: rh})
+		dPacks = append(dPacks, p)
+		dRenders = append(dRenders, rendered)
+	}
+
+	// Mirror up.Run's pass 2: validate the dependency graph over the
+	// fetched+rendered set. diff does not deliver, so `order` is discarded —
+	// but packDeps is threaded into the Deliver calls below, exactly as
+	// up.Run's deliver pass does, so diff previews byte-identical flux
+	// Kustomization dependsOn / argocd annotation objects. A graph error
+	// surfaces from diff exactly as CUBE-4016/4017 already do above, before
+	// any object is added to desired/orphanOnly.
+	_, packDeps, err := pack.ResolveOrder(dPacks, refs, dRenders)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	for i, pr := range refs {
+		rendered := dRenders[i]
+		// p6 DEP3: stamp this pack's resolved deps before Deliver/DeliverGit
+		// so the preview matches what up.Run's deliver pass would produce.
+		rendered.DependsOn = packDeps[rendered.Name]
 
 		if pr.Delivery == "repo" {
 			// P7: up delivers this pack as an engine git source over the
@@ -247,7 +272,7 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 			// for orphan accounting; a placeholder GitSource yields the
 			// engine-native identities (names are deterministic:
 			// cube-idp-<pack>).
-			gitObjs, err := eng.DeliverGit(ctx, rendered.Name, engine.GitSource{})
+			gitObjs, err := eng.DeliverGit(ctx, rendered.Name, engine.GitSource{}, rendered.DependsOn)
 			if err != nil {
 				return nil, nil, nil, err
 			}

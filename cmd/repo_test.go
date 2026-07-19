@@ -34,7 +34,7 @@ func (failingDeliverGitEngine) InstallManifests() ([]*unstructured.Unstructured,
 func (failingDeliverGitEngine) Deliver(context.Context, *pack.Rendered, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (failingDeliverGitEngine) DeliverGit(context.Context, string, engine.GitSource) ([]*unstructured.Unstructured, error) {
+func (failingDeliverGitEngine) DeliverGit(context.Context, string, engine.GitSource, []string) ([]*unstructured.Unstructured, error) {
 	return nil, errors.New("boom")
 }
 func (failingDeliverGitEngine) DeliverSelf(context.Context, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
@@ -47,6 +47,7 @@ func (failingDeliverGitEngine) Health(context.Context, *apply.Applier) ([]engine
 func (failingDeliverGitEngine) Uninstall(context.Context, *apply.Applier, time.Duration) error {
 	return nil
 }
+func (failingDeliverGitEngine) OrdersDeliveries() bool { return true }
 
 func TestDeployRepoWrapsDeliverGitFailureAsCUBE7303(t *testing.T) {
 	repoInfo := &gitea.Repo{Owner: "gitea_admin", Name: "app", DefaultBranch: "main"}

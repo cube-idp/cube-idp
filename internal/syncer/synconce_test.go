@@ -46,7 +46,7 @@ func (f *fakeEngine) Deliver(_ context.Context, r *pack.Rendered, _ engine.Artif
 		},
 	}}}, nil
 }
-func (f *fakeEngine) DeliverGit(context.Context, string, engine.GitSource) ([]*unstructured.Unstructured, error) {
+func (f *fakeEngine) DeliverGit(context.Context, string, engine.GitSource, []string) ([]*unstructured.Unstructured, error) {
 	return nil, nil
 }
 func (f *fakeEngine) DeliverSelf(context.Context, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
@@ -60,6 +60,7 @@ func (f *fakeEngine) Health(context.Context, *apply.Applier) ([]engine.Component
 	return nil, nil
 }
 func (f *fakeEngine) Uninstall(context.Context, *apply.Applier, time.Duration) error { return nil }
+func (f *fakeEngine) OrdersDeliveries() bool                                         { return true }
 
 // newFakeOCIRegistry starts a minimal, in-process plain-HTTP OCI Distribution
 // v2 registry sufficient for oras-go v2's remote.Repository client to push
@@ -73,7 +74,7 @@ func (f *fakeEngine) Uninstall(context.Context, *apply.Applier, time.Duration) e
 func newFakeOCIRegistry(t *testing.T) *httptest.Server {
 	t.Helper()
 	var mu sync.Mutex
-	manifests := map[string][]byte{}    // "<repo>|<ref>" (digest or tag) -> content
+	manifests := map[string][]byte{} // "<repo>|<ref>" (digest or tag) -> content
 	manifestTypes := map[string]string{}
 	var uploadSeq int64
 

@@ -277,9 +277,10 @@ func Run(ctx context.Context, opts Options) error {
 
 	// Gateway pack goes first — everything else depends on ingress existing.
 	// P7 (the gitea guarantee, decision 13): with any delivery: repo pack
-	// declared, gitea is additionally hoisted directly behind the gateway,
-	// so the repo-delivery readiness gate below waits on a pack that is
-	// already reconciling.
+	// declared, gitea is delivered before it — since p6 DEP2 this is
+	// pack.ResolveOrder's implicit repo->gitea edge (resolveAndDeliverPacks'
+	// graph pass below), not orderPackRefs; either way the repo-delivery
+	// readiness gate below waits on a pack that is already reconciling.
 	refs := orderPackRefs(cube.Spec.Gateway.PackRef(), cube.Spec.Packs)
 	// Deviation 3 (offline): rewrite every ref to its bundle-local source dir
 	// before the loop's pack.Fetch runs, so fetching reads from disk and a
@@ -323,15 +324,16 @@ func Run(ctx context.Context, opts Options) error {
 		},
 	}
 
+	// Pass 1: fetch + render every pack in DECLARED order. No cluster
+	// mutation happens here beyond what pack.Fetch itself may cache to disk —
+	// entries/packs/renders are index-aligned with refs, one append per ref,
+	// so a failure partway through leaves no partial delivery behind.
 	var entries []lock.Entry
 	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
+	var renders []*pack.Rendered
 	for i, pref := range refs {
-		// Each pack delivery is an enumerated open step (pack i+1/len(refs))
-		// so renderers can show n-of-m; the Done message is byte-identical to
-		// the previous con.Step line and plain never prints Dur — zero plain
-		// drift.
 		if err := func() error {
-			pr := con.ProgressN("pack", "delivering "+pref.Ref, i+1, len(refs))
+			pr := con.ProgressN("pack-fetch", "fetching "+pref.Ref, i+1, len(refs))
 			defer pr.Stop() // no-op after Done; resolves the step on any error return
 			// Task 13 review: record the RESOLVED fetch source before Fetch runs.
 			// This is the falsifiable output proof of offline honesty: an online
@@ -377,17 +379,25 @@ func Run(ctx context.Context, opts Options) error {
 				// field comment for why both sources matter.
 				Images: mergeImages(lock.ImagesFrom(rendered.Objects), pk.Images),
 			})
-			// P7: the delivery tail branches on the ref's delivery mode —
-			// deliverPackOCI is the pre-P7 tail moved verbatim; delivery:
-			// repo renders into an engine-watched Gitea repo instead.
-			if err := deliverPack(ctx, deps, pref, rendered); err != nil {
-				return err
-			}
-			pr.Done("%s@%s delivered", rendered.Name, rendered.Version)
+			renders = append(renders, rendered)
+			pr.Done("%s@%s rendered", rendered.Name, rendered.Version)
 			return nil
 		}(); err != nil {
 			return err
 		}
+	}
+
+	// Passes 2+3: resolve the dependency graph, then deliver in that order.
+	// Split out so the fail-fast property (a graph error returns before any
+	// deliverPack call) and the topo delivery order are unit-testable with
+	// the P7 fakes, without a live cluster. resolveAndDeliverPacks threads
+	// each pack's resolved deps into its Rendered/engine call and the wave
+	// gate itself (p6 DEP3); Run keeps the packDeps return too, now that the
+	// D11 record-writer loop below needs each pack's resolved dep list for
+	// its DEPENDS-ON column (p6 DEP4).
+	packDeps, err := resolveAndDeliverPacks(ctx, con, deps, a, refs, packs, renders)
+	if err != nil {
+		return err
 	}
 
 	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
@@ -487,7 +497,9 @@ func Run(ctx context.Context, opts Options) error {
 	// "cube-idp-"+name is the Deliver object name convention both engines
 	// use (internal/engine/flux/deliver.go, internal/engine/argocd/deliver.go).
 	// D11 record-writer fields (append-only shared surface): U4 CUSTOMIZED,
-	// P7 DELIVERY (GT19 — PackObject maps an empty Delivery to "oci").
+	// P7 DELIVERY (GT19 — PackObject maps an empty Delivery to "oci"), p6
+	// DEP4 DEPENDS-ON (packDeps is keyed by name, packs is the DECLARED-order
+	// slice — no index remap needed against refs/packs alignment below).
 	// packs is index-aligned with refs (exactly one append per ref in the
 	// delivery loop above, any failure aborts Run), so refs[i] is the
 	// PackRef whose values/extraManifests/delivery decide packs[i]'s
@@ -495,7 +507,7 @@ func Run(ctx context.Context, opts Options) error {
 	packObjs := make([]*unstructured.Unstructured, 0, len(packs))
 	for i, pk := range packs {
 		customized := len(refs[i].Values) > 0 || refs[i].ExtraManifests != ""
-		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name], customized, refs[i].Delivery))
+		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name], customized, refs[i].Delivery, packDeps[pk.Name]))
 	}
 	if err := a.Apply(ctx, packObjs, false, applyTimeout); err != nil {
 		return err
@@ -545,6 +557,106 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	con.Access(access, "credentials: cube-idp get secrets")
 	return nil
+}
+
+// resolveAndDeliverPacks is Run's passes 2+3 (p6 DEP2): resolve the
+// dependency graph over the already fetched+rendered packs (index-aligned
+// with refs/packs/renders, exactly Run's pass-1 output), then deliver each
+// one — via deliverPack, so the P7 OCI/repo branch is unchanged — in the
+// resolved topo order rather than declared order. A graph error (CUBE-4018
+// unknown dep, CUBE-4019 cycle, CUBE-4020 gateway carries a dep) returns
+// BEFORE the delivery loop runs at all: the fail-fast improvement over the
+// old single fetch+render+deliver loop, where a graph problem could only be
+// detected pack-by-pack, after every prior pack in declared order had
+// already been delivered to the cluster. Extracted from Run so this
+// ordering/fail-fast contract is unit-testable with the P7 fakes, without a
+// live cluster (Run itself needs one).
+func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDeps, a *apply.Applier, refs []config.PackRef, packs []*pack.Pack, renders []*pack.Rendered) (map[string][]string, error) {
+	order, packDeps, err := pack.ResolveOrder(packs, refs, renders)
+	if err != nil {
+		return nil, err
+	}
+	for pos, i := range order {
+		pref, rendered := refs[i], renders[i]
+		// p6 DEP3: stamp each pack's resolved deps onto its Rendered before
+		// delivery — deliverPack's engine calls (Deliver reads
+		// rendered.DependsOn directly; DeliverGit takes it as a param) and
+		// the wave gate below both read it from here, so this is the single
+		// place the graph's packDeps enters the delivery tail.
+		rendered.DependsOn = packDeps[packs[i].Name]
+		// Each pack delivery is an enumerated open step (pack i+1/len(refs))
+		// so renderers can show n-of-m; the Done message is byte-identical to
+		// the previous con.Step line and plain never prints Dur — zero plain
+		// drift.
+		if err := func() error {
+			pr := con.ProgressN("pack", "delivering "+pref.Ref, pos+1, len(refs))
+			defer pr.Stop() // no-op after Done; resolves the step on any error return
+			// p6 DEP3 wave gate: engines that cannot order deliveries
+			// natively (OrdersDeliveries false — argocd) need `up` to block
+			// here until every dependency's component is healthy, before
+			// this pack's delivery is applied. Flux answers true and skips
+			// straight through — its Kustomization dependsOn (stamped above)
+			// orders reconciliation in-cluster instead.
+			if !deps.eng.OrdersDeliveries() {
+				if err := waitDepsHealthy(ctx, deps.eng, a, packs[i].Name, rendered.DependsOn, healthTimeout, healthPoll); err != nil {
+					return err
+				}
+			}
+			// P7: the delivery tail branches on the ref's delivery mode —
+			// deliverPackOCI is the pre-P7 tail moved verbatim; delivery:
+			// repo renders into an engine-watched Gitea repo instead.
+			if err := deliverPack(ctx, deps, pref, rendered); err != nil {
+				return err
+			}
+			pr.Done("%s@%s delivered", rendered.Name, rendered.Version)
+			return nil
+		}(); err != nil {
+			return nil, err
+		}
+	}
+	return packDeps, nil
+}
+
+// waitDepsHealthy is the wave gate for engines that cannot order
+// deliveries natively (OrdersDeliveries false — argocd; spec 2026-07-19
+// DD5, ratified): before applying a dependent pack's delivery, poll
+// Health until every dependency's component (cube-idp-<dep>) is Ready,
+// bounded by timeout (the no-infinite-spinner rule). Flux never enters
+// here — its Kustomization dependsOn orders reconciliation in-cluster.
+func waitDepsHealthy(ctx context.Context, eng packEngine, a *apply.Applier, packName string, deps []string, timeout, poll time.Duration) error {
+	if len(deps) == 0 {
+		return nil
+	}
+	want := make(map[string]bool, len(deps))
+	for _, d := range deps {
+		want["cube-idp-"+d] = true
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		health, err := eng.Health(ctx, a)
+		if err != nil {
+			return err
+		}
+		ready := 0
+		for _, h := range health {
+			if want[h.Name] && h.Ready {
+				ready++
+			}
+		}
+		if ready == len(want) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return diag.New(diag.CodeEngineDepWait,
+				fmt.Sprintf("pack %s waits on %s — dependency not healthy within %s", packName, strings.Join(deps, ", "), timeout),
+				"re-run `cube-idp up` (idempotent), or check the dependency with `cube-idp status`")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(poll):
+		}
+	}
 }
 
 // ensureSpoke creates/connects one spoke, bootstraps cube-idp RBAC on it,
@@ -749,7 +861,7 @@ func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, con *
 			return diag.New(diag.CodeEngineHealthTimeout,
 				fmt.Sprintf("timed out after %s waiting for components to become healthy: %s",
 					timeout, unreadySummary(health)),
-				"re-run `cube-idp up` (idempotent); inspect the listed components with kubectl")
+				"re-run `cube-idp up` (idempotent); inspect the listed components with kubectl — deep dependsOn chains serialize startup, so deps reconcile before dependents")
 		}
 		select {
 		case <-ctx.Done():
@@ -881,8 +993,13 @@ const (
 // P7 fakes.
 type packEngine interface {
 	Deliver(ctx context.Context, r *pack.Rendered, src engine.ArtifactRef) ([]*unstructured.Unstructured, error)
-	DeliverGit(ctx context.Context, name string, src engine.GitSource) ([]*unstructured.Unstructured, error)
+	DeliverGit(ctx context.Context, name string, src engine.GitSource, dependsOn []string) ([]*unstructured.Unstructured, error)
 	DeliverSelf(ctx context.Context, src engine.ArtifactRef) ([]*unstructured.Unstructured, error)
+	// OrdersDeliveries and Health back the p6 DEP3 wave gate
+	// (waitDepsHealthy): an engine that answers false needs `up` to poll
+	// Health itself before delivering a dependent pack.
+	OrdersDeliveries() bool
+	Health(ctx context.Context, a *apply.Applier) ([]engine.ComponentHealth, error)
 }
 
 // packApplier is the narrow Applier surface the delivery tail uses —
@@ -980,7 +1097,7 @@ func deliverPackRepo(ctx context.Context, deps deliverDeps, rendered *pack.Rende
 		Branch: repo.DefaultBranch,
 		Path:   "./",
 	}
-	deliverObjs, err := deps.eng.DeliverGit(ctx, rendered.Name, src)
+	deliverObjs, err := deps.eng.DeliverGit(ctx, rendered.Name, src, rendered.DependsOn)
 	if err != nil {
 		return wrap(err)
 	}
@@ -1011,37 +1128,13 @@ func renderedFiles(r *pack.Rendered) (map[string][]byte, error) {
 	return files, nil
 }
 
-// orderPackRefs builds the delivery order: the gateway pack first, as
-// always. With any delivery: repo pack declared, the gitea pack is hoisted
-// directly behind the gateway (the gitea guarantee's ordering half,
-// decision 13) so the repo-delivery readiness gate waits on a pack already
-// reconciling; everything else keeps its declared relative order. Gitea is
-// matched by the same ref-substring convention config's load-time
-// guarantee and cmd/init.go's filterSelectedPacks use.
+// orderPackRefs prepends the gateway pack ref. Ordering beyond that —
+// including decision 13's gitea-before-repo-packs guarantee — moved to
+// pack.ResolveOrder (p6 DEP2): the implicit repo→gitea edge plus the
+// declared-order tie-break keep the guarantee; the giteaSession bounded
+// gate still backstops the wait either way.
 func orderPackRefs(gatewayRef string, packs []config.PackRef) []config.PackRef {
-	refs := make([]config.PackRef, 0, len(packs)+1)
-	refs = append(refs, config.PackRef{Ref: gatewayRef})
-	repoDelivered := false
-	for _, p := range packs {
-		if p.Delivery == "repo" {
-			repoDelivered = true
-			break
-		}
-	}
-	if !repoDelivered {
-		return append(refs, packs...)
-	}
-	for _, p := range packs {
-		if strings.Contains(p.Ref, "gitea") {
-			refs = append(refs, p)
-		}
-	}
-	for _, p := range packs {
-		if !strings.Contains(p.Ref, "gitea") {
-			refs = append(refs, p)
-		}
-	}
-	return refs
+	return append([]config.PackRef{{Ref: gatewayRef}}, packs...)
 }
 
 // giteaSession is the repo-delivery readiness gate (decision 13): engine
