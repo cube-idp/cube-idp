@@ -52,7 +52,7 @@ type Entry struct {
 	// Images is the sorted union of every container image this pack pulls:
 	// images found by walking the rendered manifests (lock.ImagesFrom) PLUS
 	// any images the pack declares itself via pack.cue's optional images:
-	// list (spec D14) — operator-style packs (e.g. envoy-gateway) provision
+	// list — operator-style packs (e.g. envoy-gateway) provision
 	// images that never appear in their own rendered objects, so the
 	// declared list closes that air-gap blind spot. `up`'s lock assembly
 	// computes the merge; `cube-idp vendor` consumes it unchanged
