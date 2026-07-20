@@ -26,17 +26,19 @@ which would otherwise be reported as perpetual drift on every run.
 
 ## Decision
 
-Every consumed artifact is pinned by resolved digest, never by mutable tag.
+Every consumed pack is pinned by resolved digest, never by mutable tag; the image list is
+recorded verbatim from rendered manifests and is not itself digest-resolved.
 
 `cube.lock` is a committed, per-platform lockfile recording pack references pinned by
-resolved digest (git commit sha or sha256) together with the full image list, making
-installs reproducible and feeding air-gap vendoring.
+resolved digest (`oci:<sha256>` digest, `git:<commit sha>`, or `dir:<dirhash>` for
+local/http/s3 refs, which have no upstream pin protocol) together with the full image
+list, making installs reproducible and feeding air-gap vendoring.
 
-The air-gap bundle is a versioned tar.gz whose `manifest.json` is at formatVersion 2,
-carrying platform, createdAt, lockDigest, an images map plus packHashes and imageHashes,
-alongside a verbatim `cube.lock` copy, pack source dirs, and one single-image OCI-layout
-tar per locked image. Vendoring derives engine images from the lock's engine entry and
-vendors the engine pack source, with no CLI-embedded default engine image list.
+The air-gap bundle carries a verbatim `cube.lock` copy so that what is vendored is exactly
+what the lock pins. Vendoring derives engine images from the lock's engine entry and
+vendors the engine pack source, with no CLI-embedded default engine image list. See
+ADR-0009 for the authoritative statement of the bundle format, its `formatVersion` gate,
+and bundle verification.
 
 OCI pushdir stamps a content-derived fixed-epoch `org.opencontainers.image.created`
 annotation (`1970-01-01T00:00:00Z`) rather than `time.Now()`, so identical content always
@@ -47,8 +49,10 @@ The online e2e leg consumes published packs pinned by digest from a committed
 (`orphanOnly`) because its spec embeds fetch-resolved digests that would otherwise
 fabricate perpetual drift.
 
-Every task lands as a conventional commit (`feat:`/`fix:`/`docs:`/`ci:`/`chore:`) with
-`go build ./... && go test ./... -short` green, so the release changelog can group on it.
+Commit subjects follow conventional-commit prefixes (`feat:`/`fix:`/`docs:`) so the release
+changelog can group on them. This is a convention the changelog consumes, not a gate: no
+commit-message check runs in CI. CI does gate merges on `go vet ./...` and
+`go test ./... -short`.
 
 ## Consequences
 
@@ -62,8 +66,9 @@ Every task lands as a conventional commit (`feat:`/`fix:`/`docs:`/`ci:`/`chore:`
   regression rather than an upstream pack having moved under the tag.
 * Bad, because pins must be refreshed deliberately; picking up an upstream fix requires a
   lock update and a commit rather than happening on the next run.
-* Bad, because the bundle manifest is versioned and formatVersion 1 is rejected outright,
-  so bundle format changes are a breaking change for existing artifacts.
+* Bad, because the bundle manifest is versioned and any `formatVersion` other than 2 is
+  rejected outright, so bundle format changes are a breaking change for existing artifacts
+  (see ADR-0009).
 * Bad, because the CubeLock record is compared on identity only, so genuine changes inside
   that record's spec are invisible to `diff`.
 
@@ -73,13 +78,15 @@ Every task lands as a conventional commit (`feat:`/`fix:`/`docs:`/`ci:`/`chore:`
 
 | Decision | Implemented at |
 | --- | --- |
-| `cube.lock` is a committed, per-platform lockfile recording pack references pinned by resolved digest (git commit sha or sha256) together with the full image list. | `internal/lock/lock.go:16-60` |
-| The air-gap bundle is a versioned tar.gz whose `manifest.json` is at formatVersion 2, carrying platform, createdAt, lockDigest, images, packHashes and imageHashes, alongside a verbatim `cube.lock`, pack source dirs, and one OCI-layout tar per locked image. | `internal/bundle/bundle.go:52-67` |
+| `cube.lock` is a committed, per-platform lockfile recording pack references pinned by resolved digest (`oci:<sha256>`, `git:<commit sha>`, or `dir:<dirhash>` for local/http/s3 refs) together with the full image list. | `internal/lock/lock.go:16-60`, `internal/pack/source.go:90-98` |
+| The image list is extracted verbatim from the rendered manifests (plus any images the pack declares) and is not itself digest-resolved. | `internal/lock/images.go:15-25` |
+| The bundle embeds a verbatim `cube.lock` copy, whose bytes the manifest's `lockDigest` is taken over. Bundle format and verification are owned by ADR-0009. | `internal/bundle/bundle.go:52-67` |
 | Bundle vendoring derives the engine's images from the lock's engine entry and vendors the engine pack source itself, with no CLI-embedded default engine image list. | `internal/bundle/vendor.go:145-148` |
 | OCI pushdir stamps a fixed-epoch `org.opencontainers.image.created` annotation (`1970-01-01T00:00:00Z`) instead of `time.Now()`, so identical content republishes to an identical digest. | `internal/oci/pushdir.go:116` |
 | The online e2e leg consumes published packs pinned by digest from a committed `tests/e2e/packs.lock`, never by mutable tag. | `tests/e2e/packs.lock:1-11` |
 | `diff` treats the CubeLock record as identity-only (`orphanOnly`) because its spec embeds fetch-resolved digests that would otherwise fabricate perpetual drift. | `internal/diff/diff.go:295-303` |
-| Each task ends committed with conventional-commit prefixes so the release changelog can group on them, and with `go build ./... && go test ./... -short` green. | `.goreleaser.yaml:36-49` |
+| The release changelog groups commits on conventional-commit prefixes (`feat:`/`fix:`/`docs:`). The prefixes are a convention the changelog consumes, not a CI-enforced gate. | `.goreleaser.yaml:39-49` |
+| CI gates merges on `go vet ./...` and `go test ./... -short`. | `.github/workflows/ci.yaml:14-15` |
 | (Superseded) The v0.1.0 release is private end to end: repository, binaries, packs, and GHCR packages created by `GITHUB_TOKEN` so they stay repo-linked and private. | `README.md:40-44` |
 
 ### Verification
@@ -87,8 +94,8 @@ Every task lands as a conventional commit (`feat:`/`fix:`/`docs:`/`ci:`/`chore:`
 - [ ] `internal/lock/lock.go` defines `File{APIVersion,Kind,Engine,Packs}` and
       `Entry{Ref,Name,Version,Resolved,RenderedHash,Images}`, and `PathFor` writes the file
       literally as `cube.lock`.
-- [ ] `internal/bundle/bundle.go` sets `currentFormatVersion = 2` and rejects any other
-      value when opening a bundle.
+- [ ] `internal/bundle/bundle.go` reads a verbatim `cube.lock` out of the opened bundle
+      (format-version gating itself is verified by ADR-0009).
 - [ ] `internal/bundle/vendor.go:148` prepends `lf.Engine.Entry()` onto `lf.Packs`, and no
       default engine image list is embedded in the CLI.
 - [ ] `grep -n "time.Now()" internal/oci/pushdir.go internal/oci/push.go` returns nothing;

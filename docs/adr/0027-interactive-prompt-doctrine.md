@@ -26,20 +26,26 @@ question, and what must every prompting surface guarantee.
 
 ## Decision
 
-A single gate — `ui.PromptsAllowed(in, out)` — governs every interactive surface. It
-returns true only when both streams are real TTYs, the resolved output mode is styled or
+A single gate — `ui.PromptsAllowed(in, out)` — governs every huh-based interactive surface.
+It returns true only when both streams are real TTYs, the resolved output mode is styled or
 live, and no event pipeline currently owns the terminal. Every prompt has a scriptable
-flag twin, and prompts run before `RunPipeline`, never inside a producer.
+flag twin, and prompts run before `RunPipeline`, never inside a producer. One documented
+exception: `cube-idp trust` additionally keeps a byte-identical plain-text `` Proceed? [y/N] ``
+fallback that reads stdin on the non-gated branch — it is EOF-safe rather than
+gate-guarded.
 
 Destructive and environment-sensitive behaviour is made legible before it happens.
 `cube-idp down` prints a bulleted preview of the real deletion set and requires the user to
-type the exact cube name via a huh v2 Input, followed by a mandatory dim hint line;
-`--confirm=<name>` and `--yes` are its scriptable twins. Declining prints
-`aborted — nothing was changed` and exits 0 without running the pipeline. Resources carry a
-per-resource opt-out annotation, so hand-edited or undeclared objects are never silently
-deleted. Plugins are refused with the byte-for-byte CUBE-7104 diagnosis unless their sha256
-is recorded in the trust store or the user confirms interactively; a changed binary hash
-re-prompts.
+type the exact cube name via a huh v2 Input, and on successful confirmation prints the
+flag-twin hint line `hint: cube-idp down --yes` (two leading spaces, unstyled);
+`--confirm=<name>` and `--yes`
+are its scriptable twins. Declining prints `aborted — nothing was changed` and exits 0
+without running the pipeline. Resources carry a per-resource opt-out annotation, so
+hand-edited or undeclared objects are never silently deleted. Plugin trust is one more
+prompt-gated surface: the consent prompt is reached only when the gate allows it, and the
+non-interactive path returns the byte-for-byte CUBE-7104 diagnosis. See ADR-0034 for the
+authoritative statement of plugin trust and provenance semantics (digest pinning,
+trust-store path canonicalization, and attestation verification).
 
 The interactive `init` wizard runs only under the `wizardApplicable` guard — both stdin and
 stdout are TTYs and the corresponding flag was not passed — with huh v2 accessible mode
@@ -77,13 +83,14 @@ the gate.
 
 | Decision | Implemented at |
 | --- | --- |
-| `ui.PromptsAllowed` is the single gate for every interactive surface — false unless both streams are real TTYs, the mode is styled or live, and no pipeline owns the terminal; every prompt has a flag twin and runs before `RunPipeline`. | `internal/ui/prompt.go:13-22` |
+| `ui.PromptsAllowed` is the gate for every huh-based interactive surface — false unless both streams are real TTYs, the mode is styled or live, and no pipeline owns the terminal; every prompt has a flag twin and runs before `RunPipeline`. | `internal/ui/prompt.go:13-22` |
+| Exception: `cube-idp trust` keeps a plain-text `Proceed? [y/N]` fallback on the branch taken when `PromptsAllowed` is false; it reads stdin directly and is EOF-safe rather than gate-guarded. | `cmd/trust.go:66-72` |
 | `prompt.Allowed(in, out)` semantics are realised as `ui.PromptsAllowed`, which must be false for every non-`*os.File` stream combination. | `internal/ui/prompt.go:13-22` |
 | Every prompt-capable command (`down`, `trust`, `upgrade`, `pack install`, and others) appears in a shared prompt-fence table test driven with empty-buffer stdin under a timeout, so CI can never hang. | `cmd/promptfence_test.go:28-94` |
 | On an interactive terminal `cube-idp down` prints a preview of the real deletion set and requires the typed cube name; declining prints `aborted — nothing was changed` and exits 0 without running the pipeline. | `cmd/down.go:54-64` |
-| `cube-idp down` validates the typed name against the exact cube name via a huh v2 Input, offers `--confirm=<name>` and `--yes` as scriptable twins, and prints a mandatory dim hint line after the prompt renders. | `cmd/down.go:42-70` |
-| Plugins are refused with the byte-for-byte CUBE-7104 diagnosis unless their sha256 is in the trust store or the user confirms interactively; a changed hash re-prompts. | `internal/plugin/trust.go:158-162` |
-| `cube-idp init` runs its single interactive huh wizard only when stdin and stdout are TTYs and the corresponding flag was not passed; explicit flags always win and non-TTY falls back to the unchanged flag-driven write. | `cmd/init.go:280-284` |
+| `cube-idp down` validates the typed name against the exact cube name via a huh v2 Input, offers `--confirm=<name>` and `--yes` as scriptable twins, and on the successful-confirmation branch only prints the unstyled flag-twin hint line `hint: cube-idp down --yes` (two leading spaces). | `cmd/down.go:42-70` |
+| Plugin trust is a prompt-gated surface: the interactive consent prompt is reached only when `ui.PromptsAllowed` is true, and the non-gated path returns the byte-for-byte CUBE-7104 diagnosis. Trust semantics themselves are owned by ADR-0034. | `internal/plugin/trust.go:158-162` |
+| `cube-idp init` runs its interactive huh wizard (a main form plus a conditional kubeconfig-context follow-up form when provider is `existing`) only when stdin and stdout are TTYs and the corresponding flag was not passed; explicit flags always win and non-TTY falls back to the unchanged flag-driven write. | `cmd/init.go:280-284` |
 | The init wizard is gated on `wizardApplicable`, and huh v2 accessible mode is enabled form-level. | `cmd/init.go:280-285` |
 | Semantic colors come only from the basic ANSI 8/16 range, paired with glyph constants so meaning never rides on color alone. | `internal/ui/theme/theme.go:44-52` |
 | Pruning honours a per-resource opt-out annotation so hand-edited or undeclared resources are never silently deleted. *(The always-show-a-preview-diff half of this decision was superseded — see History.)* | `internal/apply/inventory.go:152` |
@@ -98,8 +105,9 @@ the gate.
 - [ ] `internal/ui/prompt_test.go:13` proves `PromptsAllowed` is false for buffer streams.
 - [ ] `cmd/down.go:54-64` calls `printDownPreview`, then `downConfirmName`, and on decline
       prints exactly `aborted — nothing was changed` and returns nil before `ui.RunPipeline`.
-- [ ] `cmd/down.go` prints the dim hint `hint: cube-idp down --yes` after a successful
-      confirmation, and `--confirm=<name>` mismatch raises `diag.CodeConfirmRequired`.
+- [ ] `cmd/down.go:65` prints `hint: cube-idp down --yes` (two leading spaces, unstyled) on
+      the success branch only, and `--confirm=<name>` mismatch raises
+      `diag.CodeConfirmRequired` (`cmd/down.go:48-52`).
 - [ ] `cmd/down_test.go` pins the preview against `cmd/testdata/te3_preview.golden`.
 - [ ] `internal/plugin/trust.go:158-162` returns `diag.CodePluginUntrusted` (CUBE-7104)
       whenever `!interactive || !ui.PromptsAllowed(os.Stdin, os.Stderr)`.

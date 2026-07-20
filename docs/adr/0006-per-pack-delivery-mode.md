@@ -22,10 +22,8 @@ fact — an operator inspecting a running cube needs to know which packs are rep
 without re-reading cube.yaml — and it has to fail early, at config load, rather than
 halfway through a cluster mutation.
 
-A related question sits alongside it: the gateway pack's data-plane Service is the CoreDNS
-rewrite target for `*.<host>`, but for some gateways (envoy-gateway) the controller Service
-and the data-plane Service are different objects, so the CLI cannot infer the target from
-the pack name alone.
+A separate question about the gateway pack's data-plane Service and the CoreDNS `*.<host>`
+rewrite target was once considered here; it is decided in ADR-0012, not in this record.
 
 ## Decision
 
@@ -41,9 +39,9 @@ A cube declaring any `delivery: repo` pack must also include the gitea pack, and
 pack itself may not be repo-delivered. Both violations fail config load with typed error
 CUBE-7304.
 
-The gateway service is declared by the pack: `up` derives the CoreDNS `*.<host>` rewrite
-target from the resolved gateway pack's `gatewayService:` block, falling back to the
-`<pack>.<pack>.svc.cluster.local` convention when absent.
+This decision does not govern the CoreDNS rewrite target. See ADR-0012 for the
+authoritative statement of how `up` derives the `*.<host>` rewrite target from the gateway
+pack's `gatewayService:` block.
 
 ## Consequences
 
@@ -53,9 +51,6 @@ target from the resolved gateway pack's `gatewayService:` block, falling back to
   migration, and `--via oci` leaves the file byte-identical to no flag at all.
 * Good, because the gitea coupling is caught at config load, before any cluster mutation,
   with a stable code (CUBE-7304) rather than a mid-`up` failure.
-* Good, because the gateway pack declares its own data-plane Service, so gateways whose
-  controller and data plane are separate Services work without special-casing in the CLI,
-  and packs that predate the field keep working through the fallback.
 * Bad, because repo delivery makes the gitea pack a hard dependency of any cube that uses
   it, coupling an otherwise optional pack into the cube's validity.
 * Bad, because the same rendered pack can now exist behind two different source types,
@@ -70,20 +65,18 @@ target from the resolved gateway pack's `gatewayService:` block, falling back to
 | Decision | Implemented at |
 | --- | --- |
 | Gitea delivery is selected per pack via a pack-level field, not as a cube-wide delivery mode. | `internal/config/types.go:207-217` |
-| Every pack's Pack record carries `delivery: oci\|repo` (an empty `PackRef.Delivery` maps to `oci`) and the Pack CRD exposes a DELIVERY printer column. | `internal/pack/expose.go:97-105`, `internal/pack/manifests/pack-crd.yaml:61` |
+| Every pack's Pack record carries `delivery: oci\|repo` (an empty `PackRef.Delivery` maps to `oci`) and the Pack CRD exposes a DELIVERY printer column. | `internal/pack/expose.go:97-105`, `internal/pack/manifests/pack-crd.yaml:45,61` |
 | A cube declaring any `delivery: repo` pack must also include the gitea pack, and the gitea pack itself may not be repo-delivered; both fail config load with CUBE-7304. | `internal/config/load.go:202-225`, `internal/diag/codes.go:168` |
-| `up` derives the CoreDNS `*.<host>` rewrite target from the resolved gateway pack's declared `gatewayService:` block, falling back to `<pack>.<pack>.svc.cluster.local` when absent. | `internal/up/up.go:810-825` |
 
 ### Verification
 
 * [ ] `internal/config/schema.cue:41` constrains `delivery?: "oci" | "repo"` on `spec.packs` entries and declares no top-level `delivery` key.
-* [ ] `internal/pack/expose.go:101-103` rewrites an empty `delivery` argument to `"oci"` before writing `spec["delivery"]`.
+* [ ] `internal/pack/expose.go:102-104` rewrites an empty `delivery` argument to `"oci"` before writing `spec["delivery"]`.
 * [ ] `internal/pack/manifests/pack-crd.yaml:45` declares the `delivery` schema field and line 61 declares `- {name: DELIVERY, type: string, jsonPath: .spec.delivery}`.
 * [ ] `internal/config/load.go:209-218` returns `diag.CodeRepoDeliveryConfig` when a pack whose ref contains `gitea` declares `delivery: repo`; lines 220-225 return the same code when any pack is `delivery: repo` and no gitea pack is present.
 * [ ] `internal/diag/codes.go:168` binds `CodeRepoDeliveryConfig` to `CUBE-7304`.
 * [ ] `cmd/pack.go:253` rejects a `--via` value other than `oci` or `repo`, and `cmd/pack.go:308` defaults the flag to `oci`.
-* [ ] `internal/pack/pack.go:161-175` parses the optional `gatewayService:` block against the schema at `internal/pack/pack.go:185` (`{name: string, namespace: string}`), failing with `CodePackCueInvalid` (CUBE-4003, `internal/diag/codes.go:94`) when malformed.
-* [ ] `internal/up/up.go:812-825` (`gatewayServiceFQDN`) returns the declared Service FQDN when `gwPack.GatewayService != nil` and `<gw.Pack>.<gw.Pack>.svc.cluster.local` otherwise; it is called at `internal/up/up.go:1071`.
+* [ ] `internal/up/up.go:1071` (`deliverPack`) dispatches on `ref.Delivery == "repo"` and has no third arm.
 * [ ] `grep -rn '"ssa"' internal/` returns no delivery-marker hit — the enum has exactly two members.
 
 ## History
@@ -107,7 +100,7 @@ Member origins:
 * `docs/archive/superpowers/specs/2026-07-18-cube-idp-phase5-roadmap-design.md:45` — delivery is per pack, not cube-wide.
 * `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:261` — the Pack record field and the DELIVERY printer column.
 * `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:3432` — the gitea coupling rules and CUBE-7304.
-* `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:1201` — the pack-declared `gatewayService:` block.
 * `docs/archive/superpowers/specs/2026-07-19-cube-idp-prerequisites-packs-design.md:73` — the superseded three-value marker.
 
-Delivery is consumed per-ref at `internal/up/up.go:460` and `internal/pack/depgraph.go:72`.
+Delivery is consumed per-ref at `internal/up/up.go:1071` (`deliverPack`) and
+`internal/pack/depgraph.go:72`.

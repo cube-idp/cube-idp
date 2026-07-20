@@ -27,11 +27,12 @@ never from YAML manifests embedded in the CLI binary.
 
 Exactly two engine packs exist — `cube-engine-flux` and `cube-engine-argocd` — distributed as
 OCI artifacts pinned at `oci://ghcr.io/cube-idp/packs/cube-engine-<type>:<pin>` and kept
-separate from the UI-oriented `argocd` pack. `spec.engine` accepts `type`, an optional `ref`
-(local directory, `oci://` or git), open `values` merged over the pack's baked defaults, and
-`selfManage`. There is no `pack` name field: `EngineSpec.PackRef()` returns `ref` when set,
-otherwise the per-type published default, and `EngineSpec.PackName()` derives the required
-name from `type`.
+separate from the UI-oriented `argocd` pack. The engine pack is selected from `spec.engine`:
+`type` names the required pack and an optional `ref` (local directory, `oci://` or git)
+overrides its source. There is no `pack` name field: `EngineSpec.PackRef()` returns `ref` when
+set, otherwise the per-type published default, and `EngineSpec.PackName()` derives the required
+name from `type`. See ADR-0019 for the authoritative statement of the full `spec.engine` key
+set, and ADR-0032 for how the engine sits in the `cube.yaml` authoring surface.
 
 A fetched pack whose declared name is not `cube-engine-<engine.type>` is rejected with
 CUBE-0013 before any cluster mutation and before rendering. CUBE-0005 still rejects the Argo CD
@@ -45,8 +46,10 @@ is a chartless vendored-manifests pack whose `manifests/install.yaml` is
 `flux install --export --components=source-controller,kustomize-controller` output; it has no
 `chart.yaml` and no `#Values`.
 
-The engine pack's first install is a direct server-side apply by the CLI; with `selfManage`,
-ownership then transfers to the engine via `deliverEngineSelf`. `pack.FetchRenderEngine` takes
+Without `selfManage` the CLI server-side-applies the rendered engine on every `up`. With
+`selfManage`, the CLI SSAs only when the engine is not healthy at start (first install or
+recovery); otherwise it skips the install SSA and ownership sits with the engine, refreshed
+via `deliverEngineSelf`. `pack.FetchRenderEngine` takes
 the engine ref explicitly so offline mode resolves it through the bundle like any other ref,
 while `cube.lock` always records the spec-level ref and carries the same reproducibility fields
 as any pack entry — all `omitempty`, projected by `EngineLock.Entry()` — with `bundle vendor`
@@ -80,14 +83,14 @@ through the packs' READMEs; the old `hack/gen-*-manifests` scripts are retired.
 | The engine installs from a fetched-and-rendered pack reference rather than YAML manifests embedded in the CLI binary. | `internal/pack/enginepack.go:16` |
 | The CLI ships no embedded engine install manifests and no engine-manifest generation scripts; the engine's install is recorded in `cube.lock` and Pack records. | `internal/pack/enginepack.go:16`, `internal/up/up.go:252-260` |
 | Two engine packs exist, `cube-engine-flux` and `cube-engine-argocd`, pinned at `oci://ghcr.io/cube-idp/packs/cube-engine-<type>:0.1.0`; `spec.engine.ref` may instead point at a local pack directory. | `internal/config/types.go:116` |
-| The two engine packs live in the packs monorepo as artifacts separate from the UI-oriented `argocd` pack, and the engine install stays headless. | `internal/config/types.go:117` |
-| `spec.engine` accepts `type`, optional `ref`, open `values` merged over baked defaults, and `selfManage`. | `internal/config/types.go:96` |
-| `EngineSpec` has no `pack` field; `PackName()` derives `cube-engine-<type>` and `PackRef()` returns `ref` else the published per-type default. | `internal/config/types.go:127` |
+| The two engine packs live in the packs monorepo as artifacts separate from the UI-oriented `argocd` pack (`packs/argocd`, `packs/cube-engine-argocd` and `packs/cube-engine-flux` are three distinct pack directories). | `internal/config/load.go:193-199`, `<packs>/packs/` |
+| `spec.engine` carries `type` and an optional `ref` for pack selection, alongside `values` and `selfManage` (full key set owned by ADR-0019). | `internal/config/types.go:91-112` |
+| `EngineSpec` has no `pack` field; `PackName()` derives `cube-engine-<type>` and `PackRef()` returns `ref` else the published per-type default. | `internal/config/types.go:114-132` |
 | A fetched engine pack whose `pack.cue` name is not exactly `cube-engine-<engine.type>` is rejected with CUBE-0013 before rendering and before any cluster mutation. | `internal/pack/enginepack.go:36` |
 | `VerifyEnginePackRef` raises a typed diagnostic when the fetched pack name does not match the required name. | `internal/pack/enginepack.go:35` |
 | CUBE-0005 still rejects the Argo CD UI pack when the argocd engine is in use. | `internal/config/load.go:196` |
-| The engine pack's first install is a direct SSA by the CLI; with `selfManage`, ownership transfers via `deliverEngineSelf`. | `internal/up/up.go:262` |
-| Engine self-management requires only zot — no gitea — and works with offline bundles. | `internal/up/up.go:1258` |
+| Without `selfManage` the CLI SSAs the rendered engine on every `up`; with `selfManage` it SSAs only when the engine is not healthy at start (first install or recovery), otherwise ownership sits with the engine via `deliverEngineSelf`. | `internal/up/up.go:262`, `internal/up/up.go:1220-1239` |
+| Engine self-management pushes the rendered engine to zot — never gitea — and works with offline bundles. | `internal/config/types.go:104-110`, `internal/up/up.go:1255-1260` |
 | `pack.FetchRenderEngine` takes the engine pack ref explicitly rather than deriving it from the spec, so offline mode can pass the bundle-resolved directory. | `internal/pack/enginepack.go:11-16`, `internal/up/up.go:244-254` |
 | In offline/bundle mode the engine pack ref resolves through the bundle exactly like every other pack ref. | `internal/up/up.go:244-251` |
 | Offline engine install comes from bundle vendoring (`vendorPacks` + `resolveBundleRefs` + node-loaded images), not an embedded blob; plain `up` is online-by-default. | `internal/up/up.go:246` |
@@ -98,13 +101,13 @@ through the packs' READMEs; the old `hack/gen-*-manifests` scripts are retired.
 | Engine packs are sourced from community charts rather than the upstream projects' own install artifacts, with version bumps made deliberately. | `<packs>/packs/cube-engine-argocd/chart.yaml:6` |
 | Engine pack values are OPEN (`#Values: {...}`) — the operator controls the full chart surface and content validation is helm's. | `<packs>/packs/cube-engine-argocd/pack.cue:5` |
 | The argocd engine pack sets `server.insecure: true` so argocd-server serves HTTP behind cube-idp's gateway. | `<packs>/packs/cube-engine-argocd/chart.yaml:16` |
-| The engine render must never contain `imagePullPolicy: Always`, must keep the OCI media-types param and `server.insecure`, and must carry the zot repo Secret in namespace `argocd`. | `<packs>/packs/cube-engine-argocd/chart.yaml:11`, `<packs>/packs/cube-engine-argocd/manifests/10-repo-secret.yaml:22` |
-| The Argo CD UI HTTPRoute is deliberately not part of the argocd engine pack, because Gateway API CRDs arrive after the engine. | `<packs>/packs/cube-engine-argocd/manifests/10-repo-secret.yaml:22` (the pack's only manifest) |
-| The airgap `IfNotPresent` guard is asserted in the packs repo against `cube-engine-argocd`'s rendered output instead of in the engine package. | `tests/packs_render_test.go:259` |
+| The engine render must never contain `imagePullPolicy: Always`, must keep the OCI media-types param and `server.insecure`, and must carry the zot repo Secret in namespace `argocd`. | `<packs>/packs/cube-engine-argocd/chart.yaml:13,16,19`, `<packs>/packs/cube-engine-argocd/manifests/10-repo-secret.yaml:26` |
+| The Argo CD UI HTTPRoute is deliberately not part of the argocd engine pack, because Gateway API CRDs arrive after the engine; the pack renders no HTTPRoute (`manifests/` contains only `10-repo-secret.yaml`). | `<packs>/packs/cube-engine-argocd/README.md:57-63`, `<packs>/packs/cube-engine-argocd/manifests/` |
+| The airgap `IfNotPresent` guard is asserted in cube-idp's cross-repo render tests against `cube-engine-argocd`'s rendered output, replacing the retired `internal/engine/argocd/airgap_test.go`. | `tests/packs_render_test.go:259` (`TestCubeEngineArgocdRenderGuards`) |
 | `cube-engine-flux` is a chartless vendored-manifests pack with no `chart.yaml` and no `#Values`; its `manifests/install.yaml` is `flux install --export` output with self-stamped `flux-system` namespaces. | `<packs>/packs/cube-engine-flux/pack.cue:1`, `<packs>/packs/cube-engine-flux/pack.cue:4` |
 | Only Flux's source-controller and kustomize-controller are installed, in namespace `flux-system`; helm, notification and image controllers are disabled and helm rendering is client-side. | `<packs>/packs/cube-engine-flux/manifests/install.yaml:4` |
-| A bare `up` installs only the minimal engine component set plus an in-cluster OCI registry — no notification or image controllers and no git server. | `<packs>/packs/cube-engine-flux/manifests/install.yaml:3`, `internal/registry/zot.go:19-23` |
-| The `hack/gen-flux-manifests.sh`, `hack/gen-argocd-manifests.sh` and `inject-argocd-cmd-params.awk` scripts are retired; version-bump duty moved to the packs' READMEs. | `<packs>/packs/cube-engine-flux/README.md:18` |
+| A bare `up` installs only the minimal engine component set plus an in-cluster OCI registry — no notification or image controllers and no git server. | `<packs>/packs/cube-engine-flux/manifests/install.yaml:4`, `internal/registry/zot.go:19-23` |
+| The `hack/gen-flux-manifests.sh`, `hack/gen-argocd-manifests.sh` and `inject-argocd-cmd-params.awk` scripts are retired; version-bump duty moved to the packs' READMEs. | `<packs>/packs/cube-engine-flux/README.md:60`, `<packs>/packs/cube-engine-argocd/README.md:67-68` |
 
 `<packs>` refers to the sibling `cube-idp/packs` monorepo checkout.
 
@@ -122,7 +125,7 @@ through the packs' READMEs; the old `hack/gen-*-manifests` scripts are retired.
 - [ ] `<packs>/packs/cube-engine-flux/` contains `pack.cue`, `README.md` and `manifests/install.yaml` only — no `chart.yaml`, no `#Values`.
 - [ ] `<packs>/packs/cube-engine-flux/manifests/install.yaml` header reads `# Components: source-controller,kustomize-controller` and its first object is the `flux-system` Namespace.
 - [ ] `<packs>/packs/cube-engine-argocd/chart.yaml` bakes `global.image.imagePullPolicy: IfNotPresent`, `configs.params.server.insecure: true` and `reposerver.oci.layer.media.types`.
-- [ ] `tests/packs_render_test.go` `TestCubeEngineArgocdRenderGuards` renders `cube-engine-argocd` and fails on `imagePullPolicy: Always`.
+- [ ] cube-idp's own `tests/packs_render_test.go` `TestCubeEngineArgocdRenderGuards` renders `cube-engine-argocd` and fails on `imagePullPolicy: Always`.
 
 ## History
 

@@ -31,7 +31,10 @@ render contains a `gateway.networking.k8s.io` object depends on the gateway pack
 `delivery: repo` pack depends on the pack named `gitea` (CUBE-4018 when absent).
 
 The gateway pack is the graph root: it is delivered first unconditionally, and any `dependsOn`
-declared on it is rejected with CUBE-4020. Graph resolution lives in one pure function,
+reaching `ResolveOrder` on `packs[0]`/`refs[0]` is rejected with CUBE-4020. In practice only the
+`pack.cue` surface can carry one — `spec.gateway` has no `dependsOn` field in the schema and the
+gateway ref is synthesized as a bare `{Ref: ...}` by both callers, so the `cube.yaml` half of that
+guard is reachable only from a direct `ResolveOrder` call. Graph resolution lives in one pure function,
 `pack.ResolveOrder`, shared by `up` and `diff`, so both walk an identical delivery order over
 index-aligned pack/ref/render slices with the gateway at index 0. `up.Run` splits into
 fetch+render, graph, and deliver passes, so a graph error aborts before any cluster mutation.
@@ -39,8 +42,10 @@ fetch+render, graph, and deliver passes, so a graph error aborts before any clus
 The resolved explicit-plus-implicit dependency list is recorded on the Pack object and carried
 above the engine seam on `pack.Rendered.DependsOn`, set only by `up`/`diff` and never by
 `RenderWith`. For cubes with no dependencies, delivery objects remain byte-identical because
-`spec.dependsOn` is emitted only when non-empty. Every delivery is named `cube-idp-<pack name>`,
-produced solely by the engines' `deliveryName()`.
+`spec.dependsOn` is emitted only when non-empty. Both engines name every delivery
+`cube-idp-<pack name>` via their own `deliveryName()`; `up` re-derives the same prefix at
+`internal/up/up.go:533` (health lookup) and `internal/up/up.go:664` (wave gate), so the
+convention is duplicated across those call sites rather than centralised in one function.
 
 Delivery order is a Kahn topological sort with a deterministic tie-break on declared `cube.yaml`
 order, so a cube with no declared dependencies delivers byte-for-byte in the order written, and
@@ -50,6 +55,15 @@ by a bounded health check on the previous wave's delivery names — not by Argo 
 annotations or an app-of-apps restructuring. Dependency cycles are detected over the full
 explicit-plus-implicit graph at `up` and `diff` time before any pack is delivered and fail with
 the cycle path printed; a pack declaring itself is a 1-cycle and fails the same way.
+
+This ADR is the authoritative statement of the delivery-ordering algorithm (Kahn sort, declared
+order tie-break, gateway-first root) and of both implicit edges. ADR-0021 owns only the
+engine-seam translation of an already-resolved order (`DeliverGit`'s `DependsOn` parameter,
+`OrdersDeliveries()`, flux `spec.dependsOn` vs the argocd annotation plus caller wave gating);
+ADR-0033 owns only `cube.lock`'s shape and non-mutating preview semantics; ADR-0037 owns only the
+Gateway API routing surface; ADR-0039 owns only gateway token substitution and the
+`httproutes` CRD-established wait. Where any of those records restates an ordering or
+dependency-edge rule, this ADR is the one to change.
 
 ## Consequences
 
@@ -79,12 +93,12 @@ the cycle path printed; a pack declaring itself is a 1-cycle and fails the same 
 | Dependencies may be declared on two surfaces — `pack.cue dependsOn` and `cube.yaml packs[].dependsOn` — and the resolved graph is the union of both. | `internal/pack/depgraph.go:52-53` |
 | `dependsOn` accepts pack names only and supports no semver ranges or version constraints. | `internal/pack/depgraph.go:53`, `internal/config/schema.cue:41` |
 | The `cube.yaml` schema declares `dependsOn?: [...string & != ""]` and marshals it with omitempty discipline, so an absent value is an absent key, never an explicit null. | `internal/config/schema.cue:41`, `internal/config/types.go:224` |
-| Two dependency edges are derived implicitly and can never be declared: a render containing a `gateway.networking.k8s.io` object depends on the gateway pack, and a `delivery: repo` pack depends on gitea. | `internal/pack/depgraph.go:65` |
-| Any pack whose rendered output contains a `gateway.networking.k8s.io` object implicitly depends on the gateway pack — a render-derived edge, not a blanket one — eliminating the CRD-ordering race. | `internal/pack/depgraph.go:66` |
-| Any `delivery: repo` pack implicitly depends on the pack named gitea, and a repo-delivery pack in a cube with no gitea pack fails typed as CUBE-4018 rather than panicking. | `internal/pack/depgraph.go:72` |
-| Gitea remains an optional pack rather than a core component: repo-delivered packs fail load when gitea is absent, and the gitea-before-repo-packs guarantee is preserved by the graph rather than by hoisting gitea to position 1. | `internal/pack/depgraph.go:70-82`, `internal/config/load.go:220-226` |
-| The gateway pack is delivered first unconditionally and any `dependsOn` declared on it — in `pack.cue` or `cube.yaml` — is rejected with CUBE-4020. | `internal/pack/depgraph.go:40` |
-| The gateway pack is the graph root: `spec.gateway` has no `dependsOn` field, while other packs naming the gateway explicitly is permitted and merely redundant with the implicit edge. | `internal/pack/depgraph.go:39-44` |
+| Two dependency edges are derived implicitly and can never be declared: a render containing a `gateway.networking.k8s.io` object depends on the gateway pack, and a `delivery: repo` pack depends on gitea. | `internal/pack/depgraph.go:66-84` |
+| Any pack whose rendered output contains a `gateway.networking.k8s.io` object implicitly depends on the gateway pack — a render-derived edge, not a blanket one — eliminating the CRD-ordering race. | `internal/pack/depgraph.go:66-71` |
+| Any `delivery: repo` pack implicitly depends on the pack named gitea, and a repo-delivery pack in a cube with no gitea pack fails typed as CUBE-4018 rather than panicking. | `internal/pack/depgraph.go:72-84` |
+| Gitea remains an optional pack rather than a core component: repo-delivered packs fail load when gitea is absent, and the gitea-before-repo-packs guarantee is preserved by the graph rather than by hoisting gitea to position 1. | `internal/pack/depgraph.go:72-84`, `internal/config/load.go:220-226` |
+| The gateway pack is delivered first unconditionally, and any `dependsOn` reaching `ResolveOrder` on `packs[0]`/`refs[0]` is rejected with CUBE-4020. In practice only the `pack.cue` surface can carry one: `spec.gateway` has no `dependsOn` field in the schema, and the gateway ref is synthesized as a bare `{Ref: ...}` by both callers, so `refs[0].DependsOn` is empty outside a direct `ResolveOrder` test. | `internal/pack/depgraph.go:40-45`, `internal/config/schema.cue:32-40`, `internal/up/up.go:1168-1170`, `internal/diff/diff.go:226` |
+| The gateway pack is the graph root: `spec.gateway` has no `dependsOn` field, while other packs naming the gateway explicitly is permitted and merely redundant with the implicit edge. | `internal/pack/depgraph.go:40-45`, `internal/config/schema.cue:32-40` |
 | Graph resolution lives in one pure function `pack.ResolveOrder`, taking index-aligned packs/refs/rendered with the gateway always at index 0. | `internal/pack/depgraph.go:29` |
 | `pack.ResolveOrder` returns the delivery order as indices into those slices, plus a per-pack map of resolved dependency names sorted alphabetically, omitting the key entirely for packs with no dependencies. | `internal/pack/depgraph.go:29`, `internal/pack/depgraph.go:87-98` |
 | `up.Run` and `diff.desiredState` resolve and walk one and the same dependency order via the shared `pack.ResolveOrder`. | `internal/diff/diff.go:257`, `internal/up/up.go:607` |
@@ -92,10 +106,10 @@ the cycle path printed; a pack declaring itself is a 1-cycle and fails the same 
 | `orderPackRefs` only prepends the gateway pack ref; all other ordering, including the gitea-before-repo-packs guarantee, lives in `pack.ResolveOrder`. | `internal/up/up.go:1168` |
 | Resolved dependency names are carried above the engine seam on `pack.Rendered.DependsOn`, set by `up`/`diff` after the graph pass and never by `RenderWith`. | `internal/pack/pack.go:109` |
 | `diff` sets the same resolved `DependsOn` before its Deliver calls, so it previews byte-identical objects to what `up` applies. | `internal/diff/diff.go:266` |
-| The `dependsOn` recorded on a Pack object is the RESOLVED list — explicit union implicit — reflecting what actually gated delivery. | `internal/up/up.go:530`, `internal/pack/expose.go:97` |
+| The `dependsOn` recorded on a Pack object is the RESOLVED list — explicit union implicit — reflecting what actually gated delivery. | `internal/up/up.go:533`, `internal/pack/expose.go:97` |
 | `kubectl get packs` exposes a DELIVERY printer column followed by a `DEPENDS-ON` column listing the resolved dependencies, backed by an append-only widening of the Pack record with `spec.dependsOn`. | `internal/pack/manifests/pack-crd.yaml:61-62` |
-| Every delivery is named `cube-idp-<pack name>`, produced only by the engines' `deliveryName()`. | `internal/engine/flux/deliver.go:16-19`, `internal/engine/argocd/deliver.go:15-18` |
-| Dependency ordering is a Kahn topological sort with a deterministic tie-break on declared order, so a dependency-free cube delivers byte-for-byte in declared order. | `internal/pack/depgraph.go:96-118` |
+| Both engines name every delivery `cube-idp-<pack name>` in their own `deliveryName()`; `up` re-derives the same prefix for the health lookup and the wave gate, so the convention is duplicated rather than centralised. | `internal/engine/flux/deliver.go:19`, `internal/engine/argocd/deliver.go:18`, `internal/up/up.go:533`, `internal/up/up.go:664` |
+| Dependency ordering is a Kahn topological sort with a deterministic tie-break on declared order, so a dependency-free cube delivers byte-for-byte in declared order. | `internal/pack/depgraph.go:100-128` |
 | For cubes with no dependencies, flux delivery objects are byte-identical to before, because `spec.dependsOn` is emitted only when non-empty. | `internal/engine/flux/deliver.go:55` |
 | For engines that cannot order deliveries natively, `up` polls each dependency's component health until Ready before applying the dependent pack, bounded by a timeout; `waitDepsHealthy` returns immediately for a pack with no dependencies. | `internal/up/up.go:658` |
 | Argo CD ordering is implemented by wave-gating in `up` plus documentation, not by sync-wave annotations or an app-of-apps restructuring. | `internal/up/up.go:632-637` |
@@ -109,12 +123,12 @@ the cycle path printed; a pack declaring itself is a 1-cycle and fails the same 
 - [ ] `internal/pack/depgraph.go:52-53` unions `packs[i].DependsOn` with `refs[i].DependsOn`; every entry resolves through `idxByName` built from `p.Name`, so a ref string can never match.
 - [ ] `internal/pack/depgraph.go:66-71` sets `edges[i][0]` when any rendered object's group is `gateway.networking.k8s.io`; `TestResolveOrderImplicitGatewayEdge` fences it.
 - [ ] `internal/pack/depgraph.go:72-84` adds the repo→gitea edge and returns CUBE-4018 when no pack is named gitea; `TestResolveOrderRepoDeliveryNoGiteaIsCUBE4018` covers the typed failure.
-- [ ] `internal/pack/depgraph.go:96-118` is a Kahn sort whose inner scan breaks at the first ready index; `TestResolveOrderNoDepsDeclaredOrder` pins declared-order output. Cycles produce `diag.CodePackDepCycle` (CUBE-4019) with the path printed; a self-dependency is a 1-cycle.
+- [ ] `internal/pack/depgraph.go:100-128` is a Kahn sort whose inner scan breaks at the first ready index; `TestResolveOrderNoDepsDeclaredOrder` pins declared-order output. Cycles produce `diag.CodePackDepCycle` (CUBE-4019) with the path printed; a self-dependency is a 1-cycle.
 - [ ] `internal/up/up.go:607` and `internal/diff/diff.go:257` are the only callers of `pack.ResolveOrder`.
 - [ ] `internal/up/up.go:413` calls `resolveAndDeliverPacks` after the fetch+render loop ends at line 402, and the resolver's error returns before the delivery loop at `internal/up/up.go:610`.
 - [ ] `internal/up/up.go:658-661` returns nil immediately when `len(deps) == 0` and otherwise polls `eng.Health` until every `cube-idp-<dep>` is Ready, failing CUBE-3011 past the deadline; it is invoked only when `!deps.eng.OrdersDeliveries()` (`internal/up/up.go:632`).
 - [ ] `grep -r 'sync-wave\|app-of-apps' internal/ cmd/` returns nothing.
-- [ ] `grep -rn '"cube-idp-" +' internal/engine/` shows the concatenation only inside each engine's `deliveryName()`.
+- [ ] `grep -rn '"cube-idp-" *+' internal/ | grep -v _test` returns exactly the two engine `deliveryName()`s (`internal/engine/flux/deliver.go:19`, `internal/engine/argocd/deliver.go:18`), the two `up` re-derivations (`internal/up/up.go:533`, `internal/up/up.go:664`, plus the explanatory comment at `internal/up/up.go:520`), and the unrelated spoke service-account name at `internal/spoke/bootstrap.go:38` — a new hit outside that list means a third pack-delivery naming site was added.
 - [ ] `internal/engine/flux/deliver.go:55` sets `spec.dependsOn` only `if len(r.DependsOn) > 0`.
 - [ ] `internal/pack/manifests/pack-crd.yaml:61-62` declares the DELIVERY and DEPENDS-ON printer columns in that order.
 

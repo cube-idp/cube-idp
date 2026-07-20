@@ -18,7 +18,7 @@ This decision fixes a single failure surface that covers all of these.
 
 ## Decision
 
-Every user-facing failure is a typed `CUBE-xxxx` `diag.Error` constructed via `diag.New` or `diag.Wrap`, carrying a one-line cause and a copy-pasteable remediation. No code path may silently fall back or degrade: failures are rendered as a diagnosis rather than a bare error string, and surfaces that are not yet built are typed refusals rather than invented output.
+Every user-facing failure is a typed `CUBE-xxxx` `diag.Error` constructed via `diag.New` or `diag.Wrap`, carrying a copy-pasteable remediation and, when built via `diag.Wrap`, an underlying cause. Both renderers omit the `cause:` and `fix:` lines when those fields are empty. No code path may silently fall back or degrade: failures are rendered as a diagnosis rather than a bare error string, and surfaces that are not yet built are typed refusals rather than invented output.
 
 Remediation text is always emitted as unstyled, copy-paste-safe plain text, even inside a styled diagnosis panel. `Diagnosis.Raw` always holds `err.Error()`; `Diagnosis.Err` holds the typed error only when `errors.As` finds one.
 
@@ -26,12 +26,12 @@ A caller that fails after a partial side effect wraps the failure in a single de
 
 Every wait has a hard deadline and ends in a rendered diagnosis rather than an infinite spinner. Component health is polled every 5 seconds until all components are ready or the deadline expires, at which point the timeout diagnostic lists each unready component with its message.
 
-`diagnosis` is a first-class JSON event type carrying `type`, `code`, `summary`, `cause` and `remediation` fields, mapping 1:1 to a `CUBE-xxxx` diagnosis. On failure the `Diagnosis` event is always the terminal event, emitted after `RunDone{OK:false}`; on success nothing follows `RunDone{OK:true}`. Machine consumers may therefore treat `Diagnosis` as the terminal record.
+`diagnosis` is a first-class JSON event type. Every line carries `v`, `ts`, `type` and `raw`; `code`, `summary`, `cause` and `remediation` are `omitempty` and therefore present only when the failure was a typed `CUBE-xxxx` `diag.Error` (`cause` additionally only when `Cause != nil`). `raw` is always set, so machine consumers must key off `type` and treat `code` as optional. On failure the `Diagnosis` event is always the terminal event, emitted after `RunDone{OK:false}`; on success nothing follows `RunDone{OK:true}`. Machine consumers may therefore treat `Diagnosis` as the terminal record.
 
 ## Consequences
 
 * Good, because every failure is greppable, searchable and stable: a `CUBE-xxxx` code is a durable identifier that survives message rewording.
-* Good, because remediation is part of the error's type, not an afterthought — the compiler-level shape of `diag.New`/`diag.Wrap` makes it impossible to construct a diagnostic without one.
+* Good, because remediation is part of the error's type, not an afterthought — the signatures of `diag.New`/`diag.Wrap` make remediation a required positional argument, so omitting it is a compile error, though an empty string still type-checks and is silently dropped at render time.
 * Good, because machine consumers get a well-defined terminal record and never have to guess whether more output is coming.
 * Good, because bounded waits turn an unbounded hang into a diagnosis that names exactly which components are unready and why.
 * Good, because partial-side-effect failures state what already landed and assert idempotency, so retry is always safe.
@@ -46,13 +46,16 @@ Every wait has a hard deadline and ends in a rendered diagnosis rather than an i
 
 | Decision | Implemented at |
 | --- | --- |
-| Every user-facing failure is a typed `CUBE-xxxx` `diag.Error` carrying a copy-pasteable remediation, every wait has a hard deadline ending in a rendered diagnosis rather than an infinite spinner, and no code path silently falls back. | `internal/diag/codes.go:5-19` |
+| Failures are typed `CUBE-xxxx` `diag.Error` values built by `New`/`Wrap`, each taking a summary and a required `remediation` argument. | `internal/diag/diag.go:14-29` |
+| `CUBE-xxxx` codes are declared as typed `Code` constants in a single catalog. | `internal/diag/codes.go:5-19` (first of several const blocks) |
 | Every declared diagnostic code must also have a `Desc` entry with a non-empty summary in `internal/diag/registry.go`, enforced by `TestRegistryCoversEveryDeclaredCode`. | `internal/diag/registry_test.go:41` |
 | Component health is polled every 5 seconds until all components are ready or the deadline expires, at which point `CUBE-3004` lists each unready component with its message. | `internal/up/up.go:893` |
 | `deployRepo` wraps every deploy-registration failure occurring after the repo was created in a single `CUBE-7303` wrapper stating the repo was created but the deploy source could not be registered, with a remediation noting repo creation is idempotent. | `cmd/repo.go:152` |
-| `diag.Error{Code, Summary, Cause, Remediation}` and its `Render` emit the three-line diagnosis block `✗ CUBE-xxxx summary / cause: / fix:`. | `internal/diag/diag.go:14-53` |
-| `diagnosis` is a first-class JSON event type carrying type, code, summary, cause and remediation, mapping 1:1 to `CUBE-xxxx` diagnoses. | `internal/ui/event/event.go:123-148` |
-| On failure `Diagnosis` is always the terminal event, emitted after `RunDone{OK:false}`; on success nothing follows `RunDone{OK:true}`. | `internal/ui/pipeline.go:43` |
+| `diag.Error{Code, Summary, Cause, Remediation}` and its `Render` emit the diagnosis block `✗ CUBE-xxxx summary`, with optional `cause:` and `fix:` lines emitted only when those fields are set. | `internal/diag/diag.go:14-53` |
+| The styled panel renders the same block and appends a `more:  cube-idp explain <code>` footer. | `internal/ui/rendererr.go:85` |
+| `diagnosis` is a first-class JSON event type: `v`/`ts`/`type`/`raw` always present, `code`/`summary`/`cause`/`remediation` `omitempty` and populated only from a typed `*diag.Error`. | `internal/ui/render/json.go:70-80` (emission), `internal/ui/render/json.go:160-167` (wire struct) |
+| The in-process `event.Diagnosis` struct carries the typed `*diag.Error` plus the raw string, and is a member of the event union. | `internal/ui/event/event.go:123-129` |
+| On failure `Diagnosis` is always the terminal event, emitted after `RunDone{OK:false}`; on success nothing follows `RunDone{OK:true}`. | `internal/ui/pipeline.go:151-154` |
 | `Diagnosis.Raw` is always set to `err.Error()`, while `Diagnosis.Err` holds the typed error only when `errors.As` finds one. | `internal/ui/pipeline.go:191-197` |
 | Remediation text (`fix:` lines) is always rendered in copy-paste-safe unstyled plain text, even inside the styled diagnosis panel. | `internal/ui/rendererr.go:76-79` |
 
@@ -64,9 +67,10 @@ Every wait has a hard deadline and ends in a rendered diagnosis rather than an i
 - [ ] `internal/up/up.go:47` sets `healthPoll = 5 * time.Second` and `up.go:57` sets `healthTimeout = 5 * time.Minute`.
 - [ ] `internal/up/up.go:893` returns `diag.New(diag.CodeEngineHealthTimeout, …unreadySummary(health)…)` on deadline expiry (`CodeEngineHealthTimeout` = `CUBE-3004`, `codes.go:79`).
 - [ ] `cmd/repo.go:152` defines a single `wrap` closure producing `diag.CodeRepoDeployFail` (`CUBE-7303`, `codes.go:166`) and every failure arm in `deployRepo` routes through it.
-- [ ] `internal/ui/pipeline.go:191` sets `Raw: err.Error()` unconditionally and `d.Err` only inside the `errors.As` branch.
-- [ ] `internal/ui/rendererr.go:78` styles only the `fix:` label, interpolating `de.Remediation` raw.
-- [ ] `go test ./internal/ui/` passes `TestRunPipelineLiveDiagnosisAfterExit` (`rendererr_test.go:62`), the diagnosis-last structural fence.
+- [ ] `internal/ui/pipeline.go:192` sets `Raw: err.Error()` unconditionally and `d.Err` only inside the `errors.As` branch (`pipeline.go:194-196`).
+- [ ] `internal/ui/rendererr.go:77-79` styles only the `fix:` label, interpolating `de.Remediation` raw.
+- [ ] `go test ./internal/ui/` passes `TestModeMatrixFence`, whose assertion at `internal/ui/pipeline_test.go:309` is the diagnosis-last fence (`types[n-2] == "run_done" && types[n-1] == "diagnosis"`), together with `TestRunPipelineFailureOrderAndErrorPassthrough` (`pipeline_test.go:86-95`), which pins the full failure lifecycle order and asserts the diagnosis is the final JSON line.
+- [ ] `go test ./internal/ui/` passes `TestRunPipelineLiveDiagnosisAfterExit` (`rendererr_test.go:62`), which proves the diagnosis never leaks into live-mode stdout and renders only via `RenderError` after the terminal is released — it does not check event ordering.
 
 ## More Information
 
@@ -75,9 +79,9 @@ Origin: mined from the archived planning corpus (`docs/archive/superpowers/`) du
 Member origins:
 
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:20` — typed diagnostics and bounded waits as a release requirement.
-- `docs/archive/superpowers/specs/2026-07-15-cube-idp-phase4-first-release-design.md:35` — the `diag.Error` shape and three-line render block.
+- `docs/archive/superpowers/specs/2026-07-15-cube-idp-phase4-first-release-design.md:35` — typed `CUBE-xxxx` `diag.Error` with remediation, every code a constant in the catalog.
 - `docs/archive/superpowers/specs/2026-07-14-cube-idp-ux-design.md:491` — `Diagnosis.Raw` / `Diagnosis.Err` split.
 - `docs/archive/superpowers/specs/2026-07-16-tui-interactive-layer-design.md:138` — diagnosis-last event ordering.
-- `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:793` — 5-second health poll and the `CUBE-3004` timeout listing.
+- `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:155` — one global `waitHealthy` (5m timeout, 5s poll, zero components = not ready); cluster 3m, apply 2m.
 
 Rationale for merging bounded waits into this record: a bounded wait is a specific instance of the rule that every failure terminates in a rendered typed diagnosis rather than a bare error or a hang.

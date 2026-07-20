@@ -32,7 +32,9 @@ matching `^CUBE-[0-9]{4}$`. No non-test Go file outside that catalog may contain
 literal-ban test.
 
 Every declared code must also carry a non-empty summary entry in
-`internal/diag/registry.go`, enforced by `TestRegistryCoversEveryDeclaredCode`.
+`internal/diag/registry.go`, enforced by `TestRegistryCoversEveryDeclaredCode` (an
+entry exists for every declared code, and the counts match) and
+`TestEveryCodeHasDescription` (the entry's `Summary` is non-empty).
 
 The code surface is append-only. Retired codes are marked in place by comment or
 registry annotation and are never deleted, and their numbers are not reused.
@@ -48,8 +50,9 @@ each stay in their own range.
   five-month-old log line and still find the right constant, call site and summary.
 * Good, because the literal ban makes collisions structurally impossible — two
   meanings for one number cannot both compile past the test.
-* Good, because the registry-coverage test is bidirectional, so a code cannot ship
-  without documentation and documentation cannot outlive its code.
+* Good, because the registry-coverage test is bidirectional by cardinality: a code
+  cannot ship without documentation, and a stale entry is caught unless an addition
+  in the same commit masks the count.
 * Good, because the numeric partition lets a reader infer the subsystem from the code
   alone, before opening any source.
 * Bad, because the number space is consumed permanently; retired numbers stay as dead
@@ -67,14 +70,14 @@ each stay in their own range.
 
 | Decision | Implemented at |
 | --- | --- |
-| Every CUBE code is an exported sentinel constant in `internal/diag/codes.go` matching `^CUBE-[0-9]{4}$`, and no non-test Go file outside the catalog may contain a `CUBE-` string literal. | `internal/diag/codes_test.go:37,44-48` |
+| Every CUBE code declared in `internal/diag/codes.go` matches `^CUBE-[0-9]{4}$` and is unique. | `internal/diag/codes_test.go:168-185` |
+| No non-test Go file outside the catalog may contain a `CUBE-` string literal. | `internal/diag/codes_test.go:38,44,49-84,90-99` |
 | CUBE codes live in a central sentinel catalog enforced by `TestNoCubeLiteralsOutsideCatalog`, whose regex also catches backtick raw-string literals. | `internal/diag/codes_test.go:44` |
-| Every new diag code must have a summary registered in `internal/diag/registry.go`. | `internal/diag/registry_test.go:41-57` |
+| Every new diag code must have an entry in `internal/diag/registry.go`, and that entry's summary must be non-empty. | `internal/diag/registry_test.go:41-58`, `internal/diag/registry_test.go:11-18` |
 | CUBE diagnostic codes are append-only: retired codes are marked in place by comment edit and never deleted or reused. | `internal/diag/codes.go:78` |
 | The code surface is append-only in the registry too: retired codes such as CUBE-3009 keep their registry entry marked retired rather than being removed. | `internal/diag/registry.go:89` |
-| Pack dependency diagnostics use CUBE-4018, CUBE-4019 and CUBE-4020, and the argocd dependency wait failure uses CUBE-3011. | `internal/diag/codes.go:112` |
+| Pack dependency diagnostics use CUBE-4018, CUBE-4019 and CUBE-4020, and the argocd dependency wait failure uses CUBE-3011. | `internal/diag/codes.go:112-114`, `internal/diag/codes.go:87` |
 | A new config-family diagnostic covers engine pack ref mismatch, mirroring CUBE-0008. | `internal/pack/enginepack.go:39` |
-| (Superseded) A missing local path that is not ref-shaped fails with CUBE-0001, and a remote fetch or single-YAML failure fails with CUBE-0013. | `internal/config/load.go:30-31` |
 
 ### Verification
 

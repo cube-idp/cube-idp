@@ -31,10 +31,11 @@ cube-idp is a stateless, transient push-based CLI that exits — not an operator
 a cluster exists, server-side-applies a GitOps engine plus the in-cluster zot registry,
 renders and delivers data-only packs, diagnoses, and exits. It never runs continuous
 reconciliation itself, installs no in-process controller-runtime manager, runs no git
-server in the core, and leaves nothing resident on the developer machine: no daemon, no
-laptop-resident operator, no persistent full-screen dashboard, and no alt-screen TUI.
+server in the core, and leaves nothing resident on the developer machine: no daemon and no
+laptop-resident operator. Statelessness implies the UI is transient too; see ADR-0026 for
+the authoritative statement of the alt-screen and no-persistent-view prohibition.
 
-`up` runs a fixed sequence — ensure the local CA, load config, ensure cluster, install
+`up` runs a fixed sequence — load config, ensure the local CA, ensure cluster, install
 registry, install engine, open the registry tunnel, then fetch/render/push/deliver each
 pack, then wait for health — using plain server-side-apply library calls with
 deterministic exit codes, per-step timeouts, and the single field manager `cube-idp`.
@@ -71,7 +72,8 @@ and provider `Diagnose` run on demand via `cube-idp doctor`.
   mandatory preflight would have caught early.
 * Bad, because "no resident process" rules out genuinely useful long-lived UX (a watching
   dashboard, a background updater); `sync --watch` is the single sanctioned foreground
-  carve-out and is explicitly not a daemon.
+  carve-out and is explicitly not a daemon. The UI-side form of this restriction is stated
+  normatively in ADR-0026.
 * Bad, because the no-CRD purity of the original decision could not be held: the kernel now
   ships an inert `packs.cube-idp.dev` CRD and a CubeLock record.
 
@@ -82,21 +84,22 @@ and provider `Diagnose` run on demand via `cube-idp doctor`.
 | Decision | Implemented at |
 | --- | --- |
 | cube-idp is a stateless push-based CLI, not an operator: it ensures a cluster, server-side-applies a GitOps engine plus an in-cluster zot registry, delivers data-only packs, diagnoses, and exits — never reconciling continuously itself. | `internal/up/up.go:97` |
-| cube-idp ships as a single static Go binary that pushes state and exits — no long-running daemon, no embedded git server, nothing left running on the developer machine; `sync --watch` is the only sanctioned long-running foreground mode and is not a daemon. | `internal/up/up.go:209-224` |
+| cube-idp ships as a Go binary that pushes state and exits: `up.Run` is an ordinary function that returns rather than a supervisor loop, and `sync --watch` is the only sanctioned long-running foreground mode and is explicitly not a daemon. | `internal/up/up.go:97`; `cmd/sync.go:39-46` |
 | Nothing runs on the developer's machine after the command exits: no in-process CRD controllers on the bootstrap path, which uses plain SSA library calls with deterministic exit codes and per-step timeouts. | `internal/apply/applier.go:45` |
-| The kernel binary installs no Kubernetes controllers of its own: no in-process controller-runtime manager, no git server in the core, and no RPC or Wasm plugin runtime. | `internal/up/up.go:209-224` |
-| `up` runs a fixed sequence: ensure the local CA, load config, ensure cluster, install registry, install engine, open the registry tunnel, then fetch/render/push/deliver each pack, and finally wait for health. | `internal/up/up.go:122-135` |
+| The kernel binary installs no Kubernetes controllers of its own: no in-process controller-runtime manager, no git server in the core, and no RPC or Wasm plugin runtime. | (absence — see Verification) |
+| `up` runs a fixed sequence: load config, ensure the local CA, ensure cluster, install registry, install engine, open the registry tunnel, then fetch/render/push/deliver each pack, and finally wait for health. | `internal/up/up.go:97-135` |
 | All server-side applies use the field manager `cube-idp`. | `internal/apply/applier.go:21` |
-| CUBE error codes are partitioned by range: 0xxx preflight/config, 1xxx cluster, 2xxx apply, 3xxx engine, 4xxx pack, 5xxx registry, 6xxx trust/hostname, 7xxx vendor/plugin/sync/repo, 8xxx spoke. | `internal/diag/codes.go:136-171` |
-| Cobra command packages contain no business logic; every command is a thin shell over an `internal/` orchestrator, engines stay behind `internal/engine.Engine`, and `internal/trust` is a leaf package with zero implicit side effects. | `cmd/up.go:12-36` |
+| CUBE error codes are partitioned by range: 0xxx preflight/config, 1xxx cluster, 2xxx apply, 3xxx engine, 4xxx pack, 5xxx registry, 6xxx trust/hostname, 7xxx vendor/plugin/sync/repo, 8xxx spoke. | `internal/diag/codes.go:1-179` |
+| Cobra command packages contain no business logic: `cmd/up.go` is a flag-parsing shell that delegates straight to `internal/up.Run` through the `internal/ui` pipeline. | `cmd/up.go:12-36` |
+| Engines stay behind the `internal/engine.Engine` interface rather than being referenced concretely by callers. | `internal/engine/engine.go:59` |
 | Extensibility is limited to exactly three tiers — data-only packs, PATH-discovered exec plugins, and in-tree Go interfaces — with no RPC plugins, no Wasm runtime and no daemons. | `internal/plugin/discover.go:35-63` |
 | The exec-plugin environment contract passes `CUBE_IDP_KUBECONFIG`, `CUBE_IDP_CUBE_NAME`, `CUBE_IDP_REGISTRY` and `CUBE_IDP_CA`, assembled best-effort: missing inputs yield omitted env vars rather than an error, and running a plugin never creates a CA. | `internal/plugin/exec.go:36-59` |
 | Argo CD and Gitea ship as optional packs, not as core components of the tool. | `internal/config/types.go:251-252` |
 | The live UI uses Bubble Tea inline mode only — the program lives strictly inside `RunE`, quits on RunDone/Diagnosis, and leaves no goroutine surviving process exit. | `internal/ui/render/live.go:36` |
-| No persistent full-screen dashboard or resident cluster-browser UI ships, and no command uses alt-screen mode. | `cmd/status.go:92` |
-| Preflight checks and provider `Diagnose` run on demand via `cube-idp doctor`. | `internal/doctor/doctor.go:433-487` |
-| `existing`-cluster mode gets no extra guard: `VerifyEnginePackRef` plus the `engineHealthyAtStart` preflight suffice, and SSA onto a foreign pre-existing engine install is documented operator error. | `internal/pack/enginepack.go:31-42` |
-| The core stack is published to the project's public ghcr namespace and consumed through the same pack mechanism users extend with, so the mechanism is dogfooded; only a minimal core remains embedded. | `internal/registry/zot.go:19` |
+| Consequence of statelessness: no resident cluster-browser UI ships. See ADR-0026 for the authoritative alt-screen / no-persistent-TUI prohibition. | `cmd/status.go:92` |
+| Preflight checks run on demand via `cube-idp doctor`, which assembles the host-side checklist and appends the provider `Diagnose` findings. | `internal/doctor/doctor.go:425-493`; `cmd/doctor.go:107` |
+| `existing`-cluster mode gets no extra guard beyond `VerifyEnginePackRef` (the CUBE-0013 pack-name check, before any cluster mutation) and the `engineHealthyAtStart` preflight. | `internal/pack/enginepack.go:31-42`; `internal/up/up.go:1227-1234` |
+| The engine is consumed through the same pack mechanism users extend with, from the project's public ghcr namespace, so the mechanism is dogfooded; only a minimal core (the zot manifests) remains embedded. | `internal/pack/enginepack.go:16-29`; `internal/config/types.go:249-252`; `internal/registry/zot.go:19` |
 | The built-in pack catalog is an offline fallback only; the live catalog is fetched from the published index artifact. | `cmd/pack.go:71-81` |
 
 ### Verification
@@ -109,12 +112,14 @@ and provider `Diagnose` run on demand via `cube-idp doctor`.
       and the assertion fence in `internal/ui/render/live_test.go` — never an enabling call.
 - [ ] `internal/ui/render/live.go:36` constructs `tea.NewProgram` with only `tea.WithOutput`
       and `tea.WithInput`.
-- [ ] `internal/up/up.go:122-135` runs `trust.Dir()` / `trust.EnsureCA` before any cluster
-      provider `Ensure` call.
+- [ ] `internal/up/up.go:122-135` runs `trust.Dir()` / `trust.EnsureCA` before the cluster
+      provider is constructed by `cluster.New` at `internal/up/up.go:136`.
 - [ ] `internal/plugin/exec.go:36-59` sets exactly the four `CUBE_IDP_*` contract variables
       and appends only non-empty values.
 - [ ] `internal/plugin/discover.go:35-63` discovers plugins solely via `exec.LookPath` over
-      `$PATH` and `InstallDir()`; `go.mod` contains no `hashicorp/go-plugin` and no Wasm runtime.
+      `$PATH` and `InstallDir()`; `go.mod` contains no `hashicorp/go-plugin`, and
+      `grep -rn wazero internal cmd` yields no hits — `wazero` appears in `go.mod:252` only
+      as an unused indirect dependency, never imported by cube-idp code.
 - [ ] `internal/pack/guards.go` strips every symlink from a fetched pack tree (packs are data-only).
 - [ ] `internal/diag/codes.go:136-171` allocates 70xx vendor/air-gap, 71xx plugin, 72xx sync,
       73xx repo and 8xxx spoke codes (CUBE-7005, CUBE-7301, CUBE-8001 are live, not reserved).

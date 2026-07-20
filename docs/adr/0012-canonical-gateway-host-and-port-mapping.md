@@ -28,17 +28,22 @@ A single canonical hostname resolves to the gateway identically inside and outsi
 cluster. CoreDNS is rewritten so `*.<gateway.host>` (default `*.cube-idp.localtest.me`)
 resolves to the gateway Service. The rewrite is idempotent, appears exactly once, replaces
 its own block when the host changes, and is fully removable, restoring the original
-Corefile. The rewrite target derives from the optional `pack.cue` field
-`gatewayService: {name, namespace}`; packs predating the field load with a nil
-`GatewayService` and fall back to the `<pack>.<pack>.svc` convention.
+Corefile. The rewrite target is whatever `up` resolves for the gateway pack's data-plane
+Service; see ADR-0006 for the authoritative statement of how that target is derived from
+the optional `pack.cue` `gatewayService: {name, namespace}` block and its
+`<pack>.<pack>.svc` fallback.
 
 Every cluster-creating provider maps the host gateway port (default 8443) onto the single
 shared node port `cluster.GatewayNodePort` = 30443, matching the gateway pack's websecure
-HTTPS NodePort. TLS is terminated at the gateway with a cube-idp CA-issued certificate.
+HTTPS NodePort — whenever the cluster has a gateway. A zero `gateway.port` means "no
+gateway on this cluster" (spoke clusters render with a zero `GatewaySpec`) and injects no
+mapping at all. TLS is terminated at the gateway with a cube-idp CA-issued certificate.
 
 A host-exposed non-TLS HTTP port is opt-in via `spec.gateway.httpPort`. When set, both
-cluster-creating providers emit a second mapping onto `GatewayHTTPNodePort` = 30080, which
-both gateway packs already pin, so no pack change is required. When absent, no HTTP
+cluster-creating providers emit a second mapping onto `GatewayHTTPNodePort` = 30080. Both
+first-party gateway packs pin 30080 in the separate packs repo, so no pack change is
+required; cube-idp asserts that cross-repo contract only through `tests/packs_render_test.go`.
+When absent, no HTTP
 mapping is emitted. `gateway.httpPort` must differ from `gateway.port` and from every
 `extraPorts.hostPort`; collisions are rejected at config load as a CUBE-0002-family error.
 Like `gateway.port`, it is a cluster-shape field subject to the recreate caveat.
@@ -71,14 +76,14 @@ The e2e harness binds the gateway to a host port configurable via
 
 | Decision | Implemented at |
 | --- | --- |
-| Every cluster-creating provider maps the host gateway port onto the shared node port `cluster.GatewayNodePort` = 30443, matching the gateway pack's websecure NodePort. | `internal/config/types.go:142`; `internal/cluster/provider.go:22`; `internal/cluster/kindp/merge.go:36` |
+| Every cluster-creating provider maps the host gateway port onto the shared node port `cluster.GatewayNodePort` = 30443, matching the gateway pack's websecure NodePort — but only when `gateway.port > 0`; a zero port (spoke clusters) injects no mapping at all. | `internal/config/types.go:142`; `internal/cluster/provider.go:22`; `internal/cluster/kindp/merge.go:36,107`; `internal/cluster/k3dp/merge.go:100` |
 | `gateway.httpPort` must differ from `gateway.port` and from every `extraPorts.hostPort`; a collision is rejected at config load with a CUBE-0002-family error. | `internal/config/load.go:230-243` |
 | The e2e harness binds the gateway to a host port configurable via `CUBE_IDP_E2E_GATEWAY_PORT`, an exclusive resource shared with docker. | `tests/e2e/e2e_test.go:43-53` |
-| When `spec.gateway.httpPort` is set, a second mapping onto `GatewayHTTPNodePort` (30080) is emitted by both cluster-creating providers; the field is cluster-shape and subject to the recreate caveat. | `internal/config/types.go:151`; `internal/cluster/kindp/merge.go:125-139`; `internal/cluster/k3dp/merge.go:116-133` |
+| When `spec.gateway.httpPort` is set, a second mapping onto `GatewayHTTPNodePort` (30080) is emitted by both cluster-creating providers; the field is cluster-shape and subject to the recreate caveat. | `internal/config/types.go:151`; `internal/cluster/kindp/merge.go:125-139`; `internal/cluster/k3dp/merge.go:119-134` |
 | The gateway host port defaults to 8443 on host `cube-idp.localtest.me` and maps to NodePort 30443, with TLS terminated at the gateway using a cube-idp CA-issued certificate. | `internal/config/types.go:142,248`; `internal/cluster/kindp/merge.go:107-119`; `internal/up/tls.go:26-45` |
 | CoreDNS is rewritten so `*.<gateway.host>` resolves to the gateway Service; the rewrite is idempotent, replaces its own block on host change, and is fully removable. | `internal/trust/coredns.go:25-49` |
-| Gateway packs may declare an optional `pack.cue` `gatewayService: {name, namespace}` from which the CoreDNS rewrite target derives; packs predating the field load nil and fall back to `<pack>.<pack>.svc`. | `internal/pack/pack.go:83-87,160-176`; `internal/up/up.go:820-824` |
-| The non-TLS HTTP port is opt-in and never enabled by default; no gateway pack change is required because both packs already pin NodePort 30080. | `internal/config/types.go:151-163`; `internal/cluster/kindp/merge.go:121-137` |
+| The CoreDNS rewrite target is the gateway pack's resolved data-plane Service FQDN. (Derivation from the optional `pack.cue` `gatewayService:` block and its `<pack>.<pack>.svc` fallback is owned by ADR-0006.) | `internal/up/up.go:821-826` |
+| The non-TLS HTTP port is opt-in and never enabled by default (`Default()` leaves `HTTPPort` zero); both first-party gateway packs pin 30080 in the separate packs repo, a cross-repo contract cube-idp asserts only in test. | `internal/config/types.go:151,163,248`; `tests/packs_render_test.go:310,353` |
 
 ### Verification
 
@@ -89,7 +94,7 @@ The e2e harness binds the gateway to a host port configurable via
 - [ ] `internal/cluster/kindp/merge.go` and `internal/cluster/k3dp/merge.go` each emit an HTTP mapping only when `gw.HTTPPort > 0`, always onto `config.GatewayHTTPNodePort`.
 - [ ] `internal/config/schema.cue` declares `httpPort?: int & >0 & <65536` as optional.
 - [ ] `internal/trust/coredns.go` fences its block with `cube-idp:rewrite:begin`/`:end`, calls `removeManagedBlock` before inserting, and exposes `RemoveCoreDNSRewrite`.
-- [ ] `internal/up/up.go` `gatewayServiceFQDN` returns `<name>.<namespace>.svc.cluster.local` when `gwPack.GatewayService != nil` and `<pack>.<pack>.svc.cluster.local` otherwise.
+- [ ] `internal/cluster/kindp/merge.go` and `internal/cluster/k3dp/merge.go` each emit the HTTPS gateway mapping only when `gw.Port > 0`.
 - [ ] `internal/up/tls.go` issues a CA cert for `gw.Host` and `*.<gw.Host>` into the `cube-idp-gateway-tls` Secret.
 - [ ] `tests/e2e/e2e_test.go` `gatewayPort` falls back to `8443` when `CUBE_IDP_E2E_GATEWAY_PORT` is unset.
 

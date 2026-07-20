@@ -27,14 +27,17 @@ pack actually renders. `up` itself also applies one Gateway API object outside a
 Pack rendering substitutes three gateway tokens: `${GATEWAY_HOST}` (host with `:port`,
 port omitted at 443), `${GATEWAY_FQDN}` (the bare gateway host) and `${GATEWAY_PACK}`
 (the gateway pack's name, also its namespace). Substitution is applied across expose
-URLs, chart values and manifest bytes, and runs *after* the defaults merge so tokens
-resolve regardless of which side of the merge contributed them. The kustomize render
-path applies the same substitution to built YAML bytes before parsing, so it matches the
-manifests and helm paths.
+URLs, chart values, pack manifest bytes and `packs[].extraManifests`, and runs *after*
+the defaults merge so tokens resolve regardless of which side of the merge contributed
+them. The kustomize render path applies the same substitution to built YAML bytes before
+parsing, so it matches the manifests and helm paths. Substitution is a no-op for a zero
+gateway spec (`gw.Host == ""`), which is how the gateway-less `RenderDir` path preserves
+literal tokens.
 
-Ordering dependencies on the gateway are derived, not blanket-applied: the implicit
-gateway depgraph edge is added only for packs whose rendered objects contain Gateway API
-objects.
+Ordering dependencies on the gateway are derived from render output rather than declared,
+which is why substitution and the graph pass both run after every pack is rendered. See
+ADR-0005 for the authoritative statement of the implicit gateway dependency edge and the
+delivery-ordering algorithm.
 
 `up` additionally waits for the `httproutes` CRD to become Established, with a deadline
 typed CUBE-5005, before applying the registry HTTPRoute. This
@@ -63,9 +66,8 @@ applies itself, outside any pack.
 
 | Decision | Implemented at |
 | --- | --- |
-| Pack rendering substitutes `${GATEWAY_HOST}`, `${GATEWAY_FQDN}` and `${GATEWAY_PACK}` across expose URLs, chart values and manifest bytes, applied after the defaults merge, with the kustomize path substituting built YAML bytes before parsing. | `internal/pack/expose.go:62-64` |
+| Pack rendering substitutes `${GATEWAY_HOST}`, `${GATEWAY_FQDN}` and `${GATEWAY_PACK}` across expose URLs, chart values, pack manifest bytes and `extraManifests`, applied after the defaults merge, with the kustomize path substituting built YAML bytes before parsing; a zero gateway spec is a no-op. | `internal/pack/expose.go:58-66`; `internal/pack/helm.go:142`; `internal/pack/render.go:83,140`; `internal/pack/kustomize.go:34` |
 | `up` waits for the `httproutes` CRD to become Established with a CUBE-5005-typed deadline before applying the registry HTTPRoute, and this gate is retained in `up.Run` because it guards a route outside any pack. | `internal/up/up.go:442`; `internal/diag/codes.go:123` |
-| The implicit gateway depgraph edge is derived from rendered Gateway API objects only, not applied blanket to every pack. | `internal/pack/depgraph.go:63-68` |
 | *(superseded)* Gitea is never itself repo-delivered, is hard-ordered immediately after the gateway, and repo delivery is gated on gitea API readiness. | `internal/up/up.go:1163-1170`, `internal/up/up.go:1179-1190` |
 
 ### Verification
@@ -76,8 +78,10 @@ applies itself, outside any pack.
       `mergeValues(ref.Values, values)`, i.e. after the defaults merge, not before.
 - [ ] `internal/pack/render.go:83` and `internal/pack/kustomize.go:34` — both call
       `substitute` on raw/built YAML bytes before `apply.ParseMultiDoc`.
-- [ ] `internal/pack/depgraph.go:66-68` — `edges[i][0]` is set only inside the loop over
-      `rendered[i].Objects` guarded by `o.GroupVersionKind().Group == gatewayAPIGroup`.
+- [ ] `internal/pack/render.go:140` — `substitute` is applied to
+      `packs[].extraManifests` before `apply.ParseMultiDoc`.
+- [ ] `internal/pack/kustomize.go:42` — `RenderDir` calls `RenderDirFor` with
+      `config.GatewaySpec{}`, the gateway-less path the no-op preserves tokens for.
 - [ ] `internal/up/up.go:442` — `waitCRDEstablished(ctx, a, con, httpRouteCRD,
       gatewayCRDTimeout)` precedes the registry HTTPRoute apply; `httpRouteCRD` is
       defined at `internal/up/up.go:68`.

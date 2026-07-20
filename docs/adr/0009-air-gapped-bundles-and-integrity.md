@@ -34,15 +34,18 @@ pre-loading the bundled images into the cluster nodes. Registry mirrors are conf
 (`spec.cluster.registry.mirrors`), not CLI flags.
 
 Bundles embed `cube.lock` verbatim, and the manifest's digest is taken over those bytes
-rather than over the lock's parsed shape, so older bundles keep opening via the legacy
-lift.
+rather than over the lock's parsed shape, so the digest survives lock-schema changes that
+do not alter the bytes. Bundle compatibility itself is gated separately by
+`manifest.formatVersion`, currently 2; older format versions are rejected outright with
+CUBE-7003. See ADR-0035 for the authoritative statement of the bundle manifest shape and
+its field list.
 
 `bundle.Verify` recomputes the content hash of every pack tree and every image tar and
 compares it against the manifest. A tampered, truncated, or swapped file cannot pass. A
 missing manifest hash or any mismatch fails with CUBE-7004 naming the offending pack or
 image.
 
-Vendor and bundle failures use a closed set of codes: CUBE-7001 (lock missing or
+Vendor and bundle failures use a closed 70xx set of codes: CUBE-7001 (lock missing or
 unreadable), CUBE-7002 (vendor-side pull failed), CUBE-7003 (bundle unreadable or corrupt,
 including format-version rejection and extraction-cap trips), CUBE-7004 (bundle incomplete
 or content-hash mismatch), CUBE-7005 (`--bundle` unsupported for the provider), and
@@ -52,8 +55,9 @@ bundle integrity.
 There are no CUBE codes for pack-signature verification, because in-binary cryptographic
 verification is not implemented; the plugin trust model is sha256 consent, not signing.
 
-Every bundle-producing and bundle-consuming command routes through the shared UI pipeline
-and therefore has an equivalent plain projection, so CI output stays complete.
+Bundle commands route through `ui.RunPipeline` like every other command, so they render in
+plain, live, and JSON modes. See ADR-0024 for the authoritative statement of the plain
+projection rule; this ADR asserts nothing bundle-specific about it.
 
 ## Consequences
 
@@ -62,9 +66,12 @@ and therefore has an equivalent plain projection, so CI output stays complete.
 * Good, because integrity is checked by recomputed content hashes, so corruption and
   tampering are caught before anything reaches a cluster — presence-and-size checks would
   not catch a swapped image tar.
-* Good, because digesting the lock over raw bytes keeps old bundles openable when the lock
-  schema evolves.
-* Good, because the closed 7xxx code set makes bundle failures machine-triageable and
+* Good, because digesting the lock over raw bytes keeps the digest valid across lock-schema
+  changes that do not alter the bytes; bundle compatibility is gated separately by
+  `manifest.formatVersion`.
+* Bad, because that separate gate is strict: a bundle built at `formatVersion` 1 does not
+  open at all, and must be re-vendored.
+* Good, because the closed 70xx code set makes bundle failures machine-triageable and
   keeps the diagnostic surface from growing per integrity feature.
 * Bad, because full re-hashing of every pack tree and image tar costs time and I/O
   proportional to bundle size on every open.
@@ -80,31 +87,32 @@ and therefore has an equivalent plain projection, so CI output stays complete.
 
 | Decision | Implemented at |
 | --- | --- |
-| Air-gapped install is `vendor` producing one bundle tarball from `cube.lock`, consumed by `up --bundle <file>` installing fully offline; registry mirrors are configuration, not CLI flags. | `cmd/vendor.go:13-38` |
-| Bundles embed `cube.lock` verbatim and the manifest digest is over those bytes, not the parsed shape, so old bundles still open. | `internal/bundle/bundle.go:197-206` |
+| Air-gapped install is `vendor`, a single command producing one bundle tarball from `cube.lock`. | `cmd/vendor.go:12-38` |
+| The bundle is consumed by `up --bundle <file>`, threaded as `up.Options.Bundle`. | `cmd/up.go:23,34` |
+| Registry mirrors are configuration (`spec.cluster.registry.mirrors`), not CLI flags. | `internal/config/types.go:78-81` |
+| The manifest's `lockDigest` is computed as sha256 over the raw embedded `cube.lock` bytes, not the parsed shape. | `internal/bundle/vendor.go:105-110` (produce side); `internal/bundle/bundle.go:202-206` (check side) |
+| Bundle compatibility is gated by `manifest.formatVersion`, currently 2; any other version is rejected with CUBE-7003. | `internal/bundle/bundle.go:66-67,116-121` |
 | `bundle.Verify` recomputes the content hash of every pack tree and image tar against the manifest; a missing hash or any mismatch fails with CUBE-7004 naming the pack or image. | `internal/bundle/bundle.go:208-241` |
-| Vendor/bundle failures use exactly CUBE-7001 through CUBE-7006; no new codes are allocated for bundle integrity. | `internal/diag/codes.go:138-143` |
-| No CUBE codes exist for pack-signature verification, because in-binary cryptographic verification is not implemented. | `internal/diag/codes.go:138-143` |
-| CUBE code ranges are partitioned by domain and the diag package doc enumerates them. | `internal/diag/diag.go:3-5` |
-| Every live view has an equivalent plain projection so CI output stays complete; the rule covers renderers as well as `Printer`. | `internal/ui/render/plain.go:14-41` |
+| Vendor/bundle failures use exactly CUBE-7001 through CUBE-7006. The 7xxx range is further partitioned: 70xx vendor/air-gap, 71xx exec-plugin, 72xx sync, 73xx repo — only the 70xx band is this ADR's closed set. | `internal/diag/codes.go:138-143` (70xx band, 7001 at 138 through 7006 at 143); `internal/diag/codes.go:148-153,158-159,164-168` (71xx/72xx/73xx) |
+| No CUBE code is declared anywhere in the catalog for pack-signature verification; the catalog-exhaustiveness test fences the code set so an undeclared code cannot be used. | `internal/diag/codes.go` (whole catalog); `internal/diag/codes_test.go:298` (`TestCatalogExhaustive`) |
 
 ### Verification
 
-- [ ] `cmd/vendor.go` defines a single `vendor` command whose `RunE` calls `bundle.Vendor`, and there is no separate `bundle create` command.
+- [ ] `cmd/vendor.go` defines a single `vendor` command whose `RunE` calls `bundle.Vendor` (`cmd/vendor.go:28-33`), and `grep -rn 'Use:' cmd/ | grep -c bundle` returns 0 — no separate `bundle` subcommand exists.
 - [ ] `cmd/up.go` exposes `--bundle` ("install fully offline from a cube-idp vendor bundle") and threads it as `up.Options.Bundle`.
 - [ ] `internal/bundle/bundle.go` compares `"sha256:"+hex(sha256(raw cube.lock bytes))` against `Manifest.LockDigest`.
 - [ ] `internal/bundle/bundle.go` `Verify` calls `dirhash.HashDir` for every locked pack and `sha256File` for every manifest image, returning `diag.CodeVendorIncomplete` (CUBE-7004) on a missing hash or mismatch, with the pack or image name in the message.
 - [ ] `internal/diag/codes.go` declares exactly `CodeVendorLockMissing` (7001), `CodeVendorPullFail` (7002), `CodeVendorBundleCorrupt` (7003), `CodeVendorIncomplete` (7004), `CodeBundleNoImageLoader` (7005), `CodeBundleImageLoadFail` (7006) in the vendor/bundle band.
-- [ ] A grep for `cosign`, `sigstore`, or `signature` across `internal/` and `cmd/` finds no signature-verification code path and no corresponding CUBE code.
+- [ ] `grep -rniE 'cosign|sigstore' internal cmd` returns hits only under `testdata/` (vendored Flux/Argo CRD fixtures), never in cube-idp code; the only `signature` hits in Go sources are `internal/trust/ca.go:221` (`x509.KeyUsageDigitalSignature`, local-CA TLS) and comment prose. No signature-verification code path and no corresponding CUBE code exist.
 - [ ] `internal/bundle/bundle.go` rejects a manifest whose `formatVersion` is not the current one with `diag.CodeVendorBundleCorrupt` (CUBE-7003).
-- [ ] `internal/ui/render/plain.go` `Plain` is a pure per-event function emitting no ANSI, and `internal/ui/render/` holds `plain.go`, `live.go`, `styled.go`, and `json.go` over one event stream.
+- [ ] `cmd/vendor.go:28-33` wraps the vendor run in `ui.RunPipeline`, so bundle commands share the standard renderer selection. (The plain-projection rule itself is ADR-0024's; do not re-verify it here.)
 
 ## History
 
 The CUBE code partition originally described the 8xxx range as reserved and unallocated.
-That range was subsequently allocated to the spoke feature (CUBE-8001..8006), so the
-domain partition now has no free reserved block; the 0xxx-7xxx partition survives
-unchanged and `internal/diag/diag.go:3-5` documents 8xxx as spoke.
+That range was subsequently allocated, so the domain partition now has no free reserved
+block; the 0xxx-7xxx partition survives unchanged. The authoritative statement of the CUBE
+code-range partition lives in the diagnostics ADR, not here.
 
 An earlier scoping decision excluded the k3d provider, vendoring and `--bundle`, exec
 plugins, `sync --watch`, `repo create`, and pack-catalog buildout from the then-current
@@ -122,7 +130,7 @@ Origin: mined from the archived planning corpus (`docs/archive/superpowers/`) du
 before this record was written.
 
 - `docs/archive/superpowers/research/2026-07-13-cube-idp-brainstorm/synthesis.md:72` — vendor/`--bundle` as the air-gap mechanism, mirrors as configuration.
-- `docs/archive/superpowers/specs/2026-07-19-cube-idp-pack-depends-and-cubelock-crd-design.md:355` — lock embedded verbatim, digest over bytes.
+- `docs/archive/superpowers/specs/2026-07-19-cube-idp-pack-depends-and-cubelock-crd-design.md:355` — lock embedded verbatim, digest over bytes. (This source also speaks of old bundles "opening via the legacy lift"; no such mechanism exists in the code, and the ADR text above does not carry that claim forward.)
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:620` — content-hash verification in `bundle.Verify`.
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:38` — the closed CUBE-7001..7006 set.
 - `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:183` — no CUBE codes for pack-signature verification.

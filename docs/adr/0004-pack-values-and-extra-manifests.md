@@ -20,15 +20,19 @@ needs to see at a glance which packs were installed stock and which were customi
 
 ## Decision
 
-`values:` in cube.yaml means Helm values only and is consumed exclusively by a pack's
-`chart.yaml` render; there is no fetched or remote middle layer. Supplying `values:` for a
-pack without `chart.yaml` is the typed error CUBE-4016, raised at render time —
-chartlessness is only known after the pack is fetched — and before `#Values` schema
-validation, so a chartless pack with values never reaches that schema.
+`values:` in cube.yaml means Helm values only: they are validated against the pack's
+optional `#Values` CUE schema and then merged into the pack's `chart.yaml` Helm render; a
+pack without `chart.yaml` cannot accept them. There is no fetched or remote middle layer.
+Supplying `values:` for a pack without `chart.yaml` is the typed error CUBE-4016, raised at
+render time — chartlessness is only known after the pack is fetched — and before `#Values`
+schema validation, so a chartless pack with values never reaches that schema. This ADR is
+the authoritative definition of CUBE-4016; `spec.engine.values` flows through the same
+`RenderWith` entry point (`internal/pack/enginepack.go:24`) and therefore inherits this
+rule — see ADR-0019 for the engine-specific consequences.
 
-Value merge order is fixed: chart defaults, then `pack.cue`/`chart.yaml` defaults, then
-inline user `values:`, then `${GATEWAY_*}` substitution, with numbers normalized to
-`int`/`float64`.
+Value merge order is fixed in three steps: `chart.yaml` defaults (`ref.Values`), then
+inline user `values:`, then `${GATEWAY_*}` substitution, with CUE `int64` decodes
+normalized to `int` at load time.
 
 `packs[].extraManifests` is the uniform extras mechanism for every pack kind: a non-empty
 multi-doc YAML string that is parsed, `${GATEWAY_*}`-substituted, appended to the pack's
@@ -62,17 +66,17 @@ record and shown as a CUSTOMIZED printer column in `kubectl get packs`.
 
 | Decision | Implemented at |
 | --- | --- |
-| `values:` means Helm values only, consumed exclusively by a pack's `chart.yaml` render; values on a chartless pack is CUBE-4016, raised before the pack's `#Values` schema validation. | `internal/pack/render.go:130-135` |
+| `values:` means Helm values only: validated against the pack's optional `#Values` CUE schema and merged into the `chart.yaml` render; values on a chartless pack is CUBE-4016, raised before that `#Values` validation. | `internal/pack/render.go:130-135`, `internal/pack/pack.go:253-275` |
+| `spec.engine.values` travels the same `RenderWith` entry point as pack values, so the chartless rule applies to it identically (see ADR-0019). | `internal/pack/enginepack.go:24` |
 | The chartless-values error is enforced at render time rather than load time, because chartlessness is only knowable after the ref is fetched. | `internal/pack/render.go:118-133` |
 | `packs[].extraManifests` is the uniform extras mechanism for every pack kind: a non-empty multi-doc YAML string that is parsed, `${GATEWAY_*}`-substituted, appended to the pack's objects and inventoried; invalid YAML is CUBE-4017 and a cleared field marshals as an absent key. | `internal/pack/render.go:129-146` |
-| Additional user-supplied objects for any pack kind arrive via `packs[].extraManifests`, `${GATEWAY_*}`-substituted and appended to the pack's rendered output. | `internal/pack/render.go:139` |
-| Helm pack value merge order is fixed as chart defaults ← `pack.cue`/`chart.yaml` defaults ← user `values:` ← substitution, with numbers normalized to `int`/`float64`. | `internal/pack/helm.go:142` and `365-387`, `internal/config/load.go:152-176` |
-| Pack values are merged in the fixed order pack defaults ← user values ← substitution. | `internal/pack/helm.go:142` |
+| Additional user-supplied objects for any pack kind arrive via `packs[].extraManifests`, `${GATEWAY_*}`-substituted and appended to the pack's rendered output. | `internal/pack/render.go:139-146` |
+| Helm pack value merge order is fixed as `chart.yaml` defaults (`ref.Values`) ← inline user `values:` ← `${GATEWAY_*}` substitution, with CUE `int64` decodes normalized to `int` at load time. | `internal/pack/helm.go:142` and `365-387`, `internal/config/load.go:152-176` |
 | Repo-delivered packs honor `values` and `extraManifests` exactly like OCI-delivered ones: cube.yaml is the source of truth and the Gitea repo is the editable working copy. | `internal/up/up.go:378` |
 | A pack installed with non-empty `values` or `extraManifests` is marked CUSTOMIZED on its Pack record and shown as a CUSTOMIZED printer column in `kubectl get packs`. | `internal/up/up.go:532` |
-| A pack's `customized` record field is always written as `"yes"` or `"no"` and never omitted. (Superseded in part — see History.) | `internal/up/up.go:532` |
-| Pack values layer via a fetched middle map combined by RFC 7386 merge-patch. (Superseded — see History.) | `internal/pack/render.go:129-137` |
-| Setting `valuesRef` on a chartless pack fails at render time with CUBE-4016. (Superseded — see History.) | `internal/pack/render.go:129-134` |
+| A pack's `customized` record field is always written as `"yes"` or `"no"` and never omitted. (Superseded in part — see History.) | `internal/pack/expose.go:98-105` |
+| Pack values layer via a fetched middle map combined by RFC 7386 merge-patch. (Superseded — never built; see History.) | — no code surface; design provenance only: `docs/archive/superpowers/specs/2026-07-19-cube-idp-valuesref-remote-config-design.md:161` |
+| Setting `valuesRef` on a chartless pack fails at render time with CUBE-4016. (Superseded — never built; see History.) | — no code surface; design provenance only: `docs/archive/superpowers/specs/2026-07-19-cube-idp-valuesref-remote-config-design.md:161` |
 
 ### Verification
 

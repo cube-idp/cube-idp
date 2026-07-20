@@ -43,13 +43,12 @@ resolved manifest digest, `git+<full-sha>` for git refs, and `dir:h1:<hash>` for
 directories and http/s3 getter fetches. A bare git ref without an explicit revision pin
 fails with CUBE-4007 before any fetch occurs.
 
-Fetching enforces symlink disabling, a path-traversal guard, an atomic tmp-dir plus
-rename, and a digest-keyed cache under `$HOME/.cache/cube-idp/packs`. Pack trees are
-guarded before hashing: `pack.GuardTree` strips symlinks under CUBE-4014 rather than
-rejecting the pack, so content hashes are computed over real files only.
-
-Pack manifests apply exactly as rendered, with no implicit namespace; every namespaced
-manifest must carry `metadata.namespace` itself.
+Getter fetches enforce symlink disabling (`DisableSymlinks: true`), symlink stripping via
+`pack.GuardTree` under CUBE-4014, an atomic tmp-dir plus rename, and a digest-keyed cache
+under `$HOME/.cache/cube-idp/packs`. `GuardTree` strips symlinks rather than rejecting the
+pack, so content hashes are computed over real files only; it is a symlink guard, not a
+path-containment check. Escaping paths are rejected separately on the OCI tar-extraction
+path, by `safeJoin` under CUBE-4012.
 
 Remote *file* refs are a distinct, unpinned path. `FetchFile` never parses `pack.cue`; a
 direct-file URL ref fetches that file, while a directory-shaped ref must contain exactly
@@ -66,13 +65,14 @@ and returns no pin.
   drift is detectable.
 * Good, because refusing unpinned git refs fails fast, before network I/O, instead of
   silently delivering whatever a branch points at today.
-* Good, because symlink stripping, the traversal guard and tmp-plus-rename mean a hostile
-  or malformed archive cannot escape the cache or leave a half-written entry behind.
+* Good, because symlink stripping and tmp-plus-rename mean a hostile or malformed archive
+  cannot leave a half-written cache entry behind, and OCI tar extraction rejects entries
+  that would escape the destination directory.
 * Bad, because stripping symlinks silently changes the pack tree: a pack that legitimately
   relies on a symlink is altered without an error, and the author only learns from the
   rendered result.
-* Bad, because "no implicit namespace" pushes work onto pack authors — a namespaced
-  manifest that omits `metadata.namespace` lands in `default` rather than failing.
+* Bad, because path containment is enforced only on the OCI extraction path; the go-getter
+  path relies on `DisableSymlinks` and the getter's own behaviour instead.
 * Bad, because file refs are deliberately unpinned, so provider config pulled from a
   remote URL is not reproducible the way packs are.
 * Bad, because the local-development and e2e paths depend on a sibling packs-repo
@@ -84,36 +84,37 @@ and returns no pin.
 
 | Decision | Implemented at |
 | --- | --- |
-| A pack reference resolves to a local directory, `oci://host/repo:tag`, `github.com/org/repo//path@rev`, or an explicit go-getter URL; any other scheme fails with CUBE-4001 listing the accepted forms. | `internal/pack/source.go:62-64` |
-| Pack pin strings are typed by prefix — `oci:<digest>`, `git+<sha>`, `dir:h1:<hash>` — and recorded in `Pack.Pinned`. | `internal/pack/source.go:87-96` |
+| A pack reference resolves to a local directory, `oci://host/repo:tag`, `github.com/org/repo//path@rev`, or an explicit go-getter URL; any other scheme fails with CUBE-4001 listing the accepted forms. | `internal/pack/source.go:65-67` |
+| Pack pin strings are typed by prefix — `oci:<digest>`, `git+<sha>`, `dir:h1:<hash>` — and recorded in `Pack.Pinned`. | `internal/pack/pack.go:59-66` (all three forms), `internal/pack/source.go:44`, `internal/pack/source.go:99` |
 | Bare git refs must carry an explicit revision pin; an unpinned bare git ref fails with CUBE-4007 before any fetch occurs. | `internal/pack/resolve.go:88` |
-| Ref fetching enforces symlink disabling, the GuardTree path-traversal guard (CUBE-4014), atomic tmp-dir plus rename, and a digest-keyed cache under `$HOME/.cache/cube-idp/packs`. | `internal/pack/getter.go:117-145` |
-| Official packs are published and consumed under `ghcr.io/cube-idp/packs/<name>` with no redundant repo segment. | `internal/pack/catalog.go:25` |
-| Default pack refs emitted by the CLI and the repo's own `cube.yaml` point at that same GHCR namespace. | `internal/config/types.go:117-118` |
+| Getter fetching enforces `DisableSymlinks: true`, symlink stripping via `GuardTree` under CUBE-4014, and atomic tmp-dir plus rename into a cache under `$HOME/.cache/cube-idp/packs`. | `internal/pack/getter.go:115`, `internal/pack/getter.go:123`, `internal/pack/getter.go:137`, `internal/pack/getter.go:143`, `internal/pack/guards.go:14-38` |
+| OCI tar extraction rejects entries whose path would escape the destination directory, under CUBE-4012. | `internal/pack/source.go:288-296` |
+| Official packs are published and consumed under `ghcr.io/cube-idp/packs/<name>` with no redundant repo segment. | `internal/pack/catalog.go:43-45` (stated form), `internal/config/types.go:249-252` (actual refs) |
+| Default pack refs emitted by the CLI and the repo's own `cube.yaml` point at that same GHCR namespace. | `internal/config/types.go:248-252` (default gateway and pack refs), `internal/config/types.go:116-119` (engine pack defaults) |
 | `cube-idp init --local` points at a packs-repo checkout rather than the cube-idp repo. | `cmd/init.go:143` |
 | The e2e suite resolves packs via `CUBE_IDP_E2E_PACKS_DIR` (default `../cube-idp-packs/packs`) and skips with an actionable message when absent. | `tests/e2e/e2e_test.go:451` |
-| Pack manifests apply exactly as rendered with no implicit namespace, so every namespaced manifest must carry `metadata.namespace`. | `internal/apply/applier.go`, `internal/pack/helm.go:182-190` |
 | `FetchFile` never parses `pack.cue`; a ref resolving to a directory must contain exactly one top-level `*.yaml`/`*.yml` file or the fetch fails. | `internal/pack/fetchfile.go:13-92` |
 | A direct-file URL ref fetches that file, while a directory-shaped ref must contain exactly one top-level `*.yaml`/`*.yml` file. | `internal/pack/fetchfile.go:20-90` |
-| An empty fetched document decodes to an empty non-nil map; a valid YAML document that is not a mapping is a resolve error. | `internal/cluster/compose/compose.go:34-48` |
+| An empty fetched document decodes to an empty non-nil map; a valid YAML document that is not a mapping is a resolve error. | `internal/cluster/compose/compose.go:35-48` |
 | `cube-idp pack list` without `--available` is a typed CUBE-0007 refusal rather than invented output. | `cmd/pack.go:192` |
 | A `cube.yaml` still containing `spec.engine.tuning` is rejected at load time with CUBE-0012 pointing at `engine.values`. | `internal/config/load.go:97` |
-| A dependency cycle is detected by a Kahn topological sort over the full explicit-plus-implicit graph and fails with CUBE-4019 printing the cycle path; a self-dependency is a 1-cycle and fails the same way. | `internal/pack/depgraph.go:100-140` |
-| The cycle is detected before any pack is delivered and surfaced by both `up` and `diff`; `diff` validates the same graph but discards the delivery order. | `internal/pack/depgraph.go:142` |
+| A dependency cycle is detected by a Kahn topological sort over the full explicit-plus-implicit graph and fails with CUBE-4019 printing the cycle path; a self-dependency is a 1-cycle and fails the same way. | `internal/pack/depgraph.go:100-129` (Kahn loop, cycle detected at 123-125), `internal/pack/depgraph.go:141-145` (CUBE-4019 error) |
+| The cycle is detected before any pack is delivered and surfaced by both `up` and `diff`; `diff` validates the same graph but discards the delivery order. | `internal/up/up.go:607`, `internal/diff/diff.go:257` |
 | For engines without native ordering, `up` gates each dependent pack on a bounded health check of its dependencies, failing with CUBE-3011 on timeout. | `internal/up/up.go:632-635` |
-| cube-idp ships no OpenChoreo integration in any form; the `kgateway` and `openbao` packs are parked with it. | `internal/config/types.go:249-252` |
+| cube-idp ships no OpenChoreo integration in any form, and neither `kgateway` nor `openbao` appears anywhere in the codebase. The reason those packs are not shipped is not recorded in any source in this repo. | Absence claim — evidenced by the grep in Verification checkbox 9, not by a line citation. |
 
 ### Verification
 
 - [ ] `internal/pack/source.go` rejects a ref containing `://` with an unrecognised scheme under `diag.CodePackRefInvalid` (CUBE-4001), and the fix line names all four accepted forms.
-- [ ] `internal/pack/guards.go` `GuardTree` removes symlinks from a fetched tree and raises `diag.CodePackGuardTrip` (CUBE-4014, `internal/diag/codes.go:105`) only when removal fails — it never raises CUBE-4001.
-- [ ] `internal/pack/getter.go:123` sets `DisableSymlinks: true`, `getter.go:137` calls `GuardTree(tmp)`, and `getter.go:144` renames the tmp dir into place.
+- [ ] `internal/pack/guards.go` `GuardTree` removes symlinks from a fetched tree and raises `diag.CodePackGuardTrip` (CUBE-4014, `internal/diag/codes.go:105`) only when removal fails — it never raises CUBE-4001. It performs no `..`/containment check.
+- [ ] `internal/pack/getter.go:123` sets `DisableSymlinks: true`, `getter.go:137` calls `GuardTree(tmp)`, and `getter.go:143` renames the tmp dir into place.
+- [ ] `internal/pack/source.go:288-296` `safeJoin` rejects tar entries escaping the destination directory under `diag.CodePackOCIErr` (CUBE-4012), and is called only from the OCI extraction path (`source.go:249`, `source.go:270`).
 - [ ] `internal/pack/resolve.go:88` returns `diag.CodePackRefUnpin` (CUBE-4007) for an unpinned git pack ref before any fetch.
 - [ ] `internal/pack/source.go:99` builds the `dir:` pin from `dirhash.Hash1`, and `internal/pack/pack.go:59-66` documents all three pin forms.
-- [ ] `grep -rn "SetNamespace" internal/apply` returns no call site (only the error message at `internal/apply/inventory.go:164`).
+- [ ] `grep -rn "SetNamespace" internal/apply` returns no hits.
 - [ ] `internal/pack/fetchfile.go` contains no `pack.cue` parse, and `singleYAML` errors unless exactly one top-level `*.yaml`/`*.yml` is present.
-- [ ] `internal/cluster/compose/compose.go:45-47` normalises a JSON-null decode to a non-nil empty map, and lines 41-44 return CUBE-1005 for a non-mapping document.
-- [ ] `internal/pack/depgraph.go:142` raises `diag.CodePackDepCycle` (CUBE-4019, `internal/diag/codes.go:113`); `internal/up/up.go:607` and `internal/diff/diff.go:257` both call `pack.ResolveOrder`.
+- [ ] `internal/cluster/compose/compose.go:46-48` normalises a JSON-null decode to a non-nil empty map, and lines 40-45 return CUBE-1005 for a non-mapping document.
+- [ ] `internal/pack/depgraph.go:141-145` `cycleError` raises `diag.CodePackDepCycle` (CUBE-4019, `internal/diag/codes.go:113`), reached from the `picked == -1` branch at `depgraph.go:123-125`; `internal/up/up.go:607` and `internal/diff/diff.go:257` both call `pack.ResolveOrder`.
 - [ ] `grep -rin "openchoreo\|kgateway\|openbao" internal cmd` returns no hits.
 
 ## History

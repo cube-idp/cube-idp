@@ -34,20 +34,25 @@ persistent root string flag defaulting to `auto`, backed by the `CUBE_IDP_PROGRE
 environment variable, with `--plain` retained permanently as an alias for
 `--progress=plain`. Mode resolution happens exactly once, in `PersistentPreRunE`
 via `ui.Resolve`; an unrecognized value produces a preflight diagnostic error.
+Resolution runs first and validation second, deliberately, so a bad-flag
+diagnostic renders in the environment-appropriate mode.
 
-A rich interactive experience is the default on a real TTY. Non-TTY and CI runs are
-auto-detected and receive byte-stable plain output, with a structured JSON event
-stream available on demand.
+Styled output is the default on a real TTY: the live step-tree renderer on
+commands that run through `ui.RunPipeline`, styled-static elsewhere. Non-TTY and
+CI runs are auto-detected and receive byte-stable plain output, with a structured
+JSON event stream available on demand.
 
 Color is governed separately from mode. `NO_COLOR` is honored only when non-empty
 and strips color at the writer without altering layout, glyphs, or the resolved
 mode. `CLICOLOR_FORCE=1` re-enables color, and `--color=auto|always|never` overrides
 all environment variables.
 
-Machine-readable output is split by command shape: long-running commands (`up`,
-`down`) emit a streaming event stream under `--progress=json`, while
+Machine-readable output is split by command shape: commands that route through
+`ui.RunPipeline` (`up`, `down`, `vendor`, `sync`, `repo create`, `plugin`,
+`pack push`) emit a streaming event stream under `--progress=json`, while
 request/response commands (`status`, `doctor`, `get secrets`) emit a single final
-JSON document under `--output json`. The event stream is written to stdout as JSON
+JSON document under `--output json`; `docs/machine-readable-output.md` carries the
+authoritative command list. The event stream is written to stdout as JSON
 Lines with exactly one event object per line, each carrying a `"v":1` version field
 and an RFC3339Nano `"ts"` field, never batched and never pretty-printed, documented
 in `docs/machine-readable-output.md`.
@@ -64,9 +69,11 @@ requires a changelog entry before the freeze.
   drift with terminal capabilities.
 * Good, because separating color from mode means an uncolored terminal keeps the full
   styled layout instead of degrading to the phase-1 log format.
-* Good, because `omitempty` on every added field keeps pre-existing JSONL lines
-  byte-identical, so additive schema growth does not break existing consumers.
-* Bad, because the resolution ladder has eight rungs plus a separate color policy
+* Good, because `omitempty` on fields added to existing record types keeps
+  pre-existing JSONL lines byte-identical, so additive schema growth does not
+  break existing consumers.
+* Bad, because the resolution ladder has eight conditions plus a default
+  (nine documented rungs) plus a separate color policy
   ladder; the interaction of `--color`, `NO_COLOR`, and `CLICOLOR_FORCE` is only
   discoverable from tests and comments.
 * Bad, because two machine-readable shapes (line stream and document) means two
@@ -84,25 +91,27 @@ requires a changelog entry before the freeze.
 | --- | --- |
 | The progress surface is a single BuildKit-style knob `--progress=auto\|plain\|live\|json` governed by a `CUBE_IDP_PROGRESS` env policy, with `--plain` kept permanently as an alias for `--progress=plain`. | `cmd/root.go:70-73` |
 | `--progress` is a persistent root string flag defaulting to `auto`, backed by `CUBE_IDP_PROGRESS` (accepting plain/live/json; auto/empty/unrecognized fall through the ladder), validated in `PersistentPreRunE` where an unknown value produces a diag preflight error. | `cmd/root.go:72-73` |
-| A rich interactive TUI is the default for human/TTY runs, while CI, non-TTY and `--plain` runs get byte-stable plain output plus a JSON event-stream option. | `internal/ui/ui.go:44-64` |
+| Styled output is the default on a TTY — the live step-tree renderer on `RunPipeline` commands, styled-static elsewhere — while CI, non-TTY and `--plain` runs get byte-stable plain output plus a JSON event-stream option. | `internal/ui/ui.go:137`; `internal/ui/pipeline.go:78-89,97-110` |
 | Non-TTY stdout and a non-empty `$CI` auto-detect down to `ModePlain`; otherwise the resolved default is `ModeStyled`. | `internal/ui/ui.go:131-137` |
 | Mode resolution is a single ladder evaluated exactly once via `ui.Resolve`, highest matching rung winning. | `internal/ui/ui.go:111-137` |
-| `NO_COLOR` is honored only when non-empty and strips color without affecting layout or glyphs; `CLICOLOR_FORCE=1` re-enables color; `--color=auto\|always\|never` overrides all environment variables. | `internal/ui/ui.go:88-90,141-143`; `cmd/output.go:29-40` |
-| Machine-readable output is a streaming event stream for long-running commands (`up`/`down`) while request/response commands (`status`, `doctor`, `get secrets`) emit a single final JSON document under `--output json`. | `cmd/output.go:78-96` |
+| `NO_COLOR` is honored only when non-empty and strips color without affecting layout or glyphs; `CLICOLOR_FORCE` (non-empty) re-enables color. | `internal/ui/ui.go:145-150,181-215` |
+| `--color=auto\|always\|never` takes precedence over `NO_COLOR` and `CLICOLOR_FORCE` in the color ladder; the flag value itself is only validated in `cmd/output.go`. | override precedence: `internal/ui/ui.go:181-201`; validation: `cmd/output.go:34-42` |
+| Machine-readable output is a streaming event stream on `RunPipeline` commands while request/response commands (`status`, `doctor`, `get secrets`) emit a single final JSON document under `--output json`. | stream: `internal/ui/pipeline.go:78-89`; document: `cmd/output.go:76-94` |
 | The JSON event stream is emitted on stdout as JSON Lines, exactly one event object per line, each carrying `"v":1` and an RFC3339Nano `"ts"`, never batched and never pretty-printed. | `internal/ui/render/json.go:34-42` |
 | The JSON event schema is labeled v1-EXPERIMENTAL until the v1 config freeze. | `internal/ui/render/json.go:12-15` |
-| JSONL changes are additive only — `msg`/`dur_ms` on `step_failed`, `omitempty` `idx`/`of` on steps, and a new epilogue record — legal under the experimental window and requiring a changelog note before the freeze. | `internal/ui/render/json.go:103-112,138-139` |
+| JSONL changes are additive only — `msg`/`dur_ms` on `step_failed`, `omitempty` `idx`/`of` on steps, and a new epilogue record — legal under the experimental window and requiring a changelog note before the freeze. | `internal/ui/render/json.go:99-113,131-141` (emitted at `json.go:59`) |
 
 ### Verification
 
 - [ ] `cmd/root.go:70-73` registers `--plain` as a persistent bool documented as a permanent alias for `--progress=plain`, and `--progress` as a persistent string defaulting to `"auto"`.
 - [ ] `cmd/output.go:19-27` (`validateProgressFlag`) returns `diag.CodeBadFlagValue` for any value outside `""|auto|plain|live|json`, and `cmd/root.go:64` calls it inside `PersistentPreRunE`.
 - [ ] `internal/ui/ui.go:111-137` (`Resolve`) is the only mode ladder and never reads `r.NoColor`.
-- [ ] `internal/ui/ui.go:141-150` (`EnvColorPolicy`) treats `NO_COLOR` as set only when present **and** non-empty, and `CLICOLOR_FORCE` as set when non-empty.
-- [ ] `cmd/output.go:29-40` (`validateColorFlag`) accepts only `""|auto|always|never`.
+- [ ] `internal/ui/ui.go:145-150` (`EnvColorPolicy`) treats `NO_COLOR` as set only when present **and** non-empty, and `CLICOLOR_FORCE` as set when non-empty.
+- [ ] `internal/ui/ui.go:181-215` (`colorOff`/`colorForce`/`ColorEnabled`) applies the `--color` flag ahead of `NO_COLOR`, and `NO_COLOR` ahead of `CLICOLOR_FORCE`.
+- [ ] `cmd/output.go:34-42` (`validateColorFlag`) accepts only `""|auto|always|never`.
 - [ ] `internal/ui/ui_test.go` `TestColorEnabledLadder` pins `--color=never` beating `CLICOLOR_FORCE`, `--color=always` beating `NO_COLOR`, and `NO_COLOR` beating `CLICOLOR_FORCE`.
 - [ ] `internal/ui/render/json.go:34-42` emits one `json.Marshal`'d object per event followed by `'\n'`, with every envelope embedding `jsonHead{V:1, TS: RFC3339Nano, Type}` — no `MarshalIndent`, no batching.
-- [ ] `internal/ui/render/json.go:103-112` tags `dur_ms`, `idx`, `of` and `step_failed`'s `msg`/`dur_ms` with `omitempty`.
+- [ ] `internal/ui/render/json.go:103-105,111-112` tags `dur_ms`, `idx`, `of` and `step_failed`'s `msg`/`dur_ms` with `omitempty`.
 - [ ] `cmd/output.go:44-56` pins `docSchemaVersion = 1` and registers `-o/--output` whose only recognized value is `json` on request/response commands.
 - [ ] `internal/ui/pipeline.go:78-89` routes `ModeJSON` to `render.JSON`, `ModeLive`/TTY-`ModeStyled` to the live renderer, and everything else to `render.Plain`.
 - [ ] `docs/machine-readable-output.md:3-9` labels both schemas EXPERIMENTAL until the v1 `cube.yaml` freeze.
@@ -133,6 +142,6 @@ Member origins:
 - `docs/archive/superpowers/specs/2026-07-14-cube-idp-ux-design.md:527` — the resolution ladder
 - `docs/archive/superpowers/specs/2026-07-14-cube-idp-ux-design.md:756` — the stream/document split
 - `docs/archive/superpowers/specs/2026-07-15-cube-idp-phase4-first-release-design.md:69` — the JSON Lines contract
-- `docs/archive/superpowers/specs/2026-07-16-tui-interactive-layer-design.md:416` — the color policy
+- `docs/archive/superpowers/specs/2026-07-16-tui-interactive-layer-design.md:367-371` — the color policy
 
 See also `docs/machine-readable-output.md` for the schemas themselves.

@@ -42,8 +42,12 @@ The engine contract test asserts that every implementation translates a non-empt
 `DependsOn` into *some* engine-native ordering intent, forcing future engines to answer the
 question consciously rather than inherit a default.
 
-There is no in-cluster `Cube` or `CubeLock` record. The gateway dependency edge is
-render-derived, and `cube.lock` remains a local `apiVersion`/`kind` file.
+This ADR governs only the seam-level translation: the `DependsOn` parameter on
+`DeliverGit`, `OrdersDeliveries()`, and the two per-engine shapes (flux `spec.dependsOn`
+vs. argocd annotation plus caller wave gating). See ADR-0018 for the authoritative
+statement of the `Engine` method set and the shared contract test. See ADR-0005 for the
+authoritative statement of the render-derived gateway dependency edge, and ADR-0033 for
+`cube.lock`'s file-not-CRD form.
 
 ## Consequences
 
@@ -72,13 +76,12 @@ render-derived, and `cube.lock` remains a local `apiVersion`/`kind` file.
 | Decision | Implemented at |
 | --- | --- |
 | `Engine` exposes `OrdersDeliveries() bool`, declaring whether the engine orders deliveries natively; flux returns true and therefore never enters the wave gate. | `internal/engine/engine.go:99` |
-| Engines translate pack dependencies below the engine seam and self-describe ordering capability, so `up` never type-switches on engine type and wave-gates delivery itself whenever the method returns false. | `internal/engine/engine.go:99` |
+| Engines self-describe ordering capability below the engine seam, so `up` branches on `OrdersDeliveries()` rather than type-switching on engine type; when it returns false `up` wave-gates delivery itself, blocking on each dependency's health before applying the dependent pack. | `internal/up/up.go:632` |
 | `Engine.DeliverGit` widens to `DeliverGit(ctx, name string, src GitSource, dependsOn []string)`, forcing every implementation and fake to accept resolved dependencies. | `internal/engine/engine.go:70` |
 | The flux engine adds name-only `spec.dependsOn` entries (`cube-idp-<name>`, same `flux-system` namespace) to the Kustomization only when dependencies exist, and skips the wave machinery entirely. | `internal/engine/flux/delivergit.go:53` |
 | Flux dependency references are name-only because every cube-idp Kustomization lives in the `flux-system` namespace. | `internal/engine/flux/deliver.go:64` |
 | The argocd engine reports `OrdersDeliveries() == false` and records dependencies as the Application annotation `cube-idp.dev/depends-on` (comma-separated), leaving `syncPolicy` untouched. | `internal/engine/argocd/deliver.go:50` |
 | The engine contract test asserts that every implementation translates a non-empty `DependsOn` into engine-native ordering intent. | `internal/engine/contract/contract.go:139` |
-| There is no in-cluster `Cube` record; the gateway dependency edge is render-derived and argocd ordering is `up`'s own documented wave gate. | `internal/pack/depgraph.go:67` |
 | Pack dependencies are declared and resolved into a graph with cycle detection and translated per delivery engine. *(Superseded in part — see History.)* | `internal/pack/depgraph.go:29` |
 
 ### Verification

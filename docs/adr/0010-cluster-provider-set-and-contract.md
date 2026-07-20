@@ -27,16 +27,22 @@ rather than against three special cases — and so that capabilities only some b
 cube-idp compiles in exactly three cluster providers — `kind`, `k3d`, and `existing` —
 selected by a factory that rejects any unknown provider value with CUBE-1001. Every provider
 implements the fixed `Provider` interface (`Ensure`, `Delete`, `Exists`, `Kubeconfig`,
-`Diagnose`) and must satisfy a shared contract test: `Ensure` is idempotent, `Exists` is
-truthful, `Kubeconfig` is non-empty for a live cluster, `Delete` is clean, and `Diagnose`
-never panics and reports no error-severity findings on a healthy cluster.
+`Diagnose`). Every cluster-creating provider (`kind`, `k3d`) must additionally satisfy a
+shared contract test: `Ensure` is idempotent, `Exists` is truthful, the returned `Conn`'s
+REST config must reach a live API server (a discovery `ServerVersion` round-trip),
+`Kubeconfig` is non-empty for a live cluster, `Delete` is clean, and `Diagnose` never panics
+and reports no error-severity findings on a healthy cluster. `existing` is exempt: the
+contract asserts a pre-state of `Exists == false` and then creates the cluster, and
+`existing` never creates one.
 
 Optional capabilities are separate interfaces — `ImageLoader`, `LogSink`/`Loggable` — that
 only some providers implement. Consequently `up --bundle` against `provider: existing` fails
 fast with CUBE-7005 before any cluster mutation, and container-runtime detection is delegated
 to kind and k3d rather than coupling cube-idp to a docker client. New providers arrive as
-in-tree pull requests; there is no plugin protocol. Read-only commands are guarded by
-`requireClusterExists` (CUBE-1004) so they never implicitly create a cluster.
+in-tree pull requests; there is no plugin protocol. `requireClusterExists` (CUBE-1004) is
+called before `Ensure` by every command except `up`, so that no command other than `up`
+creates a cluster implicitly; it is a no-op for provider `existing`, whose `Ensure` never
+creates anything.
 
 ## Consequences
 
@@ -62,25 +68,33 @@ in-tree pull requests; there is no plugin protocol. Read-only commands are guard
 | Decision | Implemented at |
 | --- | --- |
 | The cluster provider set is `kind`, `k3d`, and `existing`; an unknown provider value is rejected at factory construction with CUBE-1001. | `internal/cluster/provider.go:90` |
-| Every cluster provider satisfies a shared behavioral contract: idempotent `Ensure`, truthful `Exists`, non-empty `Kubeconfig` for a live cluster, clean `Delete`, and a `Diagnose` that never panics and reports no error-severity findings on a healthy cluster. | `internal/cluster/contracttest/contracttest.go:23` |
+| Every cluster-creating provider (kind, k3d) satisfies a shared behavioral contract: idempotent `Ensure`, truthful `Exists`, a REST config that reaches a live API server, non-empty `Kubeconfig`, clean `Delete`, and a `Diagnose` that never panics and reports no error-severity findings on a healthy cluster. The contract is gated behind `CUBE_IDP_PROVIDER_E2E=1`; `existing` is exempt because the contract creates and deletes a cluster. | `internal/cluster/contracttest/contracttest.go:23`, called from `internal/cluster/kindp/contract_test.go:20` and `internal/cluster/k3dp/contract_test.go:15` |
 | The `Provider` interface is exactly `Ensure` (idempotent), `Delete`, `Exists`, `Kubeconfig`, and `Diagnose` (which feeds `doctor`). | `internal/cluster/provider.go:53-60` |
-| `requireClusterExists` guards side-effect-free commands for the cluster-creating providers (kind and k3d) with CUBE-1004, so read-only commands — including `repo create` — never implicitly create a cluster. | `cmd/root.go:238` |
+| `requireClusterExists` returns nil for provider `existing` and otherwise fails with CUBE-1004 when the cluster is absent; it is called before `Ensure` by `status`, `get`, `sync`, `cnoe`, `down` and `repo create`, so no command other than `up` creates a cluster implicitly. | `cmd/root.go:238`, called at `cmd/repo.go:89` |
 | `cluster.ImageLoader` is an optional capability implemented by kindp and k3dp but not by `existing`; `up --bundle` with `provider: existing` fails fast with CUBE-7005 before any mutation. | `internal/cluster/provider.go:74-86` |
 | The kind and k3d providers stream provisioning narration into cube-idp's StepLog vocabulary through a `cluster.LogSink`/`cluster.Loggable` seam, with kind verbosity above V(0) dropped. | `internal/cluster/provider.go:24-39` |
-| Container-runtime handling is delegated to kind/k3d, which auto-detect docker/podman/nerdctl; `existing` selects its kubeconfig context via client-go `clientcmd` honoring `KUBECONFIG` rather than hardcoding `~/.kube/config`. | `internal/cluster/existing.go:20-23` |
+| Container-runtime handling is delegated to the provisioning libraries rather than to a docker client in cube-idp: the kind provider auto-detects the node backend (docker/podman/nerdctl). | `internal/cluster/kindp/kind.go:42` |
+| `existing` selects its kubeconfig context via client-go `clientcmd` honoring `KUBECONFIG` rather than hardcoding `~/.kube/config`. | `internal/cluster/existing.go:20-23` |
 | Provider and extension implementations are compiled into the binary with no plugin protocol; new implementations arrive as pull requests. | `internal/cluster/provider.go:1-2` |
-| No new cluster providers (Talos, vcluster), no Extism/Wasm plugin RPC, and no in-cluster cube-idp operator ship; all remain deferred and gated on demand evidence. | `internal/cluster/provider.go:89-102` |
+| No Talos or vcluster provider, no Extism/Wasm plugin RPC, and no in-cluster cube-idp operator have shipped. | Absence, not a line: `grep -rniE "extism\|wasm\|go-plugin\|talos\|vcluster" internal/ cmd/` matches only the forward-looking comment at `internal/cluster/contracttest/contracttest.go:2`; the factory at `internal/cluster/provider.go:89-102` admits only kind, k3d and existing. |
 
 ### Verification
 
 - [ ] `internal/cluster/provider.go:90` — `New` switches over exactly `"kind"`, `"k3d"`,
       `"existing"`, and its default arm returns `diag.CodeClusterTypeUnknown` (CUBE-1001).
-- [ ] `internal/config/schema.cue:9` pins the same enum: `provider: *"kind" | "existing" | "k3d"`.
+- [ ] `internal/config/schema.cue:9` pins the same three-value enum for the hub cluster:
+      `provider: *"kind" | "existing" | "k3d"`. The spoke schema at
+      `internal/config/schema.cue:45` deliberately narrows to `provider: *"kind" | "existing"`
+      (k3d spokes unsupported), so the CUE schema is not one uniform enum even though
+      `cluster.New` accepts all three for any spec.
 - [ ] `internal/cluster/provider.go:53-60` declares `type Provider interface` with exactly the
       five methods `Ensure`, `Delete`, `Exists`, `Kubeconfig`, `Diagnose` — no more.
 - [ ] `internal/cluster/contracttest/contracttest.go:23` (`Run`) exercises pre-state `Exists`
-      false, `Ensure`, re-`Ensure` idempotency, `Exists` true, non-empty `Kubeconfig`,
-      error-free `Diagnose`, then `Delete` and `Exists` false.
+      false, `Ensure`, a discovery `ServerVersion` round-trip proving `conn.REST` reaches a
+      live API server (`contracttest.go:53-63`), re-`Ensure` idempotency, `Exists` true,
+      non-empty `Kubeconfig`, error-free `Diagnose`, then `Delete` and `Exists` false. It is
+      skipped unless `CUBE_IDP_PROVIDER_E2E=1` and is called only from
+      `internal/cluster/kindp/contract_test.go:20` and `internal/cluster/k3dp/contract_test.go:15`.
 - [ ] `internal/cluster/provider.go:84-85` asserts `ImageLoader` for `*kindp.Kind` and
       `*k3dp.K3d`, and no equivalent assertion exists for `existing`.
 - [ ] `internal/up/up.go:154-160` type-asserts `prov.(cluster.ImageLoader)` and returns
@@ -96,7 +110,8 @@ in-tree pull requests; there is no plugin protocol. Read-only commands are guard
 - [ ] `internal/cluster/existing.go:21` uses `clientcmd.NewDefaultClientConfigLoadingRules()`
       and `~/.kube/config` appears nowhere in that file.
 - [ ] Grepping `internal/` and `cmd/` for `hashicorp/go-plugin`, a gRPC provider protocol, or
-      extism/wasm plugin RPC returns nothing.
+      extism/wasm plugin RPC returns nothing; `talos|vcluster` matches only the
+      forward-looking package comment at `internal/cluster/contracttest/contracttest.go:2`.
 
 ## History
 

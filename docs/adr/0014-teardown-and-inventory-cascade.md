@@ -36,10 +36,10 @@ dependency-agnostic — it does not honour declared pack dependency order — an
 argocd engine's self-Application deliberately carries no resources-finalizer, so a
 cascade delete cannot tear the engine down from inside.
 
-`down` also cleans up the kubeconfig context it created, reverts any `cube-idp trust`
-changes on both paths, deletes cube-created spoke clusters best-effort after hub
-teardown while leaving `existing` spoke clusters untouched, and reports the actual
-cluster provider in its output rather than always naming kind.
+`down` reverts any `cube-idp trust` changes on both paths, deletes cube-created kind
+spoke clusters best-effort after hub teardown — unless `--keep-cluster` was passed,
+which preserves spokes too — while leaving `existing` spoke clusters untouched, and
+reports the actual cluster provider in its output rather than always naming kind.
 
 ## Consequences
 
@@ -50,7 +50,7 @@ cluster provider in its output rather than always naming kind.
 * Good, because the missing resources-finalizer on the self-Application makes the
   ordering safe by construction rather than by careful sequencing.
 * Good, because `down` is honest about the machine-level state it mutated: trust
-  store, CoreDNS, kubeconfig context, and spoke clusters are all addressed.
+  store, CoreDNS, and spoke clusters are all addressed.
 * Bad, because the cascade ignores dependency order, so packs with runtime coupling
   may see dependents and dependencies deleted in an arbitrary relative order; only
   reverse-apply order is guaranteed.
@@ -58,6 +58,10 @@ cluster provider in its output rather than always naming kind.
   survives teardown silently.
 * Bad, because `existing` spoke clusters retain cube-idp RBAC and namespaces that the
   user must clean up manually.
+* Bad, because a CoreDNS revert failure aborts teardown before any inventory deletion
+  happens, stranding the whole recorded inventory in the cluster.
+* Bad, because a failing `trustUninstall` still exits `down` non-zero even though the
+  cluster-side teardown has already succeeded by that point.
 
 ## Implementation Status
 
@@ -69,11 +73,11 @@ cluster provider in its output rather than always naming kind.
 | The argocd self-Application deliberately carries no resources-finalizer, so a cascade delete cannot tear the engine down from inside (normal pack Applications do carry it). | `internal/engine/argocd/deliverself.go:25-27`, contrast `internal/engine/argocd/deliver.go:48` |
 | `down` is dependency-agnostic: `eng.Uninstall` runs first, then `a.DeleteAll` performs bulk inventory deletion with no dependency ordering. | `cmd/down.go:197`, `cmd/down.go:212` |
 | Inventory deletion runs in reverse apply order — objects applied later are deleted first. | `internal/apply/inventory.go:158-166` |
-| `provider: existing` or `--keep-cluster` takes the cascade arm and returns without touching the cluster; otherwise `prov.Delete` removes the kind/k3d cluster (which also removes the kubeconfig context it created). | `cmd/down.go:168`, `cmd/down.go:222` |
-| Output names the actual provider rather than hardcoding "kind". | `cmd/down.go:220`, `cmd/down.go:225` |
-| The CoreDNS rewrite is reverted on the keep-cluster path, where the cluster survives and nothing else would undo it. | `cmd/down.go:206` |
-| `cube-idp trust`'s OS trust-store install is reverted on both teardown paths, best-effort so a broken trust state cannot fail `down`. | `cmd/down.go:232-261` |
-| Cube-created kind spoke clusters are deleted best-effort after hub teardown; `existing` spokes are left untouched with a manual-cleanup note. | `cmd/down.go:134-155` |
+| `provider: existing` or `--keep-cluster` takes the cascade arm and returns without touching the cluster; otherwise `prov.Delete` removes the kind/k3d cluster. | `cmd/down.go:168`, `cmd/down.go:222` |
+| Output names the actual provider rather than hardcoding "kind". | `cmd/down.go:221`, `cmd/down.go:226` |
+| The CoreDNS rewrite is reverted on the keep-cluster path *before* the cascade, and its failure aborts `down` prior to `DeleteAll`. | `cmd/down.go:205-210` |
+| `cube-idp trust`'s OS trust-store install is reverted on both teardown paths; an unreadable trust dir/state degrades to a warning, but a failing `trustUninstall` still fails `down` (`cmd/down.go:257-258`). | `cmd/down.go:243-263` |
+| Cube-created kind spoke clusters are deleted best-effort after hub teardown, except under `--keep-cluster`, which keeps them; `existing` spokes are left untouched with a manual-cleanup note. | `cmd/down.go:134-155`, `cmd/down.go:139-142` |
 
 ### Verification
 
@@ -84,7 +88,8 @@ cluster provider in its output rather than always naming kind.
       `resources-finalizer.argocd.argoproj.io` on pack Applications.
 - [ ] `cmd/down.go:168` branches on `cube.Spec.Cluster.Provider == "existing" || keepCluster`
       and that arm returns before any `prov.Delete` call.
-- [ ] `cmd/down.go` contains no `DependsOn`/dependency-ordering logic around `DeleteAll`.
+- [ ] `grep -n "DependsOn\|dependsOn\|dependency" cmd/down.go` returns no matches
+      (dependency ordering lives only in `up`'s wave gate, not teardown).
 - [ ] `internal/apply/inventory.go` iterates its deletable set backwards
       (`for i := len(deletable) - 1; i >= 0; i--`).
 - [ ] `cmd/down.go` progress/completion messages interpolate
@@ -100,6 +105,11 @@ Note the known asymmetry: Flux's `Uninstall`
 Kustomizations/OCIRepositories and waits for prune finalizers so workloads are removed
 while its controllers are still alive. The inventory-driven cascade is the common
 mechanism; engines may still do engine-specific pre-work in `Uninstall`.
+
+Kubeconfig context removal is left to the vendored kind/k3d libraries on cluster
+delete; cube-idp does not manage it, and the cascade arm (`existing`/`--keep-cluster`)
+does not touch the kubeconfig at all. The `down` dry-run preview does mention the
+context alongside the cluster it would delete (`cmd/down.go:101-102`).
 
 Origin: mined from the archived planning corpus (`docs/archive/superpowers/`) during
 the 2026-07-20 documentation audit; the underlying statements were validated against

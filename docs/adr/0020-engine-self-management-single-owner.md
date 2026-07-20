@@ -30,13 +30,14 @@ Engine self-management is opt-in via the boolean `spec.engine.selfManage`. It is
 flipped on by default and never always-on.
 
 When enabled, cube-idp renders the engine pack itself and pushes the finished YAML as the
-artifact `cube-engine:latest` to the in-cluster zot registry — never to Gitea — so the
+artifact `packs/cube-engine:latest` to the in-cluster zot registry — never to Gitea — so the
 engine never sees customization as a concept. It then attaches an engine-native
 self-source with pruning disabled: for Flux, an `OCIRepository` plus a `Kustomization` in
 `flux-system`; for Argo CD, an `Application` over its own namespace.
 
-Direct server-side apply of engine objects happens only on first install and on
-unhealthy-engine recovery. Once the self-source exists, later `up` runs render, push and
+When `selfManage` is on, direct server-side apply of engine objects happens only on first
+install and on unhealthy-engine recovery; when it is off, every `up` SSAs the engine as
+before. Once the self-source exists, later `up` runs render, push and
 poke, but never SSA — preserving a single owner. Enabling `selfManage` never by itself
 restarts the engine, because the SSA'd state and the first pushed artifact are
 byte-identical renders of the same objects. When `selfManage` is false the engine's
@@ -65,8 +66,8 @@ pack and emitting an engine Pack-record identity stub.
   through the unhealthy-at-start escape hatch rather than by a plain re-apply.
 * Bad, because pruning must stay disabled on the self-source, so objects removed from the
   engine pack are not garbage-collected by the engine.
-* Bad, because two code paths now exist for engine install, and both must be kept
-  byte-compatible with the same render.
+* Bad, because one render now feeds two delivery paths — direct SSA and the pushed
+  artifact — and they must not diverge.
 
 ## Implementation Status
 
@@ -75,29 +76,28 @@ pack and emitting an engine Pack-record identity stub.
 | Decision | Implemented at |
 | --- | --- |
 | Engine self-management is opt-in via the boolean `engine.selfManage` — never defaulted on, never always-on. | `internal/config/types.go:111` |
-| Self-management is always sourced from the in-cluster zot registry (`oci://<zot>/cube-engine`), never from Gitea, with pruning disabled on the self-source. | `internal/config/types.go:105` |
-| Under `selfManage`, cube-idp renders the engine manifests itself and pushes the finished YAML as the `cube-engine` artifact, so the engine never sees customization as a concept. | `internal/up/up.go:1249` |
-| The self-source objects are a Flux `OCIRepository` + `Kustomization` with `prune: false` in `flux-system`. | `internal/engine/flux/deliverself.go:52` |
-| For Argo CD the self-source is a single `Application` in the `argocd` namespace with automated sync and `prune: false`. | `internal/engine/argocd/deliverself.go:52` |
+| Self-management is always sourced from the in-cluster zot registry (`oci://<zot>/packs/cube-engine`), never from Gitea, with pruning disabled on the self-source. | `internal/engine/flux/deliverself.go:43`, `internal/engine/argocd/deliverself.go:46` |
+| Under `selfManage`, cube-idp renders the engine manifests itself and pushes the finished YAML as the `packs/cube-engine` artifact, so the engine never sees customization as a concept. | `internal/up/up.go:1249` |
+| The self-source objects are a Flux `OCIRepository` + `Kustomization` with `prune: false` in `flux-system`. | `internal/engine/flux/deliverself.go:32-64` |
+| For Argo CD the self-source is a single `Application` in the Argo CD namespace (`argocd.Namespace`, `= "argocd"`) with automated sync and `prune: false`. | `internal/engine/argocd/deliverself.go:34-57`, `internal/engine/argocd/argocd.go:52` |
 | The engine-native self-source is attached by the engine's own `DeliverSelf` implementation. | `internal/engine/flux/deliverself.go:32` |
 | Direct SSA of engine manifests happens only on first install and on unhealthy-engine recovery; a healthy self-managed engine is never SSA'd. | `internal/up/up.go:1220` |
 | When `selfManage` is false, engine Health is never consulted for an SSA decision. | `internal/up/up.go:1220` |
-| Enabling `selfManage` never by itself restarts the engine, because the SSA'd state and the first pushed artifact are byte-identical renders. | `internal/up/up.go:227` |
-| The rendered engine pack objects are what `up` applies via SSA, what the inventory records, and what the `cube-engine` artifact carries. | `internal/up/up.go:261` |
+| One render feeds SSA, the inventory and the pushed artifact, so the SSA'd state and the first pushed artifact are byte-identical renders and enabling `selfManage` does not by itself restart the engine. | `internal/up/up.go:261,264,269,1255` |
 | The engine gets its own Pack record row with delivery `engine`, `customized` from whether `engine.values` is non-empty, and no `dependsOn`. | `internal/up/up.go:542` |
-| The engine Pack record's `READY` is true by construction after the health gate, except under `selfManage` where it reports the `cube-engine` self-source's component health. | `internal/up/up.go:538` |
+| The engine Pack record's `READY` is true by construction after the health gate, except under `selfManage` where it reports the `cube-engine` self-source's component health. | `internal/up/up.go:538-541` |
 | `diff`'s desired state renders the engine pack, mirroring `up.Run`, and emits an engine Pack-record identity stub. | `internal/diff/diff.go:198` |
 
 ### Verification
 
-- [ ] `internal/config/types.go:111` declares `SelfManage bool` with `yaml:"selfManage,omitempty"` and no default-true anywhere in the config package.
+- [ ] `internal/config/types.go:111` declares `SelfManage bool` with `yaml:"selfManage,omitempty"`, and `grep -rn "SelfManage" internal/config/*.go` returns only that field declaration and its doc comment at `:104` — no assignment.
 - [ ] `internal/up/up.go:1220` — `installNeedsSSA` returns `true` immediately when `selfManage` is false, and otherwise `!engineHealthyAtStart(...)`.
 - [ ] `internal/up/up.go:261` sets `installObjs := engineRendered.Objects`, and that same slice reaches both the SSA call and `deliverEngineSelf` (`internal/up/up.go:1249`).
-- [ ] `internal/engine/flux/deliverself.go:52` — the `Kustomization` spec sets `"prune": false`.
+- [ ] `internal/engine/flux/deliverself.go:54` — the `Kustomization` spec sets `"prune": false`.
 - [ ] `internal/engine/argocd/deliverself.go:52` — the `Application` sets `"automated": {"prune": false, "selfHeal": true}`.
 - [ ] `internal/engine/engine.go:31` defines `SelfArtifactName = "cube-engine"`, and both `DeliverSelf` implementations build their source URL from the in-cluster registry address, not a Gitea clone URL.
 - [ ] `internal/up/up.go:542` appends the engine Pack record with the literal delivery `"engine"`, `len(cube.Spec.Engine.Values) > 0` for `customized`, and `nil` for `dependsOn`.
-- [ ] `internal/diff/diff.go:198` calls `pack.FetchRenderEngine` with the same arguments as `up.Run`, and `diff.go` contains no `InstallManifests` call.
+- [ ] `internal/diff/diff.go:198` calls `pack.FetchRenderEngine(ctx, cube.Spec.Engine, cube.Spec.Gateway, cube.Spec.Engine.PackRef(), dir)` — the same arguments as `up.Run` — and `grep -c "InstallManifests" internal/diff/diff.go` returns 0.
 
 ## More Information
 

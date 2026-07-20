@@ -34,7 +34,7 @@ given root is trusted, so any reuse rule must be decidable from what is on disk.
 
 `up` generates a local certificate authority once per machine using the mkcert
 mechanism as a library (`smallstep/truststore`) rather than the mkcert binary, stores
-it under the user's per-OS application directory, and issues a wildcard certificate
+it under `os.UserConfigDir()/cube-idp` (the per-OS user *config* directory), and issues a wildcard certificate
 for `*.<gateway.host>` before the cluster is created.
 
 mkcert CA adoption is presence-based only: an existing mkcert root at `$CAROOT` or the
@@ -76,41 +76,48 @@ effects.
 
 | Decision | Implemented at |
 | --- | --- |
-| cube-idp never modifies the OS trust store implicitly; trust-store changes happen only inside the explicitly-consented `cube-idp trust` command and are fully reverted by `cube-idp down`, while `up` may generate a local CA but never touches the OS store. | `cmd/trust.go:17-40`; `internal/up/up.go:123-131` |
-| `up` generates the local CA once per machine via the mkcert mechanism used as a library, stores it under the user's per-OS application directory, and issues a wildcard cert for `*.<gateway.host>` before cluster creation; an existing mkcert root at `$CAROOT` or the per-OS default is adopted by copying `rootCA.pem`/`rootCA-key.pem`, but an existing cube-idp CA always wins. | `internal/trust/ca.go:26-93`, `internal/trust/ca.go:99-140` |
-| mkcert CA adoption is presence-based only: an existing mkcert root is reused without verifying OS-store trust, and an untrusted adopted root is installed by `cube-idp trust` exactly like a generated CA. | `internal/trust/ca.go:117-126` |
-| The gateway must serve a TLS certificate chaining to the cube-idp local CA and covering the wildcard host, verified in e2e without ever touching the OS trust store in CI. | `internal/trust/ca.go:1-5`; `cmd/trust.go:24-80`; `tests/e2e/e2e_test.go:370-400` |
+| cube-idp never modifies the OS trust store implicitly; trust-store changes happen only inside the explicitly-consented `cube-idp trust` command and are fully reverted by `cube-idp down`, while `up` may generate a local CA but never touches the OS store. | `cmd/trust.go:16-20`; `cmd/trust.go:40-74`; `cmd/down.go:243-262`; `internal/up/up.go:122-135` |
+| `up` generates the local CA once per machine via the mkcert mechanism used as a library, stores it under `os.UserConfigDir()/cube-idp`, and issues a wildcard cert for `*.<gateway.host>` before cluster creation; an existing mkcert root at `$CAROOT` or the per-OS default is adopted by copying `rootCA.pem`/`rootCA-key.pem`, but an existing cube-idp CA always wins. | `internal/trust/ca.go:26-36`; `internal/trust/ca.go:44-95`; `internal/trust/ca.go:118-160` |
+| mkcert CA adoption is presence-based only: an existing mkcert root is reused without verifying OS-store trust, and an untrusted adopted root is installed by `cube-idp trust` exactly like a generated CA. | `internal/trust/ca.go:118-126` |
+| The gateway must serve a TLS certificate chaining to the cube-idp local CA and covering the wildcard host, verified in e2e without ever touching the OS trust store in CI. | `internal/up/tls.go:26-46`; `internal/up/tls.go:51-64`; `tests/e2e/e2e_test.go:385-407` |
 
 ### Verification
 
 - [ ] `internal/trust/ca.go:1-5` — the package doc states nothing in `internal/trust`
       touches the OS trust store implicitly.
-- [ ] `internal/up/up.go:123-131` — `up` calls only `trust.Dir` + `trust.EnsureCA`; no
-      call to `trust.InstallOS` exists anywhere under `internal/up`.
-- [ ] `cmd/trust.go:17-19` — `trustInstall`/`trustUninstall` are seams bound to
-      `trust.InstallOS`/`trust.UninstallOS`; `cmd/trust.go:41-71` gates install behind a
-      consent prompt with a `--yes` escape, and `cmd/promptfence_test.go` fences a
-      non-TTY run so it aborts rather than installing.
+- [ ] `internal/up/up.go:122-135` — `up` calls only `trust.Dir` + `trust.EnsureCA`. Run
+      `grep -rn 'InstallOS\|truststore' internal/up cmd/up.go` — it must return nothing.
+- [ ] `cmd/trust.go:16-20` — `trustInstall`/`trustUninstall` are seams bound to
+      `trust.InstallOS`/`trust.UninstallOS`; `cmd/trust.go:40-74` gates install behind a
+      consent prompt with a `--yes` escape, and `cmd/promptfence_test.go:28` fences a
+      non-TTY run so it aborts rather than installing
+      (`go test ./cmd -run TestPromptFenceNeverBlocksOnBufferStdin`).
 - [ ] `cmd/down.go:249-257` — `down` reads `trust.LoadState` and calls `trustUninstall`
       only when `st.Installed` is true.
-- [ ] `internal/trust/ca.go:47-58` — `EnsureCA` returns the existing `ca.crt` if present,
+- [ ] `internal/trust/ca.go:50-58` — `EnsureCA` returns the existing `ca.crt` if present,
       otherwise prefers `adoptMkcertCA` over generating a new key.
-- [ ] `internal/trust/ca.go:99-118` — `mkcertCAROOT()` resolves `$CAROOT` first, then the
+- [ ] `internal/trust/ca.go:91-92`, `internal/trust/ca.go:150-155` — the CA key is written
+      and chmod'd to `0600` on both the generate and adopt paths
+      (`go test ./internal/trust/...`).
+- [ ] `internal/up/tls.go:48-64` — `ensureGatewayTLS` reuses a live secret when
+      `ca.LeafStillValid` reports >30 days left for both hosts, so repeated `up` runs
+      see no churn.
+- [ ] `internal/trust/ca.go:99-116` — `mkcertCAROOT()` resolves `$CAROOT` first, then the
       per-OS mkcert default (darwin / windows / XDG).
-- [ ] `internal/trust/ca.go:117-126` — the `adoptMkcertCA` doc states adoption is
+- [ ] `internal/trust/ca.go:118-126` — the `adoptMkcertCA` doc states adoption is
       presence-based and that `cube-idp trust` installs an untrusted adopted root exactly
       like a generated CA; the body validates parseability and `IsCA` only, never trust.
 - [ ] `internal/trust/store.go:4,16` — OS installation goes through
       `github.com/smallstep/truststore`, not a shelled-out `mkcert` binary.
-- [ ] `internal/up/tls.go:28` — the issued cert covers both `gw.Host` and `"*."+gw.Host`.
-- [ ] `tests/e2e/e2e_test.go:370-400` — `assertGatewayTLS` builds an `x509.CertPool` from
+- [ ] `internal/up/tls.go:27` — the issued cert covers both `gw.Host` and `"*."+gw.Host`.
+- [ ] `tests/e2e/e2e_test.go:385-407` — `assertGatewayTLS` builds an `x509.CertPool` from
       the cube-idp CA file and dials the gateway with SNI
       `gitea.cube-idp.localtest.me`; the OS trust store is never consulted.
 
-Known deviation from the statement as originally recorded: `trust.Dir()`
-(`internal/trust/ca.go:26-35`) resolves `os.UserConfigDir()/cube-idp` — the per-OS
-*config* directory — not the XDG *data* directory. The code is the authority; the
-statement above is worded to match it.
+Note: `trust.Dir()` (`internal/trust/ca.go:26-36`) resolves `os.UserConfigDir()/cube-idp`
+— the per-OS *config* directory, not the XDG *data* directory. `mkcertCAROOT()` still
+reads mkcert's own XDG *data* default when adopting, which is mkcert's convention, not
+cube-idp's.
 
 ## More Information
 

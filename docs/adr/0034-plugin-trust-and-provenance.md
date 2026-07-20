@@ -33,10 +33,16 @@ Plugin integrity rests on **digest pinning taken from the index** plus an
 **explicit sha256 trust-store consent flow**. The consent flow, the CUBE-7104
 non-TTY refusal, and `plugin trust` semantics are invariant: adding
 official-index resolution or any new install path must not move that doctrine.
+The prompt-gating mechanics of that refusal (when `ui.PromptsAllowed` permits a
+prompt at all) are an instance of the prompt doctrine — see ADR-0027 for the
+authoritative statement of the interactive prompt gate.
 
 `plugin install` resolves the official index by digest and then hands off to the
-unchanged consent flow; `--yes` records trust as explicit flag consent, and the
-pre-existing sha256-pinned git-index path (`--index`) keeps working unchanged.
+unchanged consent flow; `--yes` records trust as explicit flag consent. The
+pre-existing sha256-pinned git-index path (`--index`) keeps working unchanged,
+including its deliberate exception: it auto-trusts the installed binary on the
+strength of its sha256-pinned manifest rather than routing through the consent
+prompt.
 
 Plugin trust-store entries are keyed by the absolute, symlink-resolved canonical
 path (`filepath.Abs` then `filepath.EvalSymlinks`) on both record and lookup,
@@ -50,8 +56,11 @@ over TLS instead.
 
 ## Consequences
 
-* Good, because the consent gate is a single seam every install path funnels
-  through, so a new install path cannot accidentally introduce a silent trust.
+* Good, because the official-index path funnels through a single consent seam,
+  so a new index-backed install path cannot accidentally introduce a silent
+  trust. The `--index` git path auto-trusts on the strength of its
+  sha256-pinned manifest (`internal/plugin/index.go:106`) — a deliberate
+  pre-existing exception, not a seam a new path should copy.
 * Good, because canonical-path keying makes trust decisions stable across
   symlinked, relative, and differently-rooted invocations — a trusted binary
   stays trusted and a swapped one is still caught by its sha256.
@@ -63,7 +72,8 @@ over TLS instead.
   never runs `gh attestation verify` gets digest+TLS integrity only, not
   publisher identity.
 * Bad, because the CUBE-7104 refusal makes fully unattended official-index
-  installs require an explicit `--yes`, which is one more thing to get right in
+  installs require an explicit `--yes` for any binary whose sha256 is not
+  already in the trust store, which is one more thing to get right in
   automation.
 * Bad, because canonicalization can fail (broken symlink, permissions) and the
   fallback then keys on a less canonical path, so two spellings of the same
@@ -76,9 +86,10 @@ over TLS instead.
 | Decision | Implemented at |
 | --- | --- |
 | Plugin trust-store entries are keyed by the absolute, symlink-resolved canonical path (`filepath.Abs` + `EvalSymlinks`) on both record and lookup, falling back to the raw path when canonicalization fails, so trust decisions are not cwd-dependent. | `internal/plugin/trust.go:96-106` |
-| Plugin integrity rests on digest pinning from the index plus the existing sha256 trust-store consent flow; adding official-index resolution leaves the consent flow, the CUBE-7104 non-TTY refusal, `plugin trust` semantics, and the git-index install path unchanged. | `internal/plugin/officialindex.go:185-229` |
-| Pack provenance verification is a documented external `gh attestation verify oci://...` command; the binary never verifies attestations at pull time and relies on digest pinning over TLS. | `docs/pack-contract-v1.md:207-211` |
-| `plugin install` resolves the plugin index by digest and then hands off to the existing, unchanged sha256 trust-consent flow. | `cmd/plugin.go:181-229` |
+| Plugin integrity rests on digest pinning from the index plus the existing sha256 trust-store consent flow; adding official-index resolution leaves the consent flow, the CUBE-7104 non-TTY refusal, `plugin trust` semantics, and the git-index install path unchanged. | `internal/plugin/officialindex.go:185-231` |
+| Pack provenance verification is a documented external `gh attestation verify oci://...` command; the binary never verifies attestations at pull time and relies on digest pinning over TLS. | `docs/pack-contract-v1.md:207-211`, `docs/pack-contract-v1.md:232-242` |
+| The `--index` git path auto-trusts the installed binary rather than routing through the consent prompt — a deliberate pre-existing exception. | `internal/plugin/index.go:106` |
+| `plugin install` resolves the plugin index by digest and then hands off to the existing, unchanged sha256 trust-consent flow. | `cmd/plugin.go:180-231` |
 
 ### Verification
 
@@ -90,20 +101,28 @@ over TLS instead.
       (`:152`).
 - [ ] `TestTrustKeyCanonicalization` (`internal/plugin/plugin_test.go:111`)
       asserts symlinked/relative and resolved-absolute lookups agree.
-- [ ] `internal/plugin/officialindex.go:196-213` rebuilds the pull ref as
-      `repo@digest` and returns an error when a platform entry carries no digest.
-- [ ] `internal/plugin/officialindex.go:222-229` hands off to `EnsureTrusted`,
-      with `autoTrust` routing to `Trust` for `--yes`.
+- [ ] `internal/plugin/officialindex.go:199-213` rebuilds the pull ref as
+      `repo@digest` (`byDigest` at `:211`, pulled at `:213`) and returns an error
+      (`:206-209`) when a platform entry carries no digest.
+- [ ] `internal/plugin/officialindex.go:222-231` hands off to `EnsureTrusted`,
+      with `autoTrust` routing to `Trust` for `--yes`; the same comment records
+      that the git index auto-trusts a sha-proven archive instead.
+- [ ] `internal/plugin/index.go:106` ends the `--index` git-index install with an
+      unconditional `Trust(name, installedPath)` — no prompt, no CUBE-7104.
 - [ ] `internal/diag/codes.go:151` still defines `CodePluginUntrusted` as
       `CUBE-7104`, and `internal/plugin/trust.go:142` documents the refusal as
       byte-for-byte frozen.
 - [ ] `cmd/plugin.go:228` still exposes `--index` for the sha256-pinned git-index
-      path, and `cmd/plugin.go:200-207` dispatches to `plugin.Install` for it.
-- [ ] `docs/pack-contract-v1.md:209` documents verification as exactly
+      path, and `cmd/plugin.go:200-210` dispatches to `plugin.Install` for it.
+- [ ] `docs/pack-contract-v1.md:207-211` documents verification as exactly
       `gh attestation verify oci://ghcr.io/cube-idp/packs/<name>:<ver> --owner cube-idp`,
-      and `:242` states cube-idp does not re-verify attestations at pull time.
-- [ ] Grepping `internal/` and `cmd/` for `attestation|cosign|sigstore|rekor`
-      finds no in-binary verification code.
+      and `docs/pack-contract-v1.md:241-242` (in the `Verifying pack provenance`
+      section, `:232-242`) states cube-idp does not re-verify attestations at
+      pull time.
+- [ ] `grep -rEi 'cosign|sigstore|rekor' internal/ cmd/ --include='*.go'` returns
+      no matches; the only `attestation` hit under `internal/` and `cmd/` Go
+      sources is a comment at `cmd/pack_publish.go:35`; `go.mod` declares no
+      sigstore/cosign dependency.
 
 ## More Information
 
