@@ -57,9 +57,9 @@ type Deps struct {
 	REST    *rest.Config
 	Out     io.Writer
 	// Steps is the progress emitter SyncOnce calls Step through. nil
-	// defaults to ui.NewFor(Out) — the pre-R3 behavior, and what Watch's
-	// un-migrated path (internal/syncer/watch.go) still relies on by never
-	// setting this field.
+	// defaults to ui.NewFor(Out) — the original Printer-based behavior, and
+	// what Watch's un-migrated path (internal/syncer/watch.go) still relies
+	// on by never setting this field.
 	Steps Stepper
 	// PushAddr optionally overrides the zot port-forward tunnel — tests
 	// inject a local registry address instead of port-forwarding to a real
@@ -72,7 +72,8 @@ type Deps struct {
 	syncFn func(context.Context) error
 }
 
-// SyncOnce is D7's one-shot iteration:
+// SyncOnce is one iteration of the watch-mode loop — fsnotify change ->
+// OCI artifact push -> engine reconciles:
 //
 //	p, cleanup := loadOrSynthesize(dir); defer cleanup()  -> CUBE-7201
 //	rendered := p.Render(nil)                             -> pack's own CUBE-4xxx codes pass through
@@ -151,8 +152,7 @@ func SyncOnce(ctx context.Context, deps Deps, dir string) (Result, error) {
 // version = "0.0.0-dev"; its cleanup removes that staging directory
 // (this used to leak one temp dir per bare-dir sync — loadOrSynthesize
 // returned only the *pack.Pack, so nothing ever removed the MkdirTemp).
-// R8 — previously leaked one temp dir per bare-dir sync). A dir with neither
-// a pack.cue nor any renderable manifest is CUBE-7201.
+// A dir with neither a pack.cue nor any renderable manifest is CUBE-7201.
 func loadOrSynthesize(dir string) (*pack.Pack, func(), error) {
 	noop := func() {}
 	if _, err := os.Stat(filepath.Join(dir, "pack.cue")); err == nil {
