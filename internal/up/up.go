@@ -1,4 +1,4 @@
-// Package up orchestrates `cube-idp up` (spec §4.3). It sequences the
+// Package up orchestrates `cube-idp up`. It sequences the
 // already-tested units and owns user-facing progress output. It has no
 // logic of its own beyond ordering and timeouts — keep it that way.
 package up
@@ -60,7 +60,8 @@ const (
 	// installs them via its Helm-charted controller), so the registry
 	// HTTPRoute apply must wait for them to be Established. Envoy's chart
 	// pull + controller startup + CRD install is the slow path, so this
-	// deadline is generous — but hard, per spec §4.5 (no infinite spinner).
+	// deadline is generous — but hard: every wait ends in a bounded, typed
+	// diagnosis rather than an infinite spinner.
 	gatewayCRDTimeout = 3 * time.Minute
 	gatewayCRDPoll    = 2 * time.Second
 	// httpRouteCRD is the Gateway API CRD every gateway pack must establish
@@ -72,7 +73,7 @@ const (
 // Con is the event sink cmd/up.go wires through ui.RunPipeline (Task 14b);
 // Bundle, when non-empty, switches Run to fully-offline mode: every pack
 // source is served from the bundle and every image is node-loaded from it,
-// with any attempt to leave those rails a typed error (Task 7).
+// with any attempt to leave those rails a typed error.
 type Options struct {
 	ConfigPath string      // path to cube.yaml
 	Bundle     string      // path to a vendor bundle; "" = online mode
@@ -89,7 +90,7 @@ type Options struct {
 // for engine-reported health -> emit a success summary.
 //
 // When opts.Bundle is set, exactly three deviations make the install offline
-// (spec §4.1): the provider must satisfy cluster.ImageLoader or Run fails
+// the install offline: the provider must satisfy cluster.ImageLoader or Run fails
 // fast before any cluster mutation (CUBE-7005); every bundled image is
 // node-loaded right after the cluster is ready and before anything installs;
 // and every pack ref is rewritten to its bundle-local source dir before the
@@ -104,7 +105,7 @@ func Run(ctx context.Context, opts Options) error {
 	con.Start("up", cube.Metadata.Name)
 	con.Step("config", "cube %q loaded and validated", cube.Metadata.Name)
 
-	// Offline mode (spec §4.1): open and verify the bundle up front so a
+	// Offline mode: open and verify the bundle up front so a
 	// corrupt or incomplete bundle fails before any cluster artifact exists.
 	var opened *bundle.Opened
 	if opts.Bundle != "" {
@@ -122,7 +123,7 @@ func Run(ctx context.Context, opts Options) error {
 	// D12 ("cert material is generated before cluster creation"): ensure the
 	// local CA — adopting an existing mkcert root if present — before
 	// ClusterProvider.Ensure runs, so the kind provider can mount it into
-	// containerd certs.d at cluster-create time (Task 10) and no cluster
+	// containerd certs.d at cluster-create time and no cluster
 	// artifact ever references the trust root before it exists.
 	caDir, err := trust.Dir()
 	if err != nil {
@@ -158,8 +159,9 @@ func Run(ctx context.Context, opts Options) error {
 				"use provider: kind or k3d for air-gapped installs, or pre-load the images into a registry your existing cluster can reach and run `up` without --bundle")
 		}
 	}
-	// Task 15.3a: cluster creation can take minutes with zero prior output —
-	// pr.Stop() on error prints nothing (matching the phase-1 behavior of
+	// Cluster creation can take minutes with zero prior output, so it runs
+	// behind a progress handle rather than a bare step line —
+	// pr.Stop() on error prints nothing (matching the older behavior of
 	// printing nothing when a step failed); pr.Done prints the same
 	// "cluster" step line step() always printed on success.
 	pr := con.Progress("cluster", fmt.Sprintf("creating %s cluster", cube.Spec.Cluster.Provider))
@@ -223,21 +225,21 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	con.Step("packs-crd", "Pack CRD established")
 
-	// Task 15.3a: the engine install (Flux/Argo CD's own controllers coming
+	// The engine install (Flux/Argo CD's own controllers coming
 	// up) is the second long, previously-silent wait.
-	// P8 (GT16): the install is ALWAYS rendered first (the rendered engine
+	// Self-management contract: the install is ALWAYS rendered first (the rendered engine
 	// pack, values applied) — the rendered objects are what SSA applies, what
 	// the inventory records, and (selfManage) what the cube-engine artifact
 	// carries, so the SSA'd state and the first pushed artifact are
 	// byte-identical renders. SSA is skipped only when the engine owns
 	// itself: selfManage on AND healthy at start (rule 2); first install
 	// (rule 1) and unhealthy-at-start recovery (rule 3) SSA directly, and
-	// selfManage off keeps the pre-P8 behavior.
+	// selfManage off keeps the original always-SSA behavior.
 	dir, err := pack.DefaultCacheDir()
 	if err != nil {
 		return err
 	}
-	// Engine-as-pack (spec §3.3): the engine install is fetched and rendered
+	// Engine-as-pack (ADR-0007): the engine install is fetched and rendered
 	// like any pack — the rendered objects are what SSA applies, what the
 	// inventory records, and (selfManage) what the cube-engine artifact
 	// carries. Offline: the ref resolves through the bundle like every pack.
@@ -291,7 +293,7 @@ func Run(ctx context.Context, opts Options) error {
 	defer stop()
 
 	// Gateway pack goes first — everything else depends on ingress existing.
-	// P7 (the gitea guarantee, decision 13): with any delivery: repo pack
+	// The gitea guarantee: with any delivery: repo pack
 	// declared, gitea is delivered before it — since p6 DEP2 this is
 	// pack.ResolveOrder's implicit repo->gitea edge (resolveAndDeliverPacks'
 	// graph pass below), not orderPackRefs; either way the repo-delivery
@@ -307,7 +309,7 @@ func Run(ctx context.Context, opts Options) error {
 			return err
 		}
 	}
-	// P7: the per-pack delivery collaborators, faked in the branch unit
+	// The per-pack delivery collaborators, faked in the branch unit
 	// tests. The gitea session is lazy — established once, at the first
 	// delivery: repo pack (which the ordering above put right after gitea
 	// itself was delivered), then shared; its port-forward closes with Run.
@@ -344,13 +346,13 @@ func Run(ctx context.Context, opts Options) error {
 	// entries/packs/renders are index-aligned with refs, one append per ref,
 	// so a failure partway through leaves no partial delivery behind.
 	var entries []lock.Entry
-	var packs []*pack.Pack // kept in lockstep with entries: Task 12.5 needs each Pack's Expose after waitHealthy
+	var packs []*pack.Pack // kept in lockstep with entries: the Pack discoverability records need each Pack's Expose after waitHealthy
 	var renders []*pack.Rendered
 	for i, pref := range refs {
 		if err := func() error {
 			pr := con.ProgressN("pack-fetch", "fetching "+pref.Ref, i+1, len(refs))
 			defer pr.Stop() // no-op after Done; resolves the step on any error return
-			// Task 13 review: record the RESOLVED fetch source before Fetch runs.
+			// Record the RESOLVED fetch source before Fetch runs.
 			// This is the falsifiable output proof of offline honesty: an online
 			// run prints the oci:// ref here; a --bundle run prints the
 			// bundle-local dir (under cube-idp-bundle-*), never oci://. A new
@@ -362,7 +364,7 @@ func Run(ctx context.Context, opts Options) error {
 			if err != nil {
 				return err
 			}
-			// F11: refs[0] is the gateway pack (prepended above). Fail loudly if a
+			// refs[0] is the gateway pack (prepended above). Fail loudly if a
 			// gateway.ref/gateway.pack mismatch means the ref would silently
 			// deliver a different gateway than pack: names, before any cluster
 			// mutation for this pack.
@@ -372,7 +374,7 @@ func Run(ctx context.Context, opts Options) error {
 				}
 			}
 			packs = append(packs, pk)
-			// GT15 (U4): RenderWith is RenderFor plus the values stone —
+			// RenderWith is RenderFor plus the values rule —
 			// values on a chartless pack is CUBE-4016, and extraManifests
 			// (any pack kind) are substituted + appended (CUBE-4017).
 			rendered, err := pk.RenderWith(pref.Values, pref.ExtraManifests, cube.Spec.Gateway)
@@ -405,7 +407,7 @@ func Run(ctx context.Context, opts Options) error {
 	// Passes 2+3: resolve the dependency graph, then deliver in that order.
 	// Split out so the fail-fast property (a graph error returns before any
 	// deliverPack call) and the topo delivery order are unit-testable with
-	// the P7 fakes, without a live cluster. resolveAndDeliverPacks threads
+	// the delivery fakes, without a live cluster. resolveAndDeliverPacks threads
 	// each pack's resolved deps into its Rendered/engine call and the wave
 	// gate itself (p6 DEP3); Run keeps the packDeps return too, now that the
 	// D11 record-writer loop below needs each pack's resolved dep list for
@@ -466,7 +468,7 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	// P8 (GT16 rule 2): with selfManage on, hand the engine its own (tuned)
+	// Self-management: with selfManage on, hand the engine its own (tuned)
 	// render as a zot artifact and attach the engine-native self-source —
 	// from here the engine reconciles itself, and later `up`s render → push
 	// → poke without ever SSA-ing a healthy engine. Runs after the health
@@ -520,7 +522,7 @@ func Run(ctx context.Context, opts Options) error {
 	// "cube-idp-"+name is the Deliver object name convention both engines
 	// use (internal/engine/flux/deliver.go, internal/engine/argocd/deliver.go).
 	// D11 record-writer fields (append-only shared surface): U4 CUSTOMIZED,
-	// P7 DELIVERY (GT19 — PackObject maps an empty Delivery to "oci"), p6
+	// DELIVERY (PackObject maps an empty Delivery to "oci"), and
 	// DEP4 DEPENDS-ON (packDeps is keyed by name, packs is the DECLARED-order
 	// slice — no index remap needed against refs/packs alignment below).
 	// packs is index-aligned with refs (exactly one append per ref in the
@@ -549,9 +551,10 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	con.Step("packs", "%d pack records written — try `kubectl get packs`", len(packObjs))
 
-	// Phase 5 spec §5: spokes — bootstrap and register, then the engine
+	// Spokes (ADR-0013): bootstrap and register, then the engine
 	// takes over. Failure of one spoke aborts up (fail loud, spec thesis);
-	// re-running up is the retry path and re-issues tokens (GT5).
+	// re-running up is the retry path and re-issues the spoke's TokenRequest
+	// credential (servers may clamp its TTL, so every up refreshes it).
 	for i, sp := range cube.Spec.Spokes {
 		spr := con.ProgressN("spoke", fmt.Sprintf("spoke %q (%s)", sp.Name, sp.Cluster.Provider), i+1, len(cube.Spec.Spokes))
 		if err := ensureSpoke(ctx, cube, sp, a, con); err != nil {
@@ -561,12 +564,13 @@ func Run(ctx context.Context, opts Options) error {
 		spr.Done("spoke %q registered with %s", sp.Name, cube.Spec.Engine.Type)
 	}
 
-	// Phase 2: the gateway's websecure listener terminates TLS with a
+	// The gateway's websecure listener terminates TLS with a
 	// CA-issued cert (D6/D12), so this URL is genuinely HTTPS. Browsers only
 	// show a green lock once the CA is trusted — `cube-idp trust` does that.
-	// The epilogue is DATA (event.Epilogue, TE-4): the ✔ glyph is
+	// The epilogue is DATA (event.Epilogue): the ✔ glyph is
 	// presentation renderers add, so the plain bytes drop exactly that one
-	// glyph (ratified R2, design doc §5).
+	// glyph — renderers own glyphs, event content never carries them
+	// (ADR-0025).
 	con.Epilogue(event.Epilogue{
 		Cube:       cube.Metadata.Name,
 		GatewayURL: fmt.Sprintf("https://%s:%d", cube.Spec.Gateway.Host, cube.Spec.Gateway.Port),
@@ -578,7 +582,7 @@ func Run(ctx context.Context, opts Options) error {
 	// The "what did I just get" access summary — every delivered pack's
 	// expose URLs (reusing pack.ExposeURLs, the same ${GATEWAY_HOST}
 	// substitution PackObject's spec.url/spec.urls used above) plus the
-	// get-secrets hint. Since Task 14b (Owner Decision #15, design doc §9)
+	// get-secrets hint. Since the move to the typed event stream,
 	// Access is DATA with a stable plain projection — the one deliberate
 	// plain-output addition: a "\nAccess\n" block scripts and CI can scrape.
 	access := make([]ui.PackAccess, 0, len(packs))
@@ -594,14 +598,14 @@ func Run(ctx context.Context, opts Options) error {
 // resolveAndDeliverPacks is Run's passes 2+3 (p6 DEP2): resolve the
 // dependency graph over the already fetched+rendered packs (index-aligned
 // with refs/packs/renders, exactly Run's pass-1 output), then deliver each
-// one — via deliverPack, so the P7 OCI/repo branch is unchanged — in the
+// one — via deliverPack, so the OCI/repo delivery branch is unchanged — in the
 // resolved topo order rather than declared order. A graph error (CUBE-4018
 // unknown dep, CUBE-4019 cycle, CUBE-4020 gateway carries a dep) returns
 // BEFORE the delivery loop runs at all: the fail-fast improvement over the
 // old single fetch+render+deliver loop, where a graph problem could only be
 // detected pack-by-pack, after every prior pack in declared order had
 // already been delivered to the cluster. Extracted from Run so this
-// ordering/fail-fast contract is unit-testable with the P7 fakes, without a
+// ordering/fail-fast contract is unit-testable with the delivery fakes, without a
 // live cluster (Run itself needs one).
 func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDeps, a *apply.Applier, refs []config.PackRef, packs []*pack.Pack, renders []*pack.Rendered) (map[string][]string, error) {
 	order, packDeps, err := pack.ResolveOrder(packs, refs, renders)
@@ -745,7 +749,8 @@ func spokeClusterSpec(cube *config.Cube, sp config.SpokeSpec) config.ClusterSpec
 	return sc
 }
 
-// spokeClusterName: kind spokes get <cube>-spoke-<name> (GT7); existing
+// spokeClusterName: kind spokes get <cube>-spoke-<name> (this name is
+// user-visible in `spoke remove` messages); existing
 // spokes are whatever the context points at — Ensure ignores the name.
 func spokeClusterName(cube *config.Cube, sp config.SpokeSpec) string {
 	if sp.Cluster.Provider == "existing" {
@@ -776,7 +781,7 @@ func spokeServerURL(ctx context.Context, prov cluster.Provider, clusterName stri
 // "fetching <source>" where source is exactly what pack.Fetch is about to
 // read: the oci://... (or local/git) ref online, or the bundle-local staging
 // dir (under a cube-idp-bundle-* temp dir) after resolveBundleRefs in
-// --bundle mode. Added by the Task 13 review so offline honesty is
+// --bundle mode. Added so offline honesty is
 // falsifiable from output alone: the e2e bundle test asserts every fetch
 // source points into the bundle and none is an oci:// ref — assertions that
 // would FAIL on an online run, because this line demonstrably prints the
@@ -790,7 +795,8 @@ func stepFetchSource(con *ui.Console, ref string) {
 // optional images: list, spec D14) — the Entry.Images the lock records.
 // Operator-style packs (e.g. envoy-gateway) provision images that never
 // appear in their own rendered objects, so `declared` closes that air-gap
-// blind spot for `cube-idp vendor` (Task 6).
+// blind spot for `cube-idp vendor`, which builds the air-gap bundle purely
+// from what cube.lock records.
 func mergeImages(rendered, declared []string) []string {
 	set := make(map[string]struct{}, len(rendered)+len(declared))
 	for _, img := range rendered {
@@ -809,7 +815,8 @@ func mergeImages(rendered, declared []string) []string {
 
 // gatewayServiceFQDN returns the in-cluster DNS name of the gateway pack's
 // data-plane Service, the CoreDNS rewrite target for *.<gw.Host> (D6, R7b
-// spec §5.7b). When the RESOLVED gateway pack (gwPack) declares a
+// see docs/adr/0037-gateway-api-routing-surface.md). When the RESOLVED
+// gateway pack (gwPack) declares a
 // gatewayService: block, that is authoritative — this is how envoy-gateway
 // closes the CoreDNS-targets-the-controller gap (the pre-R7b KNOWN GAP):
 // its controller Service and its data-plane Service are different Services,
@@ -825,7 +832,7 @@ func gatewayServiceFQDN(gw config.GatewaySpec, gwPack *pack.Pack) string {
 	return fmt.Sprintf("%s.%s.svc.cluster.local", gw.Pack, gw.Pack)
 }
 
-// verifyGatewayPackRef guards F11: gateway.ref silently wins over
+// verifyGatewayPackRef guards an operator-found trap: gateway.ref silently wins over
 // gateway.pack (GatewaySpec.PackRef), so an operator who edits only
 // `pack: envoy-gateway` while `init --local` left `ref: .../packs/traefik`
 // in place gets traefik delivered under an envoy-gateway label with no
@@ -851,11 +858,11 @@ func verifyGatewayPackRef(pk *pack.Pack, gw config.GatewaySpec) error {
 // spinner" rule still applies: on timeout, CUBE-3004 lists every unready
 // component's name and message so the user knows what to look at.
 func waitHealthy(ctx context.Context, eng engine.Engine, a *apply.Applier, con *ui.Console, timeout time.Duration) error {
-	// Task 15.3a: the third long, previously-silent wait — health polling
+	// The third long, previously-silent wait — health polling
 	// can run for minutes while packs converge. pr spans the whole poll
 	// loop; every error/timeout return below is unchanged from before
 	// (nothing printed in plain mode), so pr.Stop() keeps that contract.
-	// Each poll additionally emits a change-filtered HealthTick (Task 14b)
+	// Each poll additionally emits a change-filtered HealthTick
 	// so the live renderer's component table and the JSON stream see every
 	// state transition — zero plain bytes, as before.
 	pr := con.Progress("health", "waiting for components to become ready")
@@ -1000,10 +1007,10 @@ func componentStates(health []engine.ComponentHealth) []event.ComponentState {
 	return states
 }
 
-// ---- P7: per-pack delivery (delivery: oci|repo) --------------------------
+// ---- per-pack delivery (delivery: oci|repo) ------------------------------
 
 // The D11-verified facts about the shipped gitea pack, mirrored from
-// cmd/repo.go (checkpoint 0.10/0.8; tests/e2e keeps its own copy the same
+// cmd/repo.go (verified against the shipped packs/gitea; tests/e2e keeps its own copy the same
 // way): admin Secret gitea-admin-cube-idp in namespace gitea (keys
 // username/password), chart-standard pod label, Service gitea-http:3000.
 const (
@@ -1020,9 +1027,9 @@ const (
 
 // packEngine is the narrow engine surface the delivery tail uses —
 // engine.Engine satisfies it; the branch unit tests fake it. DeliverSelf
-// (P8) rides the same seam: the cube-engine artifact push reuses deliverDeps'
+// rides the same seam: the cube-engine artifact push reuses deliverDeps'
 // pushOCI/applier collaborators, so the selfManage unit tests share the
-// P7 fakes.
+// per-pack delivery fakes.
 type packEngine interface {
 	Deliver(ctx context.Context, r *pack.Rendered, src engine.ArtifactRef) ([]*unstructured.Unstructured, error)
 	DeliverGit(ctx context.Context, name string, src engine.GitSource, dependsOn []string) ([]*unstructured.Unstructured, error)
@@ -1063,9 +1070,10 @@ type deliverDeps struct {
 }
 
 // deliverPack hands one rendered pack to the engine by the ref's delivery
-// mode (P7): "" or "oci" pushes to zot and registers an OCI source (the
-// pre-P7 tail, moved verbatim into deliverPackOCI); "repo" renders into an
-// engine-watched Gitea repo (decision 13). CUE constrains Delivery to the
+// mode: "" or "oci" pushes to zot and registers an OCI source (the
+// original single-mode tail, moved verbatim into deliverPackOCI); "repo" renders into an
+// engine-watched Gitea repo (see docs/adr/0006-per-pack-delivery-mode.md).
+// CUE constrains Delivery to the
 // two values, so there is no third arm.
 func deliverPack(ctx context.Context, deps deliverDeps, ref config.PackRef, rendered *pack.Rendered) error {
 	if ref.Delivery == "repo" {
@@ -1074,7 +1082,7 @@ func deliverPack(ctx context.Context, deps deliverDeps, ref config.PackRef, rend
 	return deliverPackOCI(ctx, deps, rendered)
 }
 
-// deliverPackOCI is the pre-P7 per-pack delivery tail: push the render to
+// deliverPackOCI is the default per-pack delivery tail: push the render to
 // the in-cluster zot and apply + inventory the engine's OCI source objects.
 func deliverPackOCI(ctx context.Context, deps deliverDeps, rendered *pack.Rendered) error {
 	artifact, err := deps.pushOCI(ctx, rendered, deps.tunnelAddr)
@@ -1091,7 +1099,7 @@ func deliverPackOCI(ctx context.Context, deps deliverDeps, rendered *pack.Render
 	return deps.applier.RecordInventory(ctx, deliverObjs)
 }
 
-// deliverPackRepo is delivery: repo (P7, decision 4/13): ensure the Gitea
+// deliverPackRepo is delivery: repo (docs/adr/0006-per-pack-delivery-mode.md): ensure the Gitea
 // repo cube-pack-<name>, sync the RenderWith output (values + extras
 // applied — cube.yaml is the source of truth, the repo the editable
 // working copy) into its manifests/, and register an engine git source
@@ -1161,7 +1169,7 @@ func renderedFiles(r *pack.Rendered) (map[string][]byte, error) {
 }
 
 // orderPackRefs prepends the gateway pack ref. Ordering beyond that —
-// including decision 13's gitea-before-repo-packs guarantee — moved to
+// including the gitea-before-repo-packs guarantee — moved to
 // pack.ResolveOrder (p6 DEP2): the implicit repo→gitea edge plus the
 // declared-order tie-break keep the guarantee; the giteaSession bounded
 // gate still backstops the wait either way.
@@ -1169,7 +1177,7 @@ func orderPackRefs(gatewayRef string, packs []config.PackRef) []config.PackRef {
 	return append([]config.PackRef{{Ref: gatewayRef}}, packs...)
 }
 
-// giteaSession is the repo-delivery readiness gate (decision 13): engine
+// giteaSession is the repo-delivery readiness gate: engine
 // reconciliation is asynchronous — the gitea pack being delivered does not
 // mean its API is up — so the session is acquired by bounded polling of
 // attempt (secret read -> port-forward -> API ping in production) until it
@@ -1198,9 +1206,10 @@ func giteaSession(ctx context.Context, timeout, poll time.Duration, attempt func
 	}
 }
 
-// ---- P8: engine self-management (engine.selfManage, GT16) ----------------
+// ---- engine self-management (engine.selfManage) --------------------------
 
-// enginePreflightTimeout bounds the single eng.Health call of the GT16
+// enginePreflightTimeout bounds the single eng.Health call of the
+// self-management
 // preflight — one LIST against the cluster, generously capped so a slow
 // API server reads as "not healthy, SSA" rather than hanging `up`.
 const enginePreflightTimeout = 10 * time.Second
@@ -1212,7 +1221,8 @@ const enginePreflightTimeout = 10 * time.Second
 const engineSelfTag = "latest"
 
 // installNeedsSSA decides whether `up` server-side-applies the rendered
-// engine install (GT16): selfManage off → always, the pre-P8 behavior
+// engine install (see docs/adr/0020-engine-self-management-single-owner.md):
+// selfManage off → always, the original behavior
 // (Health is not even consulted); selfManage on → only on first install
 // (rule 1) or when the engine is unhealthy at start (rule 3, self-brick
 // recovery). A healthy self-managed engine owns itself and is never SSA'd
@@ -1224,7 +1234,7 @@ func installNeedsSSA(ctx context.Context, eng engine.Engine, a *apply.Applier, s
 	return !engineHealthyAtStart(ctx, eng, a)
 }
 
-// engineHealthyAtStart is the GT16 preflight: one bounded eng.Health call
+// engineHealthyAtStart is the self-management preflight: one bounded eng.Health call
 // (the same call waitHealthy polls). Healthy means components exist and
 // every one is Ready. Tolerant of not-installed-yet by construction: on a
 // fresh cluster the engine CRDs are absent, Health reports zero components
@@ -1238,7 +1248,8 @@ func engineHealthyAtStart(ctx context.Context, eng engine.Engine, a *apply.Appli
 	return err == nil && allReady(health)
 }
 
-// deliverEngineSelf is the GT16 rule-2 tail, run after the health gate when
+// deliverEngineSelf is the single-owner tail (a healthy self-managed engine
+// owns itself and is never SSA'd), run after the health gate when
 // selfManage is on: push the ALREADY-rendered (tuned) engine install as the
 // cube-engine artifact to zot over the registry tunnel, then apply +
 // inventory the engine-native self-source objects. Rendering always

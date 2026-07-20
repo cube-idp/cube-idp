@@ -49,7 +49,7 @@ func TestGatewayTLSSecretShape(t *testing.T) {
 // TestRunOrdersCABeforeCluster asserts the D12 ordering requirement ("cert
 // material is generated before cluster creation") without refactoring
 // Run's step sequence into a seam: Run has no test hook for its step order
-// (checkpoint 0.13's structure is a single linear function that writes
+// (Run is a single linear function that writes
 // "▸ [stage] ..." lines to out as it goes), so a full refactor into an
 // ordered []stepFn slice would be the invasive option the brief allows
 // falling back to only if no seam exists.
@@ -105,7 +105,8 @@ spec:
 	if !strings.Contains(got, "▸ [ca]") {
 		t.Fatalf("ca step must run before cluster.Ensure is attempted; output:\n%s", got)
 	}
-	// R1 (TUI spec §5): the cluster stage now prints a "▸ [cluster] msg...\n"
+	// Because a started step must be visible in CI logs (so hung and slow are
+	// distinguishable), the cluster stage prints a "▸ [cluster] msg...\n"
 	// start line before Ensure runs, so its presence no longer disproves the
 	// ordering — what must stay absent is a cluster COMPLETION line (one
 	// without the "..." start suffix).

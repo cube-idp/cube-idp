@@ -43,7 +43,7 @@ func vendorForTest(t *testing.T, lockPath, outPath, platform string) error {
 }
 
 // TestMain keeps every test in this file fully local (in-process registry,
-// random.Image — no network, per Task 6's constraints): the production
+// random.Image — no network, as vendor's tests require): the production
 // default for registryInstallImages derives images from the REAL zot
 // manifests, which reference real registry images. Tests neutralize that
 // seam here; TestVendorImagesIncludesEngineAndRegistry restores a synthetic
@@ -58,7 +58,7 @@ func TestMain(m *testing.M) {
 
 // writeEngineLockEntry pushes a minimal cube-engine-flux pack to host (the
 // caller's in-process registry) and returns a fully-pinned lock.EngineLock
-// mirroring Task 6's shape (type + the six pack fields). Engine-as-pack
+// mirroring the lock's engine shape (type + the six pack fields). Engine-as-pack
 // vendors the engine pack like every chart pack, so every lock fixture in
 // this file must carry a fetchable engine entry — Vendor now rejects a lock
 // with no engine.ref and vendorPacks fetches the engine pack.
@@ -612,7 +612,7 @@ func TestVerifyDetectsDeletedImageEntry(t *testing.T) {
 
 // TestOpenRejectsV1Bundle: a bundle whose manifest says formatVersion 1 is
 // refused with CUBE-7003 and the format-upgraded remediation — bundles are
-// ephemeral transport artifacts, no compatibility shim (spec §5.2).
+// ephemeral transport artifacts, no compatibility shim.
 func TestOpenRejectsV1Bundle(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
 	if err := vendorForTest(t, writeLockFixture(t), out, ""); err != nil {

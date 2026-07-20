@@ -32,7 +32,7 @@ func (f *Flux) Health(ctx context.Context, a *apply.Applier) ([]engine.Component
 	if meta.IsNoMatchError(err) {
 		// No Kustomization CRD yet (fresh cluster, engine install still
 		// converging) is not an error condition — same hardening as the
-		// argocd engine's Health (Phase 2, Task 2); see listDelivered in
+		// argocd engine's Health; see listDelivered in
 		// flux.go for the sibling case on the Uninstall path.
 		return nil, nil
 	}

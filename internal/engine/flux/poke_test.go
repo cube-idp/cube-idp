@@ -63,7 +63,7 @@ func installFluxCRDs(t *testing.T) {
 // single `go test` run. This package's tests each use their own cube name
 // ("pokecube" here vs. "testcube" in uninstall_test.go), and
 // TestUninstallDeletesDeliveredSources's final assertion is
-// cube-idp.dev/cube-scoped (Phase 4 R8) rather than listing flux-system
+// cube-idp.dev/cube-scoped rather than listing flux-system
 // unfiltered, so a leaked pokecube object can no longer fail that specific
 // assertion — but this cleanup is kept anyway as general test hygiene: it
 // keeps each test's fixtures from outliving it, independent of what any

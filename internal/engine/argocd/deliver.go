@@ -34,7 +34,8 @@ func (g *ArgoCD) Deliver(ctx context.Context, r *pack.Rendered, src engine.Artif
 // shared by Deliver (OCI source) and DeliverGit (git source): everything is
 // identical bar spec.source, so both pass just the source block. Keeping this
 // in one place is what makes DeliverGit "copy Deliver, change only the source"
-// literally true (spec §4.1, D2). dependsOn (p6 DEP3) is argocd's half of
+// literally true (see ADR 0018 — GitOps engine interface seam). dependsOn —
+// the pack's resolved dependency list — is argocd's half of
 // the pack-dep translation: argocd cannot order cross-Application
 // reconciliation, so a non-empty dependsOn becomes the
 // cube-idp.dev/depends-on annotation — informational for humans/tooling,

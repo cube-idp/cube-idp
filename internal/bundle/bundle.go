@@ -1,7 +1,8 @@
-// Package bundle implements `cube-idp vendor` (spec §4.1): a pure cube.lock
+// Package bundle implements `cube-idp vendor`: a pure cube.lock
 // consumer that pulls every pinned pack and image into one self-contained
 // tar.gz for air-gapped installs. Vendor produces the bundle; Open/Verify/
-// PackDir/ImageTars/Close read one back (Task 7's loaders build on Open).
+// PackDir/ImageTars/Close read one back (the offline `up --bundle` image
+// loaders build on Open).
 //
 // Bundle layout (versioned via manifest.json's formatVersion):
 //
@@ -21,7 +22,7 @@
 //	                       (LoadImageArchive) and k3d
 //	                       (ImageImportIntoClusterMulti) hand it — but that
 //	                       is NOT YET PROVEN LIVE (Task 0 review finding):
-//	                       plausible-but-unverified until Task 13's bundle
+//	                       chosen — plausible but unverified until the bundle
 //	                       e2e exercises it. FALLBACK if either importer
 //	                       rejects the OCI-layout tar: convert to
 //	                       docker-archive at load time inside internal/bundle

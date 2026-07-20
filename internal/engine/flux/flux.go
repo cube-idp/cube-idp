@@ -1,6 +1,7 @@
 // Package flux implements the GitOpsEngine over Flux's source-controller and
 // kustomize-controller. Delivery shape: one OCIRepository + one Kustomization
-// per pack, pointing at the in-cluster zot registry (spec §4.1, §4.3).
+// per pack, pointing at the in-cluster zot registry (ADR 0015 — in-cluster
+// registry and transport).
 //
 // Only source-controller and kustomize-controller are installed — helm
 // rendering happens client-side (pack.Render), so helm-controller is never

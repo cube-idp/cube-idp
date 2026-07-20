@@ -1,4 +1,4 @@
-// Package contract is the shared GitOpsEngine conformance suite (spec §5).
+// Package contract is the shared GitOpsEngine conformance suite.
 // Every engine implementation registers itself via a small contract_test.go
 // and must pass identical assertions — the mechanism that keeps D2 honest.
 package contract

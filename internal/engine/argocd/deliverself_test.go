@@ -11,13 +11,14 @@ import (
 	"github.com/cube-idp/cube-idp/internal/registry"
 )
 
-// TestDeliverSelfShapes pins P8's argocd self-source (GT16): exactly one
+// TestDeliverSelfShapes pins the argocd engine self-source used when
+// spec.engine.selfManage is on (ADR 0020): exactly one
 // Application named cube-engine in ns argocd, destination its own
 // namespace, automated sync with prune: false — and, unlike the pack
 // application() shape, NO resources-finalizer: cascading deletion of the
 // self Application would tear the engine itself down mid-`down`, when the
 // inventory-driven DeleteAll owns engine removal. The refresh annotation
-// makes each `up` apply double as the GT16 "poke".
+// makes each `up` apply double as a reconcile-now poke.
 func TestDeliverSelfShapes(t *testing.T) {
 	src := engine.ArtifactRef{Repo: "packs/cube-engine", Tag: "latest", Digest: "sha256:abc"}
 	objs, err := New().DeliverSelf(context.Background(), src)
@@ -56,7 +57,7 @@ func TestDeliverSelfShapes(t *testing.T) {
 	if !found || prune {
 		t.Fatalf("automated sync prune must be exactly false (found=%v prune=%v)", found, prune)
 	}
-	// Drift between `up`s is corrected by the engine (GT16 matrix): argocd
+	// Drift between `up`s must be corrected by the engine, not the CLI: argocd
 	// only re-syncs live drift with selfHeal on.
 	if heal, _, _ := unstructured.NestedBool(app.Object, "spec", "syncPolicy", "automated", "selfHeal"); !heal {
 		t.Fatal("automated sync selfHeal must be true — the engine corrects drift between `up`s")
