@@ -1,13 +1,13 @@
-# How the e2e suite finds packs (P4)
+# How the e2e suite finds packs
 
-The packs left this repository in Phase 5 (P4): they live in the public
+The packs no longer live in this repository: they live in the public
 monorepo [cube-idp/packs](https://github.com/cube-idp/packs) and publish to
 `oci://ghcr.io/cube-idp/packs/<name>`. The e2e suite therefore no longer
 resolves anything from a repo-relative `packs/` tree.
 
 ## Hermetic legs (default): a local packs checkout
 
-Every `init --local`-driven leg (`TestUpStatusDown`, the Phase 3 suite,
+Every `init --local`-driven leg (`TestUpStatusDown`, the provider/engine grid suite,
 `TestSpokeKindRegistration`) resolves pack directories from a local
 cube-idp/packs checkout via `packsCheckout` (e2e_test.go):
 
@@ -32,10 +32,10 @@ The pack-content smoke tests in `tests/` (`packs_render_test.go`,
 and skip identically when no checkout is present — the authoritative
 per-pack gate is the packs repo's own conformance harness.
 
-Local note (GT14): a dev machine may already bind 8443 — export
+Local note: a dev machine may already bind 8443 — export
 `CUBE_IDP_E2E_GATEWAY_PORT=18443` for any local run.
 
-## Online leg: digest-pinned published packs (decision 2)
+## Online leg: digest-pinned published packs
 
 `TestPublishedPacksByDigest` proves the standalone contract against the
 REAL registry, pinned by digest, never by mutable tag. It is doubly gated:
@@ -53,7 +53,7 @@ REAL registry, pinned by digest, never by mutable tag. It is doubly gated:
 
 To (re)seed after a publish, take the digests from the publish workflow's
 output (`published <name>:<version> @ sha256:…`), or resolve them from the
-registry with the P2 toolchain:
+registry with the `cube-idp pack` toolchain:
 
 ```sh
 cube-idp pack index build /path/to/packs-checkout/packs -o /tmp/index.json --from-registry

@@ -1,5 +1,6 @@
-// Phase 3 e2e scenarios (spec §5, "E2E (CI)" widened to the {kind, k3d} x
-// {flux, argocd} grid). These prove the Phase 3 surfaces end to end against a
+// e2e scenarios for the wider CI grid: {kind, k3d} x
+// {flux, argocd}. These prove the k3d provider, air-gapped bundles, sync and
+// repo surfaces end to end against a
 // real cluster on local docker, and they are the ARBITERS for the phase's
 // deliberately-deferred unknowns:
 //
@@ -16,7 +17,8 @@
 //     the gateway -> engine syncs -> ConfigMap appears).
 //   - TestEnvoyGatewaySmoke  — envoy-gateway as spec.gateway.pack with the
 //     StrategicMerge NodePort-30443 pinning honored at runtime (Owner
-//     Decisions #7 / Task 4).
+//     ships GatewayClass AND Gateway, so spec.gateway.pack: envoy-gateway
+//     works turnkey).
 //
 // All are gated by CUBE_IDP_E2E=1. Helpers build/run/gatewayPort/
 // patchGatewayPort/assertGatewayTLS/mustUserConfigDir live in e2e_test.go
@@ -56,7 +58,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/config"
 )
 
-// gitea admin Secret facts (checkpoint 0.10/0.8, mirrored from cmd/repo.go's
+// gitea admin Secret facts (mirrored from cmd/repo.go's
 // unexported constants): admin credential lives in Secret
 // gitea-admin-cube-idp/namespace gitea, keys username/password.
 const (
@@ -99,7 +101,7 @@ func requireDocker(t *testing.T) {
 
 // initCube runs `init --name <name> --local <packs-checkout> --engine
 // <engine>` in dir, then patches the just-written cube.yaml to the requested
-// provider and gateway port (P4: --local points at a cube-idp/packs checkout
+// provider and gateway port (--local points at a cube-idp/packs checkout
 // — packsCheckout, tests/e2e/PACKS.md). `init` has no --provider flag (it
 // always writes kind), so a non-kind leg is applied here via the same
 // config.Cube round-trip patchGatewayPort uses — schema-valid because
@@ -138,7 +140,7 @@ func patchCube(t *testing.T, dir string, mutate func(*config.Cube)) {
 	}
 }
 
-// cleanupCube is the t.Cleanup teardown for a Phase 3 scenario: `down` is the
+// cleanupCube is the t.Cleanup teardown for the scenarios in this file: `down` is the
 // primary path (it reads cube.yaml, cascades, and deletes the cluster via the
 // Go provider), and guardDeleteCluster is a provider-CLI backstop for the case
 // where `up` never left a usable cube.yaml/cluster pairing or `down` failed.
@@ -315,11 +317,11 @@ func TestK3dUpDown(t *testing.T) {
 //
 // Offline assertions on the bundle-up output, keyed on the per-pack
 // "fetching <source>" step line internal/up emits with the RESOLVED fetch
-// source (stepFetchSource, added by the Task 13 review — an online run
+// source (stepFetchSource — an online run
 // demonstrably prints the network/checkout ref there, pinned by
 // TestStepFetchSourcePlainOutput in internal/up): the output MUST contain the
 // "image(s) loaded into cluster nodes" step (the node-load path ran — the
-// shipped Task 7 wording is "▸ [bundle] N image(s) loaded into cluster
+// wording internal/up actually emits is "▸ [bundle] N image(s) loaded into cluster
 // nodes", which the plan draft paraphrased); EVERY
 // "fetching" line's source must point into the bundle's cube-idp-bundle-*
 // staging dir (positive: each pack was read from the bundle, not the network
@@ -408,7 +410,7 @@ func assertFetchSourcesFromBundle(t *testing.T, out string) {
 // single ConfigMap, `sync <dir>`, poll `status` until the synthesized pack
 // reports Ready, then assert the ConfigMap exists in-cluster (client-go). The
 // synthesized pack's name is the sync dir's base name (loadOrSynthesize). Its
-// inventory is covered by `down` (Task 10 / Owner Decisions #14 merge).
+// inventory is covered by `down`: Applier.RecordInventory MERGES with the
 func TestSyncOneShot(t *testing.T) {
 	requireE2E(t)
 	requireDocker(t)
@@ -524,7 +526,7 @@ func runGit(t *testing.T, workdir string, env []string, args ...string) {
 // Decisions #7): init, rewrite the gateway pack to envoy-gateway (pack + local
 // Ref), `up`, assert every pack is Ready and the gateway answers TLS through
 // the envoy data plane — the same cert probe the kind/traefik leg uses,
-// proving the turnkey Gateway + NodePort-30443 StrategicMerge pinning (Task 4)
+// proving the turnkey Gateway + NodePort-30443 StrategicMerge pinning the
 // is honored at runtime — then `down`.
 func TestEnvoyGatewaySmoke(t *testing.T) {
 	requireE2E(t)
@@ -681,7 +683,7 @@ func podLogs(t *testing.T, cs *kubernetes.Clientset, ns, name string) string {
 }
 
 // clusterRESTConfig connects to the already-`up` cluster exactly like
-// clusterClientset and returns the raw REST config — the P7 leg builds a
+// clusterClientset and returns the raw REST config — the repo-delivery leg builds a
 // dynamic client from it for engine CRs and Pack records.
 func clusterRESTConfig(t *testing.T, dir string) *rest.Config {
 	t.Helper()
@@ -729,7 +731,7 @@ func giteaGatewayAPI(t *testing.T, port int, user, pass, path string) (int, []by
 	return resp.StatusCode, body
 }
 
-// TestRepoDeliveredPack is P7's acceptance leg (decision 4/13, GT19):
+// TestRepoDeliveredPack is the acceptance leg for per-pack repo delivery (ADR-0006):
 // `up` with one delivery: repo pack must (1) create the Gitea repo
 // cube-pack-<name> with the rendered manifests/ in it — asserted over the
 // gateway API the way the repo tests reach gitea; (2) register a GIT
@@ -823,7 +825,7 @@ func TestRepoDeliveredPack(t *testing.T) {
 		}
 	}
 
-	// (3) The Pack record reports delivery: repo (GT19); a stock pack
+	// (3) The Pack record reports delivery: repo — the DELIVERY column; a stock pack
 	// reports oci — the DELIVERY column always shows a value.
 	packGVR := schema.GroupVersionResource{Group: "cube-idp.dev", Version: "v1alpha1", Resource: "packs"}
 	rec, err := dyn.Resource(packGVR).Get(ctx, repoPack, metav1.GetOptions{})
@@ -928,8 +930,8 @@ func pollDeploymentReplicas(t *testing.T, cs *kubernetes.Clientset, ns, name str
 		ns, name, want, timeout, last)
 }
 
-// TestEngineSelfManage is P8's acceptance leg (GT16), redesigned for
-// engine-as-pack (spec §10): with spec.engine.selfManage: true, `up` pushes
+// TestEngineSelfManage is the acceptance leg for opt-in engine self-management
+// (ADR-0020), redesigned for engine-as-pack (ADR-0007): with spec.engine.selfManage: true, `up` pushes
 // the rendered ENGINE PACK as the cube-engine zot artifact and the engine
 // reconciles ITSELF.
 //
@@ -941,12 +943,12 @@ func pollDeploymentReplicas(t *testing.T, cs *kubernetes.Clientset, ns, name str
 // spec.replicas OWNED by a field manager that is NOT cube-idp's applier — the
 // managedFields proof the engine reconfigured itself (rule 2). The FLUX
 // engine pack is vendored-manifests (chartless): engine.values on it is
-// CUBE-4016 (spec §10), so flux cannot drive a value flip — its leg asserts
+// CUBE-4016 (values are helm-only, and the flux engine pack is chartless), so flux cannot drive a value flip — its leg asserts
 // the STRUCTURAL selfManage guarantee instead (the cube-engine artifact is
 // published on `up`, and a plain re-`up` of a healthy self-managed engine
 // does not re-SSA it: spec.replicas on kustomize-controller is NOT owned by
 // cube-idp's applier). Flux value-driven engine customization is deferred to
-// a later phase (spec §10).
+// later work (ADR-0007, ADR-0019).
 func TestEngineSelfManage(t *testing.T) {
 	requireE2E(t)
 	requireDocker(t)
@@ -964,7 +966,7 @@ func TestEngineSelfManage(t *testing.T) {
 
 	// Engine-as-pack: point spec.engine.ref at the LOCAL engine pack — the
 	// published oci://…cube-engine-<type>:0.1.0 default does not resolve until
-	// the packs are published (Task 15). Same packs checkout initCube feeds
+	// the engine packs are published to the registry. Same packs checkout initCube feeds
 	// the gateway pack via --local.
 	engineRef := filepath.Join(packsCheckout(t), "packs", "cube-engine-"+engineName())
 	chartEngine := engineName() == "argocd"
@@ -1001,7 +1003,7 @@ func TestEngineSelfManage(t *testing.T) {
 
 	if !chartEngine {
 		// FLUX (chartless) — structural selfManage proof, no value flip.
-		// engine.values can't drive flux (CUBE-4016, spec §10), so instead of
+		// engine.values can't drive flux (CUBE-4016 — the flux engine pack is chartless), so instead of
 		// asserting a value-driven ownership HANDOFF (which needs a change to
 		// force the engine to overwrite cube-idp's first-install SSA), we
 		// assert the engine ENGAGED self-management: after selfManage `up`, the
@@ -1009,7 +1011,7 @@ func TestEngineSelfManage(t *testing.T) {
 		// kustomize-controller. cube-idp's applier SSAs the FIRST install (so
 		// it remains a co-owner — that is expected and NOT a rule-2 break), but
 		// the engine reconciling its own artifact must ALSO become an owner —
-		// the managedFields proof the engine took over its install (GT16). A
+		// the managedFields proof the engine took over its install. A
 		// plain re-`up` of the now-healthy engine must not error (the diff
 		// leg + `up` idempotency below cover the no-re-SSA guarantee).
 		// The vendored flux install ships kustomize-controller at replicas: 1.
@@ -1035,7 +1037,7 @@ func TestEngineSelfManage(t *testing.T) {
 	pollDeploymentReplicas(t, cs, ns, component, 1, 3*time.Minute)
 
 	// Flip the chart replica value and re-run: render -> push -> poke, never
-	// SSA the healthy engine (GT16).
+	// SSA the healthy engine (ADR-0020).
 	setEngine(func(c *config.Cube) {
 		c.Spec.Engine.Values = map[string]any{"repoServer": map[string]any{"replicas": 2}}
 	})
