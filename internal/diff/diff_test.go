@@ -148,8 +148,8 @@ func sortedKeys(set map[string]bool) []string {
 // TestDesiredStateMatchesUpAppliedSet is the false-orphan regression net:
 // desiredState's desired+orphanOnly identities must cover EXACTLY what
 // up.Run applies/inventories for the same cube (registry + Pack CRD +
-// engine install + per-pack deliver objects + the D6 gateway route + the D11
-// Pack records + the gateway TLS Namespace/Secret — see up.go and
+// engine install + per-pack deliver objects + the registry's gateway route +
+// the Pack records + the gateway TLS Namespace/Secret — see up.go and
 // up/tls.go's gatewayTLSObjects). Anything up.Run applies that this test
 // doesn't also expect here would show up as a false "orphaned" entry on
 // every converged cube; anything expected here that up.Run doesn't actually
@@ -240,7 +240,7 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 		wantPackRecords = append(wantPackRecords, pack.PackObject(p, cube.Spec.Gateway, false,
 			len(pr.Values) > 0 || pr.ExtraManifests != "", pr.Delivery, nil))
 	}
-	// Engine-as-pack (T9): up.Run also writes the engine's own D11 Pack record
+	// Engine-as-pack (T9): up.Run also writes the engine's own Pack record
 	// (delivery "engine"); desiredState mirrors its identity in orphanOnly.
 	wantPackRecords = append(wantPackRecords, pack.PackObject(enginePk, cube.Spec.Gateway, false,
 		len(cube.Spec.Engine.Values) > 0, "engine", nil))

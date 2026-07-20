@@ -2,7 +2,8 @@
 // anything: kernel objects via SSA dry-run, pack content via cube.lock
 // rendered hashes, orphans via the inventory. Not modeled: the CoreDNS
 // Corefile rewrite (internal/trust.EnsureCoreDNSRewrite) that `up` applies
-// for the D6 canonical hostname — it lives in kube-system's coredns
+// for the canonical gateway hostname (docs/adr/0012-canonical-gateway-host-and-port-mapping.md)
+// — it lives in kube-system's coredns
 // ConfigMap/Deployment, outside every object this package's desiredState
 // assembles or diffs, so drift there (e.g. a manual CoreDNS edit, or a
 // host change since the last `up`) is invisible to `diff`.
@@ -148,8 +149,9 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 // exactly as up.Run orders it) and returns:
 //
 //   - desired: the kernel object set safe to SSA dry-run diff — registry,
-//     the D11 Pack CRD, engine install, per-pack delivery objects, and the
-//     D6 registry gateway route. Every one of these is pure/deterministic
+//     the inert Pack CRD, engine install, per-pack delivery objects, and the
+//     registry route on the canonical gateway host. Every one of these is
+//     pure/deterministic
 //     given cube.yaml alone, so re-rendering them here and diffing against
 //     live state is accurate.
 //   - orphanOnly: identity-only stubs (kind/namespace/name, no spec) for a
@@ -158,7 +160,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 //     Secret (ensureGatewayTLS deliberately reuses the live secret's cert
 //     rather than reissuing one on every `up`/`diff` — reissuing here would
 //     fabricate fresh random cert bytes and misreport a stable secret as
-//     "changed" on every single diff) and each pack's D11 Pack
+//     "changed" on every single diff) and each pack's Pack
 //     discoverability record (whose `ready` field tracks live engine health
 //     at write time, not something a re-render should perturb). Sending a
 //     partial stub through a.Diff would apply-patch it under the SAME field
@@ -180,8 +182,10 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 	}
 	desired = append(desired, regObjs...)
 
-	// D11: applied by up.Run's "packs-crd" step, before the engine and the
-	// pack loop below; pure (embedded YAML, no live-state dependency).
+	// The single inert Pack CRD (packs.cube-idp.dev, no controller watches it
+	// — docs/adr/0002-pack-format-data-only-contract.md): applied by up.Run's
+	// "packs-crd" step, before the engine and the pack loop below; pure
+	// (embedded YAML, no live-state dependency).
 	crd, err := pack.CRD()
 	if err != nil {
 		return nil, nil, nil, err
@@ -293,18 +297,18 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 			desired = append(desired, deliverObjs...)
 		}
 
-		// D11 Pack record identity (see the orphanOnly doc above for why
+		// Pack record identity (see the orphanOnly doc above for why
 		// only identity, not the full spec, belongs here).
 		orphanOnly = append(orphanOnly, identityStub(packGVK, "", rendered.Name))
 	}
 
-	// Engine-as-pack §3.3.7: up.Run also appends the engine's own D11 Pack
+	// Engine-as-pack (docs/adr/0007-engine-as-a-pack.md): up.Run also appends the engine's own Pack
 	// record row (delivery "engine"); its identity belongs here for the same
 	// reason as the per-pack records above.
 	orphanOnly = append(orphanOnly, identityStub(packGVK, "", enginePk.Name))
 
-	// D6: applied by up.Run right after the pack loop; pure given the
-	// gateway host alone.
+	// The registry's route on the canonical gateway host: applied by up.Run
+	// right after the pack loop; pure given the gateway host alone.
 	desired = append(desired, registry.GatewayRoute(cube.Spec.Gateway.Host, cube.Spec.Gateway.Pack))
 
 	// Gateway TLS Namespace + Secret identities (see the orphanOnly doc
