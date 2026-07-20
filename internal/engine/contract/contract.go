@@ -1,6 +1,8 @@
 // Package contract is the shared GitOpsEngine conformance suite.
 // Every engine implementation registers itself via a small contract_test.go
-// and must pass identical assertions — the mechanism that keeps D2 honest.
+// and must pass identical assertions — the mechanism that keeps the
+// GitOpsEngine interface seam honest (an abstraction with one implementation
+// is a lie). See docs/adr/0018-gitops-engine-interface-seam.md.
 package contract
 
 import (
