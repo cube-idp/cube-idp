@@ -98,11 +98,11 @@ func TestGatewayServiceFQDNDerivation(t *testing.T) {
 	}
 }
 
-// TestMergeImagesUnion pins spec D14's lock-assembly merge: the sorted,
-// deduplicated union of rendered-manifest images and a pack's declared
-// (pack.cue images:) images — the pure step Run's pack loop calls per
-// entry. This is the "focused unit" the D14 preparatory commit calls for,
-// since Run itself needs a live cluster and isn't unit-testable here.
+// TestMergeImagesUnion pins the lock-assembly merge that keeps air-gap
+// bundles honest: the sorted, deduplicated union of rendered-manifest images
+// and a pack's declared (pack.cue images:) images — the pure step Run's pack
+// loop calls per entry. It is a focused unit test because Run itself needs a
+// live cluster and isn't unit-testable here.
 func TestMergeImagesUnion(t *testing.T) {
 	got := mergeImages(
 		[]string{"traefik:v3.1", "busybox:1.36"},

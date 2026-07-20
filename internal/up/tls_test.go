@@ -46,8 +46,9 @@ func TestGatewayTLSSecretShape(t *testing.T) {
 	}
 }
 
-// TestRunOrdersCABeforeCluster asserts the D12 ordering requirement ("cert
-// material is generated before cluster creation") without refactoring
+// TestRunOrdersCABeforeCluster asserts the ordering requirement that cert
+// material is generated before cluster creation (see
+// docs/adr/0038-local-ca-and-tls-at-the-gateway.md) without refactoring
 // Run's step sequence into a seam: Run has no test hook for its step order
 // (Run is a single linear function that writes
 // "▸ [stage] ..." lines to out as it goes), so a full refactor into an
@@ -63,7 +64,7 @@ func TestGatewayTLSSecretShape(t *testing.T) {
 // error before ever printing the "cluster" step. So observing "▸ [ca]" in
 // the captured output AND the total absence of "▸ [cluster]" proves the CA
 // step executed strictly before the (failed) attempt to ensure the
-// cluster — exactly the ordering D12 requires — using only Run's existing,
+// cluster — exactly the ordering required — using only Run's existing,
 // unmodified public entry point.
 func TestRunOrdersCABeforeCluster(t *testing.T) {
 	// Isolate trust.Dir() (os.UserConfigDir(), which reads $HOME on this

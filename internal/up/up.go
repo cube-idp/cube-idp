@@ -83,7 +83,7 @@ type Options struct {
 // Run drives the full up sequence for the cube.yaml at opts.ConfigPath,
 // emitting progress events through opts.Con (Task 14b: cmd/up.go wraps Run in
 // ui.RunPipeline, which owns the renderer for the resolved mode): load
-// config -> ensure the local CA (D12: before any cluster artifact
+// config -> ensure the local CA (before any cluster artifact
 // references the trust root) -> ensure cluster -> install registry ->
 // install engine -> ensure the gateway TLS secret -> port-forward the
 // registry -> fetch/render/push/deliver every pack (gateway first) -> wait
@@ -120,7 +120,8 @@ func Run(ctx context.Context, opts Options) error {
 			len(opened.Lock.Packs), len(opened.Manifest.Images))
 	}
 
-	// D12 ("cert material is generated before cluster creation"): ensure the
+	// Cert material is generated before cluster creation
+	// (docs/adr/0038-local-ca-and-tls-at-the-gateway.md): ensure the
 	// local CA — adopting an existing mkcert root if present — before
 	// ClusterProvider.Ensure runs, so the kind provider can mount it into
 	// containerd certs.d at cluster-create time and no cluster
@@ -208,7 +209,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	con.Step("registry", "zot ready at %s", registry.InClusterURL)
 
-	// D11: the inert Pack CRD must exist before any Pack record is written,
+	// The inert Pack CRD must exist before any Pack record is written,
 	// so it goes in right after the registry — before the engine and the
 	// pack delivery loop below. wait=true (kstatus) blocks until the API
 	// server has Established it; no controller ever reconciles it further.
@@ -391,7 +392,7 @@ func Run(ctx context.Context, opts Options) error {
 				Version:      rendered.Version,
 				Resolved:     pk.Pinned,
 				RenderedHash: rh,
-				// D14: union rendered-manifest images with the pack's own
+				// Union rendered-manifest images with the pack's own
 				// declared images (pack.cue images:) — see the Entry.Images
 				// field comment for why both sources matter.
 				Images: mergeImages(lock.ImagesFrom(rendered.Objects), pk.Images),
@@ -410,7 +411,7 @@ func Run(ctx context.Context, opts Options) error {
 	// the delivery fakes, without a live cluster. resolveAndDeliverPacks threads
 	// each pack's resolved deps into its Rendered/engine call and the wave
 	// gate itself (p6 DEP3); Run keeps the packDeps return too, now that the
-	// D11 record-writer loop below needs each pack's resolved dep list for
+	// Pack-record writer loop below needs each pack's resolved dep list for
 	// its DEPENDS-ON column (p6 DEP4).
 	packDeps, err := resolveAndDeliverPacks(ctx, con, deps, a, refs, packs, renders)
 	if err != nil {
@@ -445,7 +446,8 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	// D6 canonical hostname: route registry.<host> through the gateway (for
+	// Canonical hostname (docs/adr/0012-canonical-gateway-host-and-port-mapping.md):
+	// route registry.<host> through the gateway (for
 	// host-side docker/oras push), then make *.<host> resolve in-cluster to
 	// the same gateway Service so pod-side clients use identical URLs.
 	route := registry.GatewayRoute(cube.Spec.Gateway.Host, cube.Spec.Gateway.Pack)
@@ -507,7 +509,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	// D11: write each pack's discoverability record now that health is
+	// Write each pack's discoverability record now that health is
 	// known. waitHealthy polls eng.Health internally but doesn't return the
 	// final slice, so ask once more here — cheap, and every reported
 	// component was already Ready one poll ago.
@@ -521,7 +523,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	// "cube-idp-"+name is the Deliver object name convention both engines
 	// use (internal/engine/flux/deliver.go, internal/engine/argocd/deliver.go).
-	// D11 record-writer fields (append-only shared surface): U4 CUSTOMIZED,
+	// Pack-record writer fields (append-only shared surface): U4 CUSTOMIZED,
 	// DELIVERY (PackObject maps an empty Delivery to "oci"), and
 	// DEP4 DEPENDS-ON (packDeps is keyed by name, packs is the DECLARED-order
 	// slice — no index remap needed against refs/packs alignment below).
@@ -565,7 +567,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	// The gateway's websecure listener terminates TLS with a
-	// CA-issued cert (D6/D12), so this URL is genuinely HTTPS. Browsers only
+	// CA-issued cert (ADR-0038), so this URL is genuinely HTTPS. Browsers only
 	// show a green lock once the CA is trusted — `cube-idp trust` does that.
 	// The epilogue is DATA (event.Epilogue): the ✔ glyph is
 	// presentation renderers add, so the plain bytes drop exactly that one
@@ -792,7 +794,7 @@ func stepFetchSource(con *ui.Console, ref string) {
 
 // mergeImages returns the sorted, deduplicated union of rendered (images
 // found by walking a pack's rendered manifests) and declared (pack.cue's
-// optional images: list, spec D14) — the Entry.Images the lock records.
+// optional images: list) — the Entry.Images the lock records.
 // Operator-style packs (e.g. envoy-gateway) provision images that never
 // appear in their own rendered objects, so `declared` closes that air-gap
 // blind spot for `cube-idp vendor`, which builds the air-gap bundle purely
@@ -814,8 +816,8 @@ func mergeImages(rendered, declared []string) []string {
 }
 
 // gatewayServiceFQDN returns the in-cluster DNS name of the gateway pack's
-// data-plane Service, the CoreDNS rewrite target for *.<gw.Host> (D6, R7b
-// see docs/adr/0037-gateway-api-routing-surface.md). When the RESOLVED
+// data-plane Service, the CoreDNS rewrite target for *.<gw.Host>
+// (see docs/adr/0037-gateway-api-routing-surface.md). When the RESOLVED
 // gateway pack (gwPack) declares a
 // gatewayService: block, that is authoritative — this is how envoy-gateway
 // closes the CoreDNS-targets-the-controller gap (the pre-R7b KNOWN GAP):
@@ -1009,7 +1011,7 @@ func componentStates(health []engine.ComponentHealth) []event.ComponentState {
 
 // ---- per-pack delivery (delivery: oci|repo) ------------------------------
 
-// The D11-verified facts about the shipped gitea pack, mirrored from
+// Facts about the shipped gitea pack, mirrored from
 // cmd/repo.go (verified against the shipped packs/gitea; tests/e2e keeps its own copy the same
 // way): admin Secret gitea-admin-cube-idp in namespace gitea (keys
 // username/password), chart-standard pod label, Service gitea-http:3000.
