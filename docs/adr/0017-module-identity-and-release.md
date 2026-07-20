@@ -1,0 +1,120 @@
+---
+status: "accepted"
+date: 2026-07-20
+decision-makers: "cube-idp maintainers"
+---
+
+# 17. Module Identity, Release Artifacts, and Toolchain Pinning
+
+## Context and Problem Statement
+
+cube-idp is a Go CLI distributed as prebuilt binaries. Three things about the project's
+identity have to be stable and stated once, because every other piece of tooling derives
+from them: the Go module path that importers and build-time ldflags reference, the Go
+toolchain version that CI and release builds compile with, and the shape and destination
+of the published release artifacts.
+
+The project moved from a personal GitHub namespace (`github.com/rafpe/cube-idp`) to an
+organization namespace (`github.com/cube-idp/cube-idp`). A Go module path is not a
+cosmetic label — it is baked into every import statement, into the `-X ...` ldflags that
+stamp version metadata into the binary, and into the release target. If any of these
+drift apart, imports break for downstream consumers or a release publishes to the wrong
+repository. Likewise, a toolchain version written into a workflow file is a second source
+of truth that silently diverges from `go.mod`.
+
+A related identity constraint applies inside the codebase: the terminal presentation
+layer must have exactly one owner, and that owner must be importable from everywhere it
+is needed without creating an import cycle.
+
+## Decision
+
+The Go module path is `github.com/cube-idp/cube-idp`. All Go imports and all goreleaser
+ldflags reference that path; the former `github.com/rafpe/cube-idp` path is unsupported
+for importers (only GitHub's git-level redirect still resolves).
+
+The Go toolchain version is never hardcoded. CI and release workflows resolve it from
+`go.mod` via `go-version-file`, making `go.mod` the single source of truth for the
+toolchain.
+
+Releases are checksummed multi-platform binaries for darwin and linux on arm64 and
+amd64, published to the `cube-idp/cube-idp` repository as non-draft releases with
+prerelease detection set to `auto`.
+
+The TUI targets the Charm v2 line on `charm.land/*` import paths; v1 and v2 import paths
+do not coexist. `internal/ui/theme` is the single source of the terminal look and stays a
+leaf package so every consumer can import it without a cycle.
+
+## Consequences
+
+* Good, because a single module path means imports, ldflags and release target cannot
+  drift apart — a mismatch fails the build rather than shipping a mislabelled binary.
+* Good, because `go-version-file: go.mod` removes an entire class of "CI uses a different
+  Go than my machine" bugs; bumping `go.mod` bumps CI.
+* Good, because a leaf `internal/ui/theme` package dissolves the import cycle that
+  previously forced `render/styled.go` to duplicate `ui.go`'s styles.
+* Bad, because the rename breaks any external importer of the old path that does not
+  update its imports; the git-level redirect does not make the old module path work.
+* Bad, because pinning the *toolchain* but installing tools (`kind`, `setup-envtest`)
+  with `@latest` leaves CI exposed to upstream tool changes — the pinning discipline was
+  applied to the toolchain only.
+* Bad, because a single-PR v1→v2 Charm migration means the migration and the first live
+  view land together, making that pull request larger and harder to revert piecewise.
+
+## Implementation Status
+
+**This decision is implemented.** Confirmed against the code on 2026-07-20.
+
+| Decision | Implemented at |
+| --- | --- |
+| The Go module path is `github.com/cube-idp/cube-idp`; imports and goreleaser ldflags reference that path, the old `github.com/rafpe/cube-idp` path is unsupported for importers, and CI resolves the Go version from `go.mod` via `go-version-file`. | `go.mod:1` |
+| Releases are checksummed multi-platform binaries for darwin/linux × arm64/amd64, published as non-draft releases with prerelease detection set to auto. | `.goreleaser.yaml:54-59` |
+| The Go toolchain is resolved from `go.mod` via `go-version-file: go.mod` rather than a hardcoded version. | `.github/workflows/ci.yaml:40` |
+| All TUI work targets the Charm v2 line (`charm.land/*` paths for bubbletea/lipgloss/huh), with v1 and v2 import paths never coexisting. | `go.mod:45-49` |
+| `internal/ui/theme` is the single source of cube-idp's terminal look and remains a leaf package importing only lipgloss v2, `x/term` and stdlib, so both `internal/ui` and `internal/ui/render` can import it without a cycle. | `internal/ui/theme/theme.go:1-13` |
+
+### Verification
+
+- [ ] `go.mod:1` declares `module github.com/cube-idp/cube-idp`.
+- [ ] `grep -rn "rafpe" go.mod .goreleaser.yaml .github/workflows/` returns nothing.
+- [ ] `.goreleaser.yaml:18-20` stamps ldflags against `github.com/cube-idp/cube-idp/cmd`.
+- [ ] `.goreleaser.yaml:54-59` sets release github owner `cube-idp`, name `cube-idp`,
+      `draft: false`, `prerelease: auto`.
+- [ ] `.goreleaser.yaml` builds `goos: [darwin, linux]` × `goarch: [amd64, arm64]` and
+      emits `checksums.txt`.
+- [ ] Every `setup-go` step in `.github/workflows/ci.yaml` and `release.yaml` uses
+      `with: {go-version-file: go.mod}`; no workflow hardcodes a Go version.
+- [ ] `go.mod:45-49` requires the `charm.land/*` v2 modules, and no
+      `github.com/charmbracelet/{bubbletea,lipgloss,huh}` v1 requirement remains.
+- [ ] `go list -deps ./internal/ui/theme` returns no other `github.com/cube-idp/cube-idp`
+      package (leaf-ness), and its only non-stdlib direct imports are
+      `charm.land/lipgloss/v2` and `golang.org/x/term`.
+
+## History
+
+The release target was originally the personal `RafPe/cube-idp` repository. The
+organization migration moved it to owner `cube-idp` / name `cube-idp`; the draft and
+prerelease halves of that original decision carried over unchanged.
+
+CI was originally required to pin *all* tool versions explicitly — a pinned
+`sigs.k8s.io/kind` CLI and a Makefile-pinned `setup-envtest`. Only the
+`go-version-file: go.mod` clause survived. `.github/workflows/ci.yaml:40` installs
+`sigs.k8s.io/kind@latest`, the adjacent k3d install curls an unpinned `install.sh` from
+`main`, and `Makefile:16,19,23` run `setup-envtest@latest` (only the Kubernetes asset
+version `1.33` is fixed). The explicit-tool-pinning rule is therefore not in force; the
+toolchain-from-`go.mod` rule is.
+
+## More Information
+
+Origin: mined from the archived planning corpus (`docs/archive/superpowers/`) during the
+2026-07-20 documentation audit; the underlying statements were validated against the code
+before this record was written.
+
+- `docs/archive/superpowers/specs/2026-07-16-org-migration-design.md:15` — module path and
+  toolchain resolution.
+- `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:305` — release
+  artifact shape and target.
+- `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:19` — CI tool
+  version pinning (largely superseded).
+- `docs/archive/superpowers/specs/2026-07-14-cube-idp-ux-design.md:641` — Charm v2 line.
+- `docs/archive/superpowers/plans/2026-07-16-tui-interactive-layer.md:220` — `internal/ui/theme`
+  as a leaf package.
