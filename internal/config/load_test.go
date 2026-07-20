@@ -91,7 +91,7 @@ func TestLoadRejectsNodeFieldsOnExisting(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsKubernetesVersionOnExisting(t *testing.T) { // D10, spec §4.1
+func TestLoadRejectsKubernetesVersionOnExisting(t *testing.T) { // kubernetesVersion is a node-creation field
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cube.yaml")
 	doc := `apiVersion: cube-idp.dev/v1alpha1
@@ -200,21 +200,21 @@ func TestDefaultProfileIncludesGitea(t *testing.T) { // D9
 		}
 	}
 	if !found {
-		t.Fatalf("default profile must include gitea (D9): %+v", c.Spec.Packs)
+		t.Fatalf("default profile must include gitea: %+v", c.Spec.Packs)
 	}
 }
 
-// TestDefaultGatewayRefIsPublishedOCI pins the P4 standalone-binary contract
-// (F12 CLOSED): the default profile's gateway pack resolves from the
-// published packs monorepo, never from a repo-relative checkout path.
+// TestDefaultGatewayRefIsPublishedOCI pins the standalone-binary contract:
+// the default profile's gateway pack resolves from the published packs
+// monorepo, never from a repo-relative checkout path.
 func TestDefaultGatewayRefIsPublishedOCI(t *testing.T) {
 	c := Default("dev")
 	want := "oci://ghcr.io/cube-idp/packs/traefik:0.2.0"
 	if c.Spec.Gateway.Ref != want {
-		t.Fatalf("default gateway.ref = %q, want %q (F12)", c.Spec.Gateway.Ref, want)
+		t.Fatalf("default gateway.ref = %q, want %q", c.Spec.Gateway.Ref, want)
 	}
 	// The fallback for a hand-written cube.yaml WITHOUT ref stays the
-	// documented checkout-only last resort — unchanged by P4.
+	// documented checkout-only last resort — unchanged by the move to published refs.
 	if got := (GatewaySpec{Pack: "traefik"}).PackRef(); got != "packs/traefik" {
 		t.Fatalf("empty-ref fallback must stay packs/<pack>, got %q", got)
 	}
@@ -246,7 +246,7 @@ spec:
 		t.Fatalf("spokes not decoded: %+v", cube.Spec.Spokes)
 	}
 
-	// k3d spokes are deferred (GT6): must fail with CUBE-8001.
+	// k3d spokes are deferred: must fail with CUBE-8001.
 	bad := strings.Replace(base, "provider: kind", "provider: k3d", 1)
 	if err := os.WriteFile(p, []byte(bad), 0o644); err != nil {
 		t.Fatal(err)
@@ -275,8 +275,8 @@ spec:
 	}
 }
 
-// TestLoadGatewayHTTPPortRoundTripAndCollisions covers U2's opt-in
-// spec.gateway.httpPort (decision 3): set → decoded and round-tripped
+// TestLoadGatewayHTTPPortRoundTripAndCollisions covers the opt-in
+// spec.gateway.httpPort: set → decoded and round-tripped
 // through SaveValidated; equal to gateway.port or colliding with a typed
 // extraPorts hostPort → CUBE-0002; omitted → zero (no host mapping at all).
 func TestLoadGatewayHTTPPortRoundTripAndCollisions(t *testing.T) {
@@ -392,7 +392,7 @@ spec:
 	}
 }
 
-// TestPackExtraManifestsRoundTrip pins GT15's config surface (U4):
+// TestPackExtraManifestsRoundTrip pins the extras-channel config surface (ADR-0004):
 // packs[].extraManifests decodes, survives a SaveValidated round-trip, an
 // explicit empty string is rejected by schema.cue (`string & !=""`), and a
 // cleared field re-marshals as an ABSENT key (omitempty discipline — same
@@ -731,7 +731,7 @@ spec:
 	}
 }
 
-// TestEngineSelfManageRoundTrip pins P8's config surface (GT16):
+// TestEngineSelfManageRoundTrip pins the engine self-management config surface (ADR-0020):
 // spec.engine.selfManage: true decodes and survives a SaveValidated
 // round-trip; omitted → false with NO selfManage key on re-marshal
 // (omitempty discipline — a false bool is the zero value and must not

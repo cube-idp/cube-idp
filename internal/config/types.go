@@ -61,7 +61,7 @@ type ClusterSpec struct {
 	// ForProvider carries provider-native fields inline (kind
 	// v1alpha4.Cluster / k3d SimpleConfig shape). Open at load (CUE
 	// `{...}`); the provider strict-decodes it at render time so unknown
-	// fields fail config-time with the field name (decision 2), never
+	// fields fail config-time with the field name, never
 	// kubeadm-time. omitempty: absent must round-trip as an absent key —
 	// same discipline as Packs/Values (see the ClusterSpec comment above).
 	ForProvider map[string]any `yaml:"forProvider,omitempty" json:"forProvider,omitempty"`
@@ -102,17 +102,17 @@ type EngineSpec struct {
 	// PackRef.Values.
 	Values map[string]any `yaml:"values,omitempty" json:"values,omitempty"`
 	// SelfManage opts the engine into managing its own install from zot
-	// (GT16, P8): after the health gate, `up` pushes the rendered engine pack
+	// (ADR-0020): after the health gate, `up` pushes the rendered engine pack
 	// as the cube-engine artifact and attaches an engine-native self-source
 	// with pruning disabled — the engine reconciles itself from then on, so
 	// drift between `up`s is corrected. First install and unhealthy-at-start
-	// recovery still SSA directly (GT16 rules 1+3). Sourced from zot only,
+	// recovery still SSA directly. Sourced from zot only,
 	// never Gitea; works offline.
 	SelfManage bool `yaml:"selfManage,omitempty" json:"selfManage,omitempty"`
 }
 
 // defaultEngineRefs pins the published engine pack per engine type — what
-// `up`/`diff` fetch when spec.engine.ref is unset (spec §9.1: 0.1.0).
+// `up`/`diff` fetch when spec.engine.ref is unset.
 var defaultEngineRefs = map[string]string{
 	"flux":   "oci://ghcr.io/cube-idp/packs/cube-engine-flux:0.1.0",
 	"argocd": "oci://ghcr.io/cube-idp/packs/cube-engine-argocd:0.1.0",
@@ -134,7 +134,7 @@ func (e EngineSpec) PackRef() string {
 // GatewayNodePort is the node port every cluster-creating provider (kindp,
 // k3dp) must map the host gateway port onto; the traefik starter pack's
 // service pins the same value (packs/traefik/chart.yaml
-// ports.websecure.nodePort, HTTPS, Phase 2 Task 9). Defined here rather than
+// ports.websecure.nodePort, HTTPS). Defined here rather than
 // in internal/cluster: cluster's provider factory imports kindp/k3dp, so
 // kindp/k3dp importing internal/cluster back for this constant would be an
 // import cycle; internal/config has no such cycle and every party already
@@ -146,7 +146,7 @@ const GatewayNodePort = 30443
 // (packs/traefik/chart.yaml ports.web.nodePort,
 // packs/envoy-gateway/manifests/10-gatewayclass.yaml's data-plane Service).
 // The host side is mapped onto it only when the opt-in spec.gateway.httpPort
-// is set (U2, decision 3) — absent means no mapping and byte-identical
+// is set — absent means no mapping and byte-identical
 // cluster config to before; the packs need no change either way.
 const GatewayHTTPNodePort = 30080
 
@@ -156,14 +156,14 @@ type GatewaySpec struct {
 	Host string `yaml:"host" json:"host"`
 	Port int    `yaml:"port" json:"port"`
 	// HTTPPort optionally maps a host port onto the gateway's plain-HTTP
-	// listener (GatewayHTTPNodePort, 30080). Opt-in per decision 3: zero =
+	// listener (GatewayHTTPNodePort, 30080). Opt-in: zero =
 	// absent = no mapping. Cluster-shape field — like Port it is baked in
 	// at cluster creation (recreate to change). Must differ from Port and
 	// from every cluster.extraPorts hostPort (CUBE-0002 at load).
 	HTTPPort int `yaml:"httpPort,omitempty" json:"httpPort,omitempty"`
 	// Ref is the pack source `up` fetches for the gateway pack. `init`
 	// always fills it: the published oci://ghcr.io/cube-idp/packs/<pack>
-	// ref by default (P4, F12 closed), or an absolute path into a local
+	// ref by default, or an absolute path into a local
 	// cube-idp/packs checkout with `init --local`. When unset (hand-written
 	// cube.yaml), `up` falls back to "packs/<Pack>" — a checkout-relative
 	// last resort that only resolves when run from a packs checkout root.
@@ -190,11 +190,11 @@ type PackRef struct {
 	// see the ClusterSpec comment above — a nil Values map must round-trip
 	// as an absent key, not an explicit YAML null, or re-validation against
 	// schema.cue's `values?: {...}` fails.
-	// GT15 (the values stone): values are HELM values, only, always —
+	// Values are HELM values, only, always (ADR-0004) —
 	// consumed exclusively by the pack's chart.yaml render. Setting them on
 	// a chartless pack is CUBE-4016 at render time.
 	Values map[string]any `yaml:"values,omitempty" json:"values,omitempty"`
-	// ExtraManifests is GT15's uniform extras channel, valid for every pack
+	// ExtraManifests is the uniform extras channel, valid for every pack
 	// kind: a multi-doc YAML string that RenderWith parses,
 	// ${GATEWAY_*}-substitutes, and appends after the pack's own objects
 	// (CUBE-4017 when it is not valid YAML). A pack installed with
@@ -203,8 +203,8 @@ type PackRef struct {
 	// key — schema.cue's `extraManifests?: string & !=""` rejects an
 	// explicit empty string, same discipline as Values above.
 	ExtraManifests string `yaml:"extraManifests,omitempty" json:"extraManifests,omitempty"`
-	// Delivery selects how `up` hands this pack to the engine (P7, decision
-	// 4/13): "" or "oci" (the default) pushes the render to zot and
+	// Delivery selects how `up` hands this pack to the engine (ADR-0006):
+	// "" or "oci" (the default) pushes the render to zot and
 	// registers an OCI source; "repo" pushes the render into a Gitea repo
 	// (cube-pack-<name>) and registers a git source instead — the payoff is
 	// an editable, in-cluster fork (edit in the Gitea UI, the engine
@@ -224,10 +224,10 @@ type PackRef struct {
 	DependsOn []string `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
 }
 
-// SpokeSpec declares a managed spoke cluster (spec §5, Phase 5). cube-idp
+// SpokeSpec declares a managed spoke cluster (ADR-0013). cube-idp
 // only bootstraps and registers spokes — delivering workloads to them is
-// engine content, never packs. Provider is limited to kind|existing in v1
-// (GT6); k3d spokes need a shared docker network and are deferred.
+// engine content, never packs. Provider is limited to kind|existing in v1;
+// k3d spokes need a shared docker network and are deferred.
 type SpokeSpec struct {
 	Name    string      `yaml:"name" json:"name"`
 	Cluster ClusterSpec `yaml:"cluster" json:"cluster"`
@@ -243,7 +243,7 @@ func Default(name string) *Cube {
 		Spec: Spec{
 			Cluster: ClusterSpec{Provider: "kind", KubernetesVersion: "v1.33.1"},
 			Engine:  EngineSpec{Type: "flux"},
-			// P4 (F12 closed): the gateway pack resolves from the published
+			// The gateway pack resolves from the published
 			// packs monorepo — the downloaded binary needs no checkout.
 			Gateway: GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443,
 				Ref: "oci://ghcr.io/cube-idp/packs/traefik:0.2.0"},
