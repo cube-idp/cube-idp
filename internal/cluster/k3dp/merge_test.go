@@ -325,7 +325,7 @@ func TestRenderKeepsUserRegistriesWithoutZotOrSpecRegistry(t *testing.T) {
 	}
 }
 
-// TestRenderConfigInjectsZotMirror covers the D12 zot-mirror wiring: a
+// TestRenderConfigInjectsZotMirror covers the zot-mirror wiring: a
 // non-zero ZotMirror adds a registries.yaml mirror entry for it even when
 // spec.cluster.registry is unset.
 func TestRenderConfigInjectsZotMirror(t *testing.T) {

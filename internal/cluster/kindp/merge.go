@@ -27,7 +27,7 @@ import (
 // It pins to the traefik starter pack's fixed websecure NodePort
 // (config.GatewayNodePort, chart values ports.websecure.nodePort /
 // service.spec.type: NodePort) rather than 443: cube-idp terminates TLS at
-// Traefik with a cube-idp CA-issued cert (spec D6/D12, internal/up/tls.go),
+// Traefik with a cube-idp CA-issued cert (ADR 0038, internal/up/tls.go),
 // and a NodePort Service is simpler than wiring a hostPort/LoadBalancer
 // controller into a kind node. See packs/traefik/README.md for the full
 // host->node->pod chain. Shared with k3dp via config.GatewayNodePort (not
@@ -100,8 +100,8 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 	}
 	cp.Image = image
 
-	// Required injection: gateway port (spec D10 "injects only what it
-	// requires"). Guarded (U2, pre-created for S3): a zero gw.Port means "no
+	// Required injection: gateway port. cube-idp injects only the fields it
+	// owns, and those win over user-supplied values (ADR 0011). Guarded (U2, pre-created for S3): a zero gw.Port means "no
 	// gateway on this cluster" — spoke clusters render with a zero
 	// GatewaySpec — and injects no mapping at all.
 	if gw.Port > 0 {
@@ -139,7 +139,8 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 		}
 	}
 
-	// D10 layer-1 typed fields.
+	// Typed `spec.cluster` sugar (extra ports, mounts, registry mirrors, node
+	// image) — the layer that collides hard on conflict; see ADR 0011.
 	for _, p := range spec.ExtraPorts {
 		if hasHostPort(cp.ExtraPortMappings, p.HostPort) {
 			if p.HostPort == int32(gw.Port) {

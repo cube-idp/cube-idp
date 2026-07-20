@@ -150,7 +150,8 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 		cfg.Options.K3sOptions.ExtraArgs = append(cfg.Options.K3sOptions.ExtraArgs, disable)
 	}
 
-	// D10 layer-1 typed fields.
+	// Typed `spec.cluster` sugar (extra ports, mounts, registry mirrors, node
+	// image) — the layer that collides hard on conflict; see ADR 0011.
 	for _, p := range spec.ExtraPorts {
 		if hasHostPort(cfg.Ports, int(p.HostPort)) {
 			if int(p.HostPort) == gw.Port {
@@ -212,7 +213,7 @@ func hasHostPort(ports []v1alpha5.PortWithNodeFilters, host int) bool {
 }
 
 // registriesYAML renders the k3s registries.yaml document (mirrors +
-// insecure TLS skip + the D12 zot mirror when zot.Host is set: an entry
+// insecure TLS skip + the in-cluster zot mirror when zot.Host is set: an entry
 // zot.Host -> endpoint http://localhost:30500, i.e. registry.NodePort —
 // plain HTTP on the node-local port, same as kindp's WriteCertsD wiring),
 // sorted for golden determinism. The k3s registries.yaml schema
