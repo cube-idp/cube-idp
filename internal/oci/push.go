@@ -106,7 +106,7 @@ func pushRenderedTo(ctx context.Context, r *pack.Rendered, store oras.Target) (e
 	annotations := map[string]string{
 		// fixed epoch, NOT wall time: identical content must republish to an
 		// identical digest so the CI pack republish is a true no-op
-		// R8; annotation consumers only need a valid RFC3339 value). Mirrors
+		// (annotation consumers only need a valid RFC3339 value). Mirrors
 		// pushdir.go's pushPackDirTo.
 		ocispec.AnnotationCreated:  "1970-01-01T00:00:00Z",
 		ocispec.AnnotationSource:   "cube-idp",
