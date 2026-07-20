@@ -199,7 +199,8 @@ func runDown(ctx context.Context, con *ui.Console, file string, keepCluster bool
 			return err
 		}
 		pr.Done("%s uninstalled", cube.Spec.Engine.Type)
-		// D6: revert the CoreDNS rewrite before tearing the rest down
+		// `down` undoes every host- and cluster-side effect `up`/`trust`
+		// made: revert the CoreDNS rewrite before tearing the rest down
 		// — the cluster (and CoreDNS with it) survives this path, so
 		// nothing else undoes it.
 		pr = con.Progress("dns", "reverting CoreDNS rewrite")
@@ -228,7 +229,7 @@ func runDown(ctx context.Context, con *ui.Console, file string, keepCluster bool
 	return revertTrust(con)
 }
 
-// revertTrust reverts `cube-idp trust`'s OS trust-store install (D6 contract:
+// revertTrust reverts `cube-idp trust`'s OS trust-store install (ADR-0038:
 // `down` always undoes it, on both the kind-delete and keep-cluster paths).
 // No-op if `trust` was never run.
 //

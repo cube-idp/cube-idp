@@ -10,7 +10,7 @@ cube-idp down | Delete everything cube-idp created (inventory-driven cascade), t
 cube-idp explain | Explain a cube-idp diagnostic code | list=false
 cube-idp get secrets | List credentials packs exposed for CLI consumption (cube-idp.dev/cli-secret=true) | output=,pack=
 cube-idp get | Read cube-idp-managed resources | file=cube.yaml
-cube-idp init | Write the default cube.yaml (kind + flux + traefik + gitea + argocd, D9) | engine=flux,gateway-pack=traefik,local=,name=dev
+cube-idp init | Write the default cube.yaml (kind + flux + traefik + gitea + argocd) | engine=flux,gateway-pack=traefik,local=,name=dev
 cube-idp pack index build | Build index.json over every pack directory in <packs-dir> | digest=[],from-registry=false,output=index.json,ref-base=oci://ghcr.io/cube-idp/packs
 cube-idp pack index push | Push a built index.json as the catalog index OCI artifact | ref=
 cube-idp pack index | Build and push the pack catalog index artifact | 

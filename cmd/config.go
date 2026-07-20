@@ -14,7 +14,8 @@ import (
 )
 
 // newConfigCmd exposes read-only inspection of the loaded cube.yaml, e.g.
-// `cube-idp config render-cluster` for the D10 provider-config merge.
+// `cube-idp config render-cluster` for the layered provider-config merge
+// (ADR-0011).
 func newConfigCmd() *cobra.Command {
 	var file string
 	cfg := &cobra.Command{Use: "config", Short: "Inspect cube-idp configuration"}
@@ -33,7 +34,8 @@ func newConfigCmd() *cobra.Command {
 			// registries.yaml zot entry entirely). `up` stages the real certs.d
 			// directory (kind) or zot mirror host (k3d) and injects that at
 			// create-time (internal/cluster/kindp/kind.go's certsD,
-			// internal/cluster/k3dp/k3d.go's Ensure, D6 canonical hostname) —
+			// internal/cluster/k3dp/k3d.go's Ensure, for the canonical
+			// gateway hostname) —
 			// this rendering is therefore not byte-identical to what `up`
 			// actually hands the provider, and the gap is called out on stderr
 			// below rather than left as a silent difference: stdout stays pure

@@ -60,7 +60,7 @@ func newPluginListCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "List every cube-idp-<name> plugin discovered on PATH or in the plugin install dir",
-		// RunPipelineStatic owns the whole RunE body (Task R3): plugin list
+		// RunPipelineStatic owns the whole RunE body: plugin list
 		// is a short static command, never a live step-tree.
 		RunE: func(c *cobra.Command, _ []string) error {
 			return ui.RunPipelineStatic(c.Context(), "plugin", c.OutOrStdout(),

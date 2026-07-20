@@ -26,7 +26,7 @@ const (
 	repoDeployTimeout  = 2 * time.Minute
 
 	// giteaNamespace, giteaAdminSecretName, giteaPodSelector, giteaPodPort
-	// and giteaInClusterHost are the D11-verified facts about the shipped
+	// and giteaInClusterHost are verified facts about the shipped
 	// gitea pack, read off the shipped pack rather than assumed: admin Secret
 	// gitea-admin-cube-idp in
 	// namespace gitea (keys username/password); chart-standard pod label
@@ -66,9 +66,9 @@ anything internet-facing).
 Re-running this command for the same name is safe: repo creation is
 idempotent, and --deploy re-registers the same delivery source.`,
 		Args: cobra.ExactArgs(1),
-		// RunPipelineStatic owns the whole RunE body (Task R3): a failed
+		// RunPipelineStatic owns the whole RunE body: a failed
 		// config.Load returns before con.Start ever fires (the
-		// RunStarted-skip rule, G6). repo create is a short static command
+		// RunStarted-skip rule). repo create is a short static command
 		// — it never pops the live step-tree (reserved for vendor/up/down).
 		RunE: func(c *cobra.Command, args []string) error {
 			name := args[0]
@@ -189,8 +189,9 @@ func repoCloneURL(gw config.GatewaySpec, r *gitea.Repo) string {
 // command, and (only when deployed) a one-line note that the engine is
 // syncing it. Each old Fprintf ended with exactly one "\n"; Note's plain
 // projection adds exactly one trailing newline per call — byte-identical
-// (Task R3). The "✔" is the plain-mode literal p.Glyph(ui.GlyphOK) rendered
-// before this migration (Glyph is a no-op passthrough in ModePlain).
+// to the direct-Fprintf output this replaced. The "✔" is the plain-mode
+// literal p.Glyph(ui.GlyphOK) rendered before the move onto the event
+// stream (Glyph is a no-op passthrough in ModePlain).
 // Deliberate styled-mode delta (repo create's styled output was never
 // pinned): the ✔ loses its green styling in the Styled projection — Note's
 // styled form is Fprintln, same as Plain's, with no glyph coloring.

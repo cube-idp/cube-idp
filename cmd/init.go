@@ -71,7 +71,7 @@ func newInitCmd() *cobra.Command {
 	var gatewayPack string
 	c := &cobra.Command{
 		Use:   "init",
-		Short: "Write the default cube.yaml (kind + flux + traefik + gitea + argocd, D9)",
+		Short: "Write the default cube.yaml (kind + flux + traefik + gitea + argocd)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if _, err := os.Stat("cube.yaml"); err == nil {
 				return diag.New(diag.CodeInitExists, "cube.yaml already exists — refusing to overwrite",
@@ -81,7 +81,7 @@ func newInitCmd() *cobra.Command {
 				return err
 			}
 
-			// Wizard answers default to the D9 profile so a run that only
+			// Wizard answers default to the default profile so a run that only
 			// touches some fields still writes a coherent cube.yaml.
 			wiz := initWizardResult{
 				Provider:    "kind",
@@ -128,7 +128,7 @@ func newInitCmd() *cobra.Command {
 			}
 			// The wizard's provider/context/gateway/pack answers apply last —
 			// only ever set on an interactive run, so every flag-driven test,
-			// the e2e suite, and CI keep today's D9 default profile unchanged.
+			// the e2e suite, and CI keep today's default profile unchanged.
 			if wizardRan {
 				applyWizardToCube(cube, wiz)
 			} else {

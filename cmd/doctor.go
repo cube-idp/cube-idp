@@ -35,7 +35,7 @@ func newDoctorCmd() *cobra.Command {
 			cube, err := config.Load(file)
 			if err != nil {
 				// A broken config is itself a finding; host checks still run
-				// against the D9 default profile rather than bailing out.
+				// against the default profile rather than bailing out.
 				var de *diag.Error
 				if errors.As(err, &de) {
 					findings = append(findings, diag.Finding{Code: de.Code, Severity: diag.SeverityError,

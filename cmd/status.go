@@ -310,7 +310,7 @@ func connectStatus(ctx context.Context, file string, withAccess bool) (string, s
 		}
 		snap := statusSnapshot{Health: health, Inventory: inventory}
 		if withAccess {
-			// Access URLs come from the D11 Pack records `up` writes —
+			// Access URLs come from the Pack records `up` writes —
 			// zero new plumbing (get secrets already lists the same CRD)
 			// and best-effort (nil on any error): styled-mode garnish
 			// must never fail an otherwise-healthy status. Fetched only
@@ -447,7 +447,7 @@ func renderStatusStyled(out io.Writer, p *ui.Printer, health []engine.ComponentH
 	}
 }
 
-// packAccessRows reads the access URLs the D11 Pack records already carry
+// packAccessRows reads the access URLs the Pack records already carry
 // (spec.urls — written by pack.PackObject with ${GATEWAY_HOST} substituted at
 // `up` time), for the styled status render. Best-effort by design: any list
 // error (CRD absent on an older cube, RBAC, transient apiserver) returns nil

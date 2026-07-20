@@ -182,7 +182,7 @@ func TestWatchModelLifecycle(t *testing.T) {
 }
 
 // TestPackAccessRows pins the styled-status Access source:
-// the D11 Pack records' spec.urls, sorted by pack name; packs without urls are
+// the Pack records' spec.urls, sorted by pack name; packs without urls are
 // skipped; a client error yields nil (best-effort — status never fails on it).
 func TestPackAccessRows(t *testing.T) {
 	gitea := newPack("gitea", "", "", nil)

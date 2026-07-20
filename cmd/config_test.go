@@ -59,7 +59,8 @@ spec:
 // is a pure/file-free rendering (cmd/config.go's comment: "no certs.d
 // staging here"), so it genuinely omits the containerd certs.d bind mount
 // `up` injects into the real cluster config at create-time
-// (internal/cluster/kindp/merge.go, D6 canonical hostname). That gap must
+// (internal/cluster/kindp/merge.go, for the canonical gateway hostname).
+// That gap must
 // be surfaced to the user, not just documented in a code comment — but
 // stdout must stay pure YAML (render-cluster's output is meant to be piped
 // straight into `kind create cluster --config -`), so the note belongs on

@@ -30,7 +30,7 @@ func newPackCmd() *cobra.Command {
 			"If <oci-ref> carries no :tag, the pack's version from pack.cue is used.\n" +
 			"Auth is the ambient docker credential chain (docker login).",
 		Args: cobra.ExactArgs(2),
-		// RunPipelineStatic owns the whole RunE body (Task R3): pack push is
+		// RunPipelineStatic owns the whole RunE body: pack push is
 		// a short static command, never a live step-tree.
 		RunE: func(c *cobra.Command, args []string) error {
 			return ui.RunPipelineStatic(c.Context(), "pack", c.OutOrStdout(),

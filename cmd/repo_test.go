@@ -83,9 +83,9 @@ func TestRepoCloneURLOmitsDefaultHTTPSPort(t *testing.T) {
 	}
 }
 
-// TestEmitRepoAccessPlainByteStable is Step 4.2's golden test (Task R3):
-// emitRepoAccess driven through ui.RunPipeline with ModePlain forced must
-// produce exactly the pre-R3 four-line block (G7's pinned bytes) — the same
+// TestEmitRepoAccessPlainByteStable is the byte-freeze golden for repo
+// create's access block: emitRepoAccess driven through ui.RunPipeline with
+// ModePlain forced must produce exactly the pinned four-line block — the same
 // literal cmd/repo_test.go's TestNewRepoCmd end-to-end assertion (line ~91)
 // pins, isolated to the emitRepoAccess seam.
 func TestEmitRepoAccessPlainByteStable(t *testing.T) {

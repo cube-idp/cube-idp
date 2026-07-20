@@ -43,8 +43,8 @@ func validateColorFlag(v string) error {
 }
 
 // docSchemaVersion is the "v" field every JSON document carries — the same
-// experimental-until-D5-freeze contract the event stream uses (design doc
-// §5.3). Documents (this file) are the request/response counterpart to the
+// experimental-until-the-v1-schema-freeze contract the event stream uses
+// (ADR-0023). Documents (this file) are the request/response counterpart to the
 // event stream: a single gh-style final object, never a line stream.
 const docSchemaVersion = 1
 

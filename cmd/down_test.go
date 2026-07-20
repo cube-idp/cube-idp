@@ -75,7 +75,7 @@ func TestRevertTrustDirErrorWarns(t *testing.T) {
 
 // TestRevertTrustUninstallsWhenInstalled covers the happy path: a state file
 // recording Installed:true must trigger trustUninstall and report the
-// revert (D6: `down` always undoes what `trust` did).
+// revert (`down` always undoes what `trust` did — ADR-0038).
 func TestRevertTrustUninstallsWhenInstalled(t *testing.T) {
 	dir := t.TempDir()
 	if err := trust.SaveState(dir, &trust.State{Installed: true, CACert: "irrelevant"}); err != nil {

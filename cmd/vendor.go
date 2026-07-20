@@ -20,8 +20,8 @@ func newVendorCmd() *cobra.Command {
 			"failure aborts the whole run rather than shipping a partial bundle.",
 		Args: cobra.NoArgs,
 		// RunPipeline owns the event pipeline for the resolved mode (plain /
-		// live / JSON) — vendor is the one R3 command that keeps the live
-		// step-tree (long-running, per-pack/per-image progress; Task R3).
+		// live / JSON) — vendor is the one event-stream command that keeps
+		// the live step-tree (long-running, per-pack/per-image progress).
 		// RunStarted.Cube is deliberately empty: vendor is a pure lock
 		// consumer with no cube.yaml.
 		RunE: func(c *cobra.Command, _ []string) error {
