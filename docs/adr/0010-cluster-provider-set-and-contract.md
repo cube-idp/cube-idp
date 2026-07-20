@@ -47,19 +47,19 @@ creates anything.
 ## Consequences
 
 * Good, because every command targets one interface; adding a provider does not touch `up`,
- `down`, `status`, or `doctor`.
+  `down`, `status`, or `doctor`.
 * Good, because the contract test makes "is this provider correct?" an executable question
- rather than a review opinion.
+  rather than a review opinion.
 * Good, because a misconfigured `provider:` value fails at factory construction with a
- diagnosable code, not as a nil dereference later.
+  diagnosable code, not as a nil dereference later.
 * Good, because keeping image loading and log streaming out of the mandatory interface lets
- `existing` — which controls neither nodes nor provisioning — remain a first-class provider.
+  `existing` — which controls neither nodes nor provisioning — remain a first-class provider.
 * Bad, because a third party cannot ship a provider without a pull request into this repo;
- there is deliberately no out-of-tree extension path.
+  there is deliberately no out-of-tree extension path.
 * Bad, because capability gaps surface as command-specific errors (CUBE-7005) rather than
- being visible in the type of the provider a user configured.
+  being visible in the type of the provider a user configured.
 * Bad, because the contract test needs a live container runtime, so it is gated behind an
- environment variable and does not run in a plain `go test ./...`.
+  environment variable and does not run in a plain `go test ./...`.
 
 ## Implementation Status
 

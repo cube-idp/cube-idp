@@ -47,18 +47,18 @@ applies itself, outside any pack.
 ## Consequences
 
 * Good, because a pack authored once renders identically whether it is delivered as a
- chart, raw manifests or a kustomization — the substitution is a single shared function.
+  chart, raw manifests or a kustomization — the substitution is a single shared function.
 * Good, because packs with no Gateway API content are not forced to queue behind the
- gateway pack, so installs parallelize as far as the real constraints allow.
+  gateway pack, so installs parallelize as far as the real constraints allow.
 * Good, because the CRD wait is bounded and typed (CUBE-5005) rather than an unbounded
- spin, so a stuck gateway controller surfaces as a diagnosable error.
+  spin, so a stuck gateway controller surfaces as a diagnosable error.
 * Bad, because token substitution is textual: it happens on raw bytes and string leaves,
- so a literal `${GATEWAY_HOST}` a pack wanted to keep cannot be escaped.
+  so a literal `${GATEWAY_HOST}` a pack wanted to keep cannot be escaped.
 * Bad, because the gateway edge depends on render output, meaning ordering cannot be
- computed from pack metadata alone — every pack must be rendered before the graph is
- resolvable.
+  computed from pack metadata alone — every pack must be rendered before the graph is
+  resolvable.
 * Bad, because one Gateway API consumer (the registry HTTPRoute) sits outside the pack
- graph and needs its own hand-written gate, so the readiness logic exists in two places.
+  graph and needs its own hand-written gate, so the readiness logic exists in two places.
 
 ## Implementation Status
 

@@ -46,17 +46,17 @@ pack's `gatewayService:` block.
 ## Consequences
 
 * Good, because a single cube can mix transports — the platform packs stay on OCI while the
- one pack a team wants to fork is repo-delivered.
+  one pack a team wants to fork is repo-delivered.
 * Good, because absent means `oci`: existing cube.yaml files and pack records need no
- migration, and `--via oci` leaves the file byte-identical to no flag at all.
+  migration, and `--via oci` leaves the file byte-identical to no flag at all.
 * Good, because the gitea coupling is caught at config load, before any cluster mutation,
- with a stable code (CUBE-7304) rather than a mid-`up` failure.
+  with a stable code (CUBE-7304) rather than a mid-`up` failure.
 * Bad, because repo delivery makes the gitea pack a hard dependency of any cube that uses
- it, coupling an otherwise optional pack into the cube's validity.
+  it, coupling an otherwise optional pack into the cube's validity.
 * Bad, because the same rendered pack can now exist behind two different source types,
- so debugging a reconciliation problem requires first checking which transport is in play.
+  so debugging a reconciliation problem requires first checking which transport is in play.
 * Bad, because gitea presence is detected by a ref-substring convention (`strings.Contains(p.Ref, "gitea")`)
- rather than resolved pack identity, which is approximate.
+  rather than resolved pack identity, which is approximate.
 
 ## Implementation Status
 

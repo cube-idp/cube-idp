@@ -64,18 +64,18 @@ the gate.
 ## Consequences
 
 * Good, because a prompt can never hang CI: the gate is false for every non-`*os.File`
- stream, and the fence table test fails the build if a new prompt escapes it.
+  stream, and the fence table test fails the build if a new prompt escapes it.
 * Good, because every interactive path has a scriptable twin, so automation is a first-class
- path rather than an accident of the gate returning false.
+  path rather than an accident of the gate returning false.
 * Good, because destruction is legible and consented: the operator sees the actual deletion
- set and must type the cube name, and non-interactive destruction requires an explicit flag.
+  set and must type the cube name, and non-interactive destruction requires an explicit flag.
 * Good, because color-stripped output (logs, CI, pipes) loses no meaning.
 * Bad, because every new prompt costs more than a prompt: a flag twin, a fence-table row, and
- placement outside the pipeline.
+  placement outside the pipeline.
 * Bad, because the gate is deliberately conservative — a terminal cube-idp cannot prove is a
- TTY gets no prompt, and the user must reach for the flag instead.
+  TTY gets no prompt, and the user must reach for the flag instead.
 * Bad, because restricting to ANSI 8/16 gives up finer palettes and hands final appearance to
- the user's terminal theme.
+  the user's terminal theme.
 
 ## Implementation Status
 

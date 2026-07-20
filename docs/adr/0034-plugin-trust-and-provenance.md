@@ -57,27 +57,27 @@ over TLS instead.
 ## Consequences
 
 * Good, because the official-index path funnels through a single consent seam,
- so a new index-backed install path cannot accidentally introduce a silent
- trust. The `--index` git path auto-trusts on the strength of its
- sha256-pinned manifest (`internal/plugin/index.go`) — a deliberate
- pre-existing exception, not a seam a new path should copy.
+  so a new index-backed install path cannot accidentally introduce a silent
+  trust. The `--index` git path auto-trusts on the strength of its
+  sha256-pinned manifest (`internal/plugin/index.go`) — a deliberate
+  pre-existing exception, not a seam a new path should copy.
 * Good, because canonical-path keying makes trust decisions stable across
- symlinked, relative, and differently-rooted invocations — a trusted binary
- stays trusted and a swapped one is still caught by its sha256.
+  symlinked, relative, and differently-rooted invocations — a trusted binary
+  stays trusted and a swapped one is still caught by its sha256.
 * Good, because refusing to prompt in a non-TTY (CUBE-7104) means CI can never
- be tricked into "answering yes" by default.
+  be tricked into "answering yes" by default.
 * Good, because keeping signature verification out of the binary avoids
- embedding a sigstore/rekor client and its transitive supply chain.
+  embedding a sigstore/rekor client and its transitive supply chain.
 * Bad, because provenance verification is opt-in and manual: an operator who
- never runs `gh attestation verify` gets digest+TLS integrity only, not
- publisher identity.
+  never runs `gh attestation verify` gets digest+TLS integrity only, not
+  publisher identity.
 * Bad, because the CUBE-7104 refusal makes fully unattended official-index
- installs require an explicit `--yes` for any binary whose sha256 is not
- already in the trust store, which is one more thing to get right in
- automation.
+  installs require an explicit `--yes` for any binary whose sha256 is not
+  already in the trust store, which is one more thing to get right in
+  automation.
 * Bad, because canonicalization can fail (broken symlink, permissions) and the
- fallback then keys on a less canonical path, so two spellings of the same
- binary could theoretically hold separate entries.
+  fallback then keys on a less canonical path, so two spellings of the same
+  binary could theoretically hold separate entries.
 
 ## Implementation Status
 
@@ -103,7 +103,7 @@ over TLS instead.
       asserts symlinked/relative and resolved-absolute lookups agree.
 - [ ] `internal/plugin/officialindex.go` rebuilds the pull ref as
       `repo@digest` (`byDigest`, pulled) and returns an error
- when a platform entry carries no digest.
+  when a platform entry carries no digest.
 - [ ] `internal/plugin/officialindex.go` hands off to `EnsureTrusted`,
       with `autoTrust` routing to `Trust` for `--yes`; the same comment records
       that the git index auto-trusts a sha-proven archive instead.

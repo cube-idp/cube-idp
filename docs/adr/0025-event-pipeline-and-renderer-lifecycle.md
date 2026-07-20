@@ -51,21 +51,21 @@ can never be overwritten or trapped in an alternate screen.
 ## Consequences
 
 * Good, because the JSON stream is a byproduct of the same events the humans see — the
- three projections cannot drift in content, only in presentation.
+  three projections cannot drift in content, only in presentation.
 * Good, because terminal ownership has exactly one answer: `RunPipeline` holds it, and
- the diagnosis prints only after `RunPipeline` has returned.
+  the diagnosis prints only after `RunPipeline` has returned.
 * Good, because a 256-slot buffer plus a single-producer/single-consumer topology means
- a slow or dead renderer can never stall business logic.
+  a slow or dead renderer can never stall business logic.
 * Good, because the closed `Event` interface makes a renderer's switch exhaustive by
- convention — adding an event forces a decision in every renderer.
+  convention — adding an event forces a decision in every renderer.
 * Bad, because adding an event type is a cross-cutting change touching every renderer.
 * Bad, because commands that stay on `ui.Printer` (`status`, `doctor`, `get`, `diff`,
- `upgrade --plan`, `init`) get none of these guarantees, leaving three output seams in
- the codebase: the event pipeline, `ui.Printer`, and `status --watch`'s own inline
- Bubble Tea program.
+  `upgrade --plan`, `init`) get none of these guarantees, leaving three output seams in
+  the codebase: the event pipeline, `ui.Printer`, and `status --watch`'s own inline
+  Bubble Tea program.
 * Bad, because the mode-to-renderer mapping has grown command-class-dependent
- (`RunPipeline` vs `RunPipelineStatic`), so "which renderer runs" is no longer a single
- table.
+  (`RunPipeline` vs `RunPipelineStatic`), so "which renderer runs" is no longer a single
+  table.
 
 ## Implementation Status
 
@@ -134,12 +134,12 @@ before this record was written.
 Member origins:
 
 - `docs/archive/superpowers/specs/2026-07-14-cube-idp-ux-design.md:13` — one canonical typed
- event stream, three interchangeable renderers.
+  event stream, three interchangeable renderers.
 - `docs/archive/superpowers/specs/2026-07-14-cube-idp-ux-design.md:238` — buffered channel of
- capacity 256, single producer and single consumer.
+  capacity 256, single producer and single consumer.
 - `docs/archive/superpowers/specs/2026-07-14-cube-idp-ux-design.md:272` — `ui.RunPipeline`
- ownership and return-time guarantees.
+  ownership and return-time guarantees.
 - `docs/archive/superpowers/specs/2026-07-14-cube-idp-ux-design.md:464` — single final-error
- print point in `main.go`.
+  print point in `main.go`.
 - `docs/archive/superpowers/research/2026-07-14-cube-idp-ux-research.md:277` — diagnosis-last
- rule for the live renderer.
+  rule for the live renderer.

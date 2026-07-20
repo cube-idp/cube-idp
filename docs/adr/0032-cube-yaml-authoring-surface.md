@@ -51,19 +51,19 @@ YAML bytes so the closed schema cannot swallow them as a generic `CUBE-0002`.
 ## Consequences
 
 * Good, because operators author a file that looks like every other Kubernetes manifest
- they already read; no CUE knowledge is required to use cube-idp.
+  they already read; no CUE knowledge is required to use cube-idp.
 * Good, because the open `values?: {...}` block means engine chart options the schema has
- never heard of work immediately — value validation is the chart's job, not CUE's.
+  never heard of work immediately — value validation is the chart's job, not CUE's.
 * Good, because `omitempty` discipline makes config and lock files round-trip: a loaded
- document re-serialises to something the schema still accepts, and diffs stay small.
+  document re-serialises to something the schema still accepts, and diffs stay small.
 * Good, because removed keys produce a named diagnostic with a migration recipe rather
- than an opaque schema rejection.
+  than an opaque schema rejection.
 * Bad, because free-form `values` means a typo in a chart value path is not caught at
- config load time — it surfaces later, at render or reconcile.
+  config load time — it surfaces later, at render or reconcile.
 * Bad, because every removed key needs a hand-written pre-CUE probe to keep its
- diagnostic; the guards are manual and must be added deliberately.
+  diagnostic; the guards are manual and must be added deliberately.
 * Bad, because the engine living outside `spec.packs` is a special case: engine fetch and
- render follow a separate code path from the ordinary pack loop.
+  render follow a separate code path from the ordinary pack loop.
 
 ## Implementation Status
 
@@ -111,15 +111,15 @@ before this record was written.
 Member origins:
 
 - `docs/archive/superpowers/specs/2026-07-13-cube-idp-architecture-design.md:194` — plain
- YAML authoring surface, CUE internal-only.
+  YAML authoring surface, CUE internal-only.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-prerequisites-packs-design.md:24` —
- `apiVersion`/`kind` pinning.
+  `apiVersion`/`kind` pinning.
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-engine-as-pack.md:144` — engine referenced
- via `spec.engine.ref`, never `spec.packs`.
+  via `spec.engine.ref`, never `spec.packs`.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md:111` —
- `engine.tuning` replaced by open `values?: {...}`.
+  `engine.tuning` replaced by open `values?: {...}`.
 - `docs/archive/superpowers/plans/2026-07-19-valuesref-remote-config.md:17` — `omitempty`
- round-trip discipline.
+  round-trip discipline.
 
 Rationale for the merge of these statements into one record was not recorded in the source
 material.

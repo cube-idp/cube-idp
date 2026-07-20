@@ -53,20 +53,20 @@ drops the redundant argocd pack when argocd is chosen.
 ## Consequences
 
 * Good, because there is one customization vocabulary to learn and to document: `values`
- means Helm values everywhere, `extraManifests` means raw objects everywhere.
+  means Helm values everywhere, `extraManifests` means raw objects everywhere.
 * Good, because engine customization inherits Helm's own merge and validation semantics
- instead of a hand-written patcher that had to be extended per knob.
+  instead of a hand-written patcher that had to be extended per knob.
 * Good, because the failure modes are typed and specific — CUBE-0012 carries a migration
- recipe, CUBE-4016 names the chartless-pack cause, CUBE-0005 names the redundant pack.
+  recipe, CUBE-4016 names the chartless-pack cause, CUBE-0005 names the redundant pack.
 * Good, because deleting the tuning path removed the `EngineTuning`/`ComponentTuning`
- types, `internal/engine/tune.go` and the schema.cue tuning block outright.
+  types, `internal/engine/tune.go` and the schema.cue tuning block outright.
 * Bad, because existing cube.yaml files using `engine.tuning` break at load rather than
- degrading; the migration is manual, guided only by the diagnostic.
+  degrading; the migration is manual, guided only by the diagnostic.
 * Bad, because `engine.values` is silently useless for `type: flux` until render time —
- the chartless flux engine pack rejects values structurally, so the constraint is not
- visible in the schema.
+  the chartless flux engine pack rejects values structurally, so the constraint is not
+  visible in the schema.
 * Bad, because the engine and packs now share a failure mechanism that is structural
- (has-chart) rather than a named check, so the flux-specific error message is generic.
+  (has-chart) rather than a named check, so the flux-specific error message is generic.
 
 ## Implementation Status
 

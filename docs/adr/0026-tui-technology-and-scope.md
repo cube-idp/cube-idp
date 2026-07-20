@@ -43,20 +43,20 @@ cancel, guaranteed drain, and nil-input-on-pipes lifecycle guarantees.
 ## Consequences
 
 * Good, because one pinned major line means one renderer, one color pipeline, and one
- style vocabulary — no v1/v2 skew to debug.
+  style vocabulary — no v1/v2 skew to debug.
 * Good, because inline mode leaves completed work in native scrollback, so `up` output
- remains readable after exit and composes with pagers, pipes and CI logs.
+  remains readable after exit and composes with pagers, pipes and CI logs.
 * Good, because the leaf-package rule for `internal/ui/theme` dissolves the cycle that
- previously forced the renderer to duplicate the CLI's styles.
+  previously forced the renderer to duplicate the CLI's styles.
 * Good, because a guaranteed-drain, cancel-on-ctrl-c renderer means the producer can never
- block on a dead UI and no goroutine outlives the command.
+  block on a dead UI and no goroutine outlives the command.
 * Bad, because pinning majors for the project's duration forecloses upstream fixes and
- features that land only in a newer major.
+  features that land only in a newer major.
 * Bad, because the alt-screen prohibition rules out multi-pane dashboards outright, so
- richer views must be expressed within a single managed bottom region.
+  richer views must be expressed within a single managed bottom region.
 * Bad, because every watch-style command needs two renderers — an inline Bubble Tea path
- for a rich TTY and a plain appending loop for pipes, CI and JSON — doubling the surface
- to test.
+  for a rich TTY and a plain appending loop for pipes, CI and JSON — doubling the surface
+  to test.
 
 ## Implementation Status
 

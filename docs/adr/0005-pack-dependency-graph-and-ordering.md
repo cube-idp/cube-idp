@@ -68,20 +68,20 @@ dependency-edge rule, this ADR is the one to change.
 ## Consequences
 
 * Good, because ordering is derived from a single declarative graph rather than hoisted slots,
- so new ordering rules are edges, not new branches in the delivery loop.
+  so new ordering rules are edges, not new branches in the delivery loop.
 * Good, because `up` and `diff` share one pure resolver, making `diff` a faithful preview of
- what `up` will apply.
+  what `up` will apply.
 * Good, because graph errors (unknown name CUBE-4018, cycle CUBE-4019, gateway dependsOn
- CUBE-4020) surface before any cluster mutation.
+  CUBE-4020) surface before any cluster mutation.
 * Good, because dependency-free cubes are unchanged byte-for-byte — the feature is additive.
 * Bad, because engines without native ordering pay a wall-clock wave gate: each dependent pack
- waits on a bounded health poll, so delivery is slower than fire-and-forget.
+  waits on a bounded health poll, so delivery is slower than fire-and-forget.
 * Bad, because names, not refs, are the dependency identity, so two packs in one cube may not
- share a `pack.cue` name — a constraint packs cannot see from their own source.
+  share a `pack.cue` name — a constraint packs cannot see from their own source.
 * Bad, because the absence of version constraints means a dependency is satisfied by any version
- of the named pack; compatibility is the cube author's problem.
+  of the named pack; compatibility is the cube author's problem.
 * Bad, because the two implicit edges are invisible in `cube.yaml` — a reader must know the rules
- or read the resolved `DEPENDS-ON` column to see the real graph.
+  or read the resolved `DEPENDS-ON` column to see the real graph.
 
 ## Implementation Status
 

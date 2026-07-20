@@ -64,22 +64,22 @@ state (degrading to declared config on any failure), and `spoke remove
 ## Consequences
 
 * Good, because the lockfile is reviewable in a pull request, diffable, and
- vendorable into an air-gapped bundle without a cluster.
+  vendorable into an air-gapped bundle without a cluster.
 * Good, because `diff` and `up` both call `pack.ResolveOrder`, so a preview cannot
- fabricate drift on dependency-bearing cubes; the object-identity half of that
- property is fenced by a test asserting diff's desired set matches `up.Run`'s
- applied set, while order parity rests on the shared call rather than on a test.
+  fabricate drift on dependency-bearing cubes; the object-identity half of that
+  property is fenced by a test asserting diff's desired set matches `up.Run`'s
+  applied set, while order parity rests on the shared call rather than on a test.
 * Good, because declared-order lock entries keep the file stable under dependency
- changes: adding a `dependsOn` reorders delivery but leaves `cube.lock` untouched.
+  changes: adding a `dependsOn` reorders delivery but leaves `cube.lock` untouched.
 * Good, because idempotent Gitea sync means a re-run of `up` leaves no commit churn,
- and the repo outside `manifests/` stays an editable working copy.
+  and the repo outside `manifests/` stays an editable working copy.
 * Bad, because the lock is not authoritative in-cluster: two operators can drift
- their local `cube.lock` files against the same cluster with nothing to arbitrate.
+  their local `cube.lock` files against the same cluster with nothing to arbitrate.
 * Bad, because `pack install` accepts a ref whose dependencies cannot be satisfied;
- the failure surfaces later, at the next `up` or `diff`, not at the point of edit.
+  the failure surfaces later, at the next `up` or `diff`, not at the point of edit.
 * Bad, because delivery order must be recomputed on every read of the lock rather
- than looked up, and any change to the ordering rule silently changes past runs'
- reproduction.
+  than looked up, and any change to the ordering rule silently changes past runs'
+  reproduction.
 
 ## Implementation Status
 

@@ -44,24 +44,24 @@ reports the actual cluster provider in its output rather than always naming kind
 ## Consequences
 
 * Good, because a user's pre-existing cluster is never destroyed by `down`; the
- blast radius is bounded by what cube-idp actually recorded in the inventory.
+  blast radius is bounded by what cube-idp actually recorded in the inventory.
 * Good, because engine removal needs no per-engine teardown logic — adding an engine
- does not require writing an uninstall path, only being present in the inventory.
+  does not require writing an uninstall path, only being present in the inventory.
 * Good, because the missing resources-finalizer on the self-Application makes the
- ordering safe by construction rather than by careful sequencing.
+  ordering safe by construction rather than by careful sequencing.
 * Good, because `down` is honest about the machine-level state it mutated: trust
- store, CoreDNS, and spoke clusters are all addressed.
+  store, CoreDNS, and spoke clusters are all addressed.
 * Bad, because the cascade ignores dependency order, so packs with runtime coupling
- may see dependents and dependencies deleted in an arbitrary relative order; only
- reverse-apply order is guaranteed.
+  may see dependents and dependencies deleted in an arbitrary relative order; only
+  reverse-apply order is guaranteed.
 * Bad, because anything cube-idp created but failed to record in the inventory
- survives teardown silently.
+  survives teardown silently.
 * Bad, because `existing` spoke clusters retain cube-idp RBAC and namespaces that the
- user must clean up manually.
+  user must clean up manually.
 * Bad, because a CoreDNS revert failure aborts teardown before any inventory deletion
- happens, stranding the whole recorded inventory in the cluster.
+  happens, stranding the whole recorded inventory in the cluster.
 * Bad, because a failing `trustUninstall` still exits `down` non-zero even though the
- cluster-side teardown has already succeeded by that point.
+  cluster-side teardown has already succeeded by that point.
 
 ## Implementation Status
 

@@ -56,8 +56,8 @@ Status values: `accepted` (in force), `superseded by ADR-NNNN`, `deprecated`.
 ## Conventions
 
 - **Numbering** is sequential and permanent; a superseded ADR keeps its number and gains a
- `superseded by` status rather than being deleted.
+  `superseded by` status rather than being deleted.
 - **Code citations** in *Implementation Status* are the contract. If code moves, update the
- citation; if behaviour changes, supersede the ADR.
+  citation; if behaviour changes, supersede the ADR.
 - **Provenance** in *More Information* points into `docs/archive/superpowers/`, which is
- historical and non-authoritative. Never cite it as authority for new work — cite the ADR.
+  historical and non-authoritative. Never cite it as authority for new work — cite the ADR.

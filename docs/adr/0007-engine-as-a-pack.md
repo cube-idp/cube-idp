@@ -59,20 +59,20 @@ through the packs' READMEs; the old `hack/gen-*-manifests` scripts are retired.
 ## Consequences
 
 * Good, because the engine becomes pinnable, re-renderable and vendorable with no new
- machinery — bundle vendoring, ref resolution and lock recording all reuse the pack paths.
+  machinery — bundle vendoring, ref resolution and lock recording all reuse the pack paths.
 * Good, because engine upgrades are a ref bump in `cube.spec`, not a CLI release.
 * Good, because operators control the full Argo CD chart surface through open `values` instead
- of a curated tuning struct.
+  of a curated tuning struct.
 * Good, because the offline story is uniform: one `resolveBundleRefs` path covers engine,
- gateway and packs.
+  gateway and packs.
 * Bad, because an engine install now depends on registry reachability (or a bundle) where an
- embedded blob was always present; `bundle vendor` must fail loudly on pre-engine-as-pack locks.
+  embedded blob was always present; `bundle vendor` must fail loudly on pre-engine-as-pack locks.
 * Bad, because open `values` means unknown keys are silently ignored — validation is helm's,
- not CUE's, so typos surface as missing behaviour rather than errors.
+  not CUE's, so typos surface as missing behaviour rather than errors.
 * Bad, because the two engine packs are deliberately asymmetric (chart-based vs. chartless),
- so `engine.values` is meaningful for argocd only and a typed error for flux.
+  so `engine.values` is meaningful for argocd only and a typed error for flux.
 * Bad, because render-time guarantees such as "no `imagePullPolicy: Always`" move out of the
- CLI into pack-side tests and READMEs, where they are easier to overlook.
+  CLI into pack-side tests and READMEs, where they are easier to overlook.
 
 ## Implementation Status
 

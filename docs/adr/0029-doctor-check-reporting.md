@@ -43,19 +43,19 @@ stays registered and reports an honest vacuous detail rather than disappearing.
 ## Consequences
 
 * Good, because the operator sees the full probe surface, not just its failures —
- a green row is positive evidence that a check ran.
+  a green row is positive evidence that a check ran.
 * Good, because the word (`ok` / `warn` / `fail`) is emitted unconditionally and
- the glyph only decorates it on styled output, so the render stays meaningful on
- plain writers and for readers who cannot rely on color.
+  the glyph only decorates it on styled output, so the render stays meaningful on
+  plain writers and for readers who cannot rely on color.
 * Good, because the `checks` array is purely additive: pre-existing consumers of
- `findings` and `errors` keep working unchanged.
+  `findings` and `errors` keep working unchanged.
 * Good, because the exit code has one testable driver — an error-severity finding —
- so warnings never fail a pipeline.
+  so warnings never fail a pipeline.
 * Bad, because conditional registration puts the burden on JSON consumers: they
- must handle three states (`ok`, `warn`, absent) rather than two, and an absent
- row is easy to misread as success.
+  must handle three states (`ok`, `warn`, absent) rather than two, and an absent
+  row is easy to misread as success.
 * Bad, because the checklist makes `doctor` output longer and more verbose on
- healthy systems than a failures-only report would be.
+  healthy systems than a failures-only report would be.
 
 ## Implementation Status
 
@@ -105,10 +105,10 @@ validated against the code before this record was written.
 Member origins:
 
 - `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:254` — tri-state
- checklist row, exit contract and additive `checks` array.
+  checklist row, exit contract and additive `checks` array.
 - `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:2229` — absent row
- means "not applicable", not "passed".
+  means "not applicable", not "passed".
 - `docs/archive/superpowers/specs/2026-07-18-cube-idp-phase5-roadmap-design.md:55`
- — passes shown rather than silent; glyph/word pairing.
+  — passes shown rather than silent; glyph/word pairing.
 
 Rationale beyond what is captured above was not recorded in the source material.

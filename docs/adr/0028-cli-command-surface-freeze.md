@@ -45,20 +45,20 @@ cube. `upgrade` is read-only by default: without `--plan` it errors and points a
 ## Consequences
 
 * Good, because the CLI contract is falsifiable — a surface change fails CI rather than
- reaching users unannounced.
+  reaching users unannounced.
 * Good, because the golden file doubles as a readable, always-current index of every command,
- flag and default.
+  flag and default.
 * Good, because there is exactly one apply path — `upgrade`'s interactive hand-off runs the
- same `up` pipeline — so `up` and `upgrade` cannot disagree about what the cluster should
- look like.
+  same `up` pipeline — so `up` and `upgrade` cannot disagree about what the cluster should
+  look like.
 * Good, because `--plan` being mandatory makes `upgrade`'s reporting-first nature hard to
- stumble past; applying from `upgrade` requires both a TTY and an explicit confirmation.
+  stumble past; applying from `upgrade` requires both a TTY and an explicit confirmation.
 * Bad, because every intentional surface change costs an extra `-update` round and a golden
- diff in review.
+  diff in review.
 * Bad, because the golden is byte-exact, so cosmetic edits (a typo fix in a `Short`) are as
- loud as semantic ones.
+  loud as semantic ones.
 * Bad, because the golden skips hidden commands and hidden flags, so the fence does not cover
- them at all.
+  them at all.
 
 ## Implementation Status
 

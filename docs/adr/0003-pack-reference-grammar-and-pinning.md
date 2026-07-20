@@ -60,23 +60,23 @@ and returns no pin.
 ## Consequences
 
 * Good, because the accepted ref forms are enumerated in one place and the rejection
- message tells the user exactly what is allowed.
+  message tells the user exactly what is allowed.
 * Good, because every delivered pack is content-addressed, so a run can be reproduced and
- drift is detectable.
+  drift is detectable.
 * Good, because refusing unpinned git refs fails fast, before network I/O, instead of
- silently delivering whatever a branch points at today.
+  silently delivering whatever a branch points at today.
 * Good, because symlink stripping and tmp-plus-rename mean a hostile or malformed archive
- cannot leave a half-written cache entry behind, and OCI tar extraction rejects entries
- that would escape the destination directory.
+  cannot leave a half-written cache entry behind, and OCI tar extraction rejects entries
+  that would escape the destination directory.
 * Bad, because stripping symlinks silently changes the pack tree: a pack that legitimately
- relies on a symlink is altered without an error, and the author only learns from the
- rendered result.
+  relies on a symlink is altered without an error, and the author only learns from the
+  rendered result.
 * Bad, because path containment is enforced only on the OCI extraction path; the go-getter
- path relies on `DisableSymlinks` and the getter's own behaviour instead.
+  path relies on `DisableSymlinks` and the getter's own behaviour instead.
 * Bad, because file refs are deliberately unpinned, so provider config pulled from a
- remote URL is not reproducible the way packs are.
+  remote URL is not reproducible the way packs are.
 * Bad, because the local-development and e2e paths depend on a sibling packs-repo
- checkout; without it those suites skip rather than run.
+  checkout; without it those suites skip rather than run.
 
 ## Implementation Status
 

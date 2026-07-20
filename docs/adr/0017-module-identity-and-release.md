@@ -44,15 +44,15 @@ constraint.
 ## Consequences
 
 * Good, because a single module path means imports, ldflags and release target cannot
- drift apart — a mismatch fails the build rather than shipping a mislabelled binary.
+  drift apart — a mismatch fails the build rather than shipping a mislabelled binary.
 * Good, because `go-version-file: go.mod` removes an entire class of "CI uses a different
- Go than my machine" bugs; bumping `go.mod` bumps CI.
+  Go than my machine" bugs; bumping `go.mod` bumps CI.
 * Bad, because the rename breaks the imports of any external consumer that has the old
- path written into its source, even though `go get` on the old path still resolves
- through the transfer redirect.
+  path written into its source, even though `go get` on the old path still resolves
+  through the transfer redirect.
 * Bad, because pinning the *toolchain* but installing tools (`kind`, `setup-envtest`)
- with `@latest` leaves CI exposed to upstream tool changes — the pinning discipline was
- applied to the toolchain only.
+  with `@latest` leaves CI exposed to upstream tool changes — the pinning discipline was
+  applied to the toolchain only.
 
 ## Implementation Status
 
@@ -101,12 +101,12 @@ Origin: mined from the archived planning corpus (`docs/archive/superpowers/`) du
 before this record was written.
 
 - `docs/archive/superpowers/specs/2026-07-16-org-migration-design.md:15` — module path
- (decision row 2: rename to `github.com/cube-idp/cube-idp`).
+  (decision row 2: rename to `github.com/cube-idp/cube-idp`).
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:305` — release
- artifact shape and target.
+  artifact shape and target.
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:19` — toolchain
- resolved from `go.mod` (`go-version-file: go.mod`); the accompanying tool-version pinning
- rule is largely superseded.
+  resolved from `go.mod` (`go-version-file: go.mod`); the accompanying tool-version pinning
+  rule is largely superseded.
 
 The Charm v2 line and the `internal/ui/theme` leaf-package rule are decided in ADR-0026,
 which carries their provenance.

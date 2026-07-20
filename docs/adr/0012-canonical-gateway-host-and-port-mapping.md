@@ -54,21 +54,21 @@ The e2e harness binds the gateway to a host port configurable via
 ## Consequences
 
 * Good, because one hostname works from the laptop and from inside a pod, so generated
- URLs, pack values, and tests never branch on where they run.
+  URLs, pack values, and tests never branch on where they run.
 * Good, because the NodePort numbers are single constants in `internal/config`, aliased
- rather than redefined by providers, so a provider cannot silently disagree with a pack.
+  rather than redefined by providers, so a provider cannot silently disagree with a pack.
 * Good, because the plain-HTTP port is off by default: an absent `httpPort` produces
- byte-identical cluster config to before the field existed.
+  byte-identical cluster config to before the field existed.
 * Good, because port collisions surface at config load with an actionable diagnostic
- rather than as an unreachable gateway after a slow cluster creation.
+  rather than as an unreachable gateway after a slow cluster creation.
 * Bad, because `gateway.port` and `gateway.httpPort` are baked in at cluster creation —
- changing either requires recreating the cluster.
+  changing either requires recreating the cluster.
 * Bad, because 30443 and 30080 are hard-coded contract numbers a third-party gateway pack
- must honour; a pack pinning anything else is unreachable.
+  must honour; a pack pinning anything else is unreachable.
 * Bad, because `up` mutates the cluster's CoreDNS ConfigMap, which is shared state a user
- may also be editing.
+  may also be editing.
 * Bad, because the gateway host port is an exclusive host resource, so only one live
- cluster leg can run at a time.
+  cluster leg can run at a time.
 
 ## Implementation Status
 

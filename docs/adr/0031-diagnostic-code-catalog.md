@@ -47,22 +47,22 @@ each stay in their own range.
 ## Consequences
 
 * Good, because a code number is a durable identifier: an operator can search a
- five-month-old log line and still find the right constant, call site and summary.
+  five-month-old log line and still find the right constant, call site and summary.
 * Good, because the literal ban makes collisions structurally impossible — two
- meanings for one number cannot both compile past the test.
+  meanings for one number cannot both compile past the test.
 * Good, because the registry-coverage test is bidirectional by cardinality: a code
- cannot ship without documentation, and a stale entry is caught unless an addition
- in the same commit masks the count.
+  cannot ship without documentation, and a stale entry is caught unless an addition
+  in the same commit masks the count.
 * Good, because the numeric partition lets a reader infer the subsystem from the code
- alone, before opening any source.
+  alone, before opening any source.
 * Bad, because the number space is consumed permanently; retired numbers stay as dead
- weight in the catalog and registry forever.
+  weight in the catalog and registry forever.
 * Bad, because allocating a code is a two-file edit plus a domain-range judgement,
- which is friction on every new error path.
+  which is friction on every new error path.
 * Bad, because the append-only rule is a convention over deletion, not a mechanical
- guarantee: a code removed from `codes.go` in the same commit as its registry entry
- leaves no in-place marker, and the tests stay green. `CUBE-1002` and `CUBE-3002` are
- absent with no marker, showing this gap.
+  guarantee: a code removed from `codes.go` in the same commit as its registry entry
+  leaves no in-place marker, and the tests stay green. `CUBE-1002` and `CUBE-3002` are
+  absent with no marker, showing this gap.
 
 ## Implementation Status
 

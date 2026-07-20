@@ -52,22 +52,22 @@ authoritative statement of the render-derived gateway dependency edge, and ADR-0
 ## Consequences
 
 * Good, because the orchestrator has no engine-specific branches in the delivery path — a
- new engine is added by implementing the interface, not by editing `up`.
+  new engine is added by implementing the interface, not by editing `up`.
 * Good, because flux keeps full delivery parallelism: ordering is enforced by the
- controller in-cluster rather than by serialising the CLI's apply loop.
+  controller in-cluster rather than by serialising the CLI's apply loop.
 * Good, because the contract test makes "did you think about ordering?" a compile-and-test
- gate for every engine implementation.
+  gate for every engine implementation.
 * Good, because argo CD users still get a machine-readable record of the dependency edges
- even though the engine cannot act on them.
+  even though the engine cannot act on them.
 * Bad, because argo CD delivery is slower: the caller must block on dependency health
- before applying each dependent pack.
+  before applying each dependent pack.
 * Bad, because the two engines express the same intent in structurally different shapes,
- so the contract test can only assert that *something* was emitted, not that it is
- semantically equivalent.
+  so the contract test can only assert that *something* was emitted, not that it is
+  semantically equivalent.
 * Bad, because widening `DeliverGit` with a `dependsOn` parameter was a breaking interface
- change that every implementation and test fake had to absorb.
+  change that every implementation and test fake had to absorb.
 * Bad, because the flux dependency reference is name-only and therefore silently assumes
- every cube-idp Kustomization stays in `flux-system`.
+  every cube-idp Kustomization stays in `flux-system`.
 
 ## Implementation Status
 
@@ -133,14 +133,14 @@ before this record was written.
 Member origins:
 
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-pack-depends-and-cubelock-crd.md:599` —
- `OrdersDeliveries()` and the flux wave-gate skip.
+  `OrdersDeliveries()` and the flux wave-gate skip.
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-pack-depends-and-cubelock-crd.md:31` — no
- in-cluster Cube record; render-derived gateway edge.
+  in-cluster Cube record; render-derived gateway edge.
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-pack-depends-and-cubelock-crd.md:559` —
- name-only flux dependency references.
+  name-only flux dependency references.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-pack-depends-and-cubelock-crd-design.md:226`
- — the `DeliverGit` signature widening.
+  — the `DeliverGit` signature widening.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-pack-depends-and-cubelock-crd-design.md:262`
- — the argocd `cube-idp.dev/depends-on` annotation.
+  — the argocd `cube-idp.dev/depends-on` annotation.
 
 Related: ADR 0005 (pack dependency graph and ordering), ADR 0006 (per-pack delivery mode).

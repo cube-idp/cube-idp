@@ -54,20 +54,20 @@ pack and emitting an engine Pack-record identity stub.
 ## Consequences
 
 * Good, because exactly one writer owns the engine objects at any time, so drift
- correction is deterministic instead of a race between the CLI and the engine.
+  correction is deterministic instead of a race between the CLI and the engine.
 * Good, because a self-managed engine corrects its own drift between `up` runs.
 * Good, because sourcing the self artifact from the in-cluster registry rather than Gitea
- keeps self-management working in air-gapped clusters.
+  keeps self-management working in air-gapped clusters.
 * Good, because one render feeds SSA, the inventory and the pushed artifact, so enabling
- the feature cannot produce a restart-inducing diff.
+  the feature cannot produce a restart-inducing diff.
 * Good, because the engine appears in the same Pack inventory as everything else, so
- `diff` and teardown reason about it uniformly.
+  `diff` and teardown reason about it uniformly.
 * Bad, because a self-managed engine that breaks its own reconciliation must be recovered
- through the unhealthy-at-start escape hatch rather than by a plain re-apply.
+  through the unhealthy-at-start escape hatch rather than by a plain re-apply.
 * Bad, because pruning must stay disabled on the self-source, so objects removed from the
- engine pack are not garbage-collected by the engine.
+  engine pack are not garbage-collected by the engine.
 * Bad, because one render now feeds two delivery paths — direct SSA and the pushed
- artifact — and they must not diverge.
+  artifact — and they must not diverge.
 
 ## Implementation Status
 

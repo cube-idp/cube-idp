@@ -40,21 +40,21 @@ ratified alongside them but is a consent gate that refuses to run, not a plain-b
 ## Consequences
 
 * Good, because e2e assertions and CI log scraping keep working across releases: piped output
- is byte-identical regardless of terminal capabilities, absent an explicit color-force
- override.
+  is byte-identical regardless of terminal capabilities, absent an explicit color-force
+  override.
 * Good, because "producers never render" keeps exactly one renderer per run, so adding a new
- presentation mode does not require touching orchestrator code.
+  presentation mode does not require touching orchestrator code.
 * Good, because a plain projection exists for every live view, so a CI log is never less
- informative than the interactive view.
+  informative than the interactive view.
 * Good, because the same-commit test rule makes every intentional output change visible in
- review as a golden diff.
+  review as a golden diff.
 * Bad, because improving plain output requires a ratification step and a golden update, which
- is friction on what looks like a cosmetic fix.
+  is friction on what looks like a cosmetic fix.
 * Bad, because the freeze is now defined relative to a growing list of sanctioned deltas
- rather than a single recorded byte set, so the true contract lives in the renderer's
- comments plus the goldens.
+  rather than a single recorded byte set, so the true contract lives in the renderer's
+  comments plus the goldens.
 * Bad, because information the styled renderer can afford to show (durations, context,
- registry) is deliberately withheld from plain, so CI logs are less detailed by design.
+  registry) is deliberately withheld from plain, so CI logs are less detailed by design.
 
 ## Implementation Status
 

@@ -57,22 +57,22 @@ no controller.
 ## Consequences
 
 * Good, because a pack cannot execute anything: the fetch path can strip symlinks and skip
- non-regular files, and the blast radius of a hostile registry is bounded to the manifests
- it renders.
+  non-regular files, and the blast radius of a hostile registry is bounded to the manifests
+  it renders.
 * Good, because permissive loading of optional fields means the CLI can grow `dependsOn`,
- `images:`, `gatewayService:`, and `description` without invalidating already-published
- packs.
+  `images:`, `gatewayService:`, and `description` without invalidating already-published
+  packs.
 * Good, because `#Values` validation runs before any cluster mutation, so a typo in user
- values fails the run rather than half-applying it.
+  values fails the run rather than half-applying it.
 * Good, because "no reconciled CRDs, no daemon" keeps the operational surface to a CLI —
- nothing runs in the cluster on cube-idp's behalf between invocations.
+  nothing runs in the cluster on cube-idp's behalf between invocations.
 * Bad, because capabilities that genuinely need imperative logic cannot be expressed as a
- pack at all; they must move into the kernel or not exist.
+  pack at all; they must move into the kernel or not exist.
 * Bad, because "additive only" means design mistakes in v1 fields are permanent for the
- life of v1 — a field can be deprecated in documentation but not removed.
+  life of v1 — a field can be deprecated in documentation but not removed.
 * Bad, because the kustomization/`manifests/` precedence rule is a real behavioral cliff:
- adding a root `kustomization.yaml` to an existing pack silently changes which manifests
- render.
+  adding a root `kustomization.yaml` to an existing pack silently changes which manifests
+  render.
 
 ## Implementation Status
 

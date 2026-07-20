@@ -64,24 +64,24 @@ requires a changelog entry before the freeze.
 ## Consequences
 
 * Good, because there is one place to look when output shape is surprising: a single
- ladder in `ui.Resolve`, evaluated once, with a fixed precedence.
+  ladder in `ui.Resolve`, evaluated once, with a fixed precedence.
 * Good, because plain output is byte-stable, so CI logs and golden-file tests do not
- drift with terminal capabilities.
+  drift with terminal capabilities.
 * Good, because separating color from mode means an uncolored terminal keeps the full
- styled layout instead of degrading to the phase-1 log format.
+  styled layout instead of degrading to the phase-1 log format.
 * Good, because `omitempty` on fields added to existing record types keeps
- pre-existing JSONL lines byte-identical, so additive schema growth does not
- break existing consumers.
+  pre-existing JSONL lines byte-identical, so additive schema growth does not
+  break existing consumers.
 * Bad, because the resolution ladder has eight conditions plus a default
- (nine documented rungs) plus a separate color policy
- ladder; the interaction of `--color`, `NO_COLOR`, and `CLICOLOR_FORCE` is only
- discoverable from tests and comments.
+  (nine documented rungs) plus a separate color policy
+  ladder; the interaction of `--color`, `NO_COLOR`, and `CLICOLOR_FORCE` is only
+  discoverable from tests and comments.
 * Bad, because two machine-readable shapes (line stream and document) means two
- schemas to version, document, and freeze rather than one.
+  schemas to version, document, and freeze rather than one.
 * Bad, because `--plain` is a permanent alias, so the flag surface can never be
- reduced to the single knob it conceptually is.
+  reduced to the single knob it conceptually is.
 * Bad, because the JSON contract is explicitly experimental, so consumers built
- before the v1 config freeze carry migration risk.
+  before the v1 config freeze carry migration risk.
 
 ## Implementation Status
 

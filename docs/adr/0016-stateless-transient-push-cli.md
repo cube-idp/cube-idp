@@ -58,24 +58,24 @@ and provider `Diagnose` run on demand via `cube-idp doctor`.
 ## Consequences
 
 * Good, because the cluster keeps working when the CLI is uninstalled, downgraded or
- simply never run again — nothing in the cluster depends on a laptop process.
+  simply never run again — nothing in the cluster depends on a laptop process.
 * Good, because a run is a bounded, deterministic sequence with per-step timeouts and
- CUBE-xxxx exit codes, so failures are attributable to a step rather than to a race
- between reconcilers.
+  CUBE-xxxx exit codes, so failures are attributable to a step rather than to a race
+  between reconcilers.
 * Good, because a single field manager (`cube-idp`) makes ownership of every applied field
- unambiguous, and pruning/adoption behaviour follows from it.
+  unambiguous, and pruning/adoption behaviour follows from it.
 * Good, because a closed three-tier extension model gives a clear rejection criterion for
- new mechanisms instead of an ever-growing plugin surface.
+  new mechanisms instead of an ever-growing plugin surface.
 * Bad, because there is no drift correction between runs: anything the GitOps engine does
- not own stays drifted until the user runs `up` again.
+  not own stays drifted until the user runs `up` again.
 * Bad, because preflight is opt-in via `doctor`, so `up` can fail late on a condition a
- mandatory preflight would have caught early.
+  mandatory preflight would have caught early.
 * Bad, because "no resident process" rules out genuinely useful long-lived UX (a watching
- dashboard, a background updater); `sync --watch` is the single sanctioned foreground
- carve-out and is explicitly not a daemon. The UI-side form of this restriction is stated
- normatively in ADR-0026.
+  dashboard, a background updater); `sync --watch` is the single sanctioned foreground
+  carve-out and is explicitly not a daemon. The UI-side form of this restriction is stated
+  normatively in ADR-0026.
 * Bad, because the no-CRD purity of the original decision could not be held: the kernel now
- ships an inert `packs.cube-idp.dev` CRD and a CubeLock record.
+  ships an inert `packs.cube-idp.dev` CRD and a CubeLock record.
 
 ## Implementation Status
 

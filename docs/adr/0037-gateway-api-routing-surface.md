@@ -49,23 +49,23 @@ pack, so a mismatched pack/ref pair can never be authored.
 ## Consequences
 
 * Good, because pack authors target one portable routing API; an `HTTPRoute`
- written for a pack works under any conformant gateway implementation.
+  written for a pack works under any conformant gateway implementation.
 * Good, because the gateway implementation is a config line. `traefik` and
- `envoy-gateway` are both selectable and neither is privileged in code.
+  `envoy-gateway` are both selectable and neither is privileged in code.
 * Good, because one resolution helper means `up`, `diff`, `upgrade` and `doctor`
- cannot disagree about where the gateway pack comes from.
+  cannot disagree about where the gateway pack comes from.
 * Good, because deriving `gateway.ref` from the chosen pack at init time makes
- the incoherent-pair failure unrepresentable rather than merely documented.
+  the incoherent-pair failure unrepresentable rather than merely documented.
 * Bad, because Gateway API CRDs must be established before any HTTPRoute is
- applied, adding a mandatory CRD wait to the delivery path.
+  applied, adding a mandatory CRD wait to the delivery path.
 * Bad, because there is no Ingress escape hatch: an environment that can only
- offer Ingress cannot be served.
+  offer Ingress cannot be served.
 * Bad, because the `packs/<pack>` fallback only resolves when cube-idp runs from
- the root of a packs checkout — a documented v0.1.0 caveat, not a general path.
+  the root of a packs checkout — a documented v0.1.0 caveat, not a general path.
 * Bad, because making Gateway API the routing surface forces the dependency
- graph to encode a special case rather than derive one: the gateway pack
- occupies a pinned position 0 and cannot declare `dependsOn`
- (`internal/pack/depgraph.go`). ADR-0005 owns that rule.
+  graph to encode a special case rather than derive one: the gateway pack
+  occupies a pinned position 0 and cannot declare `dependsOn`
+  (`internal/pack/depgraph.go`). ADR-0005 owns that rule.
 
 ## Implementation Status
 
@@ -104,8 +104,8 @@ Member origins:
 - `docs/archive/superpowers/specs/2026-07-13-cube-idp-architecture-design.md:32` — Gateway API as the routing surface.
 - `docs/archive/superpowers/research/2026-07-13-cube-idp-brainstorm/proposals.md:88` — Traefik as the default, swap-by-config.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-pack-depends-and-cubelock-crd-design.md:165` — the gateway pack is delivered first unconditionally and cannot depend on other packs (see also DD6 at line 95 of the same document). ADR-0005 owns this rule.
-- `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:153` — single shared `PackRef()` helper (G13).
-- `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:1507` — the `packs/<pack>` fallback caveat consequence (F12).
+- `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:153` — single shared `PackRef()` helper.
+- `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:1507` — the `packs/<pack>` fallback caveat consequence.
 - `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:2983-2985` — init's pack/ref coherence rule, published-mode twin of §5.7a.
 
 One note on drift between the recorded statement and the code: the original

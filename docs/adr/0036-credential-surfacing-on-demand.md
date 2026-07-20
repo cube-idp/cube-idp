@@ -54,17 +54,17 @@ than an enum. This ADR relies on both but does not restate them as its own commi
 ## Consequences
 
 * Good, because a routine `up` transcript is safe to share: it names what was installed and
- where to get credentials, but contains none.
+  where to get credentials, but contains none.
 * Good, because `expose.authSecretRef` makes the credential location part of the pack's
- declared contract, discoverable through `kubectl get packs` without any cube-idp tooling.
+  declared contract, discoverable through `kubectl get packs` without any cube-idp tooling.
 * Good, because the inline rendering model owned by ADR-0026 leaves the run's history in
- native scrollback, so the access summary survives the program exiting.
+  native scrollback, so the access summary survives the program exiting.
 * Bad, because operators must run a second command to get what a naive installer would have
- handed them, which is friction on first use.
+  handed them, which is friction on first use.
 * Bad, because supporting the deprecated label lookup means carrying two resolution paths
- for a release.
+  for a release.
 * Bad, because `impliedFields` merging encodes knowledge about a pack's credential shape
- (e.g. Argo CD's implicit `admin` username) that the Secret itself does not carry.
+  (e.g. Argo CD's implicit `admin` username) that the Secret itself does not carry.
 
 ## Implementation Status
 
@@ -109,9 +109,9 @@ before this record was written.
 Member provenance:
 
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase3-draft.md:51` — the `get secrets` pivot
- and label deprecation.
+  and label deprecation.
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:4393` — the Pack CRD printer
- columns.
+  columns.
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:5743` — the `up` access summary.
 
 The inline/never-alt-screen rendering model and the open-`Stage`-string rule were previously

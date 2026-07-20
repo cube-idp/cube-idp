@@ -54,21 +54,21 @@ effects.
 ## Consequences
 
 * Good, because starting a cube is never a privileged operation: `up` can run
- unattended, in CI, and in `go test` without mutating the host's trust configuration.
+  unattended, in CI, and in `go test` without mutating the host's trust configuration.
 * Good, because certificate correctness is falsifiable independently of OS trust — the
- e2e test builds its own pool from the CA file and dials the gateway.
+  e2e test builds its own pool from the CA file and dials the gateway.
 * Good, because operators with an existing mkcert root get browser-trusted leaves with
- no prompt at all.
+  no prompt at all.
 * Good, because the CA is idempotent per machine, so trust granted once survives every
- subsequent `up`, and `down` reverts exactly what `trust` installed.
+  subsequent `up`, and `down` reverts exactly what `trust` installed.
 * Bad, because presence-based adoption can adopt an mkcert root the OS does not
- actually trust, producing certificates that browsers still reject until the operator
- runs `cube-idp trust`; there is no portable way to detect this in advance.
+  actually trust, producing certificates that browsers still reject until the operator
+  runs `cube-idp trust`; there is no portable way to detect this in advance.
 * Bad, because the "once a cube-idp CA exists it wins" rule means an operator who later
- installs mkcert will not have it adopted — the existing CA directory must be removed
- by hand to change course.
+  installs mkcert will not have it adopted — the existing CA directory must be removed
+  by hand to change course.
 * Bad, because HTTPS without warnings is a two-step experience (`up`, then `trust`)
- rather than one command.
+  rather than one command.
 
 ## Implementation Status
 
@@ -128,10 +128,10 @@ the code before this record was written.
 Member origins:
 
 - `docs/archive/superpowers/specs/2026-07-13-cube-idp-architecture-design.md:35` — implicit
- trust-store modification is forbidden; `trust` is the sole opt-in path.
+  trust-store modification is forbidden; `trust` is the sole opt-in path.
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:2581` — CA generated once
- per machine via the mkcert mechanism as a library, wildcard cert before cluster create.
+  per machine via the mkcert mechanism as a library, wildcard cert before cluster create.
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:3007` — mkcert adoption
- narrowed to presence-based detection.
+  narrowed to presence-based detection.
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:5612` — gateway TLS chain
- verified in e2e without the OS trust store.
+  verified in e2e without the OS trust store.

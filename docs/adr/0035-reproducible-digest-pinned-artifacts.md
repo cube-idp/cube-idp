@@ -57,20 +57,20 @@ commit-message check runs in CI. CI does gate merges on `go vet ./...` and
 ## Consequences
 
 * Good, because two installs from the same committed `cube.lock` resolve to byte-identical
- packs and images, so "what is deployed" is answerable from the repository alone.
+  packs and images, so "what is deployed" is answerable from the repository alone.
 * Good, because a fixed-epoch created annotation makes digests a function of content:
- republishing an unchanged pack is a true no-op, and CI can skip on digest equality.
+  republishing an unchanged pack is a true no-op, and CI can skip on digest equality.
 * Good, because vendoring reads the lock rather than an embedded list, so the bundle can
- never drift from what a connected install would have pulled — including the engine.
+  never drift from what a connected install would have pulled — including the engine.
 * Good, because e2e runs against digest-pinned published packs, so a test failure is a real
- regression rather than an upstream pack having moved under the tag.
+  regression rather than an upstream pack having moved under the tag.
 * Bad, because pins must be refreshed deliberately; picking up an upstream fix requires a
- lock update and a commit rather than happening on the next run.
+  lock update and a commit rather than happening on the next run.
 * Bad, because the bundle manifest is versioned and any `formatVersion` other than 2 is
- rejected outright, so bundle format changes are a breaking change for existing artifacts
- (see ADR-0009).
+  rejected outright, so bundle format changes are a breaking change for existing artifacts
+  (see ADR-0009).
 * Bad, because the CubeLock record is compared on identity only, so genuine changes inside
- that record's spec are invisible to `diff`.
+  that record's spec are invisible to `diff`.
 
 ## Implementation Status
 
@@ -127,9 +127,9 @@ Member provenance:
 
 - `docs/archive/superpowers/specs/2026-07-13-cube-idp-architecture-design.md:169` — `cube.lock`
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:492` — bundle
- manifest formatVersion 2
+  manifest formatVersion 2
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:1396` — fixed-epoch
- created annotation
+  created annotation
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-engine-as-pack.md:1107` — engine vendoring
- from the lock
+  from the lock
 - `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:2878` — digest-pinned e2e packs

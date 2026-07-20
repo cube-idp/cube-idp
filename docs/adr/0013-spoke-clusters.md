@@ -61,21 +61,21 @@ parity evidence required when engine chart or manifest pins are bumped.
 ## Consequences
 
 * Good, because the boundary is sharp and testable: cube-idp owns credentials and
- registration, the engine owns delivery. There is exactly one delivery path in the system.
+  registration, the engine owns delivery. There is exactly one delivery path in the system.
 * Good, because the engine-native Secret shape means a registered spoke is indistinguishable
- from one an operator registered by hand — no cube-idp-specific runtime on the spoke, and
- nothing to uninstall beyond a namespace and a ClusterRoleBinding.
+  from one an operator registered by hand — no cube-idp-specific runtime on the spoke, and
+  nothing to uninstall beyond a namespace and a ClusterRoleBinding.
 * Good, because everything is declarative: spokes round-trip through `cube.yaml`, and `up`
- is idempotent and re-entrant, so retry is always "run `up` again".
+  is idempotent and re-entrant, so retry is always "run `up` again".
 * Bad, because `cluster-admin` is a blunt grant — the engine service account has full rights
- on every spoke.
+  on every spoke.
 * Bad, because a ~10-year TokenRequest token is long-lived credential material sitting in a
- hub Secret; the mitigation is that every `up` re-issues it.
+  hub Secret; the mitigation is that every `up` re-issues it.
 * Bad, because kind spokes register a docker-network-internal URL, so a spoke the hub can
- reach may still probe unreachable from the operator's machine — hence reachability is a
- warning, not an error.
+  reach may still probe unreachable from the operator's machine — hence reachability is a
+  warning, not an error.
 * Bad, because k3d spokes are unsupported, so a k3d-hub user must mix providers to get a
- spoke.
+  spoke.
 
 ## Implementation Status
 

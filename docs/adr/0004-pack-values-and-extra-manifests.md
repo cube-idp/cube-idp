@@ -46,19 +46,19 @@ record and shown as a CUSTOMIZED printer column in `kubectl get packs`.
 ## Consequences
 
 * Good, because `values:` has exactly one meaning, so a user cannot silently expect raw
- manifests to be templated by it — the chartless case is a loud typed error.
+  manifests to be templated by it — the chartless case is a loud typed error.
 * Good, because `extraManifests` gives every pack kind, chart-backed or not, one uniform
- escape hatch that rides the same delivery path as the pack's own objects.
+  escape hatch that rides the same delivery path as the pack's own objects.
 * Good, because a fixed merge order plus number normalization makes renders reproducible
- and comparable against ordinary Go int literals in tests.
+  and comparable against ordinary Go int literals in tests.
 * Good, because customization is visible to operators directly in `kubectl get packs`
- rather than requiring a diff against cube.yaml.
+  rather than requiring a diff against cube.yaml.
 * Bad, because the chartless-values error can only fire after a network fetch, so the
- failure arrives later than a pure load-time validation would.
+  failure arrives later than a pure load-time validation would.
 * Bad, because with no remote values layer, values shared across several clusters must be
- duplicated inline in each cube.yaml.
+  duplicated inline in each cube.yaml.
 * Bad, because `extraManifests` is an unstructured YAML string, so mistakes surface only
- as a parse error (CUBE-4017) rather than schema-level feedback.
+  as a parse error (CUBE-4017) rather than schema-level feedback.
 
 ## Implementation Status
 
@@ -126,11 +126,11 @@ Origin: mined from the archived planning corpus (`docs/archive/superpowers/`) du
 before this record was written.
 
 - `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:2139` — `values:` are helm values
- only; chartless packs with values are CUBE-4016.
+  only; chartless packs with values are CUBE-4016.
 - `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:2007` — `extraManifests` as the
- uniform extras mechanism.
+  uniform extras mechanism.
 - `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:2283` — fixed value merge order.
 - `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:224` — CUSTOMIZED marking and
- printer column.
+  printer column.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-valuesref-remote-config-design.md:161` — the
- superseded three-tier `valuesRef` layering.
+  superseded three-tier `valuesRef` layering.

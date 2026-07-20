@@ -54,20 +54,20 @@ A ref carrying an unsupported URI scheme is rejected with `CodePackRefInvalid`
 ## Consequences
 
 * Good, because a fixed in-cluster DNS address means engine manifests need no
- templating or provider-specific registry configuration.
+  templating or provider-specific registry configuration.
 * Good, because port-forwarding works identically on every provider, so the host push
- path needs no bespoke per-provider registry-exposure story.
+  path needs no bespoke per-provider registry-exposure story.
 * Good, because one `IsLocalRegistryHost` definition makes the insecure-transport
- policy auditable in a single place.
+  policy auditable in a single place.
 * Good, because keeping the go-getter fork on the upstream import path means call
- sites and imports are unchanged if the fork is ever retired.
+  sites and imports are unchanged if the fork is ever retired.
 * Bad, because a port-forward is a live process: the caller must own its lifetime
- (a `defer stop()`, or an explicit stop as at `internal/up/up.go`), and a missed
- stop leaks a goroutine and a local port.
+  (a `defer stop()`, or an explicit stop as at `internal/up/up.go`), and a missed
+  stop leaks a goroutine and a local port.
 * Bad, because the `replace` directive is invisible to `go get` — a contributor running
- `go get -u` can silently drop back to upstream go-getter.
+  `go get -u` can silently drop back to upstream go-getter.
 * Bad, because embedding manifests in the binary means upgrading zot requires shipping
- a new cube-idp release.
+  a new cube-idp release.
 
 ## Implementation Status
 

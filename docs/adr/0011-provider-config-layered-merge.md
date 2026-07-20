@@ -46,20 +46,20 @@ Combining `provider: existing` with node-creation fields is rejected with CUBE-1
 ## Consequences
 
 * Good, because the entire upstream provider surface stays reachable without cube-idp typing
- it — new kind fields work the day kind ships them.
+  it — new kind fields work the day kind ships them.
 * Good, because the merge is a pure function over its inputs, so it is unit-testable and
- `render-cluster` can print the exact document without touching Docker, a cluster, or the
- filesystem.
+  `render-cluster` can print the exact document without touching Docker, a cluster, or the
+  filesystem.
 * Good, because cube-idp's invariants (gateway reachability, node image, registry trust) hold
- regardless of what the user's base document says.
+  regardless of what the user's base document says.
 * Good, because the CUBE-1206 warning makes silent core overrides visible rather than
- mysterious.
+  mysterious.
 * Bad, because a user who deliberately sets an owned field is overridden rather than obeyed,
- and only learns about it from a warning.
+  and only learns about it from a warning.
 * Bad, because layers 3 and 4 resolve conflicts differently (hard error vs. warn-and-win),
- which is a rule users must learn rather than infer.
+  which is a rule users must learn rather than infer.
 * Bad, because the strict decode means a typo anywhere in `forProvider` fails the whole render
- (CUBE-1202) instead of being ignored.
+  (CUBE-1202) instead of being ignored.
 
 ## Implementation Status
 

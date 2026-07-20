@@ -50,19 +50,19 @@ annotation plus caller wave gating) and the `DeliverGit` dependency parameter.
 ## Consequences
 
 * Good, because adding or swapping an engine is confined to one package plus a factory case —
- no change to pack format, config schema or orchestration.
+  no change to pack format, config schema or orchestration.
 * Good, because returning objects instead of applying them keeps `Deliver` pure and testable
- and leaves exactly one apply path (the shared applier) for inventory tracking.
+  and leaves exactly one apply path (the shared applier) for inventory tracking.
 * Good, because delegating reconciliation to the engine removes any need for a controller
- manager in the CLI, and keeps a single record of truth in-cluster.
+  manager in the CLI, and keeps a single record of truth in-cluster.
 * Good, because the shared contract test makes engine parity falsifiable rather than assumed.
 * Bad, because engines that do not natively order deliveries force the orchestrator to gate
- waves itself, which is why `OrdersDeliveries` exists and every implementation must answer it
- consciously.
+  waves itself, which is why `OrdersDeliveries` exists and every implementation must answer it
+  consciously.
 * Bad, because no plugin mechanism means a third-party engine requires a fork or an upstream
- contribution.
+  contribution.
 * Bad, because dropping engine tuning removed a configuration surface users had; migration is
- handled by an explicit config guard rather than silent acceptance.
+  handled by an explicit config guard rather than silent acceptance.
 
 ## Implementation Status
 
@@ -117,18 +117,18 @@ before this record was written.
 Member provenance:
 
 - `docs/archive/superpowers/specs/2026-07-13-cube-idp-architecture-design.md:148` — engine types never
- leak above the seam.
+  leak above the seam.
 - `docs/archive/superpowers/specs/2026-07-13-cube-idp-architecture-design.md:58` — reconciliation
- delegated to the in-cluster engine.
+  delegated to the in-cluster engine.
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:27` — both engines compiled in,
- no plugins.
+  no plugins.
 - `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:1784` — the original (now
- superseded) rationale for the factory taking `EngineSpec`: engines carried values into
- `InstallManifests`, a method since deleted.
+  superseded) rationale for the factory taking `EngineSpec`: engines carried values into
+  `InstallManifests`, a method since deleted.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md:185` — the final
- interface surface after install left the seam.
+  interface surface after install left the seam.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md:192` — the factory
- takes no config beyond `Type`.
+  takes no config beyond `Type`.
 
 Related: ADR 0007 (engine as a pack), which moved the engine's own install out of this
 interface; ADR 0002 (pack format data-only contract), which is the authoritative statement that

@@ -58,21 +58,21 @@ with a typed error.
 ## Consequences
 
 * Good, because new packs and plugins become discoverable by republishing an index
- artifact, with no new binary release.
+  artifact, with no new binary release.
 * Good, because every install resolves a pinned manifest digest, so a moved tag cannot
- change what a user receives.
+  change what a user receives.
 * Good, because a downloaded binary works out of the box: `init` writes published
- `oci://ghcr.io/cube-idp/packs/...` refs and needs no repository checkout.
+  `oci://ghcr.io/cube-idp/packs/...` refs and needs no repository checkout.
 * Good, because CI and the e2e suite are hermetic — the network is only reached on the
- interactive wizard path.
+  interactive wizard path.
 * Bad, because the built-in pack catalog is a permanent second source of truth that must
- be kept in sync with the packs' `pack.cue` descriptions by hand.
+  be kept in sync with the packs' `pack.cue` descriptions by hand.
 * Bad, because an offline user sees a pack list that may be older than the published one,
- announced only by a single advisory line.
+  announced only by a single advisory line.
 * Bad, because plugin discovery has no offline mode at all: a cold cache plus no network
- means `plugin list --available` and `plugin search` simply fail.
+  means `plugin list --available` and `plugin search` simply fail.
 * Bad, because the 24-hour cache means a freshly published pack or plugin can stay
- invisible to a user for up to a day.
+  invisible to a user for up to a day.
 
 ## Implementation Status
 

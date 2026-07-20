@@ -59,22 +59,22 @@ in-process registry used by `internal/oci/ocitest`), while `fluxcd/pkg/ssa` stay
 ## Consequences
 
 * Good, because rendering is reproducible: the Helm, kustomize and CUE versions are
- pinned in `go.mod` rather than inherited from the operator's PATH.
+  pinned in `go.mod` rather than inherited from the operator's PATH.
 * Good, because a client-only render can never accidentally touch a cluster, create a
- release secret, or require cluster credentials to preview a change.
+  release secret, or require cluster credentials to preview a change.
 * Good, because pinning cache paths on `EnvSettings` fields keeps renders hermetic and
- leaves the operator's own Helm state untouched — and does so without mutating process
- environment, which would be a global side effect in a concurrent renderer.
+  leaves the operator's own Helm state untouched — and does so without mutating process
+  environment, which would be a global side effect in a concurrent renderer.
 * Good, because confining the SDK import to one file keeps a large API surface behind a
- single wrapper, so a Helm major-version bump is a one-file change.
+  single wrapper, so a Helm major-version bump is a one-file change.
 * Good, because dropping `fluxcd/pkg/oci` removes its docker-cli dependency subtree from
- the production build; go-containerregistry survives only in the test binary.
+  the production build; go-containerregistry survives only in the test binary.
 * Bad, because cube-idp is coupled to whatever the Helm SDK supports; charts relying on
- behaviour only the CLI provides cannot be worked around with an escape hatch.
+  behaviour only the CLI provides cannot be worked around with an escape hatch.
 * Bad, because there is no cluster-aware render, so charts whose templates branch on
- `.Capabilities` from a live API server see only client-side defaults.
+  `.Capabilities` from a live API server see only client-side defaults.
 * Bad, because the single-importer rule is a convention enforced by review and grep, not
- by the compiler.
+  by the compiler.
 
 ## Implementation Status
 

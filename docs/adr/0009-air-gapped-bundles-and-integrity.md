@@ -62,24 +62,24 @@ projection rule; this ADR asserts nothing bundle-specific about it.
 ## Consequences
 
 * Good, because air-gapped install is one produce command and one consume flag, rather
- than a surface of bundle subcommands and mirror flags to learn.
+  than a surface of bundle subcommands and mirror flags to learn.
 * Good, because integrity is checked by recomputed content hashes, so corruption and
- tampering are caught before anything reaches a cluster — presence-and-size checks would
- not catch a swapped image tar.
+  tampering are caught before anything reaches a cluster — presence-and-size checks would
+  not catch a swapped image tar.
 * Good, because digesting the lock over raw bytes keeps the digest valid across lock-schema
- changes that do not alter the bytes; bundle compatibility is gated separately by
- `manifest.formatVersion`.
+  changes that do not alter the bytes; bundle compatibility is gated separately by
+  `manifest.formatVersion`.
 * Bad, because that separate gate is strict: a bundle built at `formatVersion` 1 does not
- open at all, and must be re-vendored.
+  open at all, and must be re-vendored.
 * Good, because the closed 70xx code set makes bundle failures machine-triageable and
- keeps the diagnostic surface from growing per integrity feature.
+  keeps the diagnostic surface from growing per integrity feature.
 * Bad, because full re-hashing of every pack tree and image tar costs time and I/O
- proportional to bundle size on every open.
+  proportional to bundle size on every open.
 * Bad, because `up --bundle` only works with providers that can node-load images (kind,
- k3d); the `existing` provider is excluded and must fail with CUBE-7005.
+  k3d); the `existing` provider is excluded and must fail with CUBE-7005.
 * Bad, because bundles carry no cryptographic provenance — integrity is verified against
- the bundle's own manifest, which detects corruption but not an attacker who rebuilds the
- manifest too.
+  the bundle's own manifest, which detects corruption but not an attacker who rebuilds the
+  manifest too.
 
 ## Implementation Status
 
