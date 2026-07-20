@@ -86,7 +86,7 @@ func newStatusCmd() *cobra.Command {
 	return c
 }
 
-// runStatusWatch is the gh-run-watch clone (spec WP7): the one-shot view
+// runStatusWatch is the `gh run watch` clone: the one-shot view
 // re-rendered every interval until every component is Ready, then exit 0.
 // On a rich TTY it runs as an inline Bubble Tea tick program (managed
 // region only — AltScreen never set); everywhere else — pipes, CI, JSON —
@@ -243,7 +243,8 @@ type statusSnapshot struct {
 // Registered — the S3 hub registration secret exists in the engine's
 // namespace; Reachable — the spoke API server answered /readyz using that
 // secret's own payload (probed from this machine — kind spokes carry a
-// docker-network-internal URL, GT7, so the hub engine may reach them when
+// docker-network-internal URL (https://<cluster>-control-plane:6443, from
+// kind's internal kubeconfig), so the hub engine may reach them when
 // this process cannot).
 type spokeStatus struct {
 	Name       string
@@ -365,7 +366,7 @@ func renderStatusOnce(out io.Writer, p *ui.Printer, jsonDoc bool, cube string, s
 }
 
 // spokeStateCell renders one paired glyph+word state cell (semantic-color
-// doctrine, GT13: the word always accompanies the glyph — color and symbol
+// doctrine: the word always accompanies the glyph — color and symbol
 // alone may never carry the meaning).
 func spokeStateCell(p *ui.Printer, ok bool, okWord, badWord string) string {
 	if ok {
@@ -374,9 +375,9 @@ func spokeStateCell(p *ui.Printer, ok bool, okWord, badWord string) string {
 	return p.Glyph(ui.GlyphErr) + " " + badWord
 }
 
-// renderStatusPlain reproduces the pre-14c plain bytes exactly (design doc §8
-// item 4: status' "%s %s Ready\n" plain path is byte-frozen). Glyph passes the
-// bare character through in plain mode, so this is identical to the phase-1
+// renderStatusPlain reproduces the original plain bytes exactly (status'
+// "%s %s Ready\n" plain path is byte-frozen). Glyph passes the
+// bare character through in plain mode, so this is identical to the original
 // inline fmt.Fprintf calls.
 func renderStatusPlain(out io.Writer, p *ui.Printer, health []engine.ComponentHealth, spokes []spokeStatus, inventory []object.ObjMetadata, details bool) {
 	for _, h := range health {
@@ -402,7 +403,7 @@ func renderStatusPlain(out io.Writer, p *ui.Printer, health []engine.ComponentHe
 	}
 }
 
-// renderStatusStyled is the stage-B rich static snapshot (design doc §10): a
+// renderStatusStyled is the rich static snapshot rendered on a real terminal: a
 // glyph-led component table with dimmed status messages, the inventory count,
 // the access URLs from the Pack records (when any), and, under --details, the
 // inventory table. out is threaded explicitly (not p.Out()) so the --watch
@@ -469,15 +470,18 @@ func packAccessRows(ctx context.Context, c client.Client) []ui.PackAccess {
 	return rows
 }
 
-// statusDoc is the gh-style status document (design doc §10). The objects
+// statusDoc is the gh-style status document emitted by `-o json` — one final
+// object, distinct from the --progress=json event stream. The objects
 // array is present only under --details; ready is the overall verdict that
 // also drives the exit code.
 type statusDoc struct {
 	jsonDocHead
-	Cube       string           `json:"cube"`
+	Cube       string            `json:"cube"`
 	Components []statusComponent `json:"components"`
-	// Spokes is additive (S4, GT13): present only when spokes are declared,
-	// so pre-S4 consumers and spoke-less cubes see an unchanged document.
+	// Spokes is additive (the JSON document is additive-only): present only when
+	// spokes are declared,
+	// so consumers written before spokes existed, and spoke-less cubes, see an
+	// unchanged document.
 	Spokes    []statusSpoke   `json:"spokes,omitempty"`
 	Inventory statusInventory `json:"inventory"`
 	Ready     bool            `json:"ready"`

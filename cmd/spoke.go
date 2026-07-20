@@ -12,7 +12,8 @@ import (
 	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
-// spoke: declarative hub/spoke registration (Phase 5 spec §5, decision 9).
+// spoke: declarative hub/spoke registration — see
+// docs/adr/0013-spoke-clusters.md for the registration-only scope decision.
 // These commands only edit cube.yaml — `up` bootstraps and registers spokes
 // (S2/S3), `down` cascades. cube-idp registers spokes with the hub engine
 // and gets out of the way; delivering workloads to them is engine content.

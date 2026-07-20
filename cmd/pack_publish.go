@@ -1,4 +1,4 @@
-// pack_publish.go is the packs-repo CI toolchain (Phase 5 P2): `pack
+// pack_publish.go is the packs-repo CI toolchain: `pack
 // publish` (validate + push one pack, print its digest), `pack index build`
 // (assemble the catalog index artifact payload over a packs/ tree), and
 // `pack index push` (ship index.json as an OCI artifact). The publish
@@ -6,7 +6,7 @@
 // production caller; everything here is also runnable locally against any
 // registry the docker credential chain can reach.
 //
-// Digest sourcing for `index build` (VERIFY-API, plan P2 Step 2):
+// Digest sourcing for `index build`:
 // internal/oci exports no offline digest helper (pushPackDirTo is an
 // unexported seam), so per the plan's fallback the build takes repeatable
 // `--digest name=sha256:…` flags (CI passes the digests `pack publish` just
@@ -32,7 +32,8 @@ import (
 )
 
 // packIndex is the catalog index artifact schema (schemaVersion 1),
-// consumed by P5's CI attestation and P6's remote catalog. Additive-only
+// consumed by the publish CI's build attestation and by the remote catalog
+// surfaces in this package. Additive-only
 // within schemaVersion 1.
 type packIndex struct {
 	SchemaVersion int              `json:"schemaVersion"`
@@ -161,7 +162,7 @@ func newPackIndexBuildCmd() *cobra.Command {
 // digests map or — with fromRegistry — from the registry via
 // pack.ResolveRemote. Entries come back sorted by name so the index is
 // byte-deterministic for identical inputs (the artifact republish no-op
-// property, Phase 4 R8).
+// property — see docs/adr/0035-reproducible-digest-pinned-artifacts.md).
 func buildPackIndex(ctx context.Context, packsDir, refBase string, digests map[string]string, fromRegistry bool) ([]packIndexEntry, error) {
 	dirEntries, err := os.ReadDir(packsDir)
 	if err != nil {
@@ -273,7 +274,8 @@ func newPackIndexPushCmd() *cobra.Command {
 }
 
 // ociRefTag returns the :tag of an oci:// ref ("" when none). A @digest ref
-// returns "" — publish requires a version TAG (GT9: tag == pack version), a
+// returns "" — publish requires a version TAG (the release convention is that
+// the artifact tag equals the pack's declared version), a
 // digest-only target cannot satisfy that. Companion of refHasTag: same
 // last-segment rule, so a port in the host is never mistaken for a tag.
 func ociRefTag(ref string) string {

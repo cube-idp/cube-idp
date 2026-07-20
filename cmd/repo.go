@@ -27,7 +27,8 @@ const (
 
 	// giteaNamespace, giteaAdminSecretName, giteaPodSelector, giteaPodPort
 	// and giteaInClusterHost are the D11-verified facts about the shipped
-	// gitea pack (checkpoint 0.10/0.8): admin Secret gitea-admin-cube-idp in
+	// gitea pack, read off the shipped pack rather than assumed: admin Secret
+	// gitea-admin-cube-idp in
 	// namespace gitea (keys username/password); chart-standard pod label
 	// app.kubernetes.io/name=gitea; Service gitea-http:3000 (chart 12.6.0).
 	giteaNamespace        = "gitea"
@@ -176,7 +177,7 @@ func deployRepo(ctx context.Context, a *apply.Applier, eng engine.Engine, name s
 }
 
 // repoCloneURL is the printed, operator-facing clone URL: the https gateway
-// form (real TLS via the gateway, checkpoint 0.8), NOT the in-cluster URL
+// form (real TLS via the gateway), NOT the in-cluster URL
 // deployRepo hands the engine — a human clones/pushes over the gateway, the
 // engine reaches the Service directly.
 func repoCloneURL(gw config.GatewaySpec, r *gitea.Repo) string {

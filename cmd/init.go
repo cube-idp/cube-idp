@@ -38,8 +38,9 @@ var optionalPacks = packCatalogNames()
 var gatewayPacks = []string{"traefik", "envoy-gateway"}
 
 // publishedGatewayVersion is the packs-monorepo release line the published
-// gateway refs pin (P4). Both gateway packs release in lockstep; keep this in
-// sync with what cube-idp/packs actually tags (packCatalog discipline, P6).
+// gateway refs pin. Both gateway packs release in lockstep; keep this in
+// sync with what cube-idp/packs actually tags — the same discipline packCatalog
+// follows for its built-in offline fallback versions.
 const publishedGatewayVersion = "0.2.0"
 
 // publishedGatewayRef derives the published oci ref for a gateway pack —
@@ -91,7 +92,7 @@ func newInitCmd() *cobra.Command {
 			}
 			wizardRan := false
 			if wizardApplicable(c) {
-				// P6: the wizard's pack multi-select offers the remote
+				// The wizard's pack multi-select offers the remote
 				// catalog (built-in fallback when the index is unreachable).
 				// Loaded only on the interactive path — flag-driven runs,
 				// CI, and the e2e suite never touch the network here.
@@ -133,10 +134,11 @@ func newInitCmd() *cobra.Command {
 			} else {
 				cube.Spec.Gateway.Pack = gatewayPack
 			}
-			// Coherence rule (spec §5.7a): the gateway.ref is ALWAYS derived
+			// Gateway coherence rule: the gateway.ref is ALWAYS derived
 			// from the final chosen pack (flag or wizard), never from an
 			// assignment made before the wizard ran — that ordering is
-			// exactly the F11 trap (ref traefik, pack envoy). P4 (F12
+			// exactly the incoherence CUBE-0008 exists to catch (ref traefik,
+			// pack envoy). Since the packs moved out of this repo (published-mode
 			// closed): published mode derives the oci ref the same way, so
 			// init always writes a gateway source that works from any cwd.
 			if localAbs != "" {
@@ -175,13 +177,13 @@ func newInitCmd() *cobra.Command {
 // engine stay in their existing flag-backed vars). It is applied to the cube
 // after config.Default + engine/local resolution by applyWizardToCube.
 type initWizardResult struct {
-	Provider    string         // "kind" | "existing"
-	Context     string         // kubeconfig context, when Provider == "existing"
+	Provider    string // "kind" | "existing"
+	Context     string // kubeconfig context, when Provider == "existing"
 	GatewayHost string
 	GatewayPort int
 	GatewayPack string         // "traefik" | "envoy-gateway" (R7a)
 	Packs       []string       // selected optional-pack catalog names
-	Catalog     []catalogEntry // the loaded pack catalog the multi-select offered (P6)
+	Catalog     []catalogEntry // the loaded pack catalog the multi-select offered (remote index or built-in fallback)
 }
 
 // applyWizardToCube overlays the wizard answers onto cube, keeping the written
@@ -205,7 +207,7 @@ func applyWizardToCube(cube *config.Cube, r initWizardResult) {
 		cube.Spec.Gateway.Pack = r.GatewayPack
 	}
 	cube.Spec.Packs = filterSelectedPacks(cube.Spec.Packs, r.Packs)
-	// P6: a selected catalog pack OUTSIDE the built-in list was never in the
+	// A selected catalog pack OUTSIDE the built-in list was never in the
 	// default profile, so keeping the user's choice means appending its
 	// published ref (spec B3: the wizard discovers packs without a binary
 	// release). Built-in names never append here — their presence in the
@@ -301,7 +303,7 @@ func kubeContextNames() []string {
 	return names
 }
 
-// runInitWizard runs the multi-group huh v2 wizard (design doc §10): cube name
+// runInitWizard runs the multi-group huh v2 wizard: cube name
 // (validated by cubeNameRe, the schema.cue mirror), provider (kind | existing,
 // with a kubeconfig context picker for existing), engine (flux | argocd),
 // gateway host/port with a port-conflict pre-check via doctor.CheckPortFree, a
@@ -398,7 +400,7 @@ func runInitWizard(c *cobra.Command, name, engineType *string, res *initWizardRe
 }
 
 // validateGatewayPort parses a gateway port and runs doctor's CheckPortFree
-// pre-check (design doc §10): a syntactically bad port or one already bound by
+// pre-check: a syntactically bad port or one already bound by
 // a non-cube process (an error-severity finding) is rejected inline so the
 // wizard never writes a cube.yaml whose `up` would immediately fail the same
 // port check. clusterExists=false: init runs before any cube exists.

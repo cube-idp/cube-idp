@@ -141,8 +141,9 @@ spec:
 
 // TestSpokeRemoveDeleteClusterYes replaces S1's stub contract: with --yes,
 // --delete-cluster must reach the real provider deletion (through the
-// spokeClusterDelete seam) for the GT7-named cluster — the S1 "ships in a
-// later task" CUBE-8001 error is gone.
+// spokeClusterDelete seam) for the cluster named <cube>-spoke-<spoke> — the
+// earlier "ships in a
+// later release" CUBE-8001 error is gone.
 func TestSpokeRemoveDeleteClusterYes(t *testing.T) {
 	var deleted []string
 	restore := spokeClusterDelete

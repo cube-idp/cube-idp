@@ -32,7 +32,7 @@ func TestFilterCLISecrets(t *testing.T) {
 	}
 }
 
-// newPack builds an unstructured Pack record (D11) with the given name and,
+// newPack builds an unstructured Pack discoverability record with the given name and,
 // optionally, an authSecretRef + impliedFields — mirroring what
 // pack.PackObject writes.
 func newPack(name, secNamespace, secName string, implied map[string]string) *unstructured.Unstructured {

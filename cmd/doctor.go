@@ -48,7 +48,9 @@ func newDoctorCmd() *cobra.Command {
 			// checks' port heuristics), through its seam.
 			clusterExists, clusterFindings, spokeResults := doctorProbeCluster(c.Context(), cube)
 
-			// GT18: the tri-state checklist — every check one row, passes
+			// The tri-state checklist: every registered check renders exactly
+			// one row — passes are shown, not silent. The findings array keeps
+			// its original order: config, host checks, cluster-side, spokes.
 			// shown. The findings array keeps its pre-U5 order: config,
 			// host checks, cluster-side, spokes.
 			results := doctor.RunChecks(doctorChecks(cube, clusterExists))
@@ -93,7 +95,7 @@ var doctorProbeCluster = probeDoctorCluster
 // missing cluster — cmd/status.go's requireClusterExists guards the same
 // hazard for `status`), collects the provider's Diagnose findings and, when
 // the cluster is reachable, the engine-health findings plus the S4
-// spoke-reachability check (a GT18 row over CUBE-8006 findings). The spoke
+// spoke-reachability check (one checklist row over CUBE-8006 findings). The spoke
 // check is assembled here and not in doctor.All because it needs the live
 // cluster client; it is registered only when spokes are declared AND the
 // hub answered — a checklist row always means "this was probed now".
@@ -136,7 +138,7 @@ func probeDoctorCluster(ctx context.Context, cube *config.Cube) (bool, []diag.Fi
 	}
 	var spokeResults []doctor.CheckResult
 	if spokes := cube.Spec.Spokes; len(spokes) > 0 {
-		// S4's probe as a GT18 row (check id spoke-reachability). Findings
+		// The spoke probe as a checklist row (check id spoke-reachability). Findings
 		// stay warnings by design: kind spokes register a
 		// docker-network-internal URL this machine may not reach while the
 		// hub engine still reconciles them.
@@ -150,7 +152,7 @@ func probeDoctorCluster(ctx context.Context, cube *config.Cube) (bool, []diag.Fi
 	return clusterExists, findings, spokeResults
 }
 
-// renderDoctorChecklist prints the GT18 tri-state checklist: one row per
+// renderDoctorChecklist prints the tri-state checklist: one row per
 // executed check. Styled rows pair the theme-colored glyph with the word
 // (semantic-color doctrine — the word always accompanies the glyph); plain
 // rows carry the ok/warn/fail word alone, no glyphs. The findings render
@@ -207,9 +209,10 @@ func doctorRowText(r doctor.CheckResult) string {
 	return text
 }
 
-// doctorDoc is the gh-style doctor document (design doc §10): the findings
+// doctorDoc is the gh-style doctor document — a single final object rather
+// than a stream, because doctor answers once: the findings
 // array with codes and severities — CI-annotation gold — the additive U5
-// checks array (GT18: one tri-state row per executed check), plus the
+// checks array (one tri-state row per executed check), plus the
 // overall errors verdict that drives the exit code.
 type doctorDoc struct {
 	jsonDocHead
@@ -227,7 +230,7 @@ type doctorFinding struct {
 
 // doctorCheck is one checklist row: name is the stable check id, status is
 // ok|warn|fail; detail is present on ok rows, code+message (the worst
-// finding) on warn/fail rows. Additive (GT13) — pre-U5 consumers keep
+// finding) on warn/fail rows. The field is purely additive — existing consumers keep
 // reading findings/errors unchanged.
 type doctorCheck struct {
 	Name    string `json:"name"`

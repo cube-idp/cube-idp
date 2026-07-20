@@ -12,7 +12,8 @@ import (
 )
 
 // validateProgressFlag rejects an unrecognized --progress value with a typed
-// CUBE-0007 preflight error (design doc §6.4: "unknown value → a diag
+// CUBE-0007 preflight error — mode selection happens once, in root.go's
+// PersistentPreRunE, so an unknown value must be rejected there rather than
 // preflight error"). The empty string never reaches here — the flag defaults
 // to "auto" — but it is accepted for safety. auto/plain/live/json map onto the
 // resolve ladder's rungs 1–3 (json/plain/live) or fall through (auto).
@@ -29,7 +30,7 @@ func validateProgressFlag(v string) error {
 // validateColorFlag rejects an unrecognized --color value with the same
 // CUBE-0007 preflight code the other enum flags use. The empty string never
 // reaches here — the flag defaults to "auto" — but it is accepted for
-// safety. The value itself is consumed by ui.SetColorPolicy (WP8), never by
+// safety. The value itself is consumed by ui.SetColorPolicy, never by
 // a mode rung.
 func validateColorFlag(v string) error {
 	switch v {
@@ -49,7 +50,7 @@ const docSchemaVersion = 1
 
 // addOutputFlag registers the -o/--output flag on a request/response command
 // (status, doctor, get secrets) whose only recognized value is "json" — the
-// gh-style document mode (design doc §10). Empty means the command's normal
+// gh-style document mode. Empty means the command's normal
 // styled/plain rendering.
 func addOutputFlag(c *cobra.Command, target *string) {
 	c.Flags().StringVarP(target, "output", "o", "", "output format: json (a single gh-style document; EXPERIMENTAL)")
@@ -70,7 +71,7 @@ func validateOutputFlag(v string) error {
 
 // wantJSONDoc reports whether a request/response command should emit its JSON
 // document: either --output json was passed, or the process-wide mode resolved
-// to ModeJSON (design doc §10 — on these commands ModeJSON becomes a document,
+// to ModeJSON (on a request/response command ModeJSON becomes a document,
 // not the event stream). It also validates the flag, returning a CUBE-0007
 // error on a bad value.
 func wantJSONDoc(output string) (bool, error) {

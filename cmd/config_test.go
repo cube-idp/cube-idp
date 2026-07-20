@@ -13,7 +13,7 @@ import (
 // same objects `up` would SSA (engine-as-pack §3.3.10). The fixture is a
 // manifests-only cube-engine-flux pack (nil values) pointed at by
 // spec.engine.ref, since the published 0.1.0 default does not resolve until
-// the packs are published (Task 15).
+// the engine packs are published to the public registry.
 func TestRenderEngineRendersPack(t *testing.T) {
 	dir := t.TempDir()
 	pd := filepath.Join(dir, "cube-engine-flux")

@@ -33,13 +33,12 @@ func newDownCmd() *cobra.Command {
 		Use:   "down",
 		Short: "Delete everything cube-idp created (inventory-driven cascade), then the cluster",
 		// RunPipeline (Task 14b): down joins the event stream — the step
-		// lines below are NEW, additive plain output (design doc §8: no test
+		// lines below are additive plain output (no test
 		// pins down's full plain output; the substring assertions keep
 		// passing because revertTrust's lines are byte-identical Notes).
 		RunE: func(c *cobra.Command, _ []string) error {
-			// Consent gate (TE-3, ratified R3) runs BEFORE ui.RunPipeline —
-			// a prompt and the pipeline must never share the terminal (spec
-			// Decision 5).
+			// The destructive-consent gate runs BEFORE ui.RunPipeline —
+			// a prompt and the pipeline must never share the terminal.
 			if !yes {
 				cube, err := config.Load(file)
 				if err != nil {
@@ -52,19 +51,19 @@ func newDownCmd() *cobra.Command {
 							fmt.Sprintf("pass --confirm=%s (or --yes)", cube.Metadata.Name))
 					}
 				} else if downPromptsAllowed(c.InOrStdin(), c.OutOrStdout()) {
-					printDownPreview(c.OutOrStdout(), cube, keepCluster) // TE-3.1
+					printDownPreview(c.OutOrStdout(), cube, keepCluster)
 					ok, err := downConfirmName(c.InOrStdin(), c.OutOrStdout(),
 						"Type the cube name to confirm:", cube.Metadata.Name)
 					if err != nil {
 						return err
 					}
 					if !ok {
-						fmt.Fprintln(c.OutOrStdout(), "aborted — nothing was changed") // TE-3.3, trust.go's exact wording
+						fmt.Fprintln(c.OutOrStdout(), "aborted — nothing was changed") // trust.go's exact wording, deliberately shared
 						return nil
 					}
 					fmt.Fprintln(c.OutOrStdout(), "  hint: cube-idp down --yes")
 				} else {
-					return diag.New(diag.CodeConfirmRequired, // TE-3.4 / R3
+					return diag.New(diag.CodeConfirmRequired, // never destroy silently on a non-TTY
 						fmt.Sprintf("destroying cube %q requires confirmation", cube.Metadata.Name),
 						"re-run with --yes (or --confirm=<cube-name>) — non-interactive runs never destroy silently")
 				}
@@ -83,7 +82,7 @@ func newDownCmd() *cobra.Command {
 }
 
 // printDownPreview enumerates the REAL deletion set for the active config
-// branch (TE-3.1) — it mirrors runDown's actual paths: kind/k3d delete the
+// branch — it mirrors runDown's actual paths: kind/k3d delete the
 // whole cluster (registry volume and TLS certs go with it); provider
 // "existing"/--keep-cluster uninstall the engine, revert CoreDNS, and
 // cascade-delete the inventory. The OS trust-store bullet appears only when
@@ -103,9 +102,9 @@ func printDownPreview(out io.Writer, cube *config.Cube, keepCluster bool) {
 		bullet("zot registry volume, generated TLS certs")
 	}
 	bullet("%d installed packs", len(cube.Spec.Packs))
-	// S3 (spec §5): declared spokes are part of the deletion set — one line
+	// Declared spokes are part of the deletion set — one line
 	// each, mirroring downSpokes' real paths. Spoke-less cubes print nothing
-	// here, keeping the TE-3.1 golden byte-identical (GT13).
+	// here, keeping the frozen preview golden byte-identical.
 	for _, s := range cube.Spec.Spokes {
 		switch {
 		case s.Cluster.Provider == "kind" && !keepCluster:
@@ -124,7 +123,7 @@ func printDownPreview(out io.Writer, cube *config.Cube, keepCluster bool) {
 }
 
 // downSpokes cascades `down` onto declared spokes AFTER the hub teardown
-// succeeded (spec §5): kind spoke clusters are deleted (best-effort — a
+// succeeded: kind spoke clusters are deleted (best-effort — a
 // failure warns with CUBE-8004 and never fails down, which must not strand
 // the finished hub teardown on a half-dead spoke); existing spokes are
 // never touched — the note hands the operator the manual RBAC removal.
@@ -164,7 +163,8 @@ func runDown(ctx context.Context, con *ui.Console, file string, keepCluster bool
 	if err != nil {
 		return err
 	}
-	// existing clusters: remove only cube-idp-managed resources (spec §4.3)
+	// existing clusters: remove only cube-idp-managed resources — the cluster
+	// is not ours to delete
 	if cube.Spec.Cluster.Provider == "existing" || keepCluster {
 		// Ensure would CREATE a missing kind cluster — never as a
 		// side effect of down --keep-cluster.

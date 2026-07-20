@@ -27,7 +27,7 @@ func TestInitWritesDefaultOCIRefs(t *testing.T) {
 	}
 
 	cube := readCube(t, "cube.yaml")
-	// P4 (F12 closed): the default profile is fully standalone — the gateway
+	// The default profile is fully standalone — the gateway
 	// pack resolves from the published oci ref, never a repo-relative path.
 	if cube.Spec.Gateway.Ref != "oci://ghcr.io/cube-idp/packs/traefik:0.2.0" {
 		t.Fatalf("gateway.ref must be the published oci ref (F12), got %q", cube.Spec.Gateway.Ref)
@@ -179,7 +179,7 @@ func TestApplyWizardExistingProviderLoads(t *testing.T) {
 	}
 }
 
-// TestApplyWizardAppendsRemoteCatalogPacks pins the P6 wizard semantics:
+// TestApplyWizardAppendsRemoteCatalogPacks pins the remote-catalog wizard semantics:
 // a selected catalog pack OUTSIDE the built-in list (remote-discovered) is
 // APPENDED with its index ref; a selected built-in name never appends — the
 // default profile's membership stays engine/--local logic's decision (an
@@ -268,7 +268,7 @@ func TestInitLocalGatewayRefFollowsPack(t *testing.T) {
 }
 
 // TestInitPublishedGatewayPackOnly: without --local, choosing a gateway pack
-// writes the published oci ref DERIVED FROM THAT PACK (P4/F12: the default
+// writes the published oci ref DERIVED FROM THAT PACK (the default
 // profile is standalone; the §5.7a coherence rule — ref always follows the
 // final chosen pack — holds in published mode too, so the F11 trap of ref
 // traefik + pack envoy cannot be authored by init).
