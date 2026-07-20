@@ -1,8 +1,8 @@
 // Package diag defines cube-idp's typed error model. Every user-facing
 // failure carries a CUBE-xxxx code and a copy-pasteable remediation
-// (spec §4.5). Code ranges: 0xxx preflight/config, 1xxx cluster,
+// (see docs/adr/0030-typed-cube-diagnostics.md). Code ranges: 0xxx
 // 2xxx apply, 3xxx engine, 4xxx pack, 5xxx registry, 6xxx trust/hostname,
-// 7xxx plugins/sync/vendor-bundle/repo, 8xxx spoke (Phase 5).
+// 7xxx plugins/sync/vendor-bundle/repo, 8xxx spoke.
 package diag
 
 import (
@@ -64,7 +64,7 @@ const (
 )
 
 // Finding is a non-fatal diagnostic surfaced by providers/engines and the
-// doctor command (Phase 2 wires the command; the type ships now because
+// doctor command. The type ships independently of the command because
 // ClusterProvider.Diagnose returns it).
 type Finding struct {
 	Code        Code
