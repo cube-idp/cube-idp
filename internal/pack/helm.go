@@ -9,7 +9,7 @@ package pack
 // values merged UNDER the caller's (already CUE-validated) values, and
 // returns unstructured objects.
 //
-// Helm SDK version note (Task 13.5, 2026-07-14): ported from helm.sh/helm/v3
+// Helm SDK version note (2026-07-14): ported from helm.sh/helm/v3
 // to helm.sh/helm/v4 (v4.2.3). v4's action.Install replaces the v3
 // DryRun/ClientOnly bools with a single DryRunStrategy enum; the client-only,
 // no-cluster-access rendering path this file needs is action.DryRunClient
@@ -50,7 +50,7 @@ const defaultRenderKubeVersion = "v1.33.1"
 // Field tags are json (not yaml) because sigs.k8s.io/yaml converts the YAML
 // to JSON and then unmarshals with encoding/json, which honors json tags
 // only — yaml tags would work solely via encoding/json's case-insensitive
-// field-name fallback. Exported for the cnoe-compat loader (Task 13), which
+// field-name fallback. Exported for the cnoe-compat loader, which
 // builds a ChartRef straight from an Argo Application's helm source — this
 // file remains the only one importing the Helm SDK.
 type ChartRef struct {
@@ -213,7 +213,7 @@ func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) 
 }
 
 // helmSettings pins helm's repo cache/config under the cube-idp cache root
-// (spec §9.3, applies to ALL chart packs): hermetic renders, no
+// (applies to ALL chart packs): hermetic renders, no
 // interference with the operator's own helm state. Best-effort — on a
 // cache-dir failure helm's defaults still work.
 func helmSettings() *cli.EnvSettings {

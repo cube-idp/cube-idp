@@ -22,7 +22,7 @@ import (
 )
 
 // Fetch resolves ref to a local, on-disk pack directory and parses its
-// pack.cue. ref forms (spec §4.4):
+// pack.cue. Accepted ref forms:
 //
 //	local directory path
 //	oci://host/repo:tag  (or @digest)
@@ -88,8 +88,9 @@ func Fetch(ctx context.Context, ref, cacheDir string) (*Pack, error) {
 }
 
 // dirPin computes the cube.lock pin for a plain, on-disk pack directory:
-// local directory refs and http/s3 getter refs (Task 4), which have no
-// upstream pin protocol of their own. Task 7's ResolveRemote reuses it.
+// local directory refs and http/s3 getter refs, which have no
+// upstream pin protocol of their own. ResolveRemote reuses it, so an
+// upgrade probe and a fetch record byte-identical pins for these refs.
 func dirPin(abs string) (string, error) {
 	h, err := dirhash.HashDir(abs, "", dirhash.Hash1)
 	if err != nil {
@@ -163,7 +164,8 @@ func pullOCI(ctx context.Context, ref, cacheDir string) (dir string, digest stri
 
 // IsLocalRegistryHost reports whether host (optionally host:port) is a
 // loopback registry — the only case where plain HTTP is acceptable; the ONE
-// shared definition (Phase 4 R8).
+// shared definition — internal/oci and internal/bundle previously carried
+// byte-for-byte copies of this predicate.
 func IsLocalRegistryHost(host string) bool {
 	h := host
 	if i := strings.IndexByte(h, ':'); i != -1 {

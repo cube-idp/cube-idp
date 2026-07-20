@@ -164,8 +164,9 @@ func TestGatewayServiceMalformed(t *testing.T) {
 }
 
 // TestPackDescriptionParsed pins contract v1's optional description field
-// (Phase 5 P1): a pack.cue `description: "…"` parses into Pack.Description —
-// P2's index artifact and P6's remote catalog read it from here.
+// of the pack contract: a pack.cue `description: "…"` parses into
+// Pack.Description —
+// the packs-repo index artifact and the remote catalog read it from here.
 func TestPackDescriptionParsed(t *testing.T) {
 	dir := writePack(t, `name: "gitea"
 version: "0.1.0"

@@ -180,7 +180,7 @@ func TestMergeValuesOverrideWins(t *testing.T) {
 	}
 }
 
-// TestHelmSettingsPinnedUnderCacheRoot pins spec §9.3: helm's chart cache
+// TestHelmSettingsPinnedUnderCacheRoot pins the cache-root rule: helm's chart cache
 // lives under cube-idp's own cache root (hermetic, one cache to clean) —
 // EnvSettings fields, never process env.
 func TestHelmSettingsPinnedUnderCacheRoot(t *testing.T) {

@@ -148,7 +148,7 @@ func fetchGetter(ctx context.Context, src, dst string) error {
 
 // FetchTree resolves the bare git grammar <host>/<org>/<repo>[//subdir]@rev
 // to a local, guarded directory WITHOUT requiring pack.cue: the cnoe-compat
-// loader (Task 13) imports plain Kubernetes manifest trees from git that
+// loader imports plain Kubernetes manifest trees from git that
 // were never authored as cube packs. Fetch/fetchGit layer pack.cue loading
 // on top of the same single fetch implementation (fetchGitTree).
 func FetchTree(ctx context.Context, ref, cacheDir string) (string, error) {

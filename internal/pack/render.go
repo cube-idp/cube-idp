@@ -41,7 +41,7 @@ func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendere
 	// Render precedence: if kustomization.yaml exists at the pack root, it
 	// is the sole source of raw manifests and governs manifests/ entirely
 	// (as `resources:`) — manifests/ is never walked independently, to
-	// avoid double-rendering the same objects. Otherwise the Phase 1
+	// avoid double-rendering the same objects. Otherwise the original
 	// behavior (walk manifests/*.yaml directly) is unchanged. chart.yaml
 	// helm rendering below is orthogonal and appended in both cases.
 	manifestsDir := filepath.Join(p.Dir, "manifests")
@@ -105,7 +105,7 @@ func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendere
 	return r, nil
 }
 
-// HasChart reports whether the pack carries a chart.yaml — the GT15 stone
+// HasChart reports whether the pack carries a chart.yaml — the values
 // guard: values: are helm values, so only chart-bearing packs may take
 // them. A stat error other than not-exist reads as "no chart" here; the
 // render path itself (RenderFor's chart.yaml stat) still surfaces such
@@ -115,8 +115,8 @@ func (p *Pack) HasChart() bool {
 	return err == nil
 }
 
-// RenderWith is RenderFor plus the GT15 values stone (spec decision 11,
-// Phase 5 U4): non-empty values on a pack without chart.yaml is a typed
+// RenderWith is RenderFor plus the values rule:
+// non-empty values on a pack without chart.yaml is a typed
 // CUBE-4016 error — `values:` means helm values, only, always, and the
 // check can only happen at render time because the pack layout is
 // unknowable until the ref is fetched. extraManifests is the uniform
@@ -129,7 +129,7 @@ func (p *Pack) HasChart() bool {
 func (p *Pack) RenderWith(values map[string]any, extraManifests string, gw config.GatewaySpec) (*Rendered, error) {
 	if len(values) > 0 && !p.HasChart() {
 		return nil, diag.New(diag.CodePackValuesChartless,
-			fmt.Sprintf("pack %s has no chart.yaml — values: are helm values only (GT15)", p.Name),
+			fmt.Sprintf("pack %s has no chart.yaml — values: are helm values only", p.Name),
 			"use extraManifests to add raw resources, or remove values")
 	}
 	r, err := p.RenderFor(values, gw)

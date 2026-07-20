@@ -20,7 +20,7 @@ func TestResolveRemoteLocalDirMatchesFetch(t *testing.T) {
 }
 
 func TestResolveRemoteGitTag(t *testing.T) {
-	fixture := makeGitFixture(t) // from getter_test.go (Task 4)
+	fixture := makeGitFixture(t) // from getter_test.go
 	restore := gitCloneURL
 	gitCloneURL = func(string) string { return "file://" + fixture }
 	defer func() { gitCloneURL = restore }()

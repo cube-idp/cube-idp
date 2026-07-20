@@ -14,7 +14,7 @@ import (
 // #11): RenderFor extends the ${GATEWAY_HOST} expansion ExposeURLs already
 // does over expose.urls to (a) chart.yaml's values: (string leaves, after
 // merging pack defaults with the caller's values) and (b) manifests/*.yaml
-// raw bytes, so URL-bearing packs (backstage, Task 4) can derive their
+// raw bytes, so URL-bearing packs (e.g. backstage) can derive their
 // baseUrl/hostnames from the configured gateway instead of hardcoding it.
 func TestRenderForSubstitutesGatewayHost(t *testing.T) {
 	p, err := Fetch(context.Background(), "testdata/gw-sub-pack", t.TempDir())
@@ -54,7 +54,7 @@ func TestRenderForSubstitutesGatewayHost(t *testing.T) {
 	}
 }
 
-// TestRenderForSubstitutesGatewayPack pins F9: ${GATEWAY_PACK} expands to
+// TestRenderForSubstitutesGatewayPack pins that ${GATEWAY_PACK} expands to
 // gw.Pack — the gateway pack name, which is also the namespace pack
 // HTTPRoute parentRefs must target. It is exercised for BOTH pack values:
 // traefik (the pre-F9 hardcoded literal, which must render byte-identically
@@ -150,7 +150,7 @@ func TestRenderForSubstitutesGatewayHostKustomize(t *testing.T) {
 	}
 }
 
-// TestRenderWithValuesOnChartlessPackIsCube4016 pins GT15's values stone:
+// TestRenderWithValuesOnChartlessPackIsCube4016 pins the values rule:
 // `values:` means helm values, only, always — consumed exclusively by a
 // pack's chart.yaml render. Setting values on a chartless pack is a typed
 // CUBE-4016 error at render time (pack layout is unknowable until the ref
@@ -167,7 +167,7 @@ func TestRenderWithValuesOnChartlessPackIsCube4016(t *testing.T) {
 	}
 }
 
-// TestRenderWithExtraManifestsAppendsAndSubstitutes pins GT15's uniform
+// TestRenderWithExtraManifestsAppendsAndSubstitutes pins the uniform
 // extras channel: packs[].extraManifests is multi-doc YAML valid for EVERY
 // pack kind — parsed, ${GATEWAY_*}-substituted like the manifests/ walk,
 // and appended after the pack's own objects; invalid YAML is CUBE-4017.

@@ -37,7 +37,7 @@ func RenderDirFor(dir string, gw config.GatewaySpec) ([]*unstructured.Unstructur
 
 // RenderDir is RenderDirFor with a zero GatewaySpec — cnoe's loader and any
 // gateway-less caller keep exactly today's behavior. Exported because the
-// cnoe-compat loader (Task 13) renders arbitrary directories through the
+// cnoe-compat loader renders arbitrary directories through the
 // same pipeline.
 func RenderDir(dir string) ([]*unstructured.Unstructured, error) {
 	return RenderDirFor(dir, config.GatewaySpec{})

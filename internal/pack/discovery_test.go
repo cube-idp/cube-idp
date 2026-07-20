@@ -25,8 +25,8 @@ func TestCRDParsesAndPrintsColumns(t *testing.T) {
 	if len(cols) < 5 { // VERSION, URL, AUTH-SECRET, READY, CUSTOMIZED (NAME is implicit)
 		t.Fatalf("printer columns missing: %v", cols)
 	}
-	// U4 (GT15): customized installs are visible in `kubectl get packs`.
-	// P7 (GT19): so is each pack's delivery mode, beside CUSTOMIZED.
+	// customized installs are visible in `kubectl get packs`.
+	// so is each pack's delivery mode, beside CUSTOMIZED.
 	var hasCustomized, hasDelivery bool
 	for _, c := range cols {
 		n, _, _ := unstructured.NestedString(c.(map[string]any), "name")
@@ -41,7 +41,7 @@ func TestCRDParsesAndPrintsColumns(t *testing.T) {
 		t.Fatalf("CUSTOMIZED printer column missing: %v", cols)
 	}
 	if !hasDelivery {
-		t.Fatalf("DELIVERY printer column missing (GT19): %v", cols)
+		t.Fatalf("DELIVERY printer column missing: %v", cols)
 	}
 }
 
@@ -69,7 +69,7 @@ func TestPackObjectShape(t *testing.T) {
 	}
 }
 
-// TestPackObjectCustomized pins GT15's operator visibility (U4): a pack
+// TestPackObjectCustomized pins the operator-visibility rule: a pack
 // installed with non-empty values or extraManifests is CUSTOMIZED. The
 // record ALWAYS carries spec.customized as "yes"/"no" — never absent — so
 // `kubectl get packs` renders the column for stock packs too instead of a
@@ -87,7 +87,7 @@ func TestPackObjectCustomized(t *testing.T) {
 	}
 }
 
-// TestPackObjectDelivery pins GT19's operator visibility (P7): every
+// TestPackObjectDelivery pins the operator-visibility rule: every
 // pack's record carries spec.delivery — the record writer maps an empty
 // PackRef.Delivery to "oci", so every pack shows a value and
 // repo-delivered packs stand out in `kubectl get packs`.
@@ -114,8 +114,8 @@ func TestPackObjectWithoutExpose(t *testing.T) {
 	}
 }
 
-// TestPackObjectGatewayPortSubstitution pins the D11 UX-hardening defect fix
-// (Task 15.1): rendered URLs must carry the gateway's actual listening
+// TestPackObjectGatewayPortSubstitution pins the Pack-record URL fix:
+// rendered URLs must carry the gateway's actual listening
 // port, since the default gateway.port (8443) is never the bare host —
 // the pre-fix ${GATEWAY_HOST} substitution injected only gw.Host, so
 // `kubectl get packs` printed dead links (https://... with no :8443).

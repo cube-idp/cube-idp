@@ -11,7 +11,7 @@ import (
 //go:embed manifests/pack-crd.yaml
 var packCRDYAML []byte
 
-// CRD returns the inert packs.cube-idp.dev CRD (D11): applied by `up`,
+// CRD returns the inert packs.cube-idp.dev CRD: applied by `up`,
 // inventory-tracked, deleted by `down`, reconciled by NOBODY.
 func CRD() (*unstructured.Unstructured, error) {
 	objs, err := apply.ParseMultiDoc(packCRDYAML)

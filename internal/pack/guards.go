@@ -7,7 +7,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// GuardTree applies cube-idp's extraction guards (spec §4.4) to a fetched
+// GuardTree applies cube-idp's extraction guards to a fetched
 // pack tree: every symlink is removed (a pack is data-only — a symlink can
 // point outside the tree or alias files during render), and any walk error
 // aborts the fetch. Applied to ALL getter output, regardless of source.

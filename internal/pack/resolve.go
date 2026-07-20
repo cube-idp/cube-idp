@@ -89,7 +89,7 @@ func ResolveRemote(ctx context.Context, ref, cacheDir string) (string, error) {
 				"append @<tag|branch|commit>")
 		}
 		repoPath, _, _ := strings.Cut(base, "//")
-		return resolveGitPin(ctx, gitCloneURL(repoPath), rev) // Task 4's probe — one ls-remote implementation
+		return resolveGitPin(ctx, gitCloneURL(repoPath), rev) // shared with Fetch — one ls-remote implementation
 
 	case isGetterRef(ref):
 		// http/s3 sources have no cheap upstream pin: fetch to a probe dir
@@ -105,6 +105,6 @@ func ResolveRemote(ctx context.Context, ref, cacheDir string) (string, error) {
 		if err != nil {
 			return "", diag.Wrap(err, diag.CodePackRefInvalid, "bad pack path", "use a valid directory path")
 		}
-		return dirPin(abs) // Task 5's shared dirhash helper
+		return dirPin(abs) // the same dirhash helper Fetch records pins with
 	}
 }

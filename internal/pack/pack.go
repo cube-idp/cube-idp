@@ -1,4 +1,5 @@
-// Package pack implements cube-idp's extensibility tier 1 (spec §4.4):
+// Package pack implements cube-idp's first and primary extensibility tier —
+// the one intended to cover the large majority of extensions:
 // data-only directories with pack.cue metadata, fetched from local dirs or
 // OCI, values-validated with CUE, rendered in-process.
 //
@@ -9,13 +10,13 @@
 //	manifests/*.yaml     optional: raw multi-doc YAML manifests
 //	kustomization.yaml   optional: a kustomize overlay rooted at the pack
 //	chart.yaml           optional: a helm chart reference, rendered client-side
-//	                      (spec §4: engines receive rendered manifests only;
+//	                      (engines receive rendered manifests only;
 //	                      helm-controller is not installed in-cluster)
 //
 // Render precedence for raw manifests: if kustomization.yaml exists at the
 // pack root, it is the *sole* source of raw manifests — manifests/ is
 // consumed through it (as `resources:`), never walked independently, so
-// objects are not double-rendered. Otherwise the Phase 1 behavior (walk
+// objects are not double-rendered. Otherwise the original behavior (walk
 // manifests/*.yaml directly, in sorted filename order) is unchanged.
 // chart.yaml helm rendering is orthogonal to this precedence and is always
 // appended, regardless of which raw-manifest path was taken.
@@ -50,22 +51,24 @@ type Pack struct {
 	Version string
 	Dir     string
 
-	// Description is the pack's optional one-line description (contract v1,
-	// Phase 5 P1: pack.cue `description: "…"`). Empty when the pack declares
+	// Description is the pack's optional one-line description from the pack
+	// contract (pack.cue `description: "…"`). Empty when the pack declares
 	// none — packs predating the field load exactly as before. The packs-repo
-	// index artifact (P2) and the remote catalog (P6) surface it to users.
+	// index artifact and the remote pack catalog (`pack list --available`)
+	// surface it to users.
 	Description string
 
 	// Pinned records the fetch-time pin for cube.lock, in one of:
 	//   "git+<sha>"   — git pack refs (this task), the full commit SHA
 	//                   resolved via resolveGitPin.
-	//   "oci:<digest>" — OCI pack refs (Task 5).
+	//   "oci:<digest>" — OCI pack refs, the pulled manifest digest.
 	//   "dir:<dirhash>" — local directory and http/s3 getter refs, which have
-	//                   no upstream pin protocol of their own (Task 5).
-	// Empty until the relevant task fills it in for that source kind.
+	//                   no upstream pin protocol of their own, so the fetched
+	//                   tree itself is hashed.
+	// Empty until the fetch path for that source kind fills it in.
 	Pinned string
 
-	// Expose is the D11 discoverability contract (Phase 2): parsed from
+	// Expose is the pack's discoverability contract: parsed from
 	// pack.cue's optional expose: block. nil when the pack declares none —
 	// packs predating this field, and packs like traefik that expose
 	// nothing through themselves, load exactly as before.
@@ -76,11 +79,11 @@ type Pack struct {
 	// never appear in its own rendered manifests (e.g. envoy-gateway's
 	// dynamically-provisioned proxy image). nil when the pack declares none
 	// — packs predating this field load exactly as before. `up`'s lock
-	// assembly unions this into Entry.Images so `cube-idp vendor` (Task 6)
+	// assembly unions this into Entry.Images so `cube-idp vendor`
 	// can bundle it for air-gapped installs.
 	Images []string
 
-	// GatewayService is the pack's declared data-plane Service (spec §5.7b,
+	// GatewayService is the pack's declared data-plane Service (optional
 	// R7b, optional pack.cue `gatewayService: {name, namespace}`). nil when
 	// the pack declares none — `up`'s gatewayServiceFQDN then falls back to
 	// the <pack>.<pack>.svc convention (traefik: zero migration).
@@ -94,7 +97,7 @@ type Pack struct {
 
 // Rendered is the final set of objects a pack produces for a given set of
 // values: raw manifests plus (if the pack has one) a client-side helm
-// template render. Task 9 pushes this as an OCI artifact; Task 10
+// template render. The OCI push path publishes this as an artifact; `up`
 // orchestrates Fetch -> Render -> push -> deliver.
 type Rendered struct {
 	Name    string
@@ -184,7 +187,8 @@ func loadMeta(dir string) (*Pack, error) {
 // rather than silently partially applied.
 const gatewayServiceSchemaCUE = `{ name: string, namespace: string }`
 
-// exposeSchemaCUE is the D11 expose: block schema (checkpoint 0.8): an
+// exposeSchemaCUE is the expose: block schema, validated through the same
+// CUE unify-and-validate path as the rest of pack.cue: an
 // optional set of URLs (may contain the ${GATEWAY_HOST} substitution
 // token), an optional credential Secret reference, and optional implied
 // login fields (e.g. ArgoCD's implicit "admin" username). Every field is

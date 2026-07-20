@@ -3,7 +3,9 @@
 // two implicit, never-declared edges — (a) any pack whose render contains
 // a gateway.networking.k8s.io object depends on the gateway pack (DD3a,
 // ratified: render-derived, NOT blanket), killing the A10 CRD-ordering
-// race class; (b) any delivery:"repo" pack depends on gitea (decision 13
+// race class; (b) any delivery:"repo" pack depends on gitea — gitea is an
+// optional pack, so repo delivery validates its presence at config load and
+// must be ordered behind it; that hoist is now expressed as a real edge
 // formalized). Kahn-sorted with a deterministic declared-order tie-break
 // (DD6). Shared by up.Run and diff.desiredState so both walk one order.
 package pack
@@ -72,14 +74,15 @@ func ResolveOrder(packs []*Pack, refs []config.PackRef, rendered []*Rendered) ([
 		if refs[i].Delivery == "repo" {
 			j, ok := idxByName["gitea"]
 			if !ok {
-				// unreachable in up (config load guards it, decision 13) but
+				// unreachable in up (config load already rejects a repo-delivered
+				// pack in a cube with no gitea pack) but
 				// ResolveOrder is a public seam — fail typed, not with a panic.
 				return nil, nil, diag.New(diag.CodePackDepUnknown,
 					fmt.Sprintf("pack %q is delivery: repo but no pack named \"gitea\" is in this cube", packs[i].Name),
 					"repo delivery needs the gitea pack in spec.packs")
 			}
 			if j != i {
-				edges[i][j] = true // implicit edge (b): decision 13
+				edges[i][j] = true // implicit edge (b): repo delivery needs gitea up first
 			}
 		}
 	}

@@ -146,7 +146,7 @@ func TestSafeJoin(t *testing.T) {
 	}
 }
 
-// TestIsLocalRegistryHost pins the ONE shared definition (Phase 4 R8) — this
+// TestIsLocalRegistryHost pins the ONE shared definition — this
 // was previously duplicated byte-for-byte in internal/oci and
 // internal/bundle; this table is the proof the consolidation is
 // behavior-identical.

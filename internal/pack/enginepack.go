@@ -9,7 +9,8 @@ import (
 )
 
 // FetchRenderEngine fetches the engine pack at ref and renders it with the
-// engine's values (engine-as-pack spec §3.3 step 2): the returned objects
+// engine's values — this replaced the engine's own hardcoded install
+// manifests, so the returned objects
 // are what `up` SSAs, what the inventory records, and (selfManage) what the
 // cube-engine artifact carries. ref is passed explicitly rather than
 // derived from spec so offline mode can hand in the bundle-resolved dir.
