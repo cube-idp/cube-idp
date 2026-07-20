@@ -49,7 +49,7 @@ func TestEnsureExposedAPIPort(t *testing.T) {
 	})
 }
 
-// TestImportWithRetry_SucceedsOnSecondAttempt exercises the F10 retry seam: a
+// TestImportWithRetry_SucceedsOnSecondAttempt exercises the retry seam: a
 // load that fails once (the observed ~1-in-3 transient containerd import
 // failure) then succeeds must not surface an error to the caller.
 func TestImportWithRetry_SucceedsOnSecondAttempt(t *testing.T) {

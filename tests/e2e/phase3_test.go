@@ -562,7 +562,7 @@ func TestEnvoyGatewaySmoke(t *testing.T) {
 	assertGatewayTLS(t, "gitea.cube-idp.localtest.me:"+strconv.Itoa(port))
 
 	// In-cluster *.<host> must be served by the DATA PLANE via the CoreDNS
-	// rewrite (the F9/KNOWN-GAP flow): run a one-shot curl pod against
+	// rewrite (the/KNOWN-GAP flow): run a one-shot curl pod against
 	// https://gitea.<host>:8443 and require success. Pre-R7b this resolved
 	// to the envoy CONTROLLER Service and could never answer. Port 8443, not
 	// 443: the Gateway's websecure listener (packs/{traefik,envoy-gateway}

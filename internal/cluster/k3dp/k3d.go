@@ -193,7 +193,7 @@ func (k *K3d) connect(ctx context.Context, name string) (*kube.Conn, error) {
 // failing image is not individually identifiable here — the tar list is
 // named instead).
 //
-// The call is retried once (importWithRetry, F10): k3d's own node exec
+// The call is retried once (importWithRetry): k3d's own node exec
 // wrapper already appends the failed process's captured stdout/stderr to the
 // returned error (see docker.execInNode), so unlike kind's exec.RunError this
 // path does not need extra unwrapping to avoid swallowing it — only the

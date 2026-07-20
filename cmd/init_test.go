@@ -30,7 +30,7 @@ func TestInitWritesDefaultOCIRefs(t *testing.T) {
 	// The default profile is fully standalone — the gateway
 	// pack resolves from the published oci ref, never a repo-relative path.
 	if cube.Spec.Gateway.Ref != "oci://ghcr.io/cube-idp/packs/traefik:0.2.0" {
-		t.Fatalf("gateway.ref must be the published oci ref (F12), got %q", cube.Spec.Gateway.Ref)
+		t.Fatalf("gateway.ref must be the published oci ref, got %q", cube.Spec.Gateway.Ref)
 	}
 	if len(cube.Spec.Packs) != 2 || cube.Spec.Packs[0].Ref != "oci://ghcr.io/cube-idp/packs/gitea:0.2.0" {
 		t.Fatalf("expected default OCI pack refs, got %+v", cube.Spec.Packs)
@@ -249,7 +249,7 @@ func TestValidateGatewayPortRejectsGarbage(t *testing.T) {
 
 // TestInitLocalGatewayRefFollowsPack: init --local + --gateway-pack
 // envoy-gateway writes ref packs/envoy-gateway AND pack envoy-gateway —
-// the F11 trap (ref traefik, pack envoy) can no longer be authored by init.
+// the trap (ref traefik, pack envoy) can no longer be authored by init.
 func TestInitLocalGatewayRefFollowsPack(t *testing.T) {
 	t.Chdir(t.TempDir())
 	root := NewRootCmd()
@@ -270,7 +270,7 @@ func TestInitLocalGatewayRefFollowsPack(t *testing.T) {
 // TestInitPublishedGatewayPackOnly: without --local, choosing a gateway pack
 // writes the published oci ref DERIVED FROM THAT PACK (the default
 // profile is standalone; the §5.7a coherence rule — ref always follows the
-// final chosen pack — holds in published mode too, so the F11 trap of ref
+// final chosen pack — holds in published mode too, so the trap of ref
 // traefik + pack envoy cannot be authored by init).
 func TestInitPublishedGatewayPackOnly(t *testing.T) {
 	t.Chdir(t.TempDir())

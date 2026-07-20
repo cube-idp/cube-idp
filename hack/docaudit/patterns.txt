@@ -10,6 +10,14 @@
 \bcheckpoint [0-9]+(\.[0-9]+)?\b
 \bdecision [0-9]+\b
 \(D[0-9]+\)
+# bare decision IDs: D6, D10, D11 — planning-decision markers that appear
+# unparenthesised in prose and in cobra help text. Excluded from the original
+# list by oversight; 103 sites went unseen until a subagent flagged one.
+\bD[0-9]{1,2}\b
+\bR[0-9]\b
+# finding-register IDs: F9, F10, F11, F12 — same class as the bare D/R markers,
+# missed for the same reason (only \bF[0-9]{1,2}:\s was listed originally).
+\bF[0-9]{1,2}\b
 \bF[0-9]{1,2}:\s
 docs/superpowers/(plans|specs|research)/
 spec §

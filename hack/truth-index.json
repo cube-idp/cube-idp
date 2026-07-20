@@ -61,7 +61,7 @@
     {
       "path": "cube-idp config render-cluster",
       "use": "render-cluster",
-      "short": "Print the final merged provider config that `up` would create (D10)"
+      "short": "Print the final merged provider config that `up` would create"
     },
     {
       "path": "cube-idp config render-engine",
@@ -187,7 +187,7 @@
     {
       "path": "cube-idp init",
       "use": "init",
-      "short": "Write the default cube.yaml (kind + flux + traefik + gitea + argocd, D9)",
+      "short": "Write the default cube.yaml (kind + flux + traefik + gitea + argocd)",
       "flags": [
         {
           "name": "engine",
@@ -334,7 +334,7 @@
     {
       "path": "cube-idp plugin",
       "use": "plugin",
-      "short": "Discover and manage cube-idp exec-plugins (spec §4.4 tier 2)"
+      "short": "Discover and manage cube-idp exec-plugins"
     },
     {
       "path": "cube-idp plugin install",
@@ -525,7 +525,7 @@
     {
       "path": "cube-idp sync",
       "use": "sync \u003cdir\u003e",
-      "short": "Render a directory as a pack and deliver it to the running cube (D7)",
+      "short": "Render a directory as a pack and deliver it to the running cube",
       "flags": [
         {
           "name": "file",
@@ -545,7 +545,7 @@
     {
       "path": "cube-idp trust",
       "use": "trust",
-      "short": "Add (or remove, --uninstall) the cube-idp local CA to your OS trust stores — opt-in, fully reverted by `down` (D6)",
+      "short": "Add (or remove, --uninstall) the cube-idp local CA to your OS trust stores — opt-in, fully reverted by `down`",
       "flags": [
         {
           "name": "file",
@@ -651,7 +651,7 @@
     },
     {
       "id": "CUBE-0003",
-      "summary": "cube.lock unreadable or corrupt (Phase 2)",
+      "summary": "cube.lock unreadable or corrupt",
       "range": "0xxx: preflight/config"
     },
     {
@@ -661,7 +661,7 @@
     },
     {
       "id": "CUBE-0005",
-      "summary": "argocd pack listed while engine.type: argocd (Phase 2)",
+      "summary": "argocd pack listed while engine.type: argocd",
       "range": "0xxx: preflight/config"
     },
     {
@@ -676,7 +676,7 @@
     },
     {
       "id": "CUBE-0008",
-      "summary": "gateway.ref points at a pack whose pack.cue name != gateway.pack (F11: ref silently wins over pack)",
+      "summary": "gateway.ref points at a pack whose pack.cue name != gateway.pack",
       "range": "0xxx: preflight/config"
     },
     {
@@ -701,33 +701,33 @@
     },
     {
       "id": "CUBE-0013",
-      "summary": "engine.ref points at a pack whose pack.cue name != cube-engine-\u003cengine.type\u003e (F11 gateway-check analog for the engine pack)",
+      "summary": "engine.ref points at a pack whose pack.cue name != cube-engine-\u003cengine.type\u003e",
       "range": "0xxx: preflight/config"
     },
     {
       "id": "CUBE-0101",
       "summary": "container runtime not found",
-      "range": "01xx: doctor preflight checks (Phase 2)"
+      "range": "01xx: doctor preflight checks"
     },
     {
       "id": "CUBE-0102",
       "summary": "required host port already in use",
-      "range": "01xx: doctor preflight checks (Phase 2)"
+      "range": "01xx: doctor preflight checks"
     },
     {
       "id": "CUBE-0103",
       "summary": "low disk space in cache directory (warning)",
-      "range": "01xx: doctor preflight checks (Phase 2)"
+      "range": "01xx: doctor preflight checks"
     },
     {
       "id": "CUBE-0104",
       "summary": "inotify limits too low (warning, Linux-only)",
-      "range": "01xx: doctor preflight checks (Phase 2)"
+      "range": "01xx: doctor preflight checks"
     },
     {
       "id": "CUBE-0105",
       "summary": "git CLI missing while git-sourced packs are configured (doctor, warning)",
-      "range": "01xx: doctor preflight checks (Phase 2)"
+      "range": "01xx: doctor preflight checks"
     },
     {
       "id": "CUBE-1001",
@@ -841,7 +841,7 @@
     },
     {
       "id": "CUBE-2005",
-      "summary": "server-side diff failed (Phase 2)",
+      "summary": "server-side diff failed",
       "range": "2xxx: apply"
     },
     {
@@ -876,7 +876,7 @@
     },
     {
       "id": "CUBE-3006",
-      "summary": "reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design",
+      "summary": "reserved: argocd gitea-fallback capability check, unbuilt by design",
       "range": "3xxx: engine"
     },
     {
@@ -931,32 +931,32 @@
     },
     {
       "id": "CUBE-4006",
-      "summary": "remote pack source fetch/resolution failed (Phase 2)",
+      "summary": "remote pack source fetch/resolution failed",
       "range": "4xxx: pack"
     },
     {
       "id": "CUBE-4007",
-      "summary": "remote pack ref not pinned (missing @\u003crev\u003e or :tag) (Phase 2)",
+      "summary": "remote pack ref not pinned (missing @\u003crev\u003e or :tag)",
       "range": "4xxx: pack"
     },
     {
       "id": "CUBE-4008",
-      "summary": "kustomize render failed (Phase 2)",
+      "summary": "kustomize render failed",
       "range": "4xxx: pack"
     },
     {
       "id": "CUBE-4009",
-      "summary": "cnoe-compat document invalid or unsupported (Phase 2)",
+      "summary": "cnoe-compat document invalid or unsupported",
       "range": "4xxx: pack"
     },
     {
       "id": "CUBE-4010",
-      "summary": "cnoe:// path unresolvable (Phase 2)",
+      "summary": "cnoe:// path unresolvable",
       "range": "4xxx: pack"
     },
     {
       "id": "CUBE-4011",
-      "summary": "expose: block in pack.cue invalid (Phase 2)",
+      "summary": "expose: block in pack.cue invalid",
       "range": "4xxx: pack"
     },
     {
@@ -971,7 +971,7 @@
     },
     {
       "id": "CUBE-4014",
-      "summary": "extraction guard tripped (path traversal/symlink) (Phase 2)",
+      "summary": "extraction guard tripped (path traversal/symlink)",
       "range": "4xxx: pack"
     },
     {
@@ -981,7 +981,7 @@
     },
     {
       "id": "CUBE-4016",
-      "summary": "values: set on a pack without chart.yaml — values are helm values only (GT15); use packs[].extraManifests for raw resources",
+      "summary": "values: set on a pack without chart.yaml — values are helm values only; use packs[].extraManifests for raw resources",
       "range": "4xxx: pack"
     },
     {
@@ -1021,7 +1021,7 @@
     },
     {
       "id": "CUBE-5004",
-      "summary": "remote digest resolution failed (upgrade --plan) (Phase 2)",
+      "summary": "remote digest resolution failed (upgrade --plan)",
       "range": "5xxx: registry"
     },
     {
@@ -1031,153 +1031,153 @@
     },
     {
       "id": "CUBE-6001",
-      "summary": "local CA creation/load failed (Phase 2)",
-      "range": "6xxx: trust/hostname (Phase 2)"
+      "summary": "local CA creation/load failed",
+      "range": "6xxx: trust/hostname"
     },
     {
       "id": "CUBE-6002",
-      "summary": "OS trust-store install failed (Phase 2)",
-      "range": "6xxx: trust/hostname (Phase 2)"
+      "summary": "OS trust-store install failed",
+      "range": "6xxx: trust/hostname"
     },
     {
       "id": "CUBE-6003",
-      "summary": "OS trust-store uninstall/revert failed (Phase 2)",
-      "range": "6xxx: trust/hostname (Phase 2)"
+      "summary": "OS trust-store uninstall/revert failed",
+      "range": "6xxx: trust/hostname"
     },
     {
       "id": "CUBE-6004",
-      "summary": "CoreDNS rewrite patch failed or did not roll out (Phase 2)",
-      "range": "6xxx: trust/hostname (Phase 2)"
+      "summary": "CoreDNS rewrite patch failed or did not roll out",
+      "range": "6xxx: trust/hostname"
     },
     {
       "id": "CUBE-6005",
-      "summary": "server certificate issuance failed (Phase 2)",
-      "range": "6xxx: trust/hostname (Phase 2)"
+      "summary": "server certificate issuance failed",
+      "range": "6xxx: trust/hostname"
     },
     {
       "id": "CUBE-6006",
-      "summary": "trust state file corrupt (Phase 2)",
-      "range": "6xxx: trust/hostname (Phase 2)"
+      "summary": "trust state file corrupt",
+      "range": "6xxx: trust/hostname"
     },
     {
       "id": "CUBE-7001",
       "summary": "cube.lock missing, unreadable, or corrupt (vendor)",
-      "range": "70xx: vendor / air-gap bundle (spec §4.1, Phase 3)"
+      "range": "70xx: vendor / air-gap bundle"
     },
     {
       "id": "CUBE-7002",
       "summary": "vendor: pull of a pinned pack/image, or writing the bundle itself, failed — produce side (vendor); the consume-side load is CUBE-7006 (bundle is complete-or-error, never partial)",
-      "range": "70xx: vendor / air-gap bundle (spec §4.1, Phase 3)"
+      "range": "70xx: vendor / air-gap bundle"
     },
     {
       "id": "CUBE-7003",
       "summary": "vendor bundle is unreadable or corrupt (Open)",
-      "range": "70xx: vendor / air-gap bundle (spec §4.1, Phase 3)"
+      "range": "70xx: vendor / air-gap bundle"
     },
     {
       "id": "CUBE-7004",
       "summary": "vendor bundle is missing or has corrupt content for a locked pack or image (Verify)",
-      "range": "70xx: vendor / air-gap bundle (spec §4.1, Phase 3)"
+      "range": "70xx: vendor / air-gap bundle"
     },
     {
       "id": "CUBE-7005",
       "summary": "`up --bundle` needs a provider that node-loads images (kind/k3d); `existing` cannot",
-      "range": "70xx: vendor / air-gap bundle (spec §4.1, Phase 3)"
+      "range": "70xx: vendor / air-gap bundle"
     },
     {
       "id": "CUBE-7006",
       "summary": "bundled image load into cluster nodes failed (kind/k3d LoadImages, consume side)",
-      "range": "70xx: vendor / air-gap bundle (spec §4.1, Phase 3)"
+      "range": "70xx: vendor / air-gap bundle"
     },
     {
       "id": "CUBE-7101",
       "summary": "unknown command and no cube-idp-\u003cname\u003e plugin found on PATH",
-      "range": "71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)"
+      "range": "71xx: exec-plugin discovery"
     },
     {
       "id": "CUBE-7102",
       "summary": "plugin trust store (~/.config/cube-idp/trust.json) read/write/hash error",
-      "range": "71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)"
+      "range": "71xx: exec-plugin discovery"
     },
     {
       "id": "CUBE-7103",
       "summary": "plugin process failed to start/run (not the plugin's own reported exit code)",
-      "range": "71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)"
+      "range": "71xx: exec-plugin discovery"
     },
     {
       "id": "CUBE-7104",
       "summary": "plugin refused: unknown or changed sha256, and no interactive confirmation",
-      "range": "71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)"
+      "range": "71xx: exec-plugin discovery"
     },
     {
       "id": "CUBE-7105",
       "summary": "plugin name fails the ^[a-z0-9][a-z0-9-]*$ charset guard on `plugin install`/`plugin trust`",
-      "range": "71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)"
+      "range": "71xx: exec-plugin discovery"
     },
     {
       "id": "CUBE-7106",
       "summary": "the official plugin index has no build for this GOOS/GOARCH (`plugin install`)",
-      "range": "71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)"
+      "range": "71xx: exec-plugin discovery"
     },
     {
       "id": "CUBE-7201",
       "summary": "sync dir has no pack.cue and no renderable *.yaml manifests",
-      "range": "72xx: sync (Task 10, Task 11)"
+      "range": "72xx: sync"
     },
     {
       "id": "CUBE-7202",
       "summary": "`sync --watch` cannot start or attach the filesystem watcher",
-      "range": "72xx: sync (Task 10, Task 11)"
+      "range": "72xx: sync"
     },
     {
       "id": "CUBE-7301",
       "summary": "gitea admin secret missing or port-forward to the gitea pod failed",
-      "range": "73xx: repo (Task 12)"
+      "range": "73xx: repo"
     },
     {
       "id": "CUBE-7302",
       "summary": "gitea REST API returned an unexpected status (create/fetch repo)",
-      "range": "73xx: repo (Task 12)"
+      "range": "73xx: repo"
     },
     {
       "id": "CUBE-7303",
       "summary": "repo created but engine git source registration/apply failed",
-      "range": "73xx: repo (Task 12)"
+      "range": "73xx: repo"
     },
     {
       "id": "CUBE-7304",
       "summary": "delivery: repo needs the gitea pack in spec.packs, and gitea itself cannot be repo-delivered",
-      "range": "73xx: repo (Task 12)"
+      "range": "73xx: repo"
     },
     {
       "id": "CUBE-8001",
       "summary": "spoke cluster.provider invalid for spokes (k3d deferred; existing needs context; duplicate name)",
-      "range": "8xxx: spoke (Phase 5)"
+      "range": "8xxx: spoke"
     },
     {
       "id": "CUBE-8002",
       "summary": "spoke RBAC bootstrap apply failed",
-      "range": "8xxx: spoke (Phase 5)"
+      "range": "8xxx: spoke"
     },
     {
       "id": "CUBE-8003",
       "summary": "spoke ServiceAccount token issuance failed",
-      "range": "8xxx: spoke (Phase 5)"
+      "range": "8xxx: spoke"
     },
     {
       "id": "CUBE-8004",
       "summary": "spoke cluster create/connect failed",
-      "range": "8xxx: spoke (Phase 5)"
+      "range": "8xxx: spoke"
     },
     {
       "id": "CUBE-8005",
       "summary": "hub registration secret build/apply failed",
-      "range": "8xxx: spoke (Phase 5)"
+      "range": "8xxx: spoke"
     },
     {
       "id": "CUBE-8006",
       "summary": "spoke hub registration missing, or spoke API server unreachable from this machine",
-      "range": "8xxx: spoke (Phase 5)"
+      "range": "8xxx: spoke"
     }
   ],
   "configSchema": [

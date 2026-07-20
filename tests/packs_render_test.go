@@ -143,7 +143,7 @@ func TestStarterPacksRender(t *testing.T) {
 			// envoyService.name pins) MUST be free in the rendered stream —
 			// no rendered v1 Service already claims it in the
 			// envoy-gateway namespace. If one did, EG's generated
-			// data-plane Service would collide with it exactly like the F9
+			// data-plane Service would collide with it exactly like the
 			// hijack (an existing Service's selector getting overwritten),
 			// just with a different colliding owner. It also pins that the
 			// pack's parsed GatewayService and the manifest's EnvoyProxy
@@ -153,7 +153,7 @@ func TestStarterPacksRender(t *testing.T) {
 			}
 			for _, o := range r.Objects {
 				if o.GetKind() == "Service" && o.GetNamespace() == p.GatewayService.Namespace && o.GetName() == p.GatewayService.Name {
-					t.Errorf("%s: a rendered v1 Service already claims %s/%s — that name must stay free for EG's generated data-plane Service, or the F9 hijack recurs",
+					t.Errorf("%s: a rendered v1 Service already claims %s/%s — that name must stay free for EG's generated data-plane Service, or it gets hijacked",
 						dir, p.GatewayService.Namespace, p.GatewayService.Name)
 				}
 			}
@@ -287,7 +287,7 @@ func TestCubeEngineArgocdRenderGuards(t *testing.T) {
 	}
 }
 
-// TestEnvoyGatewayPackProxyService pins the F9-follow-up root cause found
+// TestEnvoyGatewayPackProxyService pins the-follow-up root cause found
 // live on the first envoy leg (2026-07-15, fix-envoy-dbg): the pack's
 // EnvoyProxy set envoyService.name to "envoy-gateway" — the exact name of
 // the Envoy Gateway CONTROLLER's own Service, which every proxy's static

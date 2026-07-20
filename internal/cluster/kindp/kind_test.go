@@ -14,7 +14,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// TestLoadWithRetry_SucceedsOnSecondAttempt exercises the F10 retry seam: a
+// TestLoadWithRetry_SucceedsOnSecondAttempt exercises the retry seam: a
 // load that fails once (the observed ~1-in-3 transient `ctr images import`
 // failure) then succeeds must not surface an error to the caller.
 func TestLoadWithRetry_SucceedsOnSecondAttempt(t *testing.T) {

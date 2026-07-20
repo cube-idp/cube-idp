@@ -57,8 +57,8 @@ func TestRenderForSubstitutesGatewayHost(t *testing.T) {
 // TestRenderForSubstitutesGatewayPack pins that ${GATEWAY_PACK} expands to
 // gw.Pack — the gateway pack name, which is also the namespace pack
 // HTTPRoute parentRefs must target. It is exercised for BOTH pack values:
-// traefik (the pre-F9 hardcoded literal, which must render byte-identically
-// to before) and envoy-gateway (the case F9 fixes — routes must parent to
+// traefik (the hardcoded literal, which must render byte-identically
+// to before) and envoy-gateway (the case it fixes — routes must parent to
 // ns envoy-gateway, not traefik).
 func TestRenderForSubstitutesGatewayPack(t *testing.T) {
 	p, err := Fetch(context.Background(), "testdata/gw-sub-pack", t.TempDir())

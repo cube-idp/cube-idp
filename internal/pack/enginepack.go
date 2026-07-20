@@ -29,7 +29,7 @@ func FetchRenderEngine(ctx context.Context, spec config.EngineSpec, gw config.Ga
 	return pk, rendered, nil
 }
 
-// VerifyEnginePackRef is the engine twin of up's F11 gateway check
+// VerifyEnginePackRef is the engine twin of up's gateway check
 // (CUBE-0013): the fetched pack's declared pack.cue name must be exactly
 // cube-engine-<engine.type>, so pointing the argocd engine at the flux
 // pack (or any ordinary pack) fails before any cluster mutation.

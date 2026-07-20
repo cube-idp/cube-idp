@@ -146,7 +146,7 @@ func (k *Kind) certsD() (CertsD, error) {
 // is not reachable); a failure loading an image once nodes are known wraps
 // as CUBE-7006 (consume-side) naming the image, never a silent skip.
 //
-// A single `ctr images import` call is retried once (loadWithRetry, F10):
+// A single `ctr images import` call is retried once (loadWithRetry):
 // this failure mode was observed to be transient roughly 1-in-3 times in CI,
 // and the retry alone resolves it without operator intervention. The
 // remediation names that transience explicitly rather than pointing at the
