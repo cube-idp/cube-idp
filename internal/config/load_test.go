@@ -191,7 +191,10 @@ func TestDefaultRoundTripsThroughLoad(t *testing.T) {
 	})
 }
 
-func TestDefaultProfileIncludesGitea(t *testing.T) { // D9
+// Gitea is part of the default profile: the cube.yaml `cube-idp init`
+// generates includes the gitea pack, so a first `up` yields a working git
+// server both engines can sync from.
+func TestDefaultProfileIncludesGitea(t *testing.T) {
 	c := Default("dev")
 	found := false
 	for _, p := range c.Spec.Packs {

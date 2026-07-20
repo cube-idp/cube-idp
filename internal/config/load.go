@@ -82,7 +82,9 @@ func Load(path string) (*Cube, error) {
 		}
 	}
 
-	// Migration guard (engine-as-pack spec D6): engine.tuning was removed.
+	// Migration guard (see ADR-0019): engine.tuning was removed outright
+	// rather than deprecated, and load rejects it with a typed migration
+	// error pointing at engine.values.
 	// Probed pre-CUE like providerConfig above — the closed schema would
 	// otherwise reject the key with a generic CUBE-0002 instead of the
 	// migration recipe.

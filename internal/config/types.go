@@ -49,10 +49,14 @@ type ClusterSpec struct {
 	// null, so their omitempty is cosmetic only. Registry carries no
 	// omitempty: it is a non-pointer struct, on which the tag is a no-op —
 	// the real fix lives on RegistrySpec's own fields.
-	ExtraPorts []PortMapping `yaml:"extraPorts,omitempty" json:"extraPorts,omitempty"` // D10 layer 1
-	Registry   RegistrySpec  `yaml:"registry" json:"registry"`                         // D10 layer 1
-	Mounts     []Mount       `yaml:"mounts,omitempty" json:"mounts,omitempty"`         // D10 layer 1
-	// ProviderConfigRef is the D10-successor layer 1 (spec
+	// ExtraPorts, Registry and Mounts are the typed sugar layer of the
+	// provider-config merge (ADR-0011): the common operator needs get
+	// first-class cube.yaml fields, everything else goes through the
+	// provider-native escape hatch below.
+	ExtraPorts []PortMapping `yaml:"extraPorts,omitempty" json:"extraPorts,omitempty"`
+	Registry   RegistrySpec  `yaml:"registry" json:"registry"`
+	Mounts     []Mount       `yaml:"mounts,omitempty" json:"mounts,omitempty"`
+	// ProviderConfigRef is the base provider-native document layer (spec
 	// 2026-07-18-cluster-forprovider-design.md §3): a base provider-native
 	// config fetched by pack ref grammar (local path, oci://, git, s3,
 	// http) resolving to exactly one YAML file. ForProvider merge-patches
@@ -96,7 +100,8 @@ type EngineSpec struct {
 	// PackName() — CUBE-0013 at fetch time (pack.VerifyEnginePackRef).
 	Ref string `yaml:"ref,omitempty" json:"ref,omitempty"`
 	// Values holds the engine pack's chart values — the OPEN,
-	// operator-in-control replacement for the retired engine.tuning (D3/D6):
+	// operator-in-control replacement for the retired engine.tuning
+	// (ADR-0019):
 	// consumed exclusively by the pack's chart.yaml render, merged over its
 	// baked defaults. Same normalization + omitempty discipline as
 	// PackRef.Values.
@@ -198,7 +203,7 @@ type PackRef struct {
 	// kind: a multi-doc YAML string that RenderWith parses,
 	// ${GATEWAY_*}-substitutes, and appends after the pack's own objects
 	// (CUBE-4017 when it is not valid YAML). A pack installed with
-	// non-empty Values or ExtraManifests is CUSTOMIZED in its D11 record
+	// non-empty Values or ExtraManifests is CUSTOMIZED in its Pack record
 	// (`kubectl get packs`). omitempty: absent must round-trip as an absent
 	// key — schema.cue's `extraManifests?: string & !=""` rejects an
 	// explicit empty string, same discipline as Values above.
@@ -233,7 +238,7 @@ type SpokeSpec struct {
 	Cluster ClusterSpec `yaml:"cluster" json:"cluster"`
 }
 
-// Default returns the D9 default profile that `cube-idp init` writes:
+// Default returns the default profile that `cube-idp init` writes:
 // kind cluster, flux engine, traefik gateway, gitea + argocd packs.
 func Default(name string) *Cube {
 	return &Cube{
