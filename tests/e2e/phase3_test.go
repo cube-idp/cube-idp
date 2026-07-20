@@ -406,7 +406,8 @@ func assertFetchSourcesFromBundle(t *testing.T, out string) {
 	}
 }
 
-// TestSyncOneShot proves D7's one-shot delivery: `up`, write a bare dir with a
+// TestSyncOneShot proves sync's one-shot delivery — a push into the cluster
+// that leaves nothing running on the host: `up`, write a bare dir with a
 // single ConfigMap, `sync <dir>`, poll `status` until the synthesized pack
 // reports Ready, then assert the ConfigMap exists in-cluster (client-go). The
 // synthesized pack's name is the sync dir's base name (loadOrSynthesize). Its
@@ -847,9 +848,10 @@ func TestRepoDeliveredPack(t *testing.T) {
 }
 
 // zotGatewayManifestDigest resolves the manifest digest of <repo>:<tag> in
-// the in-cluster zot over the HTTPS gateway (registry.<host> routes there —
-// D6), the way a host-side oras/docker client would: a HEAD against the OCI
+// the in-cluster zot over the HTTPS gateway (registry.<host> routes there),
+// the way a host-side oras/docker client would: a HEAD against the OCI
 // distribution manifest endpoint, digest read from Docker-Content-Digest.
+// See docs/adr/0038-local-ca-and-tls-at-the-gateway.md.
 // Cube-CA TLS, verification disabled for the local test like giteaGatewayAPI.
 func zotGatewayManifestDigest(t *testing.T, port int, repo, tag string) string {
 	t.Helper()

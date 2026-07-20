@@ -32,7 +32,8 @@ import (
 const cubeName = "e2e"
 
 // gatewayPort is the host port the gateway is dialed on. CI always uses
-// cube-idp's default (8443, matching spec D12's port-mapping). Locally, a
+// cube-idp's default (8443, mapped to the gateway NodePort 30443 — see
+// docs/adr/0012-canonical-gateway-host-and-port-mapping.md). Locally, a
 // host may already have something bound to 0.0.0.0:8443 (this repo's own
 // dev machine has an unrelated kind cluster doing exactly that) —
 // CUBE_IDP_E2E_GATEWAY_PORT lets a local run pick a free port instead
@@ -138,11 +139,11 @@ func TestUpStatusDown(t *testing.T) {
 	// HTTPS gateway — TLS handshake serves the cube-idp CA-issued cert
 	assertGatewayTLS(t, "cube-idp.localtest.me:"+strconv.Itoa(port))
 
-	// D11: pack records are discoverable via plain kubectl
+	// The inert Pack record CRD makes packs discoverable via plain kubectl
 	packs := runKubectl(t, "get", "packs")
 	for _, want := range []string{"gitea", "VERSION", "URL", "AUTH-SECRET", "READY"} {
 		if !strings.Contains(packs, want) {
-			t.Fatalf("kubectl get packs missing %q (D11 printer columns):\n%s", want, packs)
+			t.Fatalf("kubectl get packs missing %q (Pack CRD printer columns):\n%s", want, packs)
 		}
 	}
 	// The rendered URL must carry the gateway's actual port —
@@ -168,11 +169,12 @@ func TestUpStatusDown(t *testing.T) {
 	writeCnoeFixture(t, dir)
 	run(t, dir, bin, "cnoe", "import", dir+"/cnoe-apps")
 
-	// D9 + D11: the admin credential surfaces via the Pack -> authSecretRef
+	// Credentials are surfaced on demand, never printed implicitly: the admin
+	// credential is reachable via the Pack record's expose.authSecretRef
 	// pivot, and gitea_admin arrives through expose.impliedFields
 	secrets := run(t, dir, bin, "get", "secrets", "-p", "gitea")
 	if !strings.Contains(secrets, "gitea_admin") {
-		t.Fatalf("gitea admin secret not surfaced (D9/D11):\n%s", secrets)
+		t.Fatalf("gitea admin secret not surfaced by `get secrets -p gitea`:\n%s", secrets)
 	}
 	run(t, dir, bin, "down", "--yes")
 }
@@ -180,7 +182,7 @@ func TestUpStatusDown(t *testing.T) {
 // TestPackDependsOn proves the p6 dep-chain leg end-to-end on a real kind
 // cluster (flux engine): a cube.yaml-level `packs[].dependsOn` (DEP1-3)
 // actually orders delivery in the cluster and is echoed back on the pack's
-// D11 record (DEP4). init --local writes the default profile's packs in
+// Pack record (DEP4). init --local writes the default profile's packs in
 // declared order [gitea, argocd] (cmd/init.go); this test patches the
 // argocd entry to declare `dependsOn: ["gitea"]` — the cube.yaml surface,
 // since published packs don't declare their own dependsOn yet (DEP5). The
@@ -244,7 +246,7 @@ func TestPackDependsOn(t *testing.T) {
 		t.Fatalf("argocd Kustomization spec.dependsOn[0].name = %q, want %q", got, "cube-idp-gitea")
 	}
 
-	// (b) D11 Pack record echoes the resolved dep back as the DEPENDS-ON
+	// (b) the Pack record echoes the resolved dep back as the DEPENDS-ON
 	// column's backing field (p6 DEP4).
 	gotDep := strings.TrimSpace(runKubectl(t, "get", "packs", "argocd", "-o", "jsonpath={.spec.dependsOn}"))
 	if gotDep != "gitea" {
@@ -323,8 +325,9 @@ func patchGatewayPort(t *testing.T, dir string, port int) {
 	t.Logf("patched cube.yaml: gateway.port=%d (CUBE_IDP_E2E_GATEWAY_PORT override)", port)
 }
 
-// runKubectl asserts against the cluster with plain kubectl (the D11 pitch
-// is literally "kubectl get packs works"). GitHub runners ship kubectl;
+// runKubectl asserts against the cluster with plain kubectl — the whole point
+// of the inert Pack record CRD is that "kubectl get packs works" without any
+// cube-idp tooling. GitHub runners ship kubectl;
 // locally the test skips if it is absent. kind's Ensure wrote the context
 // into the default kubeconfig.
 func runKubectl(t *testing.T, args ...string) string {
@@ -367,8 +370,9 @@ func assertNodeCanPullFromRegistry(t *testing.T, ref string) {
 }
 
 // assertGatewayTLS dials the gateway and verifies the served cert chains to
-// the cube-idp local CA and covers the wildcard host — the D6 story minus
-// the OS trust store (never touched in CI).
+// the cube-idp local CA and covers the wildcard host — TLS at the gateway
+// minus the OS trust store, which is never touched in CI (see
+// docs/adr/0038-local-ca-and-tls-at-the-gateway.md).
 //
 // It POLLS (5s interval, gatewayTLSTimeout deadline, pollStatusReady's
 // shape) rather than dialing once: `up` returns when the ENGINE reports the

@@ -225,8 +225,9 @@ func marshalObjects(t *testing.T, objs []*unstructured.Unstructured) string {
 	return b.String()
 }
 
-// TestCubeEngineFluxRenderParity fences the flux engine pack (engine-as-pack
-// D2): exactly the two controllers cube-idp uses, in flux-system.
+// TestCubeEngineFluxRenderParity fences the flux engine pack — the GitOps
+// engine ships as an ordinary pack (docs/adr/0007-engine-as-a-pack.md), so its
+// render must be exactly the two controllers cube-idp uses, in flux-system.
 func TestCubeEngineFluxRenderParity(t *testing.T) {
 	if testing.Short() {
 		t.Skip("helm renders hit the network")
