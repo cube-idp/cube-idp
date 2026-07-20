@@ -52,6 +52,11 @@ Status values: `accepted` (in force), `superseded by ADR-NNNN`, `deprecated`.
 | 0037 | [Gateway API as the Routing Surface with a Swappable Gateway Pack](0037-gateway-api-routing-surface.md) | 5 |
 | 0038 | [Local CA, TLS at the Gateway, and the OS Trust Store Consent Boundary](0038-local-ca-and-tls-at-the-gateway.md) | 4 |
 | 0039 | [Gateway Token Substitution and Render-Derived Gateway Edges](0039-gateway-token-substitution.md) | 4 |
+| 0040 | [Diagnostic-Code Identifiers Are Stable Product Surface, Not Planning Residue](0040-diagnostic-code-identifier-stability.md) | — |
+| 0041 | [Changelog Records Released Behavior, Not Internal Process](0041-changelog-content-policy.md) | — |
+
+ADRs 0040–0041 record decisions established by the 2026-07-20 documentation audit
+itself (rather than reconstructed from the corpus); they carry no consolidation count.
 
 ## Conventions
 

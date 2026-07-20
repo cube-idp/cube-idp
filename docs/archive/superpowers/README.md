@@ -33,7 +33,7 @@ agreed item-by-item were folded into existing ADRs as clauses. The remainder wer
 consciously left: roughly 62% were already covered by an ADR or were implementation
 detail, and ~25% were abandoned or unverifiable. The sampling data is preserved in the
 audit's scratch artifacts and the reasoning is recorded in
-`docs/superpowers/research/2026-07-20-decision-extraction-gate2.md`.
+`research/2026-07-20-decision-extraction-gate2.md` (in this archive).
 
 ## One file left this tree
 
