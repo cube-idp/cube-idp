@@ -45,6 +45,10 @@ disk, it always wins — no re-adoption, no regeneration.
 The gateway must serve a certificate that chains to this CA and covers the wildcard
 host, verified end-to-end without ever touching the OS trust store in CI.
 
+The gateway TLS secret is applied after the engine install and before the pack delivery
+loop, so it exists before the engine reconciles the Gateway that references it by name.
+This ordering is a race-avoidance requirement, not a stylistic one.
+
 cube-idp never modifies the operating system trust store implicitly. Trust-store
 changes happen only inside the explicitly-consented `cube-idp trust` command, which
 installs an untrusted adopted root exactly like a generated CA, and are fully reverted
@@ -80,6 +84,7 @@ effects.
 | `up` generates the local CA once per machine via the mkcert mechanism used as a library, stores it under `os.UserConfigDir()/cube-idp`, and issues a wildcard cert for `*.<gateway.host>` before cluster creation; an existing mkcert root at `$CAROOT` or the per-OS default is adopted by copying `rootCA.pem`/`rootCA-key.pem`, but an existing cube-idp CA always wins. | `internal/trust/ca.go`; `internal/trust/ca.go`; `internal/trust/ca.go` |
 | mkcert CA adoption is presence-based only: an existing mkcert root is reused without verifying OS-store trust, and an untrusted adopted root is installed by `cube-idp trust` exactly like a generated CA. | `internal/trust/ca.go` |
 | The gateway must serve a TLS certificate chaining to the cube-idp local CA and covering the wildcard host, verified in e2e without ever touching the OS trust store in CI. | `internal/up/tls.go`; `internal/up/tls.go`; `tests/e2e/e2e_test.go` |
+| The gateway TLS secret is applied after the engine install and before the pack delivery loop, so it exists before the engine reconciles the Gateway that names it. | `internal/up/up.go`; `internal/up/tls.go` |
 
 ### Verification
 
@@ -110,6 +115,8 @@ effects.
 - [ ] `internal/trust/store.go` — OS installation goes through
       `github.com/smallstep/truststore`, not a shelled-out `mkcert` binary.
 - [ ] `internal/up/tls.go` — the issued cert covers both `gw.Host` and `"*."+gw.Host`.
+- [ ] `internal/up/up.go` — the `ensureGatewayTLS` call sits between the engine install
+      block and the registry port-forward that precedes the pack delivery loop.
 - [ ] `tests/e2e/e2e_test.go` — `assertGatewayTLS` builds an `x509.CertPool` from
       the cube-idp CA file and dials the gateway with SNI
       `gitea.cube-idp.localtest.me`; the OS trust store is never consulted.
@@ -135,3 +142,5 @@ Member origins:
   narrowed to presence-based detection.
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:5612` — gateway TLS chain
   verified in e2e without the OS trust store.
+- `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:3263` — the TLS secret is
+  applied between the engine install and the pack delivery loop.

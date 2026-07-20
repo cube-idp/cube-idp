@@ -50,6 +50,9 @@ Pack values are validated against the pack's `#Values` schema before rendering. 
 with no schema accepts user values unchanged; where a schema exists, values are unified
 with it and must be fully concrete, with mismatches reported as `CUBE-4002`.
 
+A pack that renders zero objects is an error, not a benign no-op: every pack MUST supply
+`manifests/` and/or `chart.yaml`, and an empty render fails with `CUBE-4004`.
+
 cube-idp adds no new plugin protocols, no reconciled CRDs, and no daemon. The sole
 exception is the inert `Pack` record CRD written by `up`, inventory-tracked and watched by
 no controller.
@@ -70,6 +73,9 @@ no controller.
   pack at all; they must move into the kernel or not exist.
 * Bad, because "additive only" means design mistakes in v1 fields are permanent for the
   life of v1 — a field can be deprecated in documentation but not removed.
+* Bad, because treating an empty render as a hard error forecloses metadata-only or
+  values-only packs: a pack that exists purely to carry `expose:` or to be a dependency
+  anchor cannot be expressed without adding at least one manifest.
 * Bad, because the kustomization/`manifests/` precedence rule is a real behavioral cliff:
   adding a root `kustomization.yaml` to an existing pack silently changes which manifests
   render.
@@ -84,6 +90,7 @@ no controller.
 | Raw manifests render in sorted filename order from top-level `.yaml`/`.yml` under `manifests/`; a root `kustomization.yaml` takes over as the sole raw-manifest source, with helm rendering appended in both cases. | `internal/pack/render.go` |
 | `dependsOn` is optional and loaded like `images:`/`gatewayService:` — absent yields nil so pre-feature packs load unchanged, and a malformed entry fails as CUBE-4003. | `internal/pack/pack.go` |
 | Pack values are validated against `#Values` before rendering: no schema means values pass through, otherwise they are unified and must be fully concrete, with mismatches as CUBE-4002. | `internal/pack/pack.go` |
+| A pack whose render produces zero objects fails with CUBE-4004 rather than succeeding silently — every pack must supply `manifests/` and/or `chart.yaml`. | `internal/pack/render.go` |
 | No new plugin protocols, no reconciled CRDs, no daemon — the sole exception is the inert cluster-scoped `Pack` record CRD, whose spec fields (`url`/`urls`/`authSecretRef`/`impliedFields`) are the flattened projection of a pack's `expose:` block. | `internal/pack/manifests/pack-crd.yaml` |
 | `description` is optional at load time for backward compatibility, but publishing from the official packs repo requires a one-line user-facing description. | `internal/pack/pack.go`, `cmd/pack_publish.go` |
 | A pack is data only — `pack.cue` plus manifests, chart references, values, or kustomize overlays — and MUST NOT contain executable content. | `docs/pack-contract-v1.md` |
@@ -106,6 +113,9 @@ no controller.
       directories and any extension other than `.yaml`/`.yml`.
 - [ ] `internal/pack/render.go` appends `chart.yaml` helm rendering after either
       branch.
+- [ ] `internal/pack/render.go` returns `CUBE-4004` (`diag.CodePackManifestErr`) when the
+      rendered object list is empty, with the remediation "a pack needs manifests/ and/or
+      chart.yaml".
 - [ ] `grep -rn 'group: cube-idp.dev' internal --include=*.yaml` (excluding testdata) yields
       exactly one CRD: `packs.cube-idp.dev` in `internal/pack/manifests/pack-crd.yaml`, and
       no controller or daemon binary watches it.
@@ -136,6 +146,7 @@ Origin: mined from the archived planning corpus (`docs/archive/superpowers/`) du
 before this record was written. Member origins, as `file:line` provenance in that corpus:
 
 - `plans/2026-07-13-cube-idp-phase1-mvp.md` — the data-only pack directory
+- `plans/2026-07-13-cube-idp-phase1-mvp.md:2299` — a zero-object render is CUBE-4004
 - `plans/2026-07-13-cube-idp-phase2-draft.md` — manifest render order and kustomization precedence
 - `specs/2026-07-13-cube-idp-architecture-design.md` — Kernel+Packs
 - `specs/2026-07-18-cube-idp-phase5-roadmap-design.md` — the pack format as a versioned public API contract

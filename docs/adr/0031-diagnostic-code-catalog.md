@@ -39,6 +39,12 @@ entry exists for every declared code, and the counts match) and
 The code surface is append-only. Retired codes are marked in place by comment or
 registry annotation and are never deleted, and their numbers are not reused.
 
+The catalog is also exhaustive in both directions, enforced by test: every declared `Code`
+constant must be either referenced from non-test Go code or explicitly annotated as reserved
+in its trailing comment, and every `diag.Code*` identifier used in non-test code must be
+declared in the catalog. A code added ahead of its call site, or left behind when its last
+call site is deleted, MUST carry a `// reserved:` annotation.
+
 CUBE code ranges are partitioned by domain and enumerated as section headers in
 `internal/diag/codes.go`. New diagnostics are allocated inside the numeric family of
 the concern they belong to, so config-family, wait-family and pack-dependency failures
@@ -55,8 +61,13 @@ each stay in their own range.
   in the same commit masks the count.
 * Good, because the numeric partition lets a reader infer the subsystem from the code
   alone, before opening any source.
+* Good, because exhaustiveness makes a dead code falsifiable: a constant nobody raises
+  either gets used or is declared reserved on purpose, never drifting silently.
 * Bad, because the number space is consumed permanently; retired numbers stay as dead
   weight in the catalog and registry forever.
+* Bad, because exhaustiveness couples the catalog to call-site churn: deleting the last
+  raise site of a live code breaks the build until the constant is annotated
+  `// reserved:`, which is a non-obvious remedy for an unrelated refactor.
 * Bad, because allocating a code is a two-file edit plus a domain-range judgement,
   which is friction on every new error path.
 * Bad, because the append-only rule is a convention over deletion, not a mechanical
@@ -76,6 +87,7 @@ each stay in their own range.
 | Every new diag code must have an entry in `internal/diag/registry.go`, and that entry's summary must be non-empty. | `internal/diag/registry_test.go` |
 | CUBE diagnostic codes are append-only: retired codes are marked in place by comment edit and never deleted or reused. | `internal/diag/codes.go` |
 | The code surface is append-only in the registry too: retired codes such as CUBE-3009 keep their registry entry marked retired rather than being removed. | `internal/diag/registry.go` |
+| An exhaustiveness test parses the catalog's AST and enforces both directions: every defined code is used in non-test code or annotated `// reserved:`, and every used code identifier is defined. | `internal/diag/codes_test.go` |
 | Pack dependency diagnostics use CUBE-4018, CUBE-4019 and CUBE-4020, and the argocd dependency wait failure uses CUBE-3011. | `internal/diag/codes.go` |
 | A new config-family diagnostic covers engine pack ref mismatch, mirroring CUBE-0008. | `internal/pack/enginepack.go` |
 
@@ -91,6 +103,9 @@ each stay in their own range.
 - [ ] `TestRegistryCoversEveryDeclaredCode` (`internal/diag/registry_test.go`) fails
       both when `Describe()` misses a declared code and when
       `len(AllCodes()) != len(declared)`.
+- [ ] `TestCatalogExhaustive` (`internal/diag/codes_test.go`) marks a constant reserved
+      only when its trailing comment contains "reserved", and fails on both an unused
+      unreserved code and a used-but-undefined code identifier.
 - [ ] `internal/diag/codes.go` and still declare CUBE-3003 and CUBE-3009 with
       `(RETIRED 2026-07-19 …)` annotations, and `internal/diag/registry.go` and
       carry the matching retired summaries.
@@ -124,6 +139,7 @@ the code before this record was written.
 
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:870` — central catalog and literal ban
 - `docs/archive/superpowers/specs/2026-07-15-cube-idp-phase4-first-release-design.md:80` — backtick-aware literal-ban test
+- `docs/archive/superpowers/specs/2026-07-15-cube-idp-phase4-first-release-design.md:81` — bidirectional used/defined/reserved exhaustiveness
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-valuesref-remote-config-design.md:310` — mandatory registry summary
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md:221` — append-only retirement in place
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-pack-depends-and-cubelock-crd.md:39` — pack-dependency range allocation

@@ -116,8 +116,8 @@ before this record was written.
 
 Member provenance:
 
-- `docs/archive/superpowers/specs/2026-07-18-kind-config-reference.md:103` — four-layer merge in `RenderConfig`
-- `docs/archive/superpowers/specs/2026-07-18-kind-config-reference.md:111` — layer 3 errors vs. layer 4 warnings
-- `docs/archive/superpowers/specs/2026-07-18-kind-config-reference.md:117` — everything else stays user-controlled
+- `docs/kind-config-reference.md` — four-layer merge in `RenderConfig`
+- `docs/kind-config-reference.md` — layer 3 errors vs. layer 4 warnings
+- `docs/kind-config-reference.md` — everything else stays user-controlled
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase3-draft.md:322` — `render-cluster` purity and CUBE-0004
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:39` — `provider: existing` cross-validation (CUBE-1003)

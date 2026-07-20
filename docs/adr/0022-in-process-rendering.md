@@ -52,6 +52,16 @@ falling back to Helm's defaults when the cache directory cannot be resolved.
 `Rendered.DependsOn` is set by the orchestrator after graph resolution and never by
 `RenderWith`, because dependencies are cube-composition intent rather than render output.
 
+The cnoe import path is a deliberately narrow translator, and its scope boundaries are
+closed rather than provisional. ApplicationSet import supports the **list generator only**;
+any other generator is rejected with `CUBE-4009` naming the offending generator. An imported
+Argo CD Application whose `targetRevision` is empty, `HEAD`, or a branch-tracking wildcard is
+rejected with `CUBE-4009` demanding a tag or full commit SHA, so the pinning discipline
+applies across the import boundary and not only to pack refs. Imported objects that are
+namespaced and carry no namespace of their own receive `destination.namespace`, and a
+Namespace object is prepended unless the render already carries one; an enumerated set of
+cluster-scoped kinds is left untouched.
+
 OCI operations use **oras-go v2**. `github.com/fluxcd/pkg/oci` is dropped from `go.mod`;
 `github.com/google/go-containerregistry` remains only as a test-only dependency (the
 in-process registry used by `internal/oci/ocitest`), while `fluxcd/pkg/ssa` stays.
@@ -75,6 +85,9 @@ in-process registry used by `internal/oci/ocitest`), while `fluxcd/pkg/ssa` stay
   `.Capabilities` from a live API server see only client-side defaults.
 * Bad, because the single-importer rule is a convention enforced by review and grep, not
   by the compiler.
+* Bad, because the cluster-scoped kind set in the cnoe loader is a hand-maintained
+  enumeration: a cluster-scoped kind missing from it is silently stamped with
+  `destination.namespace` on import, with nothing in the type system to catch the omission.
 
 ## Implementation Status
 
@@ -88,6 +101,9 @@ in-process registry used by `internal/oci/ocitest`), while `fluxcd/pkg/ssa` stay
 | Helm's chart repository cache and config are pinned under the cube-idp cache root by setting `cli.EnvSettings` fields (never process env) in the `helmSettings()` helper used by the chart-render path, for all chart packs, falling back to Helm defaults if the cache dir cannot be resolved. | `internal/pack/helm.go` |
 | `Rendered.DependsOn` is set by the orchestrator after graph resolution and never by `RenderWith`, because dependencies are cube-composition intent rather than render output. | `internal/up/up.go` |
 | All OCI operations use oras-go v2; `github.com/fluxcd/pkg/oci` is dropped from `go.mod`, while `fluxcd/pkg/ssa` stays and `github.com/google/go-containerregistry` remains only as a test-only dependency. | `internal/oci/push.go`; `go.mod`; `internal/oci/ocitest/ocitest.go` |
+| ApplicationSet import supports the list generator only; any other generator is rejected with CUBE-4009 naming the offending generator. | `internal/cnoe/translate.go` |
+| An imported Argo CD Application whose `targetRevision` is empty, `HEAD`, or a branch-tracking wildcard is rejected with CUBE-4009 demanding a tag or full commit SHA. | `internal/cnoe/translate.go` |
+| Imported namespaced objects with no namespace receive `destination.namespace` and a Namespace object is prepended unless the render already carries one, while an enumerated set of cluster-scoped kinds is left untouched. | `internal/cnoe/loader.go` |
 | `installNeedsSSA` gates direct SSA of the rendered engine install: with `selfManage` off every `up` SSAs; with it on, SSA happens only on first install or when the engine is unhealthy at start. | `internal/up/up.go` |
 | `packs[].delivery` accepts only `oci` or `repo` (CUE enum); `pack install --via repo` sets the key while `--via oci` leaves it empty. | enum `internal/config/schema.cue`; `--via` write `cmd/pack.go` |
 | Gitea repo sync is idempotent by git blob SHA: an unchanged render produces zero commits, and each sync is one commit. | `internal/gitea/client.go` |
@@ -99,6 +115,8 @@ in-process registry used by `internal/oci/ocitest`), while `fluxcd/pkg/ssa` stay
 - [ ] `grep -n 'fluxcd/pkg/oci' go.mod` returns nothing, while `fluxcd/pkg/ssa` and `oras.land/oras-go/v2` are present; `github.com/google/go-containerregistry` (go.mod:11) is imported only from `_test.go` files and `internal/oci/ocitest`
 - [ ] `grep -rn 'exec.Command' internal cmd --include='*.go'` (excluding `_test.go`) yields only `internal/plugin/index.go` (git) and `internal/plugin/exec.go` (plugin binaries) — no `helm` or `kubectl` invocation, and no helm-binary escape hatch
 - [ ] `internal/pack/helm.go` exports `RenderChart`, and `internal/cnoe/loader.go` calls it rather than importing the SDK
+- [ ] `internal/cnoe/translate.go` raises `CUBE-4009` (`diag.CodePackCnoeInvalid`) for a non-list ApplicationSet generator and for an empty/`HEAD`/wildcard `targetRevision`
+- [ ] `internal/cnoe/loader.go` declares the `clusterScoped` kind set and `applyDestinationNamespace` skips those kinds, returning early rather than prepending a duplicate Namespace
 - [ ] `internal/pack/helm.go` uses a zero `action.Configuration`, sets `DryRunStrategy = action.DryRunClient` and leaves `CreateNamespace` false
 - [ ] `internal/diag/codes.go` defines `CodePackChartErr = "CUBE-4005"` and chart render failures wrap it
 - [ ] `internal/pack/helm.go` sets `settings.RepositoryCache`/`RepositoryConfig` under the cube-idp cache dir, with no `os.Setenv` of `HELM_*` in the package (pinned by `internal/pack/helm_test.go`)
@@ -125,3 +143,6 @@ code before this record was written.
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:4982` — single Helm SDK importer
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md:330` — `EnvSettings` cache pinning
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-pack-depends-and-cubelock-crd.md:536` — `Rendered.DependsOn` ownership
+- `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:4788` — ApplicationSet import is list-generator only
+- `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:4786` — imported Argo revisions must be a tag or full SHA
+- `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:4789` — destination-namespace defaulting and the cluster-scoped kind exemption

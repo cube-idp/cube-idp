@@ -40,6 +40,22 @@ registry, install engine, open the registry tunnel, then fetch/render/push/deliv
 pack, then wait for health — using plain server-side-apply library calls with
 deterministic exit codes, per-step timeouts, and the single field manager `cube-idp`.
 
+Two ordering constraints inside that sequence are load-bearing rather than incidental. The
+inert `Pack` CRD is applied immediately after the registry and before the engine, blocking
+until the API server reports it Established, so no `Pack` record can ever be written
+against a kind the API server does not yet serve. The `Pack` records themselves are written
+only after the health wait, and each carries its pack's observed readiness rather than an
+assumed one.
+
+`cube-idp sync <dir>` renders a directory as a pack, pushes it to the cube's in-cluster zot
+registry, delivers it through the ordinary engine seam, server-side-applies and records the
+resulting delivery objects in the inventory, and then pokes the engine to reconcile now
+instead of waiting for its poll interval. `sync` MUST NOT apply rendered manifests directly,
+because bypassing the engine and the inventory would break prune and drift coherence.
+`--watch` wraps that same one-shot path in an fsnotify loop; delivery always travels the
+OCI-artifact push path. The git-push flow is a separate surface, available only when the
+Gitea pack is installed, and is a migration aid rather than the core delivery mechanism.
+
 The binary is a thin kernel. Cobra command packages contain no business logic: every
 command is a thin shell over an `internal/` orchestrator, and engines stay behind the
 `internal/engine.Engine` interface.
@@ -66,6 +82,9 @@ and provider `Diagnose` run on demand via `cube-idp doctor`.
   unambiguous, and pruning/adoption behaviour follows from it.
 * Good, because a closed three-tier extension model gives a clear rejection criterion for
   new mechanisms instead of an ever-growing plugin surface.
+* Bad, because routing `sync` through push-deliver-inventory-poke rather than a direct
+  apply makes the fast local loop depend on the registry tunnel and the engine's own
+  reconcile latency, so an edit is never as immediate as `kubectl apply` would be.
 * Bad, because there is no drift correction between runs: anything the GitOps engine does
   not own stays drifted until the user runs `up` again.
 * Bad, because preflight is opt-in via `doctor`, so `up` can fail late on a condition a
@@ -88,6 +107,11 @@ and provider `Diagnose` run on demand via `cube-idp doctor`.
 | Nothing runs on the developer's machine after the command exits: no in-process CRD controllers on the bootstrap path, which uses plain SSA library calls with deterministic exit codes and per-step timeouts. | `internal/apply/applier.go` |
 | The kernel binary installs no Kubernetes controllers of its own: no in-process controller-runtime manager, no git server in the core, and no RPC or Wasm plugin runtime. | (absence — see Verification) |
 | `up` runs a fixed sequence: load config, ensure the local CA, ensure cluster, install registry, install engine, open the registry tunnel, then fetch/render/push/deliver each pack, and finally wait for health. | `internal/up/up.go` |
+| The inert `Pack` CRD is applied and waited to Established immediately after the registry and before the engine, so no `Pack` record is ever written against a not-yet-served kind. | `internal/up/up.go` |
+| `Pack` records are written only after the health wait, and each carries the readiness observed from `Engine.Health` rather than an assumed value. | `internal/up/up.go` |
+| `cube-idp sync <dir>` renders the directory as a pack, pushes it to the in-cluster zot registry, delivers through the engine seam, SSA-applies and records the delivery objects in the inventory, then pokes the engine — it never applies rendered manifests directly. | `internal/syncer/syncer.go` |
+| `sync --watch` wraps the one-shot sync path in an fsnotify loop, so watch delivery uses the same OCI-artifact push and engine reconcile as a single `sync`. | `internal/syncer/watch.go` |
+| Delivery from `sync` travels the OCI push path exclusively; the git-push flow is a separate `repo` surface gated on the installed Gitea pack, not the core delivery mechanism. | `internal/syncer/syncer.go`; `internal/gitea/client.go` |
 | All server-side applies use the field manager `cube-idp`. | `internal/apply/applier.go` |
 | CUBE error codes are partitioned by range: 0xxx preflight/config, 1xxx cluster, 2xxx apply, 3xxx engine, 4xxx pack, 5xxx registry, 6xxx trust/hostname, 7xxx vendor/plugin/sync/repo, 8xxx spoke. | `internal/diag/codes.go` |
 | Cobra command packages contain no business logic: `cmd/up.go` is a flag-parsing shell that delegates straight to `internal/up.Run` through the `internal/ui` pipeline. | `cmd/up.go` |
@@ -128,6 +152,12 @@ and provider `Diagnose` run on demand via `cube-idp doctor`.
 - [ ] `cmd/up.go` is a cobra shell delegating to `internal/up`; no doctor check is invoked from
       `cmd/up.go` or `internal/up/up.go`.
 - [ ] `internal/config/types.go` lists gitea and argocd as ordinary `spec.packs` OCI refs.
+- [ ] `internal/up/up.go` applies `pack.CRD()` with `wait=true` between the registry step
+      and the engine install, and builds the `Pack` record objects only after
+      `waitHealthy` has returned, keying each record's readiness off `eng.Health`.
+- [ ] `internal/syncer/syncer.go` `SyncOnce` runs render → push → `Engine.Deliver` →
+      `Applier.Apply` → `RecordInventory` → `Engine.Poke`, and the package imports no git
+      or gitea client.
 
 ## History
 
@@ -167,3 +197,6 @@ Member provenance:
 - `docs/archive/superpowers/specs/2026-07-13-cube-idp-architecture-design.md:253` — the three extension tiers
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:13` — thin cobra shells over `internal/` orchestrators
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase3-draft.md:48` — single static binary, no daemon
+- `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:4702` — Pack CRD Established before any Pack record, records written after the health wait
+- `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase3-draft.md:2356` — the one-shot `sync` pipeline: render, push, deliver, record inventory, poke
+- `docs/archive/superpowers/specs/2026-07-13-cube-idp-architecture-design.md:36` — watch delivers via fsnotify and OCI push; the git-push flow is a migration aid

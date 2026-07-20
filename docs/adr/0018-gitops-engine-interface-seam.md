@@ -34,6 +34,11 @@ embedded manifests, no tuning fields and no install responsibility. Continuous r
 is delegated entirely to the in-cluster engine — the CLI ships no controllers of its own, and
 its responsibility ends once desired state is applied and healthy.
 
+Argo CD resources are written as `unstructured` custom resources carrying an explicit GVK,
+resolved against the live CRD schema at apply time. Argo CD MUST NOT become a compile-time
+Go module dependency: no `argoproj` module may enter `go.mod`, and typed Argo CD structs are
+never imported for convenience.
+
 Both implementations (`flux`, `argocd`) are compiled into the binary and constructed via
 `internal/engine/factory`, whose signature takes `config.EngineSpec` and which lives in its own
 package to avoid an import cycle. There is no plugin mechanism for engines, and no engine type
@@ -59,6 +64,9 @@ annotation plus caller wave gating) and the `DeliverGit` dependency parameter.
 * Bad, because engines that do not natively order deliveries force the orchestrator to gate
   waves itself, which is why `OrdersDeliveries` exists and every implementation must answer it
   consciously.
+* Bad, because keeping Argo CD out of the module graph means its resource shapes are checked
+  only against the live CRD schema at apply time — a misspelled field compiles fine and
+  surfaces as a cluster rejection rather than a build failure.
 * Bad, because no plugin mechanism means a third-party engine requires a fork or an upstream
   contribution.
 * Bad, because dropping engine tuning removed a configuration surface users had; migration is
@@ -73,6 +81,7 @@ annotation plus caller wave gating) and the `DeliverGit` dependency parameter.
 | The `engine.Engine` interface is exactly Deliver, DeliverGit, DeliverSelf, Poke, Health, Uninstall, OrdersDeliveries — engines are pure translators with no install responsibility, and Deliver returns engine-native objects for the caller to apply. | `internal/engine/engine.go` |
 | The engine contract asserts that Health must not error before the engine is installed and that Uninstall must not error on an empty cluster. | `internal/engine/contract/contract.go` |
 | Both engine implementations (flux, argocd) are compiled into the binary as Go code, selected by a switch; there is no plugin mechanism. | `internal/engine/factory/factory.go` |
+| Argo CD resources are built and read as `unstructured` CRs with an explicit GVK against the live CRD schema, and Argo CD is never a compile-time Go module dependency. | `internal/engine/argocd/argocd.go`, `internal/engine/argocd/delivergit.go`, `go.mod` |
 | The engine factory's signature takes `config.EngineSpec` but consumes only `spec.Type`; the wider parameter is a leftover from when engines carried install values. It lives in its own `internal/engine/factory` package to avoid an import cycle. | `internal/engine/factory/factory.go` |
 | The engine self-artifact is named `cube-engine` with tag `latest`. | `internal/engine/engine.go`, `internal/up/up.go` |
 | The GitOps engine is swappable behind a Go interface with Flux (default) and Argo CD implementations compiled in. | `internal/engine/engine.go` |
@@ -102,6 +111,9 @@ annotation plus caller wave gating) and the `DeliverGit` dependency parameter.
       `internal/spoke/register.go` (an Argo CD cluster Secret label).
 - [ ] No controller manager exists: grepping `internal/` and `cmd/` for `NewManager` returns
       nothing.
+- [ ] `grep -n argoproj go.mod go.sum` returns nothing, and `internal/engine/argocd/`
+      constructs every Argo CD object as `unstructured.Unstructured` with an explicit GVK
+      rather than a typed `Application` struct.
 - [ ] `internal/engine/tune.go` does not exist; grepping `internal/engine/` for `embed.FS` and
       `NewTuned` returns nothing; the `Engine` interface declares no `Install` or
       `InstallManifests`.
@@ -129,6 +141,8 @@ Member provenance:
   interface surface after install left the seam.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md:192` — the factory
   takes no config beyond `Type`.
+- `docs/archive/superpowers/research/2026-07-13-cube-idp-brainstorm/proposals.md:85` — Argo CD
+  resources as unstructured CRs, never a compile-time Go dependency.
 
 Related: ADR 0007 (engine as a pack), which moved the engine's own install out of this
 interface; ADR 0002 (pack format data-only contract), which is the authoritative statement that

@@ -34,6 +34,11 @@ project.
 importing only lipgloss v2, `x/term` and the standard library, so that both `internal/ui`
 and `internal/ui/render` can import it without an import cycle.
 
+Stage presentation metadata lives in `theme.Stages` and is additive decoration only. Stage
+names are an open, producer-owned vocabulary: an unknown stage MUST still render, adding a
+producer stage MUST NOT require a theme edit, and producers MUST NOT change for presentation
+reasons. No lookup against `theme.Stages` may error or fail on a missing entry.
+
 Bubble Tea programs are transient and inline only. They are permitted for `up`, `down` and
 watch-style commands; persistent, daemon, and alt-screen TUIs are forbidden, and the rich
 view exits cleanly with the command. The live renderer is evolved rather than rewritten,
@@ -54,6 +59,9 @@ cancel, guaranteed drain, and nil-input-on-pipes lifecycle guarantees.
   features that land only in a newer major.
 * Bad, because the alt-screen prohibition rules out multi-pane dashboards outright, so
   richer views must be expressed within a single managed bottom region.
+* Bad, because decoration-only stage metadata has no registration gate: a new producer
+  stage renders ungrouped and nothing fails, so a missing `theme.Stages` entry is a
+  cosmetic regression that only a human reading the output will notice.
 * Bad, because every watch-style command needs two renderers — an inline Bubble Tea path
   for a rich TTY and a plain appending loop for pipes, CI and JSON — doubling the surface
   to test.
@@ -66,6 +74,7 @@ cancel, guaranteed drain, and nil-input-on-pipes lifecycle guarantees.
 | --- | --- |
 | The TUI is built exclusively on Charm v2 libraries at the versions pinned in `go.mod` (bubbletea/v2 v2.0.8 inline, bubbles/v2 v2.1.1 spinner/progress/table, lipgloss/v2 v2.0.5, huh/v2 v2.0.3, fang/v2 v2.0.1 as the cobra dispatcher), and these majors are not bumped during the project. | `go.mod` |
 | A transient inline Bubble Tea program is permitted for `up`/`down` (and later `sync --watch`), but persistent, daemon or alt-screen TUIs are forbidden and the rich view exits cleanly with the command. | `internal/ui/render/live.go` |
+| Stage presentation metadata lives in `theme.Stages` as additive decoration only: an unknown stage renders fine, no lookup errors on a missing entry, and producers never change for presentation reasons. | `internal/ui/theme/theme.go` |
 | The live renderer evolves the existing `liveModel` rather than being rewritten, preserving verbatim its inline mode, `p.Println` scrollback, `eofMsg` quit, ctrl-c context cancel, guaranteed drain and nil-input-on-pipes lifecycle guarantees. | `internal/ui/render/live.go` |
 | The CLI is built on cobra v1.10 with huh for the init wizard and missing-value prompts and lipgloss for status lines. (Superseded: the kernel does hold Bubble Tea programs — see `internal/ui/render/live.go`.) | `go.mod` (cobra v1.10.2); `cmd/init.go`, `internal/ui/prompt.go` (huh) |
 | cube-idp rejects fang, pterm, tview and tuist as UI dependencies. (Superseded: fang v2 is now the cobra dispatcher; pterm/tview/tuist remain absent.) | `cmd/root.go` |
@@ -79,6 +88,7 @@ cancel, guaranteed drain, and nil-input-on-pipes lifecycle guarantees.
       `charm.land/huh/v2 v2.0.3`, `charm.land/lipgloss/v2 v2.0.5` (`go.mod`).
 - [ ] No v1 Charm TUI import exists: `grep -rn "github.com/charmbracelet/\(bubbletea\|lipgloss\|bubbles\|huh\)" --include='*.go' .` returns nothing.
 - [ ] `internal/ui/theme/theme.go` imports only `charm.land/lipgloss/v2`, `golang.org/x/term` and stdlib, and imports neither `internal/ui` nor `internal/ui/render`.
+- [ ] `internal/ui/theme/theme.go` documents `StageMeta` as presentation the producers never change for, and every read of `Stages` tolerates a missing key rather than erroring.
 - [ ] `internal/ui/render/live.go` constructs `tea.NewProgram` with only `WithOutput`/`WithInput` — no `WithAltScreen`, no mouse capture anywhere in the file.
 - [ ] `internal/ui/render/live.go` still centers on `liveModel` (line 215) with `p.Println` scrollback (line 49), `eofMsg` quit (lines 53, 254), ctrl+c mapped to the cancel func (lines 269-276) and the drain loop (line 47) with the
       post-`Run` join (line 62).
@@ -117,3 +127,4 @@ before this record was written.
 - `docs/archive/superpowers/specs/2026-07-16-tui-interactive-layer-design.md:47` — Charm v2 exclusivity and pinned versions.
 - `docs/archive/superpowers/specs/2026-07-14-cube-idp-ux-design.md:659` — rejection of fang, pterm, tview, tuist.
 - `docs/archive/superpowers/specs/2026-07-16-tui-interactive-layer-design.md:268` — live renderer evolved, never rewritten; lifecycle guarantees preserved verbatim.
+- `docs/archive/superpowers/plans/2026-07-16-tui-interactive-layer.md:292` — stage metadata is additive decoration; producers never change for presentation.
