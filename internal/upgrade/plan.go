@@ -25,7 +25,8 @@ type Row struct {
 // Plan loads cfgPath, resolves each configured pack's CURRENT upstream pin
 // (without fetching content, except the getter-ref probe ResolveRemote
 // itself documents), and compares it against cube.lock's Resolved field —
-// then runs the Task 6 kernel diff. Nothing here mutates cluster or cache
+// then runs the kernel diff (internal/diff.Run, the same one `cube-idp diff`
+// uses). Nothing here mutates cluster or cache
 // state beyond ResolveRemote's own getter-ref probe fetch.
 func Plan(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	cube, err := config.Load(cfgPath)

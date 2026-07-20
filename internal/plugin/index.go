@@ -1,4 +1,4 @@
-// Task 9 (spec §4.4): a plugin index is a git repository containing
+// A plugin index is a git repository containing
 // plugins/<name>.yaml descriptors, each pinning per-platform archive URLs
 // by sha256. Install fetches the index with the system git (optionally
 // pinned to a commit), downloads the archive for the current platform over

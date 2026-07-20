@@ -91,7 +91,8 @@ func TestReadCorrupt(t *testing.T) {
 }
 
 // TestEngineLockEntryRoundTrip pins the engine-as-pack lock extension: the
-// engine is a first-class reproducibility entry (spec §3.3.6), old locks
+// engine is a first-class reproducibility entry — EngineLock grew from a bare
+// {Type} to the standard pack fields when the engine became a pack; old locks
 // (type-only) still read, and Entry() projects the pack fields for bundle
 // vendoring.
 func TestEngineLockEntryRoundTrip(t *testing.T) {

@@ -201,11 +201,11 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 	}
 	desired = append(desired, engineRendered.Objects...)
 
-	// P8 (GT16): a self-managed engine additionally carries the cube-engine
+	// A self-managed engine (spec.engine.selfManage) additionally carries the cube-engine
 	// self-source objects (flux OCIRepository + Kustomization / argocd
 	// Application), applied and inventoried by up.Run's selfManage block.
 	// Identity-only, like the repo-delivery sources below: the source object
-	// carries a fresh reconcile-now annotation per render (the GT16 poke),
+	// carries a fresh reconcile-now annotation per render (the self-source poke),
 	// so re-rendering it here would fabricate a perpetual "changed" — and
 	// identity is all orphanRefs needs. A placeholder ArtifactRef suffices:
 	// the names are deterministic (cube-engine).
@@ -231,7 +231,8 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		// GT15 (U4): mirror up.Run — RenderWith enforces the values stone
+		// Mirror up.Run — RenderWith enforces the values stone (values: are helm
+		// values only, never engine tuning; see docs/adr/0004-pack-values-and-extra-manifests.md)
 		// and appends extraManifests, so diff previews exactly what up
 		// would deliver (including CUBE-4016/4017 failures).
 		rendered, err := p.RenderWith(pr.Values, pr.ExtraManifests, cube.Spec.Gateway)
@@ -266,7 +267,7 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		rendered.DependsOn = packDeps[rendered.Name]
 
 		if pr.Delivery == "repo" {
-			// P7: up delivers this pack as an engine git source over the
+			// With delivery: repo, up delivers this pack as an engine git source over the
 			// in-cluster Gitea repo (deliverPackRepo), whose spec embeds
 			// live-derived state — the gitea admin owner in the clone URL —
 			// so re-rendering it here for a dry-run diff would fabricate

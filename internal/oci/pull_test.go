@@ -1,5 +1,5 @@
 // pull_test.go pins the single-blob OCI pull (P10): the plugins platform
-// (GT17) publishes each per-platform binary as a one-layer artifact whose
+// publishes each per-platform binary as a one-layer artifact whose
 // layer media type is application/vnd.cube-idp.plugin.v1, and `plugin
 // install` pulls it BY DIGEST off the discovery index. PullBlob is the
 // generic fetch that returns those raw layer bytes. Tests live in this
@@ -25,7 +25,7 @@ import (
 )
 
 // pushBlobArtifact publishes payload as a single-layer blob artifact at
-// oci://<host>/<repo>:<tag> with the GT17 plugin layer media type, and
+// oci://<host>/<repo>:<tag> with the plugin layer media type, and
 // returns the pushed manifest digest — the digest form `plugin install`
 // pins from the index. Byte-for-byte the shape the plugins-repo publish.yml
 // produces via `oras push … --artifact-type application/vnd.cube-idp.plugin.v1`.

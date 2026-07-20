@@ -1,7 +1,7 @@
 // Package kube holds small, generic Kubernetes API helpers shared across
 // cube-idp's commands and orchestrators — currently just a pod port-forward
-// tunnel (Task 10), generalized from Phase 1's zot-only
-// internal/registry.PortForward so Task 12's git-serving pod can reuse it.
+// tunnel, generalized from the original zot-only
+// internal/registry.PortForward so the git-serving pod can reuse it too.
 package kube
 
 import (

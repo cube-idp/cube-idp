@@ -49,7 +49,7 @@ func Resolve(ctx context.Context, ref, cacheDir string) (map[string]any, error) 
 	return m, nil
 }
 
-// Merge applies patch onto base per RFC 7386 (decision 4): maps deep-merge,
+// Merge applies patch onto base per RFC 7386: maps deep-merge,
 // lists replace wholesale, null deletes. Inputs stay untouched.
 func Merge(base, patch map[string]any) (map[string]any, error) {
 	bj, err := json.Marshal(base)

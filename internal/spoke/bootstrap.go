@@ -1,4 +1,4 @@
-// Package spoke bootstraps and registers spoke clusters (Phase 5 spec §5).
+// Package spoke bootstraps and registers spoke clusters.
 // cube-idp is a pusher here too: apply RBAC, mint a token, hand the
 // credential to the hub engine, exit. No controller, no CRD, no daemon.
 package spoke
@@ -21,7 +21,9 @@ import (
 
 const (
 	Namespace = "cube-idp-system"
-	// tokenTTL is 10 years (GT5). Servers clamp silently; every `up`
+	// tokenTTL is 10 years: spoke credentials come from the TokenRequest API,
+	// which works in envtest and needs no legacy SA secret. Servers clamp
+	// silently; every `up`
 	// re-issues, so a clamped token never strands a spoke.
 	tokenTTL int64 = 315360000
 )
@@ -65,7 +67,7 @@ func objects(engineType string) []*unstructured.Unstructured {
 // Bootstrap idempotently applies namespace cube-idp-system, ServiceAccount
 // cube-idp-<engineType>, and ClusterRoleBinding cube-idp-<engineType>-admin
 // (→ cluster-admin) on the spoke behind conn, then mints a 10-year
-// TokenRequest token (GT5; server may clamp — re-issued on every up).
+// TokenRequest token (server may clamp — re-issued on every up).
 func Bootstrap(ctx context.Context, conn *kube.Conn, engineType string, timeout time.Duration) (*Credential, error) {
 	a, err := apply.New(conn.REST, "spoke-bootstrap")
 	if err != nil {

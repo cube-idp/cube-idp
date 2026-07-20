@@ -14,7 +14,8 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// Env is the plugin process's env contract (spec §4.4, Owner Decisions #5
+// Env is the plugin process's env contract — the CUBE_IDP_* variables an
+// exec plugin may rely on, plus the cube-idp CA.
 // for CA). Empty fields are omitted from the child's environment entirely —
 // a plugin that requires one must detect and report its own absence; no
 // cube-idp error is raised here, so cluster-independent plugins keep

@@ -1,4 +1,4 @@
-// Package kindp implements the kind ClusterProvider (spec §4.1) and the
+// Package kindp implements the kind ClusterProvider and the
 // cluster customization ladder (spec 2026-07-18-cluster-forprovider-design.md
 // §4): providerConfigRef (fetched base) + forProvider (inline overrides,
 // RFC 7386 merge-patched on top) composed generically by internal/cluster/
@@ -26,7 +26,7 @@ import (
 // gatewayContainerPort is the kind node port the gateway hostPort maps to.
 // It pins to the traefik starter pack's fixed websecure NodePort
 // (config.GatewayNodePort, chart values ports.websecure.nodePort /
-// service.spec.type: NodePort) rather than 443: Phase 2 terminates TLS at
+// service.spec.type: NodePort) rather than 443: cube-idp terminates TLS at
 // Traefik with a cube-idp CA-issued cert (spec D6/D12, internal/up/tls.go),
 // and a NodePort Service is simpler than wiring a hostPort/LoadBalancer
 // controller into a kind node. See packs/traefik/README.md for the full
@@ -38,7 +38,7 @@ const gatewayContainerPort = config.GatewayNodePort
 // CertsD requests a containerd certs.d bind mount on every kind node so
 // image refs on Host resolve through the hosts.toml/ca.crt staged in HostDir
 // (internal/trust.WriteCertsD) rather than through localtest.me, which on a
-// kind node resolves to the node itself (D6). Zero value = no injection.
+// kind node resolves to the node itself. Zero value = no injection.
 type CertsD struct{ Host, HostDir string }
 
 // RenderConfig composes the customization ladder (spec 2026-07-18 §4) and
@@ -55,7 +55,7 @@ type CertsD struct{ Host, HostDir string }
 //
 // layer 4 = core injections (name/kind/apiVersion, gateway ports, node
 //
-//	image, certs.d) — core wins, CUBE-1206 warning (decision 1)
+//	image, certs.d) — core wins, CUBE-1206 warning
 func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw config.GatewaySpec, certsd CertsD) ([]byte, []diag.Finding, error) {
 	var warns []diag.Finding
 	warn := func(msg string) {
@@ -118,7 +118,7 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 				ContainerPort: gatewayContainerPort, HostPort: int32(gw.Port), Protocol: v1alpha4.PortMappingProtocolTCP,
 			})
 		}
-		// U2 opt-in HTTP twin (decision 3): host gw.HTTPPort -> the
+		// Opt-in plain-HTTP twin of the gateway mapping: host gw.HTTPPort -> the
 		// plain-HTTP NodePort both gateway packs pin
 		// (config.GatewayHTTPNodePort). Absent = no mapping, byte-identical
 		// output to before.
@@ -165,7 +165,7 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 	}
 	cfg.ContainerdConfigPatches = append(cfg.ContainerdConfigPatches, containerdPatches(spec.Registry)...)
 
-	// D6 canonical hostname: containerd certs.d injection (Task 10).
+	// Canonical gateway hostname: containerd certs.d injection.
 	if certsd.Host != "" {
 		cfg.ContainerdConfigPatches = append(cfg.ContainerdConfigPatches,
 			"[plugins.\"io.containerd.grpc.v1.cri\".registry]\n  config_path = \"/etc/containerd/certs.d\"")

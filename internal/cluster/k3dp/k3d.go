@@ -27,12 +27,12 @@ import (
 )
 
 // loadRetryBackoff is the pause before the single retry of the whole
-// image-import call (F10: a transient containerd import was observed to fail
+// image-import call: a transient containerd import was observed to fail
 // ~1-in-3 runs in CI with no reproducible cause other than host timing).
 const loadRetryBackoff = 2 * time.Second
 
 // K3d implements cluster.Provider for local k3d (k3s-in-docker) clusters
-// (spec §4.1, D4). It is a thin wrapper around github.com/k3d-io/k3d/v5: all
+// It is a thin wrapper around github.com/k3d-io/k3d/v5: all
 // config assembly happens in RenderConfig (merge.go), which stays pure and
 // cluster-free — the same split kindp uses.
 //
@@ -122,7 +122,7 @@ func (k *K3d) Ensure(ctx context.Context, name string, spec config.ClusterSpec) 
 		// baked into the server node's k3d.server.api.port label at creation,
 		// and KubeconfigGet reads that label verbatim: the resulting REST
 		// config is https://0.0.0.0 with NO port (dial 0.0.0.0:443 → refused),
-		// which is exactly the CUBE-2003 failure the Phase 3 e2e caught.
+		// which is exactly the CUBE-2003 failure the k3d up/down e2e caught.
 		if err := ensureExposedAPIPort(&simpleCfg); err != nil {
 			return nil, err
 		}

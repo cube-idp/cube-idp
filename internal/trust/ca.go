@@ -42,7 +42,7 @@ type CA struct {
 }
 
 // EnsureCA loads the cube-idp local CA from dir, or creates one if none
-// exists. Creation prefers adopting an existing mkcert root (D12) over
+// exists. Creation prefers adopting an existing mkcert root over
 // generating a new one, so browsers that already trust mkcert show green
 // locks with zero prompts. It is strictly idempotent: once a CA is present
 // in dir (generated or adopted), subsequent calls always return that same
@@ -116,7 +116,7 @@ func mkcertCAROOT() string {
 }
 
 // adoptMkcertCA copies an existing mkcert root (cert+key) into dir so cube-idp
-// issues leaves the user's browsers already trust (D12). Presence-based: we do
+// issues leaves the user's browsers already trust. Presence-based: we do
 // NOT verify OS-store trust (no portable query API) — if the mkcert root turns
 // out untrusted, `cube-idp trust` installs it exactly like a generated CA.
 //

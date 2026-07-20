@@ -13,9 +13,9 @@ import (
 // PortForward tunnels a free local port to the zot pod and returns
 // "127.0.0.1:<port>". stop() must be deferred by the caller.
 //
-// Task 10: this is now a thin delegate to the generalized
+// This is now a thin delegate to the generalized
 // internal/kube.PortForward (ns=cube-idp-system, selector=app=zot,
-// podPort=5000 — the exact parameters Phase 1's implementation hard-coded),
+// podPort=5000 — the exact parameters this function used to hard-code),
 // wrapping its plain error as CUBE-5002 so callers keep the same typed
 // failure they always got.
 func PortForward(ctx context.Context, cfg *rest.Config) (string, func(), error) {

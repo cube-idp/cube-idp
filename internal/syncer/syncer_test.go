@@ -42,7 +42,7 @@ func TestSynthesizePackFromBareDir(t *testing.T) {
 // TestSynthesizeCleansUpTempDir proves the synthesized pack's staging
 // directory (os.MkdirTemp("", "cube-idp-sync-*")) is removed once the
 // caller invokes the returned cleanup func — before R8 this directory was
-// never removed, leaking one temp dir per bare-dir sync (Phase 4 R8).
+// never removed, leaking one temp dir per bare-dir sync.
 func TestSynthesizeCleansUpTempDir(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "cm.yaml"),

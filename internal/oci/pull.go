@@ -1,5 +1,5 @@
 // pull.go is the consumer twin of push.go for single-blob artifacts (P10,
-// GT17). The plugins platform publishes each per-platform binary — and its
+// the plugins platform). It publishes each per-platform binary — and its
 // discovery index — as a one-layer OCI artifact; PullBlob fetches such an
 // artifact BY DIGEST (or tag) and returns the raw layer bytes, mirroring
 // internal/pack.pullOCI's auth chain and loopback-PlainHTTP gate so private
@@ -22,7 +22,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
-// Media types for the plugins platform (GT17). PluginBlobMediaType is both
+// Media types for the plugins platform. PluginBlobMediaType is both
 // the oras --artifact-type and the single layer's media type on a
 // per-platform binary artifact; PluginIndexMediaType is the artifactType on
 // the discovery index (its layer is application/json). Kept here beside the
@@ -83,7 +83,7 @@ func PullBlob(ctx context.Context, ref string) ([]byte, error) {
 		return nil, diag.Wrap(err, diag.CodePluginTrustIO, fmt.Sprintf("artifact %q has an unreadable manifest", ref),
 			"the artifact is not a single-blob OCI image manifest — re-publish it")
 	}
-	// GT17 artifacts carry exactly one layer (the binary, or the index JSON).
+	// Plugin-platform artifacts carry exactly one layer (the binary, or the index JSON).
 	// Anything else is not a plugin artifact this binary understands.
 	layers := manifest.Layers
 	if len(layers) != 1 {

@@ -15,7 +15,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// TestEnsureExposedAPIPort guards the k3d kubeconfig-port bug (Phase 3 e2e,
+// TestEnsureExposedAPIPort guards the k3d kubeconfig-port bug (found by the
 // TestK3dUpDown): our library-direct create path skips the k3d CLI's
 // random-free-port assignment, so ExposeAPI.HostPort stays "", the server
 // node's k3d.server.api.port label is baked empty, and KubeconfigGet emits

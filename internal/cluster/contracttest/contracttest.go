@@ -1,4 +1,4 @@
-// Package contracttest is the shared ClusterProvider contract (spec §5).
+// Package contracttest is the shared ClusterProvider contract.
 // Every cluster-creating provider (kindp, k3dp, future Talos/vcluster) calls
 // Run from its own test package. The contract is behavioral: idempotent
 // Ensure, truthful Exists, non-empty Kubeconfig for a live cluster, clean

@@ -1,6 +1,6 @@
 // Package lock reads and writes cube.lock: the reproducibility record of an
 // `up` — resolved pack pins, rendered-content hashes, and the full image
-// list (spec §4.1 pack engine; feeds Phase 3 `vendor` and `upgrade --plan`).
+// list; feeds `cube-idp vendor` and `upgrade --plan`.
 package lock
 
 import (
@@ -55,7 +55,7 @@ type Entry struct {
 	// list (spec D14) — operator-style packs (e.g. envoy-gateway) provision
 	// images that never appear in their own rendered objects, so the
 	// declared list closes that air-gap blind spot. `up`'s lock assembly
-	// computes the merge; `cube-idp vendor` (Phase 3) consumes it unchanged
+	// computes the merge; `cube-idp vendor` consumes it unchanged
 	// to bundle every pinned image for air-gapped installs.
 	Images []string `yaml:"images" json:"images"`
 }

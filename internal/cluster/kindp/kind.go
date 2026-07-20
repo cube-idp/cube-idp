@@ -24,12 +24,12 @@ import (
 )
 
 // loadRetryBackoff is the pause before the single retry of a per-node image
-// import (F10: `ctr images import` was observed to fail transiently ~1-in-3
+// import: `ctr images import` was observed to fail transiently ~1-in-3
 // runs in CI with no reproducible cause other than containerd/host timing).
 const loadRetryBackoff = 2 * time.Second
 
 // Kind implements cluster.Provider for local kind (kubernetes-in-docker)
-// clusters (spec §4.1). It is a thin wrapper around sigs.k8s.io/kind: all
+// clusters. It is a thin wrapper around sigs.k8s.io/kind: all
 // config assembly happens in RenderConfig (merge.go), which stays pure and
 // cluster-free.
 type Kind struct {
@@ -39,7 +39,7 @@ type Kind struct {
 }
 
 // New returns a Kind provider bound to the given gateway spec. It
-// autodetects the node backend (docker/podman/nerdctl, spec §4.1); if
+// autodetects the node backend (docker/podman/nerdctl); if
 // detection fails, the provider falls back to docker so that later calls
 // (Exists/Diagnose) surface a clear CUBE-1203 rather than panicking here.
 func New(gw config.GatewaySpec) *Kind {
@@ -108,8 +108,9 @@ func (k *Kind) Ensure(ctx context.Context, name string, spec config.ClusterSpec)
 }
 
 // certsD prepares the containerd certs.d host directory that maps
-// registry.<gw.Host> image refs on kind nodes to the zot NodePort (D6
-// canonical hostname, Task 10). It depends on the trust package's CA (D12:
+// registry.<gw.Host> image refs on kind nodes to the zot NodePort (the
+// canonical gateway hostname). It depends on the trust package's CA (TLS
+// from first boot:
 // EnsureCA runs before cluster creation in up.Run) so certs.d exists before
 // RenderConfig ever mounts it.
 func (k *Kind) certsD() (CertsD, error) {
@@ -264,7 +265,8 @@ func (k *Kind) Kubeconfig(ctx context.Context, name string) ([]byte, error) {
 
 // InternalKubeconfig returns the docker-network-internal kubeconfig
 // (server https://<name>-control-plane:6443) — what hub engine pods must
-// use to reach a kind spoke (GT7). Satisfies cluster.InternalKubeconfiger
+// use to reach a kind spoke, which lives on the shared docker network under
+// the name <cube-name>-spoke-<spoke-name>. Satisfies cluster.InternalKubeconfiger
 // structurally (same cycle constraint SetLogSink documents).
 func (k *Kind) InternalKubeconfig(ctx context.Context, name string) ([]byte, error) {
 	kc, err := k.provider.KubeConfig(name, true)
@@ -275,7 +277,7 @@ func (k *Kind) InternalKubeconfig(ctx context.Context, name string) ([]byte, err
 }
 
 // Diagnose reports non-fatal findings about the kind/container runtime
-// environment (Phase 2's `doctor` command surfaces these).
+// environment (the `doctor` command surfaces these).
 func (k *Kind) Diagnose(ctx context.Context, name string) []diag.Finding {
 	if _, err := k.provider.List(); err != nil {
 		return []diag.Finding{{Code: diag.CodeKindCreateFailed, Severity: diag.SeverityError,
