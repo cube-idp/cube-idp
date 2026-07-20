@@ -12,11 +12,11 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// RenderDirFor kustomize-builds dir and applies the D15 gateway substitution
-// to the built YAML bytes BEFORE parsing — the same pre-parse byte-level
-// substitute() the manifests/ walk and renderHelm already apply, closing the
-// documented D15 asymmetry. A zero gw is the identity (byte-identical to the
-// pre-R6 RenderDir output).
+// RenderDirFor kustomize-builds dir and applies the gateway token
+// substitution to the built YAML bytes BEFORE parsing — the same pre-parse
+// byte-level substitute() the manifests/ walk and renderHelm already apply,
+// so all three render paths resolve tokens identically (ADR-0039). A zero gw
+// is the identity, leaving output byte-identical to plain RenderDir.
 func RenderDirFor(dir string, gw config.GatewaySpec) ([]*unstructured.Unstructured, error) {
 	k := krusty.MakeKustomizer(krusty.MakeDefaultOptions())
 	resMap, err := k.Run(filesys.MakeFsOnDisk(), dir)

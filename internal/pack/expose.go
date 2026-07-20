@@ -20,8 +20,8 @@ type SecretRef struct{ Namespace, Name string }
 // shape as Expose.
 type GatewayService struct{ Name, Namespace string }
 
-// Expose is the D11 contract: how a pack declares its endpoints and
-// credentials — in data, never in Go. Parsed from pack.cue's optional
+// Expose is how a pack declares its endpoints and credentials — in data,
+// never in Go (see ADR-0002). Parsed from pack.cue's optional
 // expose: block; rendered by `up` into the pack's Pack record.
 type Expose struct {
 	URLs          []string
@@ -33,7 +33,7 @@ type Expose struct {
 // host[:port], with the port omitted whenever the gateway listens on 443
 // (HTTPS's default) so the resulting links are actually clickable instead
 // of dialing the bare host on 443 and failing. Shared by
-// ExposeURLs and the D15 chart-value/manifest substitution below — one
+// ExposeURLs and the chart-value/manifest substitution below — one
 // definition of "the gateway's host string", used everywhere it's needed.
 // Exported so cmd/repo.go can print the same https gateway form
 // for the printed operator clone URL without duplicating the port-omission
@@ -45,7 +45,7 @@ func GatewayHostString(gw config.GatewaySpec) string {
 	return gw.Host
 }
 
-// substitute performs the D15 gateway substitution on s: ${GATEWAY_HOST}
+// substitute performs the gateway token substitution on s: ${GATEWAY_HOST}
 // expands to gw's host[:port] (GatewayHostString), ${GATEWAY_FQDN} expands
 // to the bare gw.Host (for Gateway API `hostnames:` fields, which cannot
 // carry ports), and ${GATEWAY_PACK} expands to gw.Pack — the gateway pack
@@ -66,9 +66,9 @@ func substitute(s string, gw config.GatewaySpec) string {
 }
 
 // ExposeURLs returns p's expose.urls with ${GATEWAY_HOST} substituted for
-// the cube's spec.gateway.host[:port] — the one substitution the D11
-// contract originally allowed, now one of two (see substitute) shared with
-// D15's chart-value/manifest substitution. Returns nil if p declares no
+// the cube's spec.gateway.host[:port] — the expose-block substitution,
+// which shares its implementation (see substitute) with the chart-value
+// and manifest substitution. Returns nil if p declares no
 // expose block or no urls. Shared by PackObject (the Pack record's
 // spec.urls/spec.url) and up.Run's end-of-run access summary — one
 // substitution, used everywhere a pack's URLs are shown.

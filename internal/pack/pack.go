@@ -74,7 +74,7 @@ type Pack struct {
 	// nothing through themselves, load exactly as before.
 	Expose *Expose
 
-	// Images is the pack's declared runtime image list (spec D14, optional
+	// Images is the pack's declared runtime image list (optional
 	// pack.cue `images: [...string]`): images the pack pulls at runtime that
 	// never appear in its own rendered manifests (e.g. envoy-gateway's
 	// dynamically-provisioned proxy image). nil when the pack declares none
@@ -113,7 +113,7 @@ type Rendered struct {
 }
 
 // loadMeta reads and validates pack.cue in dir, returning the pack's
-// required name/version metadata (plus the optional expose: block, D11).
+// required name/version metadata (plus the optional expose: block).
 func loadMeta(dir string) (*Pack, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "pack.cue"))
 	if err != nil {

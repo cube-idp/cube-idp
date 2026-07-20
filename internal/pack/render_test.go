@@ -10,8 +10,8 @@ import (
 	"github.com/cube-idp/cube-idp/internal/config"
 )
 
-// TestRenderForSubstitutesGatewayHost pins D15 (spec D15, Owner Decisions
-// #11): RenderFor extends the ${GATEWAY_HOST} expansion ExposeURLs already
+// TestRenderForSubstitutesGatewayHost pins the gateway token substitution
+// (ADR-0039): RenderFor extends the ${GATEWAY_HOST} expansion ExposeURLs already
 // does over expose.urls to (a) chart.yaml's values: (string leaves, after
 // merging pack defaults with the caller's values) and (b) manifests/*.yaml
 // raw bytes, so URL-bearing packs (e.g. backstage) can derive their
@@ -88,8 +88,8 @@ func TestRenderForSubstitutesGatewayPack(t *testing.T) {
 
 // TestRenderLeavesLiteralUntouched pins that Render (no gateway) is exactly
 // RenderFor with a zero config.GatewaySpec{} — packs with no
-// ${GATEWAY_HOST}/${GATEWAY_FQDN} tokens render byte-identically to before
-// D15, and packs that DO have the tokens but are rendered via the
+// ${GATEWAY_HOST}/${GATEWAY_FQDN} tokens render byte-identically either
+// way, and packs that DO have the tokens but are rendered via the
 // gateway-less Render entry point see the literal text untouched rather
 // than silently expanding to ":0" or similar.
 func TestRenderLeavesLiteralUntouched(t *testing.T) {
@@ -115,8 +115,8 @@ func TestRenderLeavesLiteralUntouched(t *testing.T) {
 	}
 }
 
-// TestRenderForSubstitutesGatewayHostKustomize pins D15's closure of the
-// kustomize-path asymmetry: RenderFor's kustomization.yaml branch now runs
+// TestRenderForSubstitutesGatewayHostKustomize pins that the kustomize path
+// substitutes too: RenderFor's kustomization.yaml branch runs
 // the same ${GATEWAY_HOST}/${GATEWAY_FQDN}/${GATEWAY_PACK} substitution the
 // manifests/ walk and chart.yaml helm render already apply, and a zero
 // GatewaySpec (the cnoe loader's RenderDir path) is untouched.

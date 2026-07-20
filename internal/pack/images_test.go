@@ -8,7 +8,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// TestImagesParsed pins spec D14: a pack.cue images: list is parsed into
+// TestImagesParsed pins that a pack.cue images: list is parsed into
 // Pack.Images unchanged, in declaration order (Decode preserves list order;
 // unlike Entry.Images this field is never sorted/deduped — that merge
 // happens once, downstream, in internal/up's lock assembly).

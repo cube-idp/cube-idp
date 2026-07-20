@@ -16,19 +16,20 @@ import (
 // filename order, for deterministic output) plus a client-side helm render
 // of chart.yaml, if present. It is RenderFor with a zero
 // config.GatewaySpec{}, which performs no ${GATEWAY_HOST}/${GATEWAY_FQDN}
-// substitution — existing callers/tests see byte-identical output to
-// before D15.
+// substitution, leaving output byte-identical for callers that have no
+// gateway context.
 func (p *Pack) Render(values map[string]any) (*Rendered, error) {
 	return p.RenderFor(values, config.GatewaySpec{})
 }
 
-// RenderFor is Render plus the D15 gateway substitution (spec D15, Owner
-// Decisions #11): every string leaf in the chart values (pack defaults from
+// RenderFor is Render plus the gateway token substitution (ADR-0039):
+// every string leaf in the chart values (pack defaults from
 // chart.yaml merged with the caller's values, override winning) and every
 // manifests/*.yaml file's raw bytes get ${GATEWAY_HOST} -> gw's host[:port],
 // ${GATEWAY_FQDN} -> gw's bare host, and ${GATEWAY_PACK} -> gw's pack name
-// (also its namespace, for F9 HTTPRoute parentRefs) (see substitute in
-// expose.go — the replacements ExposeURLs already applies to expose.urls). A zero
+// (also its namespace, which HTTPRoute parentRefs must target) — see
+// substitute in expose.go, the same replacements ExposeURLs applies to
+// expose.urls. A zero
 // gw (Host == "") performs no substitution, so Render(values) — which calls
 // this with config.GatewaySpec{} — is unaffected.
 func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendered, error) {
@@ -76,7 +77,7 @@ func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendere
 			if err != nil {
 				return nil, diag.Wrap(err, diag.CodePackManifestErr, "cannot read pack manifest "+e.Name(), "check file permissions")
 			}
-			// D15: substitute before parsing, on the raw bytes — a plain
+			// Substitute before parsing, on the raw bytes — a plain
 			// text replacement over the manifest source, same as
 			// ExposeURLs does for expose.urls, rather than a structural
 			// walk over the parsed objects.

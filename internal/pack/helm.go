@@ -64,9 +64,10 @@ type ChartRef struct {
 
 // RenderChart renders a chart reference exactly as a pack's chart.yaml would
 // be rendered. Exported for the cnoe-compat loader; helm.go remains the only
-// file importing the Helm SDK. cnoe-compat sources are out of D15's scope
-// (they carry no gw context), so this performs no gateway substitution — the
-// zero config.GatewaySpec{} is a no-op (see substitute in expose.go).
+// file importing the Helm SDK. cnoe-compat sources are out of scope for
+// gateway token substitution (they carry no gw context), so this performs
+// none — the zero config.GatewaySpec{} is a no-op (see substitute in
+// expose.go).
 func RenderChart(ref ChartRef, values map[string]any) ([]*unstructured.Unstructured, error) {
 	return renderChartRef(ref, values, config.GatewaySpec{})
 }
@@ -135,7 +136,7 @@ func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) 
 			"check chart repo/version in chart.yaml; try `helm template` manually")
 	}
 
-	// D15: substitute AFTER merging pack defaults (ref.Values) with the
+	// Substitute AFTER merging pack defaults (ref.Values) with the
 	// caller's values, so ${GATEWAY_HOST}/${GATEWAY_FQDN} tokens are
 	// resolved whichever side they came from before the chart template
 	// engine sees them.
@@ -386,7 +387,7 @@ func mergeValues(base, override map[string]any) map[string]any {
 	return out
 }
 
-// substituteValues returns a copy of v with the D15 gateway substitution
+// substituteValues returns a copy of v with the gateway token substitution
 // (substitute, in expose.go) applied to every string leaf, recursing
 // through nested maps and slices — the shapes CUE/YAML/JSON decoding
 // produces for chart values. Non-string, non-container leaves (numbers,
