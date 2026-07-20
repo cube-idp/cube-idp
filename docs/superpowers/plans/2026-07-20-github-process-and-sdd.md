@@ -28,7 +28,7 @@ This plan is itself Track-A-shaped work and follows the process it installs:
 2. **Execution:** tasks T1–T11 land as commits on the branch (worktree only), pushed to keep the PR current.
 3. **Completion (T12):** all tasks DONE in the ledger → final verification → ADR-0040 flipped to `accepted` → owner merges the PR → the tracking issue closes automatically via the PR's `Closes` reference. Plan is complete only when the PR is merged AND the issue is closed.
 
-Tracking issue: `#21` · PR: filled in at bootstrap by the ledger.
+Tracking issue: [#21](https://github.com/cube-idp/cube-idp/issues/21) · PR: [#22](https://github.com/cube-idp/cube-idp/pull/22).
 
 ## Phases (for the status heartbeat)
 
