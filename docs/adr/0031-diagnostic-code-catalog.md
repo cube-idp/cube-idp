@@ -1,0 +1,145 @@
+---
+status: "accepted"
+date: 2026-07-20
+decision-makers: "cube-idp maintainers"
+---
+
+# 31. Central Append-Only Diagnostic Code Catalog with Domain-Partitioned Ranges
+
+## Context and Problem Statement
+
+Every user-facing failure in cube-idp carries a `CUBE-XXXX` code so an operator, a
+support thread or a CI job can identify the exact failure without parsing prose. That
+contract only holds if the codes behave like a stable public surface rather than like
+ordinary string literals. Three failure modes threaten it.
+
+First, drift: if any package can write `"CUBE-4019"` inline, the same number ends up
+meaning two things in two files, and nothing catches the collision. Second,
+undocumented codes: a code that exists in an error path but has no human-readable
+summary is useless to the person reading it. Third, reuse: if a retired code's number
+is later handed to a different failure, every archived log line, runbook and issue
+citing that number silently becomes wrong.
+
+The codes also need to be findable. A flat, first-come numbering makes it impossible
+to tell from `CUBE-3011` alone which subsystem failed, so codes need a numeric
+partition that maps to the concern that raises them.
+
+## Decision
+
+Every CUBE code is declared as an exported sentinel constant in `internal/diag/codes.go`
+matching `^CUBE-[0-9]{4}$`. No non-test Go file outside that catalog may contain a
+`CUBE-` string literal — including backtick raw strings — and this is enforced by the
+literal-ban test.
+
+Every declared code must also carry a non-empty summary entry in
+`internal/diag/registry.go`, enforced by `TestRegistryCoversEveryDeclaredCode` (an
+entry exists for every declared code, and the counts match) and
+`TestEveryCodeHasDescription` (the entry's `Summary` is non-empty).
+
+The code surface is append-only. Retired codes are marked in place by comment or
+registry annotation and are never deleted, and their numbers are not reused.
+
+The catalog is also exhaustive in both directions, enforced by test: every declared `Code`
+constant must be either referenced from non-test Go code or explicitly annotated as reserved
+in its trailing comment, and every `diag.Code*` identifier used in non-test code must be
+declared in the catalog. A code added ahead of its call site, or left behind when its last
+call site is deleted, MUST carry a `// reserved:` annotation.
+
+CUBE code ranges are partitioned by domain and enumerated as section headers in
+`internal/diag/codes.go`. New diagnostics are allocated inside the numeric family of
+the concern they belong to, so config-family, wait-family and pack-dependency failures
+each stay in their own range.
+
+## Consequences
+
+* Good, because a code number is a durable identifier: an operator can search a
+  five-month-old log line and still find the right constant, call site and summary.
+* Good, because the literal ban makes collisions structurally impossible — two
+  meanings for one number cannot both compile past the test.
+* Good, because the registry-coverage test is bidirectional by cardinality: a code
+  cannot ship without documentation, and a stale entry is caught unless an addition
+  in the same commit masks the count.
+* Good, because the numeric partition lets a reader infer the subsystem from the code
+  alone, before opening any source.
+* Good, because exhaustiveness makes a dead code falsifiable: a constant nobody raises
+  either gets used or is declared reserved on purpose, never drifting silently.
+* Bad, because the number space is consumed permanently; retired numbers stay as dead
+  weight in the catalog and registry forever.
+* Bad, because exhaustiveness couples the catalog to call-site churn: deleting the last
+  raise site of a live code breaks the build until the constant is annotated
+  `// reserved:`, which is a non-obvious remedy for an unrelated refactor.
+* Bad, because allocating a code is a two-file edit plus a domain-range judgement,
+  which is friction on every new error path.
+* Bad, because the append-only rule is a convention over deletion, not a mechanical
+  guarantee: a code removed from `codes.go` in the same commit as its registry entry
+  leaves no in-place marker, and the tests stay green. `CUBE-1002` and `CUBE-3002` are
+  absent with no marker, showing this gap.
+
+## Implementation Status
+
+**This decision is implemented.** Confirmed against the code on 2026-07-20.
+
+| Decision | Implemented at |
+| --- | --- |
+| Every CUBE code declared in `internal/diag/codes.go` matches `^CUBE-[0-9]{4}$` and is unique. | `internal/diag/codes_test.go` |
+| No non-test Go file outside the catalog may contain a `CUBE-` string literal. | `internal/diag/codes_test.go` |
+| CUBE codes live in a central sentinel catalog enforced by `TestNoCubeLiteralsOutsideCatalog`, whose regex also catches backtick raw-string literals. | `internal/diag/codes_test.go` |
+| Every new diag code must have an entry in `internal/diag/registry.go`, and that entry's summary must be non-empty. | `internal/diag/registry_test.go` |
+| CUBE diagnostic codes are append-only: retired codes are marked in place by comment edit and never deleted or reused. | `internal/diag/codes.go` |
+| The code surface is append-only in the registry too: retired codes such as CUBE-3009 keep their registry entry marked retired rather than being removed. | `internal/diag/registry.go` |
+| An exhaustiveness test parses the catalog's AST and enforces both directions: every defined code is used in non-test code or annotated `// reserved:`, and every used code identifier is defined. | `internal/diag/codes_test.go` |
+| Pack dependency diagnostics use CUBE-4018, CUBE-4019 and CUBE-4020, and the argocd dependency wait failure uses CUBE-3011. | `internal/diag/codes.go` |
+| A new config-family diagnostic covers engine pack ref mismatch, mirroring CUBE-0008. | `internal/pack/enginepack.go` |
+
+### Verification
+
+- [ ] `internal/diag/codes_test.go` anchors the single exemption to the exact
+      repo-relative path `internal/diag/codes.go`, not to the basename.
+- [ ] `internal/diag/codes_test.go` compiles `cubeLiteralRe` from the character class
+      of both quote characters, so a backtick raw string containing `CUBE-` is an
+      offender, not only a double-quoted one.
+- [ ] `TestNoCubeLiteralsOutsideCatalog` (`internal/diag/codes_test.go`) fails when a
+      non-test `.go` file outside the catalog holds a `CUBE-` literal.
+- [ ] `TestRegistryCoversEveryDeclaredCode` (`internal/diag/registry_test.go`) fails
+      both when `Describe()` misses a declared code and when
+      `len(AllCodes()) != len(declared)`.
+- [ ] `TestCatalogExhaustive` (`internal/diag/codes_test.go`) marks a constant reserved
+      only when its trailing comment contains "reserved", and fails on both an unused
+      unreserved code and a used-but-undefined code identifier.
+- [ ] `internal/diag/codes.go` and still declare CUBE-3003 and CUBE-3009 with
+      `(RETIRED 2026-07-19 …)` annotations, and `internal/diag/registry.go` and
+      carry the matching retired summaries.
+- [ ] `internal/diag/codes.go` carries range section headers (`0xxx: preflight/config`,
+      `3xxx: engine`, `4xxx: pack`, …) and CUBE-4018/4019/4020 sit under
+      `Pack dependencies` at `internal/diag/codes.go`.
+- [ ] CUBE-4018/4019/4020 are live at `internal/pack/depgraph.go`, and
+; CUBE-3011 at `internal/up/up.go`.
+- [ ] `internal/diag/codes.go` declares `CodeEnginePackMismatch Code = "CUBE-0013"` in
+      the 0xxx config family and it is raised at `internal/pack/enginepack.go`.
+
+## History
+
+The config-load family was originally split: a missing local path that is not
+ref-shaped failed with CUBE-0001, while a remote fetch or single-YAML failure was to
+fail with CUBE-0013. The CUBE-0013 remote branch was never built.
+`internal/config/load.go` now has a single unconditional read-failure path
+emitting CUBE-0001 with the `cube-idp init` remediation, and no ref-shape test precedes
+it. The number CUBE-0013 was reallocated to mean engine pack ref mismatch
+(`CodeEnginePackMismatch`, `internal/diag/codes.go`).
+
+That reallocation predates the append-only rule reaching its current form. Under the
+rule as it now stands, superseded numbers keep a retired or reassigned marker in the
+catalog and registry rather than being removed or silently re-pointed.
+
+## More Information
+
+Origin: mined from the archived planning corpus (`docs/archive/superpowers/`) during
+the 2026-07-20 documentation audit; the underlying statements were validated against
+the code before this record was written.
+
+- `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:870` — central catalog and literal ban
+- `docs/archive/superpowers/specs/2026-07-15-cube-idp-phase4-first-release-design.md:80` — backtick-aware literal-ban test
+- `docs/archive/superpowers/specs/2026-07-15-cube-idp-phase4-first-release-design.md:81` — bidirectional used/defined/reserved exhaustiveness
+- `docs/archive/superpowers/specs/2026-07-19-cube-idp-valuesref-remote-config-design.md:310` — mandatory registry summary
+- `docs/archive/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md:221` — append-only retirement in place
+- `docs/archive/superpowers/plans/2026-07-19-cube-idp-pack-depends-and-cubelock-crd.md:39` — pack-dependency range allocation

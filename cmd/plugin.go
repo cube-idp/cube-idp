@@ -35,17 +35,18 @@ func validatePluginName(name string) error {
 	return nil
 }
 
-// newPluginCmd groups the exec-plugin discovery commands (spec §4.4 tier
+// newPluginCmd groups the exec-plugin discovery commands (the krew-style
+// second tier of the CLI surface, below the built-in commands):
 // 2): `plugin list` shows every cube-idp-<name> binary found on $PATH or in
 // plugin.InstallDir(), `plugin trust <name>` records the current sha256 of
 // a discovered plugin so it runs without an interactive prompt, and
 // `plugin install <name>` fetches one from a sha256-pinned git index
-// (Task 9). Running an unknown top-level command (`cube-idp <name>`)
+// index. Running an unknown top-level command (`cube-idp <name>`)
 // itself is handled by Execute's fallthrough in root.go, not here.
 func newPluginCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "plugin",
-		Short: "Discover and manage cube-idp exec-plugins (spec §4.4 tier 2)",
+		Short: "Discover and manage cube-idp exec-plugins",
 	}
 	root.AddCommand(newPluginListCmd())
 	root.AddCommand(newPluginTrustCmd())
@@ -59,7 +60,7 @@ func newPluginListCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "List every cube-idp-<name> plugin discovered on PATH or in the plugin install dir",
-		// RunPipelineStatic owns the whole RunE body (Task R3): plugin list
+		// RunPipelineStatic owns the whole RunE body: plugin list
 		// is a short static command, never a live step-tree.
 		RunE: func(c *cobra.Command, _ []string) error {
 			return ui.RunPipelineStatic(c.Context(), "plugin", c.OutOrStdout(),
@@ -99,7 +100,7 @@ func newPluginListCmd() *cobra.Command {
 }
 
 // newPluginSearchCmd filters the official index by a substring of the plugin
-// name or description — the discovery twin of `pack search` (P6).
+// name or description — the discovery twin of `pack search`.
 func newPluginSearchCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "search <term>",
@@ -181,7 +182,7 @@ func newPluginTrustCmd() *cobra.Command {
 // official OCI index (oci://ghcr.io/cube-idp/plugins/index:latest, override
 // via CUBE_IDP_PLUGIN_INDEX), pulls the current-platform binary BY DIGEST,
 // and hands off to the sha256 trust-consent flow. Passing --index keeps the
-// original sha256-pinned git-index path (Task 9) working unchanged.
+// original sha256-pinned git-index path working unchanged.
 func newPluginInstallCmd() *cobra.Command {
 	var index string
 	var yes bool

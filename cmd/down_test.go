@@ -75,7 +75,7 @@ func TestRevertTrustDirErrorWarns(t *testing.T) {
 
 // TestRevertTrustUninstallsWhenInstalled covers the happy path: a state file
 // recording Installed:true must trigger trustUninstall and report the
-// revert (D6: `down` always undoes what `trust` did).
+// revert (`down` always undoes what `trust` did — ADR-0038).
 func TestRevertTrustUninstallsWhenInstalled(t *testing.T) {
 	dir := t.TempDir()
 	if err := trust.SaveState(dir, &trust.State{Installed: true, CACert: "irrelevant"}); err != nil {
@@ -172,7 +172,7 @@ func cubeYAMLFixture(t *testing.T) string {
 	return "cube.yaml"
 }
 
-// stubTrustSeams keeps every TE-3 test away from the developer's real OS
+// stubTrustSeams keeps every consent test away from the developer's real OS
 // trust store: down's revertTrust tail reads trustDir/trustUninstall, and a
 // test that reaches the pipeline must see an empty (not-installed) state.
 func stubTrustSeams(t *testing.T) {
@@ -181,19 +181,19 @@ func stubTrustSeams(t *testing.T) {
 	restoreDir, restoreUninstall := trustDir, trustUninstall
 	trustDir = func() (string, error) { return dir, nil }
 	trustUninstall = func(string) error {
-		t.Error("trustUninstall must never run from a TE-3 test")
+		t.Error("trustUninstall must never run from a down-preview test")
 		return nil
 	}
 	t.Cleanup(func() { trustDir, trustUninstall = restoreDir, restoreUninstall })
 }
 
-// ansiRE / stripANSI mirror render/styled_test.go: the TE-3.1 golden pins
+// ansiRE / stripANSI mirror render/styled_test.go: the preview golden pins
 // content and layout; color roles stay the theme's business.
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 
 func stripANSI(s string) string { return ansiRE.ReplaceAllString(s, "") }
 
-// TestTE3_DownPreviewGolden pins the TE-3.1 preview: the enumerated deletion
+// TestTE3_DownPreviewGolden pins the deletion preview: the enumerated deletion
 // set for the kind branch (golden), plus the keep-cluster and trust-installed
 // variants that must surface their own real consequences.
 func TestTE3_DownPreviewGolden(t *testing.T) {
@@ -212,7 +212,7 @@ func TestTE3_DownPreviewGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != string(want) {
-		t.Fatalf("TE-3.1 preview drifted from golden.\ngot:\n%s\nwant:\n%s", got, want)
+		t.Fatalf("down preview drifted from golden.\ngot:\n%s\nwant:\n%s", got, want)
 	}
 
 	// keep-cluster branch mirrors runDown's engine/cascade path, not a
@@ -239,7 +239,7 @@ func TestTE3_DownPreviewGolden(t *testing.T) {
 	}
 }
 
-// R3 (spec §5 + TE-3.4): non-TTY down without --yes REFUSES — it must
+// Non-TTY down without --yes REFUSES — it must
 // never destroy silently in CI, and must never hang waiting for input.
 func TestTE3_NonTTYRefusesWithoutYes(t *testing.T) {
 	stubTrustSeams(t)
@@ -274,7 +274,7 @@ func TestTE3_YesSkipsPrompt(t *testing.T) {
 	}
 }
 
-// Decline path (TE-3.3) — prompting needs a TTY, so down.go exposes seams
+// Decline path — prompting needs a TTY, so down.go exposes seams
 // (the trust.go trustInstall pattern): `var downPromptsAllowed = ui.PromptsAllowed`
 // and `var downConfirmName = ui.InputExact`. Override both here: allowed=true,
 // InputExact returns (false, nil) → exact wording, nil error, no pipeline run.
@@ -301,8 +301,8 @@ func TestTE3_DeclineAbortsCleanly(t *testing.T) {
 	}
 }
 
-// TestDownPreviewSpokes pins S3's preview extension: declared spokes are
-// enumerated in the TE-3.1 deletion preview — kind spokes announce their
+// TestDownPreviewSpokes pins the spoke preview extension: declared spokes are
+// enumerated in the deletion preview — kind spokes announce their
 // cluster's fate, existing spokes stay untouched — while the spoke-less
 // preview stays byte-identical to the frozen golden
 // (TestTE3_DownPreviewGolden keeps proving that half).

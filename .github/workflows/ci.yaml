@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         provider: [kind, k3d]
-        engine: [flux, argocd]   # spec §5: {kind, k3d} x {flux, argocd} x {up, diff, upgrade, down}
+        engine: [flux, argocd]   # full coverage matrix: every provider x every engine, each running the whole up/diff/upgrade/down lifecycle
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -39,7 +39,7 @@ jobs:
       # ubuntu-latest.
       - run: go install sigs.k8s.io/kind@latest
       - run: curl -sfL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-      # P4: the packs live in the public cube-idp/packs monorepo — the e2e
+      # The packs live in the public cube-idp/packs monorepo — the e2e
       # suite resolves pack dirs from a checkout of it (tests/e2e/PACKS.md),
       # wired below via CUBE_IDP_E2E_PACKS_DIR.
       - uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
       # GitHub-hosted runners are amd64 and include docker; kind and k3d work
       # out of the box. The zot registry image is a multi-arch manifest list
       # (internal/registry/manifests/zot.yaml), so it resolves correctly
-      # here even though local dev on Apple Silicon is arm64. Phase 3's e2e
+      # here even though local dev on Apple Silicon is arm64. The e2e
       # suite reads CUBE_IDP_E2E_PROVIDER to pick the provider it writes into
       # cube.yaml (TestK3dUpDown always forces k3d, being the dedicated k3d
       # leg).

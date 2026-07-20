@@ -21,7 +21,7 @@ import (
 //	go test ./cmd/ -run TestCommandTreeGolden -update
 var updateGolden = flag.Bool("update", false, "rewrite cmd/testdata/clitree.golden from the current command tree")
 
-// TestCommandTreeGolden is the permanent CLI-surface fence (Phase 5 F1). It
+// TestCommandTreeGolden is the permanent CLI-surface fence. It
 // walks NewRootCmd()'s cobra tree recursively and renders one deterministic
 // line per command:
 //

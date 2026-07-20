@@ -1,5 +1,5 @@
 // officialindex_test.go exercises the P10 official-index resolution path:
-// FetchPluginIndex pulls oci://ghcr.io/cube-idp/plugins/index:latest (GT17
+// FetchPluginIndex pulls oci://ghcr.io/cube-idp/plugins/index:latest (the
 // schema), InstallFromIndex resolves name→platform→digest, pulls the
 // per-platform blob BY DIGEST, writes it executable to InstallDir(), and
 // hands off to the EXISTING sha256 trust-consent flow (EnsureTrusted —
@@ -71,7 +71,7 @@ func pushPlatformBlob(t *testing.T, host, name, tag string, payload []byte) stri
 }
 
 // pushIndexArtifact publishes indexJSON as a single-layer index artifact at
-// oci://<host>/plugins/index:latest with the GT17 index media type, and
+// oci://<host>/plugins/index:latest with the plugin index media type, and
 // points CUBE_IDP_PLUGIN_INDEX at it.
 func pushIndexArtifact(t *testing.T, host, indexJSON string) {
 	t.Helper()
@@ -99,7 +99,7 @@ func pushIndexArtifact(t *testing.T, host, indexJSON string) {
 	t.Setenv(EnvPluginIndex, "oci://"+ref+":latest")
 }
 
-// indexWith builds a GT17 index whose sole plugin "hello" carries a
+// indexWith builds a discovery index whose sole plugin "hello" carries a
 // current-platform entry pinned to digest, plus one bogus other-platform
 // entry to prove selection is exact. host is the registry the per-platform
 // ref points at — the fixtures push the blob there, and InstallFromIndex

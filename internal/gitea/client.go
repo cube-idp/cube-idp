@@ -144,7 +144,7 @@ func giteaAPIError(resp *http.Response, req *http.Request) error {
 const commitTimeout = 30 * time.Second
 
 // Ping probes the Gitea API (GET /api/v1/version) — the cheap "is gitea
-// answering yet" check behind P7's repo-delivery readiness gate (engine
+// answering yet" check behind the repo-delivery readiness gate (engine
 // delivery is asynchronous: the gitea pack being delivered does not mean
 // its API serves). The error is deliberately untyped: callers poll Ping
 // and type only the terminal timeout (CUBE-7301).
@@ -190,7 +190,8 @@ type changeFileOp struct {
 // from the desired set deleted. Content identical to the repo means no
 // commit at all — a re-run `up` leaves no commit churn. Files OUTSIDE
 // dir/ (and in subdirectories of it) are never touched: the repo stays an
-// editable working copy everywhere else (decision 13's payoff); dir/ is
+// editable working copy everywhere else (the payoff of keeping gitea an
+// ordinary, operator-owned repo rather than a cube-idp-owned one); dir/ is
 // the render's, and a re-push overwrites in-repo edits to it (cube.yaml
 // is the source of truth). Reports whether a commit was made.
 func (c *Client) SyncDir(ctx context.Context, owner, repo, branch, dir, message string, files map[string][]byte) (bool, error) {

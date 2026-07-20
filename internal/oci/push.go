@@ -1,7 +1,7 @@
 // Package oci pushes rendered packs as Flux-compatible OCI artifacts to the
-// in-cluster zot registry (spec §4, "OCI push").
+// in-cluster zot registry (see docs/adr/0015-in-cluster-registry-and-transport.md).
 //
-// Implementation note (Task 3.5): this used to shell out to
+// Implementation note: this used to shell out to
 // github.com/fluxcd/pkg/oci's Client.Push (see git history for the previous
 // implementation note on that API). This rewrite is on plain oras-go v2 —
 // already a dependency via internal/pack's pull path — to retire the
@@ -105,8 +105,8 @@ func pushRenderedTo(ctx context.Context, r *pack.Rendered, store oras.Target) (e
 
 	annotations := map[string]string{
 		// fixed epoch, NOT wall time: identical content must republish to an
-		// identical digest so the CI pack republish is a true no-op (Phase 4
-		// R8; annotation consumers only need a valid RFC3339 value). Mirrors
+		// identical digest so the CI pack republish is a true no-op
+		// (annotation consumers only need a valid RFC3339 value). Mirrors
 		// pushdir.go's pushPackDirTo.
 		ocispec.AnnotationCreated:  "1970-01-01T00:00:00Z",
 		ocispec.AnnotationSource:   "cube-idp",

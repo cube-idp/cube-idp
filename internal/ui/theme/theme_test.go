@@ -6,7 +6,7 @@ import (
 )
 
 // Light and dark palettes must actually differ (adaptivity is the point),
-// and every semantic color must stay in the basic ANSI-16 range (spec §2
+// and every semantic color must stay in the basic ANSI-16 range (the
 // color-roles rule: user terminal themes keep control).
 func TestThemeLightDarkDiffer(t *testing.T) {
 	light, dark := New(false), New(true)
@@ -23,6 +23,6 @@ func TestBadgeWidthCoversAllStages(t *testing.T) {
 		}
 	}
 	if !strings.Contains(GlyphOK, "✔") {
-		t.Fatal("GlyphOK changed — glyph set is normative (spec §2)")
+		t.Fatal("GlyphOK changed — the glyph set is normative")
 	}
 }

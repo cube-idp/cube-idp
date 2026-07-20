@@ -73,7 +73,7 @@ func TestEffectiveValuesWrapsFetchFailure(t *testing.T) {
 	}
 }
 
-// RenderResolved: valuesRef on a chartless pack is the GT15 stone, checked
+// RenderResolved: valuesRef on a chartless pack is the values rule, checked
 // BEFORE any network fetch (chartlessness is known once the pack is local).
 // testdata/demo is the repo's chartless fixture (pack.cue + manifests/cm.yaml,
 // no chart.yaml) — the same one TestRenderWithValuesOnChartlessPackIsCube4016

@@ -12,12 +12,13 @@ import (
 	"github.com/cube-idp/cube-idp/internal/registry"
 )
 
-// TestDeliverSelfShapes pins P8's flux self-source (GT16): one
+// TestDeliverSelfShapes pins the flux engine self-source used when
+// spec.engine.selfManage is on (ADR 0020): one
 // OCIRepository named cube-engine watching the pushed artifact + one
 // Kustomization with spec.prune == false (the self-source must never prune
 // the engine out from under itself), both in flux-system. The OCIRepository
 // additionally carries a fresh reconcile-now annotation — each `up` apply
-// doubles as the GT16 "poke" (Poke(name) addresses cube-idp-<pack> names
+// doubles as a reconcile-now poke (Poke(name) addresses cube-idp-<pack> names
 // and cannot reach the plain cube-engine self-source).
 func TestDeliverSelfShapes(t *testing.T) {
 	src := engine.ArtifactRef{Repo: "packs/cube-engine", Tag: "latest", Digest: "sha256:abc"}

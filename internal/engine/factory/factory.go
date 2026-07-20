@@ -17,7 +17,8 @@ import (
 
 // New builds the Engine named by spec.Type (engine-as-pack: the engine is a
 // pure translator/operator — its install objects come from the fetched
-// engine pack, not from the engine). "flux" and "argocd" (D2) both ship;
+// engine pack, not from the engine). "flux" and "argocd" both ship — an
+// engine seam with one implementation would be a lie (ADR 0018);
 // anything else is unknown (CUBE-3001).
 func New(spec config.EngineSpec) (engine.Engine, error) {
 	switch spec.Type {

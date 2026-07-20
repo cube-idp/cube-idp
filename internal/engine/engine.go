@@ -1,5 +1,5 @@
-// Package engine defines the GitOpsEngine seam (spec §4.1, D2). Flux ships
-// in Phase 1; Argo CD in Phase 2; both are compiled in — no plugins (D8).
+// Package engine defines the GitOpsEngine seam (ADR 0018). Flux and Argo CD
+// are both compiled in — engines are never loaded as plugins (ADR 0008).
 // Engine types never leak above this interface: packs describe intent,
 // engines translate.
 package engine
@@ -16,12 +16,12 @@ import (
 
 // ArtifactRef identifies a pushed OCI artifact by repository and tag, e.g.
 // {"packs/gitea", "0.1.0"}. Digest is the manifest digest PushRendered
-// resolved for that push (Task 10) — both engines' Deliver ignore it today;
-// Task 11's change-skip logic is the first consumer.
+// resolved for that push — both engines' Deliver ignore it today;
+// `sync --watch`'s change-skip logic is the first consumer.
 type ArtifactRef struct{ Repo, Tag, Digest string }
 
 // SelfArtifactName is the reserved name of the engine's own rendered
-// install pushed to zot when spec.engine.selfManage is on (GT16, P8): `up`
+// install pushed to zot when spec.engine.selfManage is on (ADR 0020): `up`
 // pushes it via oci.PushRendered (so the artifact lands at
 // packs/cube-engine) and DeliverSelf's objects carry this name verbatim —
 // deliberately NOT the cube-idp-<pack> delivery convention, so no pack can
@@ -69,14 +69,14 @@ type Engine interface {
 	// the same way Deliver's Rendered.DependsOn is — see OrdersDeliveries.
 	DeliverGit(ctx context.Context, name string, src GitSource, dependsOn []string) ([]*unstructured.Unstructured, error)
 	// DeliverSelf returns the engine-native self-source objects watching
-	// the cube-engine artifact (GT16, P8) in the ENGINE's own namespace
+	// the cube-engine artifact (ADR 0020) in the ENGINE's own namespace
 	// with pruning disabled: flux → OCIRepository + Kustomization
 	// (prune: false) in flux-system; argocd → one Application over ns
 	// argocd (automated sync, prune: false, no resources-finalizer). Same
 	// purity rule as Deliver: it RETURNS objects, the caller applies them.
 	// The returned SOURCE object carries a fresh reconcile-now annotation
 	// (flux requestedAt / argocd refresh), so every apply doubles as the
-	// GT16 "poke" — Poke(name) addresses cube-idp-<pack> names and cannot
+	// reconcile-now poke — Poke(name) addresses cube-idp-<pack> names and cannot
 	// reach the plain cube-engine self-source (see SelfArtifactName).
 	DeliverSelf(ctx context.Context, src ArtifactRef) ([]*unstructured.Unstructured, error)
 	// Poke asks the engine to reconcile the delivered pack now instead of on

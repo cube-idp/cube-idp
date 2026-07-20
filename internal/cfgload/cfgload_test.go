@@ -32,7 +32,7 @@ func codeOf(t *testing.T, err error) diag.Code {
 
 func TestLoadLocalFileWins(t *testing.T) {
 	// A name that PARSES as a bare-git ref but exists on disk must load
-	// locally (stat wins — the configs.d/cube.yaml ambiguity, spec §7.1).
+	// locally (stat wins — the configs.d/cube.yaml ambiguity).
 	dir := t.TempDir()
 	sub := filepath.Join(dir, "configs.d")
 	if err := os.MkdirAll(sub, 0o755); err != nil {

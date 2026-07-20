@@ -19,9 +19,9 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
-// TestVersionPrintsCommitAndDate pins the R1 stamped-version surface: the
-// un-stamped defaults render exactly as below, and the leading
-// "cube-idp version dev" prefix survives (the pre-R1 assertion keys on it).
+// TestVersionPrintsCommitAndDate pins the ldflags-stamped version surface
+// (ADR-0017): the un-stamped defaults render exactly as below, and the
+// leading "cube-idp version dev" prefix survives.
 func TestVersionPrintsCommitAndDate(t *testing.T) {
 	root := NewRootCmd()
 	var out bytes.Buffer

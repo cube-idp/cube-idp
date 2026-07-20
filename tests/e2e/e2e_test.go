@@ -1,10 +1,10 @@
-// Package e2e proves the full cube-idp loop (spec §5, "E2E (CI)") against a
+// Package e2e proves the full cube-idp loop end to end in CI against a
 // real kind cluster using local docker: init -> doctor -> up -> up
 // (idempotency) -> diff -> upgrade --plan -> status -> kubectl get packs ->
 // cnoe import -> get secrets -> down. Gated by CUBE_IDP_E2E=1 since it needs
 // docker and takes minutes (image pulls dominate). Runs across the
 // {flux, argocd} engine matrix (CUBE_IDP_E2E_ENGINE, default "flux") per
-// spec §5's kind x {flux, argocd} x {up, diff, upgrade, down} matrix.
+// the kind x {flux, argocd} x {up, diff, upgrade, down} CI matrix.
 package e2e
 
 import (
@@ -40,7 +40,8 @@ import (
 const cubeName = "e2e"
 
 // gatewayPort is the host port the gateway is dialed on. CI always uses
-// cube-idp's default (8443, matching spec D12's port-mapping). Locally, a
+// cube-idp's default (8443, mapped to the gateway NodePort 30443 — see
+// docs/adr/0012-canonical-gateway-host-and-port-mapping.md). Locally, a
 // host may already have something bound to 0.0.0.0:8443 (this repo's own
 // dev machine has an unrelated kind cluster doing exactly that) —
 // CUBE_IDP_E2E_GATEWAY_PORT lets a local run pick a free port instead
@@ -97,8 +98,8 @@ func TestUpStatusDown(t *testing.T) {
 		deleteLingeringCluster(t)
 	})
 
-	// Phase 1 `init` invocation (incl. its --local resolution) kept exactly
-	// as checkpoint 0.12 found it; --engine (Task 2) is appended. P4: the
+	// The `init` invocation (incl. its --local resolution) is kept exactly
+	// as `cube-idp init` itself defines it, with --engine appended. The
 	// packs live in the cube-idp/packs monorepo, so --local points at a
 	// packs checkout (tests/e2e/PACKS.md), not this repo.
 	run(t, dir, bin, "init", "--name", cubeName, "--local", packsRoot, "--engine", eng)
@@ -110,7 +111,7 @@ func TestUpStatusDown(t *testing.T) {
 	run(t, dir, bin, "up") // must exit 0 (spec: diagnose loudly and exit)
 	recordUpWallTime(t, eng, time.Since(upStart))
 
-	// Task 10 deferred verification: a kind node's containerd can pull
+	// Registry-reachability check: a kind node's containerd can pull
 	// registry.<host>/... through certs.d + the zot NodePort (never through
 	// localtest.me, which resolves to the node itself from inside a node —
 	// see internal/trust/certsd.go). Engine-independent (kind provider +
@@ -121,13 +122,13 @@ func TestUpStatusDown(t *testing.T) {
 
 	run(t, dir, bin, "up") // idempotency: re-run is the upgrade command
 
-	// Phase 2: cube.lock written and well-formed
+	// cube.lock written and well-formed
 	lockRaw, err := os.ReadFile(dir + "/cube.lock")
 	if err != nil || !strings.Contains(string(lockRaw), "renderedHash") {
 		t.Fatalf("cube.lock missing or malformed: %v\n%s", err, lockRaw)
 	}
 
-	// Phase 2: a converged cube has no diff and no pending upgrades (exit 0)
+	// A converged cube has no diff and no pending upgrades (exit 0)
 	run(t, dir, bin, "diff")
 	run(t, dir, bin, "upgrade", "--plan")
 
@@ -143,22 +144,22 @@ func TestUpStatusDown(t *testing.T) {
 		}
 	}
 
-	// Phase 2: HTTPS gateway — TLS handshake serves the cube-idp CA-issued cert
+	// HTTPS gateway — TLS handshake serves the cube-idp CA-issued cert
 	assertGatewayTLS(t, "cube-idp.localtest.me:"+strconv.Itoa(port))
 
-	// Phase 2 (D11): pack records are discoverable via plain kubectl
+	// The inert Pack record CRD makes packs discoverable via plain kubectl
 	packs := runKubectl(t, "get", "packs")
 	for _, want := range []string{"gitea", "VERSION", "URL", "AUTH-SECRET", "READY"} {
 		if !strings.Contains(packs, want) {
-			t.Fatalf("kubectl get packs missing %q (D11 printer columns):\n%s", want, packs)
+			t.Fatalf("kubectl get packs missing %q (Pack CRD printer columns):\n%s", want, packs)
 		}
 	}
-	// Task 15.1: the rendered URL must carry the gateway's actual port —
+	// The rendered URL must carry the gateway's actual port —
 	// the pre-fix ${GATEWAY_HOST} substitution injected only the host, so
 	// the printed link dialed the default HTTPS port (443) instead of
 	// wherever the gateway actually listens, and was dead.
 	if wantSuffix := ":" + strconv.Itoa(port); !strings.Contains(packs, wantSuffix) {
-		t.Fatalf("kubectl get packs URL column missing gateway port %q (Task 15.1):\n%s", wantSuffix, packs)
+		t.Fatalf("kubectl get packs URL column missing gateway port %q:\n%s", wantSuffix, packs)
 	}
 
 	// engine-as-pack (§3.3.7): the engine installs from the cube-engine-<type>
@@ -172,15 +173,16 @@ func TestUpStatusDown(t *testing.T) {
 		t.Fatalf("engine Pack record %q: DELIVERY = %q, want %q (§3.3.7 engine record row)\nkubectl get packs:\n%s", enginePack, engineDelivery, "engine", packs)
 	}
 
-	// Phase 2: cnoe-compat import round-trips
+	// cnoe-compat import round-trips
 	writeCnoeFixture(t, dir)
 	run(t, dir, bin, "cnoe", "import", dir+"/cnoe-apps")
 
-	// D9 + D11: the admin credential surfaces via the Pack -> authSecretRef
+	// Credentials are surfaced on demand, never printed implicitly: the admin
+	// credential is reachable via the Pack record's expose.authSecretRef
 	// pivot, and gitea_admin arrives through expose.impliedFields
 	secrets := run(t, dir, bin, "get", "secrets", "-p", "gitea")
 	if !strings.Contains(secrets, "gitea_admin") {
-		t.Fatalf("gitea admin secret not surfaced (D9/D11):\n%s", secrets)
+		t.Fatalf("gitea admin secret not surfaced by `get secrets -p gitea`:\n%s", secrets)
 	}
 	run(t, dir, bin, "down", "--yes")
 }
@@ -188,7 +190,7 @@ func TestUpStatusDown(t *testing.T) {
 // TestPackDependsOn proves the p6 dep-chain leg end-to-end on a real kind
 // cluster (flux engine): a cube.yaml-level `packs[].dependsOn` (DEP1-3)
 // actually orders delivery in the cluster and is echoed back on the pack's
-// D11 record (DEP4). init --local writes the default profile's packs in
+// Pack record (DEP4). init --local writes the default profile's packs in
 // declared order [gitea, argocd] (cmd/init.go); this test patches the
 // argocd entry to declare `dependsOn: ["gitea"]` — the cube.yaml surface,
 // since published packs don't declare their own dependsOn yet (DEP5). The
@@ -252,7 +254,7 @@ func TestPackDependsOn(t *testing.T) {
 		t.Fatalf("argocd Kustomization spec.dependsOn[0].name = %q, want %q", got, "cube-idp-gitea")
 	}
 
-	// (b) D11 Pack record echoes the resolved dep back as the DEPENDS-ON
+	// (b) the Pack record echoes the resolved dep back as the DEPENDS-ON
 	// column's backing field (p6 DEP4).
 	gotDep := strings.TrimSpace(runKubectl(t, "get", "packs", "argocd", "-o", "jsonpath={.spec.dependsOn}"))
 	if gotDep != "gitea" {
@@ -395,7 +397,7 @@ func TestRemoteValuesAndRemoteConfig(t *testing.T) {
 	}
 
 	// `up -f <ref>` converges the same cluster from the remote config and
-	// writes cube.lock into its WORKING DIRECTORY (spec §7.3).
+	// writes cube.lock into its WORKING DIRECTORY.
 	remoteDir := t.TempDir()
 	upOut := run(t, remoteDir, bin, "up", "-f", ref)
 	if !strings.Contains(upOut, "using remote config") {
@@ -443,7 +445,7 @@ func pollDeployReplicas(t *testing.T, ns, name, want string, timeout time.Durati
 	t.Fatalf("deployment %s/%s spec.replicas = %q, want %q (valuesRef override never reached the cluster)", ns, name, last, want)
 }
 
-// recordUpWallTime is Task 0.5(j)'s tracked CI metric: spec §3's <60s goal
+// recordUpWallTime records the tracked CI metric for `up` wall time. The <60s goal
 // is now scoped to a WARM run (node images already cached — see README's
 // mounts:-based node-image cache recipe; this repo does no pre-pull
 // engineering itself, so CI's own runs are typically cold and expected to
@@ -455,7 +457,7 @@ func pollDeployReplicas(t *testing.T, ns, name, want string, timeout time.Durati
 // test — this is telemetry, not a correctness assertion.
 func recordUpWallTime(t *testing.T, engine string, wall time.Duration) {
 	t.Helper()
-	line := fmt.Sprintf("cube-idp up wall time (engine=%s): %s (goal: <60s warm, spec §3; tracked not asserted)", engine, wall)
+	line := fmt.Sprintf("cube-idp up wall time (engine=%s): %s (goal: <60s warm; tracked not asserted)", engine, wall)
 	t.Logf("%s", line)
 	summary := os.Getenv("GITHUB_STEP_SUMMARY")
 	if summary == "" {
@@ -503,8 +505,9 @@ func patchGatewayPort(t *testing.T, dir string, port int) {
 	t.Logf("patched cube.yaml: gateway.port=%d (CUBE_IDP_E2E_GATEWAY_PORT override)", port)
 }
 
-// runKubectl asserts against the cluster with plain kubectl (the D11 pitch
-// is literally "kubectl get packs works"). GitHub runners ship kubectl;
+// runKubectl asserts against the cluster with plain kubectl — the whole point
+// of the inert Pack record CRD is that "kubectl get packs works" without any
+// cube-idp tooling. GitHub runners ship kubectl;
 // locally the test skips if it is absent. kind's Ensure wrote the context
 // into the default kubeconfig.
 func runKubectl(t *testing.T, args ...string) string {
@@ -526,7 +529,7 @@ func runKubectl(t *testing.T, args ...string) string {
 // resolved via the zot NodePort on the node's own loopback
 // (http://localhost:30500), never through localtest.me (which resolves to
 // the node itself, not the gateway, from inside a node). This is the
-// weakest guess flagged in the Phase 2 plan (Task 10) — the fallback design
+// least-certain assumption in the canonical-hostname design — the fallback
 // (rewrite hosts.toml with the node's InternalIP after create) only matters
 // if this fails. Skips (not fails) if docker or the node's crictl are
 // unavailable, so the suite degrades gracefully on a host without a usable
@@ -534,21 +537,22 @@ func runKubectl(t *testing.T, args ...string) string {
 func assertNodeCanPullFromRegistry(t *testing.T, ref string) {
 	t.Helper()
 	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker not on PATH — cannot exec into the kind node to verify certs.d reachability (Task 10)")
+		t.Skip("docker not on PATH — cannot exec into the kind node to verify certs.d reachability")
 	}
 	node := cubeName + "-control-plane"
 	full := "registry.cube-idp.localtest.me/" + ref
 	out, err := exec.Command("docker", "exec", node, "crictl", "pull", full).CombinedOutput()
 	if err != nil {
-		t.Fatalf("kind node %s could not pull %s via certs.d + the zot NodePort (D6/Task 10 — see internal/trust/certsd.go): %v\n%s",
+		t.Fatalf("kind node %s could not pull %s via certs.d + the zot NodePort (see internal/trust/certsd.go): %v\n%s",
 			node, full, err, out)
 	}
-	t.Logf("Task 10 verified: kind node %s pulled %s via certs.d + the zot NodePort\n%s", node, full, out)
+	t.Logf("verified: kind node %s pulled %s via certs.d + the zot NodePort\n%s", node, full, out)
 }
 
 // assertGatewayTLS dials the gateway and verifies the served cert chains to
-// the cube-idp local CA and covers the wildcard host — the D6 story minus
-// the OS trust store (never touched in CI).
+// the cube-idp local CA and covers the wildcard host — TLS at the gateway
+// minus the OS trust store, which is never touched in CI (see
+// docs/adr/0038-local-ca-and-tls-at-the-gateway.md).
 //
 // It POLLS (5s interval, gatewayTLSTimeout deadline, pollStatusReady's
 // shape) rather than dialing once: `up` returns when the ENGINE reports the
@@ -556,7 +560,7 @@ func assertNodeCanPullFromRegistry(t *testing.T, ref string) {
 // the controller — the Envoy data-plane Deployment is created by that
 // controller asynchronously afterwards (proxy image pull + xDS sync +
 // listener programming), so a single immediate dial raced it and reset
-// (found on the Task 13 envoy leg, 2026-07-15, after the pack's xDS
+// (found on the envoy-gateway e2e leg, 2026-07-15, after the pack's xDS
 // Service-name collision was fixed). Kept as the one shared helper (same
 // signature) instead of an envoy-only wrapper: the traefik path's gateway
 // is already serving when `up` returns, so its first dial succeeds and
@@ -589,7 +593,8 @@ func assertGatewayTLS(t *testing.T, addr string) {
 
 // gatewayTLSTimeout bounds assertGatewayTLS's poll. Sized for the envoy
 // data-plane's worst case on a fresh kind node (proxy image pull dominates);
-// a hard deadline per spec §4.5 — no infinite spinner.
+// a hard deadline — every wait ends in a rendered diagnosis, never an
+// infinite spinner (see docs/adr/0030-typed-cube-diagnostics.md).
 const gatewayTLSTimeout = 3 * time.Minute
 
 func writeCnoeFixture(t *testing.T, dir string) {
@@ -619,7 +624,7 @@ func mustUserConfigDir(t *testing.T) string {
 }
 
 // packsCheckout resolves the local cube-idp/packs checkout the e2e suite
-// feeds to `init --local` (P4: the packs no longer live in this repo).
+// feeds to `init --local` (the packs no longer live in this repo).
 // CUBE_IDP_E2E_PACKS_DIR points at the checkout's packs/ directory; unset,
 // it defaults to the sibling checkout's ../cube-idp-packs/packs (relative
 // to this repo's root). Returns the checkout ROOT — the packs dir's parent,
@@ -659,7 +664,7 @@ func deleteLingeringCluster(t *testing.T) {
 
 // deleteLingeringClusterNamed is deleteLingeringCluster for an explicit
 // cluster name — the spoke e2e leg guards both the hub ("e2e") and its
-// GT7-named spoke cluster ("e2e-spoke-<name>").
+// spoke cluster, named "<cube>-spoke-<name>" ("e2e-spoke-<name>" here).
 func deleteLingeringClusterNamed(t *testing.T, name string) {
 	t.Helper()
 	if kindClusterExists(t, name) {
@@ -707,7 +712,7 @@ func run(t *testing.T, dir, bin string, args ...string) string {
 }
 
 // TestRecordUpWallTimeWritesStepSummary and TestRecordUpWallTimeNoopWithoutStepSummary
-// cover Task 0.5(j)'s tracked-metric helper directly — no docker/cluster
+// cover the tracked-metric helper directly — no docker/cluster
 // needed, so these run unconditionally (not gated by CUBE_IDP_E2E).
 func TestRecordUpWallTimeWritesStepSummary(t *testing.T) {
 	summary := filepath.Join(t.TempDir(), "summary.md")
@@ -749,12 +754,12 @@ func TestRecordUpWallTimeNoopWithoutStepSummary(t *testing.T) {
 }
 
 // TestSpokeKindRegistration proves the S3 hub/spoke loop end-to-end on real
-// kind clusters (spec §5, registration only): declare one kind spoke, `up`
+// kind clusters (registration only): declare one kind spoke, `up`
 // creates + bootstraps it and registers it with the hub engine (hub secret
 // cube-idp-spoke-<name> with a non-empty engine-native payload), then
 // `down --yes` cascades the spoke cluster away. Gated like TestUpStatusDown
 // (CUBE_IDP_E2E=1, docker required) and honoring CUBE_IDP_E2E_GATEWAY_PORT
-// (GT14). Run locally with:
+// (a dev machine may already have 8443 bound). Run locally with:
 //
 //	CUBE_IDP_E2E=1 CUBE_IDP_E2E_GATEWAY_PORT=18443 go test ./tests/e2e/ -run TestSpokeKindRegistration -v -timeout 25m
 func TestSpokeKindRegistration(t *testing.T) {
@@ -811,7 +816,7 @@ func TestSpokeKindRegistration(t *testing.T) {
 	}
 }
 
-// TestPublishedPacksByDigest is decision 2's digest-pin leg (P4): the e2e
+// TestPublishedPacksByDigest is the digest-pin leg: the e2e
 // consumes the PUBLISHED packs repo pinned by digest, never by mutable tag.
 // Gated on CUBE_IDP_E2E_ONLINE=1 (it pulls from ghcr.io — network + docker
 // required) and on tests/e2e/packs.lock, the committed JSON map of
@@ -836,7 +841,7 @@ func TestPublishedPacksByDigest(t *testing.T) {
 			t.Fatalf("packs.lock missing %q (the online leg ups gateway+gitea)", name)
 		}
 		if !strings.Contains(ref, "@sha256:") {
-			t.Fatalf("packs.lock[%q] = %q is not digest-pinned (decision 2)", name, ref)
+			t.Fatalf("packs.lock[%q] = %q is not digest-pinned", name, ref)
 		}
 	}
 	port := gatewayPort(t)

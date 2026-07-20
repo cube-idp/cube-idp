@@ -31,7 +31,7 @@ func TestRenderContract(t *testing.T) {
 		})
 }
 
-// TestForProviderE2E is the live e2e smoke (spec §9): a forProvider node
+// TestForProviderE2E is the live e2e smoke: a forProvider node
 // label observed via the Kubernetes API proves the channel end-to-end
 // through kubeadm; the accompanying featureGate proves the cluster still
 // boots with one set. Gated — needs a container runtime.

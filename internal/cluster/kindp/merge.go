@@ -1,4 +1,4 @@
-// Package kindp implements the kind ClusterProvider (spec §4.1) and the
+// Package kindp implements the kind ClusterProvider and the
 // cluster customization ladder (spec 2026-07-18-cluster-forprovider-design.md
 // §4): providerConfigRef (fetched base) + forProvider (inline overrides,
 // RFC 7386 merge-patched on top) composed generically by internal/cluster/
@@ -26,8 +26,8 @@ import (
 // gatewayContainerPort is the kind node port the gateway hostPort maps to.
 // It pins to the traefik starter pack's fixed websecure NodePort
 // (config.GatewayNodePort, chart values ports.websecure.nodePort /
-// service.spec.type: NodePort) rather than 443: Phase 2 terminates TLS at
-// Traefik with a cube-idp CA-issued cert (spec D6/D12, internal/up/tls.go),
+// service.spec.type: NodePort) rather than 443: cube-idp terminates TLS at
+// Traefik with a cube-idp CA-issued cert (ADR 0038, internal/up/tls.go),
 // and a NodePort Service is simpler than wiring a hostPort/LoadBalancer
 // controller into a kind node. See packs/traefik/README.md for the full
 // host->node->pod chain. Shared with k3dp via config.GatewayNodePort (not
@@ -38,7 +38,7 @@ const gatewayContainerPort = config.GatewayNodePort
 // CertsD requests a containerd certs.d bind mount on every kind node so
 // image refs on Host resolve through the hosts.toml/ca.crt staged in HostDir
 // (internal/trust.WriteCertsD) rather than through localtest.me, which on a
-// kind node resolves to the node itself (D6). Zero value = no injection.
+// kind node resolves to the node itself. Zero value = no injection.
 type CertsD struct{ Host, HostDir string }
 
 // RenderConfig composes the customization ladder (spec 2026-07-18 §4) and
@@ -55,7 +55,7 @@ type CertsD struct{ Host, HostDir string }
 //
 // layer 4 = core injections (name/kind/apiVersion, gateway ports, node
 //
-//	image, certs.d) — core wins, CUBE-1206 warning (decision 1)
+//	image, certs.d) — core wins, CUBE-1206 warning
 func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw config.GatewaySpec, certsd CertsD) ([]byte, []diag.Finding, error) {
 	var warns []diag.Finding
 	warn := func(msg string) {
@@ -79,7 +79,7 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 		if err := sigyaml.UnmarshalStrict(j, cfg); err != nil {
 			return nil, nil, diag.Wrap(err, diag.CodeKindConfigInvalid,
 				"providerConfigRef/forProvider is not a valid kind Cluster document",
-				"unknown or mistyped field — see https://kind.sigs.k8s.io/docs/user/configuration/ and docs/superpowers/specs/2026-07-18-kind-config-reference.md")
+				"unknown or mistyped field — see https://kind.sigs.k8s.io/docs/user/configuration/ and docs/kind-config-reference.md")
 		}
 	}
 	cfg.Kind = "Cluster"
@@ -100,8 +100,8 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 	}
 	cp.Image = image
 
-	// Required injection: gateway port (spec D10 "injects only what it
-	// requires"). Guarded (U2, pre-created for S3): a zero gw.Port means "no
+	// Required injection: gateway port. cube-idp injects only the fields it
+	// owns, and those win over user-supplied values (ADR 0011). Guarded (U2, pre-created for S3): a zero gw.Port means "no
 	// gateway on this cluster" — spoke clusters render with a zero
 	// GatewaySpec — and injects no mapping at all.
 	if gw.Port > 0 {
@@ -118,7 +118,7 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 				ContainerPort: gatewayContainerPort, HostPort: int32(gw.Port), Protocol: v1alpha4.PortMappingProtocolTCP,
 			})
 		}
-		// U2 opt-in HTTP twin (decision 3): host gw.HTTPPort -> the
+		// Opt-in plain-HTTP twin of the gateway mapping: host gw.HTTPPort -> the
 		// plain-HTTP NodePort both gateway packs pin
 		// (config.GatewayHTTPNodePort). Absent = no mapping, byte-identical
 		// output to before.
@@ -139,7 +139,8 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 		}
 	}
 
-	// D10 layer-1 typed fields.
+	// Typed `spec.cluster` sugar (extra ports, mounts, registry mirrors, node
+	// image) — the layer that collides hard on conflict; see ADR 0011.
 	for _, p := range spec.ExtraPorts {
 		if hasHostPort(cp.ExtraPortMappings, p.HostPort) {
 			if p.HostPort == int32(gw.Port) {
@@ -165,7 +166,7 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 	}
 	cfg.ContainerdConfigPatches = append(cfg.ContainerdConfigPatches, containerdPatches(spec.Registry)...)
 
-	// D6 canonical hostname: containerd certs.d injection (Task 10).
+	// Canonical gateway hostname: containerd certs.d injection.
 	if certsd.Host != "" {
 		cfg.ContainerdConfigPatches = append(cfg.ContainerdConfigPatches,
 			"[plugins.\"io.containerd.grpc.v1.cri\".registry]\n  config_path = \"/etc/containerd/certs.d\"")

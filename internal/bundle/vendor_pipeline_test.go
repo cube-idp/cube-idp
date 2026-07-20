@@ -11,8 +11,8 @@ import (
 	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
-// TestVendorPlainByteStable is Step 2's golden test (Task R3): Vendor driven
-// through ui.RunPipeline with ModePlain forced must emit exactly today's
+// TestVendorPlainByteStable is the golden test for Vendor's plain output:
+// Vendor driven through ui.RunPipeline with ModePlain forced must emit today's
 // plain sequence — the engine pack line (engine-as-pack: vendored first,
 // like every pack), the demo "pack" line, no image lines (the fixture pins
 // no Entry.Images), then the final "bundle written:" line — per G7's pinned
@@ -74,7 +74,8 @@ func TestVendorImagePlainByteStable(t *testing.T) {
 	if !bytes.Contains([]byte(got), []byte(wantImageLine)) {
 		t.Fatalf("plain projection missing image line %q, got:\n%q", wantImageLine, got)
 	}
-	// R1 start lines for the pack and image steps double their line count;
+	// The plain projection's step start lines (see ADR-0024) double the pack
+	// and image steps' line count;
 	// engine-as-pack adds the engine pack's start+done pair, so: engine pack
 	// start+done, demo pack start+done, image start+done, bundle written.
 	if n := bytes.Count([]byte(got), []byte("\n")); n != 7 {

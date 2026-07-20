@@ -36,10 +36,10 @@ spec:
                   type: object
                   additionalProperties: {type: string}
                 ready: {type: boolean}
-                # GT15 (U4): "yes" when the install carried values and/or
+                # "yes" when the install carried values and/or
                 # extraManifests, "no" otherwise — always present.
                 customized: {type: string}
-                # GT19 (P7): "oci" or "repo" — how the engine sources this
+                # "oci" or "repo" — how the engine sources this
                 # pack; the record writer maps absent to "oci", so always
                 # present.
                 delivery: {type: string}

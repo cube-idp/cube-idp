@@ -61,7 +61,7 @@ func TestPackPublishPrintsDigest(t *testing.T) {
 	}
 }
 
-// TestPackPublishRejectsVersionTagMismatch pins the GT9 invariant the CI
+// TestPackPublishRejectsVersionTagMismatch pins the tag==version invariant the CI
 // relies on: the publish tag must equal pack.cue's version — a mismatch is
 // CUBE-4001 with a fix line, raised BEFORE any push.
 func TestPackPublishRejectsVersionTagMismatch(t *testing.T) {

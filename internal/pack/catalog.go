@@ -1,5 +1,5 @@
-// catalog.go is the consumer side of the P2 pack catalog index artifact
-// (Phase 5 P6): FetchCatalog pulls oci://ghcr.io/cube-idp/packs/index:latest
+// catalog.go is the consumer side of the pack catalog index artifact
+// that `pack index push` publishes: FetchCatalog pulls oci://ghcr.io/cube-idp/packs/index:latest
 // — the artifact `pack index push` publishes — and hands callers the parsed
 // entry list. It deliberately reuses the pack pull machinery (pullOCI, the
 // docker credential chain, the loopback PlainHTTP gate) instead of growing a
@@ -21,7 +21,8 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// DefaultIndexRef is the published pack catalog index artifact (GT9).
+// DefaultIndexRef is the published pack catalog index artifact — the packs
+// repo is github.com/cube-idp/packs, so its index lives under that path.
 const DefaultIndexRef = "oci://ghcr.io/cube-idp/packs/index:latest"
 
 // EnvPackIndex overrides the index ref — mirrors and tests point it at
@@ -32,7 +33,7 @@ const EnvPackIndex = "CUBE_IDP_PACK_INDEX"
 // registry is consulted again.
 const catalogCacheTTL = 24 * time.Hour
 
-// Catalog is the parsed index artifact (P2 schema, schemaVersion 1,
+// Catalog is the parsed index artifact (schemaVersion 1,
 // additive-only within the version — cmd/pack_publish.go's packIndex is the
 // producer twin).
 type Catalog struct {

@@ -11,8 +11,9 @@ import (
 )
 
 // newExplainCmd is the lookup half of the stable-code contract (rustc
-// --explain pattern, spec WP8): every CUBE-xxxx a diagnosis prints can be
-// resolved offline, which is what lets the TE-2.3 box footer advertise it.
+// --explain pattern): every CUBE-xxxx a diagnosis prints can be
+// resolved offline, which is what lets the diagnosis box footer advertise
+// it — the box must never point at a command that does not run.
 // Output is plain text; `-o json` is future work (recorded in the plan).
 func newExplainCmd() *cobra.Command {
 	var list bool

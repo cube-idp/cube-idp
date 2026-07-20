@@ -17,7 +17,8 @@ func main() {
 
 	if err := cmd.Execute(ctx); err != nil {
 		// A plugin's own non-zero exit propagates verbatim, unrendered —
-		// its output is its diagnosis (spec §4.4 tier 2). Everything else
+		// its output is its diagnosis — wrapping it would hide the plugin's
+		// own error text behind a cube-idp frame. Everything else
 		// renders as a CUBE-xxxx block and exits 1, as before.
 		code, render := cmd.ExitCodeFor(err)
 		if render {
@@ -26,7 +27,7 @@ func main() {
 			// must never capture ANSI borders); a styled panel on a rich
 			// terminal. Printed only after Execute returned — i.e. after any
 			// live program fully released the terminal — so the diagnosis is
-			// always the last thing shown (design doc §5.2, diagnosis-last).
+			// always the last thing shown (the diagnosis-last rule).
 			fmt.Fprintln(os.Stderr, ui.RenderErrorTo(os.Stderr, err))
 		}
 		stop() // os.Exit skips deferred calls; release the signal handler explicitly

@@ -1,4 +1,4 @@
-# cube-idp release build (Phase 4 R1). goreleaser v2 schema.
+# cube-idp release build. goreleaser v2 schema (`version: 2` below is required — the v1 schema is not accepted).
 # Local validation: goreleaser release --snapshot --clean (also run by the
 # ci.yaml release-snapshot job on every push — cheap, no publish).
 version: 2

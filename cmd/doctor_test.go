@@ -13,7 +13,8 @@ import (
 	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
-// TestWriteDoctorJSON pins the gh-style doctor document (design doc §10): the
+// TestWriteDoctorJSON pins the gh-style doctor document — one final object,
+// not a stream, because doctor answers once: the
 // findings array carries codes and severities, and errors reflects whether any
 // finding is an error (the exit-code driver).
 func TestWriteDoctorJSON(t *testing.T) {
@@ -52,7 +53,7 @@ func TestWriteDoctorJSONNoErrors(t *testing.T) {
 	}
 }
 
-// ——— U5: tri-state checklist (GT18) ———
+// ——— tri-state checklist ———
 
 // stubDoctorChecks swaps the host-check assembly seam (doctorChecks — the
 // statusConnect pattern) for a fixed set, so command tests control every
@@ -104,7 +105,7 @@ func checklistRow(t *testing.T, out, name string) string {
 	return ""
 }
 
-// TestDoctorChecklistRowsPlainAndExit: GT18 — every stubbed check renders
+// TestDoctorChecklistRowsPlainAndExit: every stubbed check renders
 // exactly one row; plain rows are word-only (ok/warn/fail, no glyphs); a
 // red row keeps the exit-1 contract, and the findings block below still
 // carries the remediation.
@@ -160,7 +161,7 @@ func TestDoctorChecklistGreenWarnExitsZero(t *testing.T) {
 
 // TestDoctorChecklistStyledPairsGlyphWithWord: --progress live forces the
 // styled render into the test buffer (rung 3); every row pairs the themed
-// glyph with its word — color and symbol never carry meaning alone (GT13).
+// glyph with its word — color and symbol never carry meaning alone.
 func TestDoctorChecklistStyledPairsGlyphWithWord(t *testing.T) {
 	t.Cleanup(func() { ui.SetMode(ui.ModeStyled) })
 	p := writeSpokeFixture(t)
@@ -187,7 +188,8 @@ func TestDoctorChecklistStyledPairsGlyphWithWord(t *testing.T) {
 }
 
 // TestDoctorJSONChecksArrayAdditive: -o json gains the additive checks
-// array (GT18/GT13) — name/status plus detail (ok) or code+message
+// array — one row per executed check, additive to the existing document:
+// name/status plus detail (ok) or code+message
 // (warn/fail); the findings array and errors verdict are unchanged.
 func TestDoctorJSONChecksArrayAdditive(t *testing.T) {
 	p := writeSpokeFixture(t)

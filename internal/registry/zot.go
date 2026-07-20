@@ -1,6 +1,6 @@
 // Package registry embeds and installs the in-cluster zot OCI registry —
 // the delivery bus between cube-idp's client-side rendering and the GitOps
-// engine (spec §4, "OCI push").
+// engine.
 package registry
 
 import (

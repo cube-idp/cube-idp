@@ -16,7 +16,7 @@ func TestFactoryFlux(t *testing.T) {
 
 func TestFactoryArgoCD(t *testing.T) {
 	if _, err := New(config.EngineSpec{Type: "argocd"}); err != nil {
-		t.Fatalf("argocd engine must construct in Phase 2 (D2): %v", err)
+		t.Fatalf("argocd engine must construct: %v", err)
 	}
 }
 

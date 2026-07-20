@@ -11,13 +11,13 @@ import (
 )
 
 // localRegistry and writeDemoPack delegate to the shared ocitest package
-// (Task 6): both this file and internal/bundle's vendor tests need the same
+// both this file and internal/bundle's vendor tests need the same
 // in-process-registry-plus-demo-pack fixture, so it lives in one place
 // rather than being copy-pasted per package.
 func localRegistry(t *testing.T) string { return ocitest.LocalRegistry(t) }
 func writeDemoPack(t *testing.T) string { return ocitest.WriteDemoPack(t) }
 
-// TestPushPackDirRoundTripsThroughFetch is the whole contract of Task 3:
+// TestPushPackDirRoundTripsThroughFetch is the whole contract of PushPackDir:
 // PushPackDir must produce an artifact pack.Fetch's pullOCI can consume —
 // push a pack directory, Fetch it back over the wire, and Render it.
 func TestPushPackDirRoundTripsThroughFetch(t *testing.T) {
@@ -54,7 +54,7 @@ func TestPushPackDirRoundTripsThroughFetch(t *testing.T) {
 // TestPushPackDirIsContentAddressed proves that pushing the identical pack
 // directory twice produces the identical digest — a fixed epoch annotation
 // (not wall-clock time.Now) is what makes the CI pack republish a true no-op
-// (Phase 4 R8). The sleep spans a wall-clock second boundary: with the old
+// republish. The sleep spans a wall-clock second boundary: with the old
 // time.Now()-based annotation, RFC3339's second granularity meant this test
 // only intermittently caught the bug (two fast in-process pushes often land
 // in the same second); the delay makes the RED failure reliable.

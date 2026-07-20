@@ -28,7 +28,7 @@ func Resolve(ctx context.Context, ref, cacheDir string) (map[string]any, string,
 	return m, pin, nil
 }
 
-// Merge applies patch onto base per RFC 7386 (decision 4). One algorithm
+// Merge applies patch onto base per RFC 7386. One algorithm
 // for every inline-over-fetched ladder — the implementation lives in refval.
 func Merge(base, patch map[string]any) (map[string]any, error) {
 	return refval.Merge(base, patch)

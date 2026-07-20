@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// TestPromptFenceNeverBlocksOnBufferStdin is the spec §6.3 prompt-gating
+// TestPromptFenceNeverBlocksOnBufferStdin is the prompt-gating
 // fence, made a TABLE so a future prompt-capable command cannot dodge it:
 // every command that owns a consent or menu prompt is driven end-to-end
 // with an empty bytes.Buffer as stdin and MUST complete — refusing, aborting,
@@ -18,7 +18,8 @@ import (
 // headroom so a violation fails in seconds, not as a stuck suite.
 //
 // Rows and their expected non-blocking outcome:
-//   - down            → CUBE-0010 refusal before any pipeline (TE-3.4 / R3)
+//   - down            → CUBE-0010 refusal before any pipeline (no --yes on a
+//     non-TTY must never proceed and never hang)
 //   - trust           → text-fallback prompt reads EOF → "aborted", exit 0
 //   - upgrade --plan  → no cube.lock next to the fixture → typed error
 //   - pack install    → bare invocation on non-TTY → CUBE-0010 refusal

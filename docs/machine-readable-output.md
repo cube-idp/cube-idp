@@ -1,8 +1,8 @@
 # Machine-readable output
 
 > **EXPERIMENTAL** — both schemas on this page (the event stream and the
-> document mode) are experimental until the v1 `cube.yaml` config freeze
-> (spec D5). Until then, fields may be added, renamed, or removed without
+> document mode) are experimental until the v1 `cube.yaml` config freeze.
+> Until then, fields may be added, renamed, or removed without
 > notice. After the freeze they receive a Terraform-style compatibility
 > promise: within a major schema version (`"v": 1`), existing fields keep
 > their name and meaning; new fields may be added; consumers must ignore
@@ -12,7 +12,7 @@ cube-idp has two machine-readable surfaces, selected independently:
 
 | Surface | Commands | How to select | Shape |
 |---|---|---|---|
-| **Event stream** | long-running commands: `up`, `down`, `vendor`; short static commands: `sync` (one-shot), `repo create`, `plugin list`\|`trust`\|`install`, `pack push` | `--progress=json` or `CUBE_IDP_PROGRESS=json` | JSON lines: one event per line, written to the same channel as it's produced — the short commands just produce very few lines in quick succession, not a separate batching behavior |
+| **Event stream** | long-running commands: `up`, `down`, `vendor`; short static commands: `sync` (one-shot), `repo create`, `plugin list`\|`search`\|`trust`\|`install`, `pack push`\|`publish`, `pack index build`\|`push` | `--progress=json` or `CUBE_IDP_PROGRESS=json` | JSON lines: one event per line, written to the same channel as it's produced — the short commands just produce very few lines in quick succession, not a separate batching behavior |
 | **Documents** | request/response commands: `status`, `doctor`, `get secrets` | `--output json` (or `-o json`); `--progress=json` selects the same document on these commands | one pretty-printed JSON object per invocation, emitted once at the end |
 
 Everything else about a run is unchanged in both modes: exit codes, the
@@ -61,7 +61,8 @@ Event types section below) also carries `ts`:
 `stage` is an open string, not an enum: `up` currently emits `config`,
 `ca`, `cluster`, `registry`, `packs-crd`, `engine`, `tls`, `pack`, `lock`,
 `dns`, `health`, `packs`; `down` emits `engine`, `dns`, `cascade`,
-`cluster`, `trust`; `vendor` emits a single stage, `vendor`, once per pack
+`cluster`, `trust`, plus a `spoke` stage per declared kind spoke it tears
+down; `vendor` emits a single stage, `vendor`, once per pack
 and once per image plus the final bundle-written step (`cmd`/`cube` on
 `run_started` is `"vendor"`/`""` — vendor is a pure `cube.lock` consumer with
 no `cube.yaml`, so `cube` is always empty); `sync` (one-shot only — `--watch`
@@ -69,16 +70,18 @@ keeps its own plain loop, out of scope for the event stream) emits a single
 stage, `sync`, three times: rendered, pushed, delivered. `repo create` emits
 no stages at all — its whole access block (created confirmation, clone URL,
 push command, and the deploy line when `--deploy` was passed) is a sequence
-of `note` events instead. `plugin list`/`trust`/`install` and `pack push`
-are the same shape: `plugin list` emits either one `warn` (nothing
-discovered) or one `note` (the NAME/PATH/TRUSTED table, embedded newlines
-and all); `plugin trust`/`plugin install` each emit one `note`; `pack push`
-emits a single `step_done` on stage `pack`. None of the five short static
-commands ever pop the live step-tree — `--progress=live` still forces it,
-but a real terminal under the default auto-styled mode gets the
-content-identical styled-static projection instead (design doc §5.2; the
-live tree is reserved for `up`/`down`/`vendor`). Packs and future commands
-may add stages without a schema version bump.
+of `note` events instead. The `plugin` and `pack` short commands are the
+same shape: `plugin list` emits either one `warn` (nothing discovered) or
+one `note` (the NAME/PATH/TRUSTED table, embedded newlines and all);
+`plugin search` (and `plugin list --available`) likewise emits one `warn`
+(no match) or one `note` (a NAME/VERSION/DESCRIPTION table); `plugin trust`
+and `plugin install` each emit one `note`; `pack push`, `pack publish`,
+`pack index build`, and `pack index push` each emit a single `step_done` on
+stage `pack`. None of these short static commands ever pop the live
+step-tree — `--progress=live` still forces it, but a real terminal under
+the default auto-styled mode gets the content-identical styled-static
+projection instead; the live tree is reserved for `up`/`down`/`vendor`.
+Packs and future commands may add stages without a schema version bump.
 
 ### Event types
 
@@ -177,7 +180,7 @@ An advisory (e.g. a deprecation note).
 
 The post-success "what you actually need" block, as data (the `✔ cube …
 is up` headline plus key–value rows in a terminal run). The `✔` glyph is
-presentation — renderers add it; the event never carries it (ratified R2).
+presentation — renderers add it; the event never carries it.
 
 ```json
 {"v":1,"ts":"…","type":"epilogue","cube":"dev","gateway_url":"https://cube-idp.localtest.me:8443","context":"kind-dev","registry":"zot.cube-idp-system:5000","hint":"credentials: cube-idp get secrets"}
@@ -293,7 +296,7 @@ behavior is identical to text mode.
 |---|---|---|
 | `cube` | string | `metadata.name` from `cube.yaml`. |
 | `components` | array | Engine-reported health: `name`, `ready`, `message`. |
-| `spokes` | array | One row per declared spoke (Phase 5): `name`, `provider`, `registered` (the hub registration secret exists), `reachable` (the spoke API server answered `/readyz` using that secret's payload, probed from the CLI's machine — kind spokes carry a docker-network-internal URL, so the hub engine may reach them when this probe cannot). **Additive; only present when `spec.spokes` is non-empty.** |
+| `spokes` | array | One row per declared spoke: `name`, `provider`, `registered` (the hub registration secret exists), `reachable` (the spoke API server answered `/readyz` using that secret's payload, probed from the CLI's machine — kind spokes carry a docker-network-internal URL, so the hub engine may reach them when this probe cannot). **Additive; only present when `spec.spokes` is non-empty.** |
 | `inventory.count` | number | Objects tracked in the cube's inventory. |
 | `inventory.objects` | array | `kind`/`namespace`/`name` rows, sorted. **Only present with `--details`.** |
 | `ready` | bool | Overall verdict; `false` also makes the command exit 1 (CUBE-3004). |
@@ -331,7 +334,7 @@ behavior is identical to text mode.
 | Field | Type | Meaning |
 |---|---|---|
 | `findings` | array | Every finding: `code` (`CUBE-xxxx`), `severity` (`error` \| `warning` \| `info`), `message`, `remediation`. `[]` (never `null`) when clean. |
-| `checks` | array | **Additive (Phase 5, GT18).** One row per executed doctor check — passes included, that is the point. `name` is the stable check id (`container-runtime`, `gateway-port`, `http-port`, `disk-space`, `inotify`, `git-cli`, `spoke-reachability`); `status` is `ok` \| `warn` \| `fail`; `detail` is present on `ok` rows ("what passed looks like"); `code` + `message` (the worst finding) are present on `warn`/`fail` rows, with every underlying finding still in `findings`. A check that cannot apply to this cube/host (no `httpPort`, non-linux, no spokes, no reachable cluster) has no row. |
+| `checks` | array | One row per executed doctor check — passes included, that is the point. `name` is the stable check id (`container-runtime`, `gateway-port`, `http-port`, `disk-space`, `inotify`, `git-cli`, `spoke-reachability`); `status` is `ok` \| `warn` \| `fail`; `detail` is present on `ok` rows ("what passed looks like"); `code` + `message` (the worst finding) are present on `warn`/`fail` rows, with every underlying finding still in `findings`. A check that cannot apply to this cube/host (no `httpPort`, non-linux, no spokes, no reachable cluster) has no row. |
 | `errors` | bool | Whether any finding is an error; `true` also makes the command exit 1 (a `fail` check row always implies an error finding). |
 
 The findings array is designed for CI annotation: each entry carries the

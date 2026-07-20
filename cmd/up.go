@@ -26,8 +26,8 @@ func newUpCmd() *cobra.Command {
 
 // runUpPipeline owns the event pipeline for the resolved mode (plain / live /
 // JSON) and guarantees the terminal is released and no goroutine survives
-// before it returns (Task 14b, design doc §4.2). Shared with upgrade's
-// apply-confirm path (WP5), which passes an empty bundlePath.
+// before it returns. Shared with upgrade's
+// apply-confirm path, which passes an empty bundlePath.
 func runUpPipeline(c *cobra.Command, file, bundlePath string) error {
 	return ui.RunPipeline(c.Context(), "up", c.OutOrStdout(),
 		func(ctx context.Context, con *ui.Console) error {

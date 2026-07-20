@@ -10,11 +10,11 @@ import (
 	"github.com/cube-idp/cube-idp/internal/config"
 )
 
-// TestRenderForSubstitutesGatewayHost pins D15 (spec D15, Owner Decisions
-// #11): RenderFor extends the ${GATEWAY_HOST} expansion ExposeURLs already
+// TestRenderForSubstitutesGatewayHost pins the gateway token substitution
+// (ADR-0039): RenderFor extends the ${GATEWAY_HOST} expansion ExposeURLs already
 // does over expose.urls to (a) chart.yaml's values: (string leaves, after
 // merging pack defaults with the caller's values) and (b) manifests/*.yaml
-// raw bytes, so URL-bearing packs (backstage, Task 4) can derive their
+// raw bytes, so URL-bearing packs (e.g. backstage) can derive their
 // baseUrl/hostnames from the configured gateway instead of hardcoding it.
 func TestRenderForSubstitutesGatewayHost(t *testing.T) {
 	p, err := Fetch(context.Background(), "testdata/gw-sub-pack", t.TempDir())
@@ -54,11 +54,11 @@ func TestRenderForSubstitutesGatewayHost(t *testing.T) {
 	}
 }
 
-// TestRenderForSubstitutesGatewayPack pins F9: ${GATEWAY_PACK} expands to
+// TestRenderForSubstitutesGatewayPack pins that ${GATEWAY_PACK} expands to
 // gw.Pack — the gateway pack name, which is also the namespace pack
 // HTTPRoute parentRefs must target. It is exercised for BOTH pack values:
-// traefik (the pre-F9 hardcoded literal, which must render byte-identically
-// to before) and envoy-gateway (the case F9 fixes — routes must parent to
+// traefik (the hardcoded literal, which must render byte-identically
+// to before) and envoy-gateway (the case it fixes — routes must parent to
 // ns envoy-gateway, not traefik).
 func TestRenderForSubstitutesGatewayPack(t *testing.T) {
 	p, err := Fetch(context.Background(), "testdata/gw-sub-pack", t.TempDir())
@@ -88,8 +88,8 @@ func TestRenderForSubstitutesGatewayPack(t *testing.T) {
 
 // TestRenderLeavesLiteralUntouched pins that Render (no gateway) is exactly
 // RenderFor with a zero config.GatewaySpec{} — packs with no
-// ${GATEWAY_HOST}/${GATEWAY_FQDN} tokens render byte-identically to before
-// D15, and packs that DO have the tokens but are rendered via the
+// ${GATEWAY_HOST}/${GATEWAY_FQDN} tokens render byte-identically either
+// way, and packs that DO have the tokens but are rendered via the
 // gateway-less Render entry point see the literal text untouched rather
 // than silently expanding to ":0" or similar.
 func TestRenderLeavesLiteralUntouched(t *testing.T) {
@@ -115,8 +115,8 @@ func TestRenderLeavesLiteralUntouched(t *testing.T) {
 	}
 }
 
-// TestRenderForSubstitutesGatewayHostKustomize pins D15's closure of the
-// kustomize-path asymmetry: RenderFor's kustomization.yaml branch now runs
+// TestRenderForSubstitutesGatewayHostKustomize pins that the kustomize path
+// substitutes too: RenderFor's kustomization.yaml branch runs
 // the same ${GATEWAY_HOST}/${GATEWAY_FQDN}/${GATEWAY_PACK} substitution the
 // manifests/ walk and chart.yaml helm render already apply, and a zero
 // GatewaySpec (the cnoe loader's RenderDir path) is untouched.
@@ -150,7 +150,7 @@ func TestRenderForSubstitutesGatewayHostKustomize(t *testing.T) {
 	}
 }
 
-// TestRenderWithValuesOnChartlessPackIsCube4016 pins GT15's values stone:
+// TestRenderWithValuesOnChartlessPackIsCube4016 pins the values rule:
 // `values:` means helm values, only, always — consumed exclusively by a
 // pack's chart.yaml render. Setting values on a chartless pack is a typed
 // CUBE-4016 error at render time (pack layout is unknowable until the ref
@@ -167,7 +167,7 @@ func TestRenderWithValuesOnChartlessPackIsCube4016(t *testing.T) {
 	}
 }
 
-// TestRenderWithExtraManifestsAppendsAndSubstitutes pins GT15's uniform
+// TestRenderWithExtraManifestsAppendsAndSubstitutes pins the uniform
 // extras channel: packs[].extraManifests is multi-doc YAML valid for EVERY
 // pack kind — parsed, ${GATEWAY_*}-substituted like the manifests/ walk,
 // and appended after the pack's own objects; invalid YAML is CUBE-4017.

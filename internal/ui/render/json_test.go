@@ -18,8 +18,8 @@ func fixedClock() func() time.Time {
 }
 
 // TestJSONGoldenUpRun pins the machine stream: one JSON object per line, one
-// event per object, every line carrying "v":1 and "ts" (design doc §5.3;
-// field names normative; step_done dur_ms omitted when 0).
+// event per object, every line carrying "v":1 and "ts"
+// (field names normative; step_done dur_ms omitted when 0).
 func TestJSONGoldenUpRun(t *testing.T) {
 	var b bytes.Buffer
 	project(t, canonicalUpRun(), JSONWithClock(&b, fixedClock()))
@@ -105,9 +105,9 @@ func TestJSONFailedRunDiagnosisLast(t *testing.T) {
 	}
 }
 
-// TestJSONEpilogueRecord pins the additive "epilogue" record (ratified R2,
-// TE-4.4) golden-style: all five fields when the producer knows them;
-// context/registry omitted (omitempty) when it does not.
+// TestJSONEpilogueRecord pins the additive "epilogue" record golden-style:
+// all five fields when the producer knows them; context/registry omitted
+// (omitempty) when it does not.
 func TestJSONEpilogueRecord(t *testing.T) {
 	const ts = `"ts":"2026-07-14T12:00:00Z"`
 
@@ -134,7 +134,8 @@ func TestJSONEpilogueRecord(t *testing.T) {
 }
 
 // StepFailed must carry msg/dur_ms; steps carry idx/of — all additive
-// under the v1-EXPERIMENTAL window (spec WP2).
+// under the v1-EXPERIMENTAL window: the schema admits new fields until the
+// v1 config freeze, so additive-only changes need no version bump.
 func TestJSONStepFailedCarriesMsgAndDur(t *testing.T) {
 	var buf bytes.Buffer
 	project := JSONWithClock(&buf, fixedClock())

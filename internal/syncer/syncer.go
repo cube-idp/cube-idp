@@ -1,8 +1,8 @@
-// Package syncer implements D7's one-shot half (spec §4, Task 10):
+// Package syncer implements the one-shot half of live directory delivery:
 // `cube-idp sync <dir>` renders dir as a pack, pushes it to the cube's zot
 // registry through a port-forward tunnel, delivers it through the engine,
 // applies + records the delivery objects in the inventory, and Pokes the
-// engine to reconcile now instead of on its poll interval. Task 11 adds the
+// engine to reconcile now instead of on its poll interval. watch.go wraps
 // fsnotify --watch loop around SyncOnce.
 package syncer
 
@@ -34,7 +34,7 @@ const syncApplyTimeout = 2 * time.Minute
 // Result is what SyncOnce reports back to its caller (cmd/sync.go). The
 // "delivered — engine reconciling" line (below) is the only user-facing
 // confirmation of a completed sync; cmd/sync.go does not print a second
-// summary from Result to avoid duplicating it. Digest feeds Task 11's
+// summary from Result to avoid duplicating it. Digest feeds the watch loop's
 // change-skip logic (compare the digest of the last sync to skip a no-op
 // push).
 type Result struct{ Pack, Version, Digest string }
@@ -43,7 +43,7 @@ type Result struct{ Pack, Version, Digest string }
 // both *ui.Console and *ui.Printer satisfy it as-is (G6: identical Step
 // signatures), so the one-shot path (wrapped in ui.RunPipelineStatic,
 // cmd/sync.go) and the watch path (still a raw ui.Printer, out of scope for
-// Task R3 — spec §5.3) share SyncOnce without an adapter.
+// not yet migrated to the Console facade) share SyncOnce without an adapter.
 type Stepper interface {
 	Step(stage, format string, args ...any)
 }
@@ -57,22 +57,23 @@ type Deps struct {
 	REST    *rest.Config
 	Out     io.Writer
 	// Steps is the progress emitter SyncOnce calls Step through. nil
-	// defaults to ui.NewFor(Out) — the pre-R3 behavior, and what Watch's
-	// un-migrated path (internal/syncer/watch.go) still relies on by never
-	// setting this field.
+	// defaults to ui.NewFor(Out) — the original Printer-based behavior, and
+	// what Watch's un-migrated path (internal/syncer/watch.go) still relies
+	// on by never setting this field.
 	Steps Stepper
 	// PushAddr optionally overrides the zot port-forward tunnel — tests
 	// inject a local registry address instead of port-forwarding to a real
 	// cluster. Production leaves it empty.
 	PushAddr string
-	// syncFn is Watch's injectable seam (Task 11): when set, Watch calls
+	// syncFn is Watch's injectable seam: when set, Watch calls
 	// this instead of building a SyncOnce closure — the watch loop's tests
 	// exercise the debounce/error/cancellation machinery with a fake
 	// syncFn instead of a real cluster. Production leaves it nil.
 	syncFn func(context.Context) error
 }
 
-// SyncOnce is D7's one-shot iteration:
+// SyncOnce is one iteration of the watch-mode loop — fsnotify change ->
+// OCI artifact push -> engine reconciles:
 //
 //	p, cleanup := loadOrSynthesize(dir); defer cleanup()  -> CUBE-7201
 //	rendered := p.Render(nil)                             -> pack's own CUBE-4xxx codes pass through
@@ -145,12 +146,13 @@ func SyncOnce(ctx context.Context, deps Deps, dir string) (Result, error) {
 // normally (pack.Fetch's local-directory path — CUE metadata, #Values
 // schema, chart.yaml/kustomization.yaml all apply as usual); its cleanup is
 // a no-op — dir is the caller's own directory, not staging. A dir with no
-// pack.cue is a bare manifest directory (D7): every *.yaml/*.yml file
+// pack.cue is a bare manifest directory: every *.yaml/*.yml file
 // directly under dir is staged into a synthesized pack in a fresh
 // os.MkdirTemp directory whose identity is name = filepath.Base(dir),
-// version = "0.0.0-dev"; its cleanup removes that staging directory (Phase 4
-// R8 — previously leaked one temp dir per bare-dir sync). A dir with neither
-// a pack.cue nor any renderable manifest is CUBE-7201.
+// version = "0.0.0-dev"; its cleanup removes that staging directory
+// (this used to leak one temp dir per bare-dir sync — loadOrSynthesize
+// returned only the *pack.Pack, so nothing ever removed the MkdirTemp).
+// A dir with neither a pack.cue nor any renderable manifest is CUBE-7201.
 func loadOrSynthesize(dir string) (*pack.Pack, func(), error) {
 	noop := func() {}
 	if _, err := os.Stat(filepath.Join(dir, "pack.cue")); err == nil {

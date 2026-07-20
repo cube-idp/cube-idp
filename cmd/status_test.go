@@ -39,7 +39,7 @@ func stubStatusConnect(t *testing.T, snaps ...statusSnapshot) {
 	t.Cleanup(func() { statusConnect = restore })
 }
 
-// TestWatchExitsWhenAllReady is the W2.T12 core semantic (spec WP7):
+// TestWatchExitsWhenAllReady pins the core --watch semantic:
 // --watch re-renders the one-shot view every interval and exits 0 once
 // every component reports Ready — the fake collector is unready once, then
 // ready, so the output must contain both renders.
@@ -181,8 +181,8 @@ func TestWatchModelLifecycle(t *testing.T) {
 	}
 }
 
-// TestPackAccessRows pins the styled-status Access source (design doc §10):
-// the D11 Pack records' spec.urls, sorted by pack name; packs without urls are
+// TestPackAccessRows pins the styled-status Access source:
+// the Pack records' spec.urls, sorted by pack name; packs without urls are
 // skipped; a client error yields nil (best-effort — status never fails on it).
 func TestPackAccessRows(t *testing.T) {
 	gitea := newPack("gitea", "", "", nil)
@@ -220,9 +220,9 @@ func TestRenderStatusStyledIncludesAccess(t *testing.T) {
 	}
 }
 
-// TestStatusPlainByteStable pins the byte-frozen plain projection (design doc
+// TestStatusPlainByteStable pins the byte-frozen plain projection:
 // §8 item 4): even after stage B adds the styled/JSON surfaces, a
-// non-terminal writer keeps the exact phase-1 bytes — "%s %s Ready\n" per
+// non-terminal writer keeps the exact original bytes — "%s %s Ready\n" per
 // component, blank line, inventory count.
 func TestStatusPlainByteStable(t *testing.T) {
 	defer ui.SetMode(ui.ModeStyled)
@@ -245,7 +245,8 @@ func TestStatusPlainByteStable(t *testing.T) {
 	}
 }
 
-// TestStatusJSONDocument pins the gh-style status document (design doc §10):
+// TestStatusJSONDocument pins the gh-style status document — one final
+// object rather than a stream, because status answers once:
 // one object with cube, components, inventory (objects only under --details),
 // and the overall ready verdict.
 func TestStatusJSONDocument(t *testing.T) {
@@ -295,7 +296,8 @@ func TestStatusJSONDocumentNoDetails(t *testing.T) {
 
 // TestStatusSpokeRows (S4): a snapshot carrying spokes renders a spokes
 // section after the components — every state a paired glyph+word cell
-// (semantic-color doctrine, GT13: the word always accompanies the glyph) —
+// (semantic-color doctrine: colour is never the only carrier of meaning,
+// so the word always accompanies the glyph) —
 // and `-o json` gains the additive top-level spokes array.
 func TestStatusSpokeRows(t *testing.T) {
 	snap := statusSnapshot{
@@ -314,7 +316,8 @@ func TestStatusSpokeRows(t *testing.T) {
 		}
 	}
 
-	// JSON document: additive "spokes" array (GT13 allows additive fields).
+	// JSON document: additive "spokes" array — the machine-readable surface
+	// is additive-only, so a new top-level array is a permitted change.
 	stubStatusConnect(t, snap)
 	out, err = runCLI(t, "status", "-o", "json")
 	if err != nil {

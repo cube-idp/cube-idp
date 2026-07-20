@@ -130,7 +130,7 @@ func TestEnsureCAAdoptsMkcertRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ca.Cert.SerialNumber.Cmp(mk.Cert.SerialNumber) != 0 {
-		t.Fatal("EnsureCA must adopt the mkcert root when one exists (D12)")
+		t.Fatal("EnsureCA must adopt the mkcert root when one exists")
 	}
 	// adoption is a copy: the cube-idp dir is self-contained afterwards
 	if _, err := os.Stat(filepath.Join(dir, "ca.crt")); err != nil {

@@ -11,7 +11,8 @@ import (
 	"github.com/cube-idp/cube-idp/internal/registry"
 )
 
-// DeliverSelf translates the pushed cube-engine artifact (GT16, P8) into
+// DeliverSelf translates the pushed cube-engine artifact — the opt-in
+// engine self-management path, spec.engine.selfManage (ADR 0020) — into
 // the flux objects through which the engine manages ITSELF: one
 // OCIRepository (source) + one Kustomization (apply), both named
 // cube-engine in flux-system. The ref/auth shape mirrors Deliver exactly
@@ -24,7 +25,7 @@ import (
 //     from under itself (and deleting the Kustomization on `down` must not
 //     cascade; the inventory-driven DeleteAll owns engine removal).
 //   - the OCIRepository carries a fresh reconcile.fluxcd.io/requestedAt
-//     stamp, so each `up` apply doubles as the GT16 "poke": push → apply →
+//     stamp, so each `up` apply doubles as a reconcile-now poke: push → apply →
 //     source refetches the tag now instead of on its interval. Poke(name)
 //     cannot address this object (it prefixes cube-idp-<pack>).
 //
@@ -51,7 +52,7 @@ func (f *Flux) DeliverSelf(ctx context.Context, src engine.ArtifactRef) ([]*unst
 		"metadata":   map[string]any{"name": name, "namespace": fluxNS},
 		"spec": map[string]any{
 			"interval": "10m",
-			"prune":    false, // GT16: pruning disabled on the self-source
+			"prune":    false, // the self-source must never prune the engine out from under itself
 			"wait":     true,
 			"timeout":  "5m",
 			"path":     "./",

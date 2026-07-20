@@ -16,7 +16,7 @@ import (
 var th = theme.Detect(os.Stdin, os.Stdout)
 
 // Styled returns the styled-static projection for request/response commands
-// migrated onto the event stream (Phase 4 R3): the same content as Plain,
+// migrated onto the event stream: the same content as Plain,
 // rendered through the existing Printer styling — StepDone via Printer.Step
 // (badge+dim), Note via Fprintln, Warn via Printer.Warn, Access via
 // Printer.AccessSummary. Zero bytes for the same event set Plain ignores.
@@ -26,7 +26,7 @@ func Styled(w io.Writer) func(event.Event) {
 	return func(ev event.Event) {
 		switch e := ev.(type) {
 		case event.StepStarted:
-			// R1 (ratified, TUI design doc §5): same content as Plain's
+			// Sanctioned start-line drift: same content as Plain's
 			// start line — badge styled, message + ellipsis dimmed.
 			fmt.Fprintf(w, "%s %s\n",
 				th.Badge.Render(fmt.Sprintf("▸ [%s]", e.Stage)),
@@ -40,9 +40,10 @@ func Styled(w io.Writer) func(event.Event) {
 		case event.Note:
 			fmt.Fprintln(w, e.Msg)
 		case event.Epilogue:
-			// R2: the ✔ is presentation — Styled re-adds it here; the words
+			// The ✔ is presentation — Styled re-adds it here; the words
 			// stay identical to Plain's projection (content-identical rule,
-			// glyph excepted like Warn's ⚠). Full TE-4 rows are live/T05.
+			// glyph excepted like Warn's ⚠). The full key-value epilogue
+			// rows belong to the live renderer, not here.
 			fmt.Fprintf(w, "\n%s cube %q is up — %s\n  %s\n",
 				th.OK.Render(theme.GlyphOK), e.Cube, e.GatewayURL, th.Dim.Render(e.Hint))
 		case event.Warn:

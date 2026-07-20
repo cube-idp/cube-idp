@@ -1,4 +1,4 @@
-// catalog_test.go exercises FetchCatalog (P6 remote catalog) against an
+// catalog_test.go exercises FetchCatalog (the remote pack catalog) against an
 // in-process OCI registry. It is an EXTERNAL test package (pack_test) on
 // purpose: the index fixtures are pushed with internal/oci.PushPackDir —
 // exactly what `pack index push` does in production — and internal/oci
@@ -147,7 +147,7 @@ func TestCatalogBadSchemaVersionErrors(t *testing.T) {
 	}
 }
 
-// TestCatalogEmptyIndexErrors: a zero-pack index is rejected — the P2 index
+// TestCatalogEmptyIndexErrors: a zero-pack index is rejected — the index
 // builder refuses to produce one precisely because it would wipe the
 // published catalog; the consumer treats it with the same suspicion.
 func TestCatalogEmptyIndexErrors(t *testing.T) {

@@ -9,7 +9,8 @@ import (
 )
 
 // FetchRenderEngine fetches the engine pack at ref and renders it with the
-// engine's values (engine-as-pack spec §3.3 step 2): the returned objects
+// engine's values — this replaced the engine's own hardcoded install
+// manifests, so the returned objects
 // are what `up` SSAs, what the inventory records, and (selfManage) what the
 // cube-engine artifact carries. ref is passed explicitly rather than
 // derived from spec so offline mode can hand in the bundle-resolved dir.
@@ -28,7 +29,7 @@ func FetchRenderEngine(ctx context.Context, spec config.EngineSpec, gw config.Ga
 	return pk, rendered, nil
 }
 
-// VerifyEnginePackRef is the engine twin of up's F11 gateway check
+// VerifyEnginePackRef is the engine twin of up's gateway check
 // (CUBE-0013): the fetched pack's declared pack.cue name must be exactly
 // cube-engine-<engine.type>, so pointing the argocd engine at the flux
 // pack (or any ordinary pack) fails before any cluster mutation.

@@ -15,14 +15,15 @@ import (
 )
 
 // newConfigCmd exposes read-only inspection of the loaded cube.yaml, e.g.
-// `cube-idp config render-cluster` for the D10 provider-config merge.
+// `cube-idp config render-cluster` for the layered provider-config merge
+// (ADR-0011).
 func newConfigCmd() *cobra.Command {
 	var file string
 	cfg := &cobra.Command{Use: "config", Short: "Inspect cube-idp configuration"}
 
 	render := &cobra.Command{
 		Use:   "render-cluster",
-		Short: "Print the final merged provider config that `up` would create (D10)",
+		Short: "Print the final merged provider config that `up` would create",
 		RunE: func(c *cobra.Command, _ []string) error {
 			cube, err := cfgload.Load(c.Context(), file)
 			if err != nil {
@@ -34,7 +35,8 @@ func newConfigCmd() *cobra.Command {
 			// registries.yaml zot entry entirely). `up` stages the real certs.d
 			// directory (kind) or zot mirror host (k3d) and injects that at
 			// create-time (internal/cluster/kindp/kind.go's certsD,
-			// internal/cluster/k3dp/k3d.go's Ensure, D6 canonical hostname) —
+			// internal/cluster/k3dp/k3d.go's Ensure, for the canonical
+			// gateway hostname) —
 			// this rendering is therefore not byte-identical to what `up`
 			// actually hands the provider, and the gap is called out on stderr
 			// below rather than left as a silent difference: stdout stays pure
@@ -60,7 +62,7 @@ func newConfigCmd() *cobra.Command {
 			}
 			// existing certs.d note + stdout YAML print unchanged
 			fmt.Fprintln(c.ErrOrStderr(),
-				"note: `up` also injects a containerd certs.d bind mount (kind) or registries.yaml zot mirror entry (k3d) for the local CA trust root (D6) — this rendering omits it")
+				"note: `up` also injects a containerd certs.d bind mount (kind) or registries.yaml zot mirror entry (k3d) for the local CA trust root — this rendering omits it")
 			fmt.Fprint(c.OutOrStdout(), string(out))
 			return nil
 		},

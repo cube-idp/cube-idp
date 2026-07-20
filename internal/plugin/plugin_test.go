@@ -109,7 +109,7 @@ exit 0
 // relative path and checking through the resolved absolute path (or vice
 // versa) must agree — the store keys on Abs+EvalSymlinks canonical paths.
 func TestTrustKeyCanonicalization(t *testing.T) {
-	// store isolation — RESOLVED (Task 0): existing plugin tests inline this
+	// store isolation: there is no shared helper for this — every plugin test
 	// exact triple (no shared helper); mirror it verbatim:
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", "")

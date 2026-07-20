@@ -2,7 +2,8 @@
 // YAMLs and translates them into cube-idp deliveries: cnoe:// paths become
 // local renders pushed to the in-cluster OCI registry, remote sources become
 // cube pack refs — engine-neutral, so both flux and argocd cubes can absorb
-// an existing idpbuilder setup (spec §4.4, launch-critical).
+// an existing idpbuilder setup. The cnoe-compat loader is a launch-critical
+// part of the pack tier of the extensibility model (see docs/adr/0002-pack-format-data-only-contract.md).
 package cnoe
 
 import (

@@ -27,7 +27,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
-// TestVerifyGatewayPackRef pins F11: gateway.ref silently wins over
+// TestVerifyGatewayPackRef pins the operator-found trap: gateway.ref silently wins over
 // gateway.pack, so a mismatch between the ref'd pack's declared name and
 // gateway.pack must be a typed CUBE-0008 error, not a silent wrong-gateway
 // delivery. The operator's exact misconfig — `init --local` wrote
@@ -98,11 +98,11 @@ func TestGatewayServiceFQDNDerivation(t *testing.T) {
 	}
 }
 
-// TestMergeImagesUnion pins spec D14's lock-assembly merge: the sorted,
-// deduplicated union of rendered-manifest images and a pack's declared
-// (pack.cue images:) images — the pure step Run's pack loop calls per
-// entry. This is the "focused unit" the D14 preparatory commit calls for,
-// since Run itself needs a live cluster and isn't unit-testable here.
+// TestMergeImagesUnion pins the lock-assembly merge that keeps air-gap
+// bundles honest: the sorted, deduplicated union of rendered-manifest images
+// and a pack's declared (pack.cue images:) images — the pure step Run's pack
+// loop calls per entry. It is a focused unit test because Run itself needs a
+// live cluster and isn't unit-testable here.
 func TestMergeImagesUnion(t *testing.T) {
 	got := mergeImages(
 		[]string{"traefik:v3.1", "busybox:1.36"},
@@ -179,8 +179,8 @@ func TestResolveBundleRefs_LocalDirFallback(t *testing.T) {
 }
 
 // TestResolveBundleRefs_PreservesValues verifies rewriting the Ref keeps the
-// pack's install-shaping fields intact — Values, extraManifests (GT15) and
-// delivery (P7) — only the source location changes.
+// pack's install-shaping fields intact — Values, extraManifests and
+// delivery — only the source location changes.
 func TestResolveBundleRefs_PreservesValues(t *testing.T) {
 	refs := []config.PackRef{{
 		Ref:            "oci://ghcr.io/cube-idp/packs/gitea:0.1.0",
@@ -204,7 +204,7 @@ func TestResolveBundleRefs_PreservesValues(t *testing.T) {
 }
 
 // TestStepFetchSourcePlainOutput pins the per-pack resolved-fetch-source line
-// (Task 13 review): the plain stream must name the ACTUAL source pack.Fetch
+// the plain stream must name the ACTUAL source pack.Fetch
 // will read — the oci:// ref online, the bundle-local dir (under a
 // cube-idp-bundle-* staging dir) in --bundle mode — so the e2e's offline
 // assertions ("every fetch source points into the bundle", "no fetch source
@@ -333,7 +333,7 @@ func (f fakeInternalProvider) InternalKubeconfig(context.Context, string) ([]byt
 	return f.kc, nil
 }
 
-// TestSpokeClusterName pins GT7's naming: kind spokes are
+// TestSpokeClusterName pins the ratified spoke naming: kind spokes are
 // <cube>-spoke-<name>; existing spokes are whatever the context points at
 // (Ensure ignores the name, so the spoke's own name suffices).
 func TestSpokeClusterName(t *testing.T) {
@@ -403,7 +403,7 @@ func TestSpokeServerURL(t *testing.T) {
 	}
 }
 
-// ---- P7: per-pack delivery branch (delivery: repo) ----------------------
+// ---- per-pack delivery branch (delivery: repo) --------------------------
 
 // fakePackEngine records which delivery shape was asked for. It satisfies
 // packEngine (the narrow up-side seam), never the full engine.Engine.
@@ -413,7 +413,7 @@ type fakePackEngine struct {
 	gitDelivered   []string // pack names handed to DeliverGit
 	gitSources     []engine.GitSource
 	gitDeliverDeps [][]string
-	selfRefs       []engine.ArtifactRef // artifacts handed to DeliverSelf (P8)
+	selfRefs       []engine.ArtifactRef // artifacts handed to DeliverSelf
 
 	// wavegated backs OrdersDeliveries' negation — zero value (false) means
 	// OrdersDeliveries() returns true (flux-like: no wave gate), so every
@@ -529,8 +529,8 @@ func demoRendered(name string) *pack.Rendered {
 	return &pack.Rendered{Name: name, Version: "0.1.0", Objects: []*unstructured.Unstructured{ns, cm}}
 }
 
-// TestDeliverPackOCINeverTouchesGitea pins the P7 branch: a pack without
-// delivery: repo takes the pre-P7 tail (push to zot + engine OCI source)
+// TestDeliverPackOCINeverTouchesGitea pins the delivery-mode branch: a pack without
+// delivery: repo takes the default OCI tail (push to zot + engine OCI source)
 // and never opens a gitea session.
 func TestDeliverPackOCINeverTouchesGitea(t *testing.T) {
 	eng := &fakePackEngine{}
@@ -761,7 +761,8 @@ func TestWaveGateBlocksDeliveryUntilDepHealthy(t *testing.T) {
 	}
 }
 
-// TestUpFailsFastOnDepCycle pins the fail-fast half of p6 DEP2 (spec §3.3):
+// TestUpFailsFastOnDepCycle pins the fail-fast half of up.Run's two-pass
+// restructure (fetch/render pass, then deliver pass):
 // a dependency cycle must be caught by the graph pass BEFORE the deliver
 // pass runs at all — resolveAndDeliverPacks must return CUBE-4019 with ZERO
 // deliverPack invocations recorded, not fail mid-delivery after some packs
@@ -824,7 +825,7 @@ func TestRenderedFilesStableNaming(t *testing.T) {
 
 // TestOrderPackRefsPrependsGatewayOnly pins orderPackRefs' shrunk p6 DEP2
 // contract: it only prepends the gateway ref. The gitea-hoist guarantee
-// (decision 13) that this function used to implement moved to
+// that this function used to implement moved to
 // pack.ResolveOrder's implicit repo->gitea edge — covered by that package's
 // TestResolveOrderImplicitRepoEdge / TestResolveOrderRepoDeliveryGuaranteeAgainstArgocd
 // (case 9) — so orderPackRefs itself no longer branches on delivery: repo at
@@ -888,10 +889,10 @@ func TestGiteaSessionGate(t *testing.T) {
 	}
 }
 
-// ---- P8: engine self-management (engine.selfManage, GT16) ----------------
+// ---- engine self-management (engine.selfManage) --------------------------
 
 // fakeHealthEngine is a full engine.Engine stub whose Health is canned and
-// counted — all the P8 preflight (installNeedsSSA/engineHealthyAtStart)
+// counted — all the self-management preflight (installNeedsSSA/engineHealthyAtStart)
 // consumes. The applier is never touched and may be nil.
 type fakeHealthEngine struct {
 	health []engine.ComponentHealth
@@ -922,8 +923,9 @@ func (f *fakeHealthEngine) Uninstall(context.Context, *apply.Applier, time.Durat
 }
 func (f *fakeHealthEngine) OrdersDeliveries() bool { return true }
 
-// TestSelfManageSSADecision pins the GT16 SSA rules on installNeedsSSA:
-// selfManage off → always SSA, without even consulting Health (the pre-P8
+// TestSelfManageSSADecision pins the SSA rules on installNeedsSSA
+// (docs/adr/0020-engine-self-management-single-owner.md):
+// selfManage off → always SSA, without even consulting Health (the non-self-managed
 // path stays byte-identical); selfManage on → SSA on first install (zero
 // components), on unhealthy components (rule 3), and on a Health error —
 // only a fully healthy engine skips SSA (rule 2, single owner).
@@ -936,7 +938,7 @@ func TestSelfManageSSADecision(t *testing.T) {
 		t.Fatal("selfManage off must always SSA")
 	}
 	if off.calls != 0 {
-		t.Fatalf("selfManage off must not consult Health (pre-P8 path), got %d calls", off.calls)
+		t.Fatalf("selfManage off must not consult Health, got %d calls", off.calls)
 	}
 
 	cases := []struct {
@@ -962,12 +964,14 @@ func TestSelfManageSSADecision(t *testing.T) {
 	}
 }
 
-// TestSelfManageDeliverEngineSelf pins the GT16 rule-2 tail: the rendered
+// TestSelfManageDeliverEngineSelf pins the single-owner tail (a healthy
+// self-managed engine is never SSA'd; it reconciles itself instead): the rendered
 // install is pushed as the cube-engine artifact (fixed tag, the pushed
 // Rendered carries the installObjs verbatim — tuning already applied by
 // InstallManifests, so the artifact carries tuned bytes), the resulting
 // artifact ref is handed to DeliverSelf, and the self-source objects are
-// applied + inventoried. Gitea is never touched — GT16: zot only.
+// applied + inventoried. Gitea is never touched — the engine self-artifact is
+// sourced from zot only, never from Gitea.
 func TestSelfManageDeliverEngineSelf(t *testing.T) {
 	eng := &fakePackEngine{}
 	ap := &fakePackApplier{}
@@ -984,7 +988,7 @@ func TestSelfManageDeliverEngineSelf(t *testing.T) {
 			return engine.ArtifactRef{Repo: "packs/" + r.Name, Tag: r.Version, Digest: "sha256:d1"}, nil
 		},
 		gitea: func(context.Context) (giteaPacks, error) {
-			t.Fatal("engine self-management must never touch gitea (GT16: zot only)")
+			t.Fatal("engine self-management must never touch gitea (zot only)")
 			return nil, nil
 		},
 	}
@@ -1071,7 +1075,7 @@ func TestBundleRailsCheckRejectsValuesRef(t *testing.T) {
 }
 
 // TestBundleRailsCheckRejectsRemoteOrigin is the same rail for the OTHER
-// remote source remote -f introduced (Task 10 Step 2b): the cube.yaml itself
+// remote source remote -f: the cube.yaml itself
 // came off the network, so it is no more vendored into the bundle than a
 // valuesRef is. Same code (CUBE-7007), same fail-before-mutation posture.
 func TestBundleRailsCheckRejectsRemoteOrigin(t *testing.T) {

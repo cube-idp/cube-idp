@@ -1,4 +1,4 @@
-// Package k3dp implements the k3d ClusterProvider (D4, Phase 3) and the
+// Package k3dp implements the k3d ClusterProvider and the
 // cluster customization ladder (spec 2026-07-18-cluster-forprovider-design.md
 // §4): providerConfigRef (fetched base) + forProvider (inline overrides,
 // RFC 7386 merge-patched on top) composed generically by internal/cluster/
@@ -31,7 +31,8 @@ import (
 	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
-// ZotMirror is k3d's CertsD-equivalent (D12): when Host is non-empty,
+// ZotMirror is k3d's CertsD-equivalent — the local-CA/registry-trust wiring
+// that must exist before the cluster is created. When Host is non-empty,
 // RenderConfig adds a registries.yaml mirrors entry for it pointing at the
 // node-local zot NodePort. Ensure passes ZotMirror{Host: "registry." + gw.Host};
 // cmd/config.go passes the zero value (file-free render, mirror of kindp).
@@ -52,7 +53,7 @@ type ZotMirror struct{ Host string }
 // layer 4 = core injections (name/kind/apiVersion, gateway ports, node
 //
 //	image, --disable=traefik, zot mirror) — core wins, CUBE-1306 warning
-//	(decision 1)
+//	(user-supplied values are overridden, never silently)
 func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw config.GatewaySpec, zot ZotMirror) ([]byte, []diag.Finding, error) {
 	var warns []diag.Finding
 	warn := func(msg string) {
@@ -112,7 +113,7 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 				Port: gwMapping, NodeFilters: []string{"server:0"},
 			})
 		}
-		// U2 opt-in HTTP twin (decision 3): host gw.HTTPPort -> the
+		// Opt-in plain-HTTP twin of the gateway mapping: host gw.HTTPPort -> the
 		// plain-HTTP NodePort both gateway packs pin
 		// (config.GatewayHTTPNodePort), same host:node syntax. Absent = no
 		// mapping, byte-identical output to before.
@@ -135,8 +136,8 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 	}
 
 	// Required injection 2: disable k3s's bundled traefik — the gateway pack
-	// owns ingress (D3). Core wins on an explicit re-enable, CUBE-1306
-	// warning quoting the discarded arg (decision 1).
+	// owns ingress. Core wins on an explicit re-enable, CUBE-1306
+	// warning quoting the discarded arg.
 	disable := v1alpha5.K3sArgWithNodeFilters{Arg: "--disable=traefik", NodeFilters: []string{"server:0"}}
 	for i := range cfg.Options.K3sOptions.ExtraArgs {
 		a := &cfg.Options.K3sOptions.ExtraArgs[i]
@@ -149,7 +150,8 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 		cfg.Options.K3sOptions.ExtraArgs = append(cfg.Options.K3sOptions.ExtraArgs, disable)
 	}
 
-	// D10 layer-1 typed fields.
+	// Typed `spec.cluster` sugar (extra ports, mounts, registry mirrors, node
+	// image) — the layer that collides hard on conflict; see ADR 0011.
 	for _, p := range spec.ExtraPorts {
 		if hasHostPort(cfg.Ports, int(p.HostPort)) {
 			if int(p.HostPort) == gw.Port {
@@ -182,7 +184,7 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 			// cube-idp cannot silently pick a winner between two things the
 			// user wrote. A user-vs-core conflict (only the Ensure-path zot
 			// mirror needs the slot, spec.cluster.registry untouched) is
-			// decision 1's warn-and-win: registries.config is an opaque blob
+			// the same warn-and-win rule: registries.config is an opaque blob
 			// that cannot be merged into without parsing, so the user's block
 			// is discarded in favor of cube-idp's, with a warning naming what
 			// was dropped.
@@ -211,7 +213,7 @@ func hasHostPort(ports []v1alpha5.PortWithNodeFilters, host int) bool {
 }
 
 // registriesYAML renders the k3s registries.yaml document (mirrors +
-// insecure TLS skip + the D12 zot mirror when zot.Host is set: an entry
+// insecure TLS skip + the in-cluster zot mirror when zot.Host is set: an entry
 // zot.Host -> endpoint http://localhost:30500, i.e. registry.NodePort —
 // plain HTTP on the node-local port, same as kindp's WriteCertsD wiring),
 // sorted for golden determinism. The k3s registries.yaml schema
