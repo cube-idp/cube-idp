@@ -7,7 +7,8 @@ import (
 )
 
 // InstallOS installs the cube-idp CA into the OS trust stores (the mkcert
-// mechanism, D6). Callers MUST have obtained explicit user consent first.
+// mechanism). Only `cube-idp trust` may reach here: callers MUST have obtained
+// explicit user consent first, and `down` reverts the install (see ADR-0038).
 func InstallOS(dir string) error {
 	ca, err := EnsureCA(dir)
 	if err != nil {

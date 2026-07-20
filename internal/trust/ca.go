@@ -1,4 +1,4 @@
-// Package trust implements cube-idp's D6 trust posture: a local CA (the
+// Package trust implements cube-idp's trust posture (see ADR-0038): a local CA (the
 // mkcert mechanism), leaf certs for the gateway, canonical-hostname wiring,
 // and — ONLY via the explicit `cube-idp trust` command — OS trust-store
 // installation, fully reverted by `cube-idp down`. Nothing in this package
