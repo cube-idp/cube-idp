@@ -299,7 +299,7 @@ func (m liveModel) applyEvent(ev event.Event) liveModel {
 		if e.Stage == m.packStage {
 			m.packStage, m.packIdx, m.packTotal = "", 0, 0
 		}
-		// The health snapshot persists until RunDone (spec WP3) — closing
+		// The health snapshot persists until RunDone — closing
 		// the health stage no longer drops the table.
 	case event.StepFailed:
 		m.steps = removeStep(m.steps, e.Stage)
@@ -310,7 +310,7 @@ func (m liveModel) applyEvent(ev event.Event) liveModel {
 	case event.StepLog:
 		t := append(m.tails[e.Stage], e.Line)
 		if len(t) > 5 {
-			t = t[len(t)-5:] // bounded tail window (TE-1.4)
+			t = t[len(t)-5:] // bounded tail window
 		}
 		m.tails[e.Stage] = t
 	case event.HealthTick:
@@ -351,7 +351,7 @@ func (m liveModel) View() tea.View {
 		badge := m.th.Badge.Render(fmt.Sprintf("%-*s", theme.BadgeWidth(), "["+s.stage+"]"))
 		line := fmt.Sprintf("%s %s %s", m.spin.View(), badge, m.th.Msg.Render(s.msg))
 		if s.stage == m.packStage && m.packTotal > 0 {
-			// TE-1.3: right-aligned n/m counter + progress bar underneath.
+			// Right-aligned n/m counter + progress bar underneath.
 			counter := m.th.Dim.Render(fmt.Sprintf("%d/%d", m.packIdx, m.packTotal))
 			if pad := durCol - lipgloss.Width(line); pad > 1 {
 				line += strings.Repeat(" ", pad) + counter

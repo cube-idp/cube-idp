@@ -150,7 +150,7 @@ func TestUpStatusDown(t *testing.T) {
 	// the printed link dialed the default HTTPS port (443) instead of
 	// wherever the gateway actually listens, and was dead.
 	if wantSuffix := ":" + strconv.Itoa(port); !strings.Contains(packs, wantSuffix) {
-		t.Fatalf("kubectl get packs URL column missing gateway port %q (Task 15.1):\n%s", wantSuffix, packs)
+		t.Fatalf("kubectl get packs URL column missing gateway port %q:\n%s", wantSuffix, packs)
 	}
 
 	// engine-as-pack (§3.3.7): the engine installs from the cube-engine-<type>
@@ -275,7 +275,7 @@ func TestPackDependsOn(t *testing.T) {
 // test — this is telemetry, not a correctness assertion.
 func recordUpWallTime(t *testing.T, engine string, wall time.Duration) {
 	t.Helper()
-	line := fmt.Sprintf("cube-idp up wall time (engine=%s): %s (goal: <60s warm, spec §3; tracked not asserted)", engine, wall)
+	line := fmt.Sprintf("cube-idp up wall time (engine=%s): %s (goal: <60s warm; tracked not asserted)", engine, wall)
 	t.Logf("%s", line)
 	summary := os.Getenv("GITHUB_STEP_SUMMARY")
 	if summary == "" {
@@ -354,16 +354,16 @@ func runKubectl(t *testing.T, args ...string) string {
 func assertNodeCanPullFromRegistry(t *testing.T, ref string) {
 	t.Helper()
 	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker not on PATH — cannot exec into the kind node to verify certs.d reachability (Task 10)")
+		t.Skip("docker not on PATH — cannot exec into the kind node to verify certs.d reachability")
 	}
 	node := cubeName + "-control-plane"
 	full := "registry.cube-idp.localtest.me/" + ref
 	out, err := exec.Command("docker", "exec", node, "crictl", "pull", full).CombinedOutput()
 	if err != nil {
-		t.Fatalf("kind node %s could not pull %s via certs.d + the zot NodePort (D6/Task 10 — see internal/trust/certsd.go): %v\n%s",
+		t.Fatalf("kind node %s could not pull %s via certs.d + the zot NodePort (see internal/trust/certsd.go): %v\n%s",
 			node, full, err, out)
 	}
-	t.Logf("Task 10 verified: kind node %s pulled %s via certs.d + the zot NodePort\n%s", node, full, out)
+	t.Logf("verified: kind node %s pulled %s via certs.d + the zot NodePort\n%s", node, full, out)
 }
 
 // assertGatewayTLS dials the gateway and verifies the served cert chains to
@@ -657,7 +657,7 @@ func TestPublishedPacksByDigest(t *testing.T) {
 			t.Fatalf("packs.lock missing %q (the online leg ups gateway+gitea)", name)
 		}
 		if !strings.Contains(ref, "@sha256:") {
-			t.Fatalf("packs.lock[%q] = %q is not digest-pinned (decision 2)", name, ref)
+			t.Fatalf("packs.lock[%q] = %q is not digest-pinned", name, ref)
 		}
 	}
 	port := gatewayPort(t)

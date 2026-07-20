@@ -248,7 +248,7 @@ func newPackInstallCmd() *cobra.Command {
 			"config file — nothing touches the cluster until the next `cube-idp up`.\n" +
 			"With refs as arguments it never prompts (script/CI safe). Bare on a real\n" +
 			"terminal it offers a filterable multi-select over the pack catalog.\n" +
-			"--via repo (P7) delivers the pack as an editable Gitea repo\n" +
+			"--via repo delivers the pack as an editable Gitea repo\n" +
 			"(cube-pack-<name>) instead of an OCI artifact — requires the gitea pack.",
 		RunE: func(c *cobra.Command, args []string) error {
 			// Per-pack delivery flag. Validated up front so

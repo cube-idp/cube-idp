@@ -12,7 +12,7 @@
 //     ImageImportIntoClusterMulti). A test failure HERE is information: it
 //     means the per-image OCI-layout tar shape is rejected and the fallback
 //     recorded in internal/bundle is needed — do not paper over it.
-//   - TestSyncOneShot        — sync one-shot delivery (D7).
+//   - TestSyncOneShot        — sync one-shot delivery.
 //   - TestRepoCreateDeploy   — repo create --deploy end to end (git push over
 //     the gateway -> engine syncs -> ConfigMap appears).
 //   - TestEnvoyGatewaySmoke  — envoy-gateway as spec.gateway.pack with the
@@ -95,7 +95,7 @@ func requireE2E(t *testing.T) {
 func requireDocker(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker not on PATH — Phase 3 e2e needs a container runtime")
+		t.Skip("docker not on PATH — this e2e test needs a container runtime")
 	}
 }
 
@@ -1062,7 +1062,7 @@ func TestEngineSelfManage(t *testing.T) {
 	}
 	for _, o := range owners {
 		if o == apply.FieldManager {
-			t.Fatalf("spec.replicas still owned by %q — the re-run SSA'd a healthy self-managed engine (GT16 rule 2 broken); owners: %v",
+			t.Fatalf("spec.replicas still owned by %q — the re-run SSA'd a healthy self-managed engine; owners: %v",
 				apply.FieldManager, owners)
 		}
 	}

@@ -170,7 +170,7 @@ func TestLiveRegionLifecycle(t *testing.T) {
 
 	m = apply(t, m, event.StepDone{Stage: "health", Msg: "2 component(s) ready"})
 	if v := m.View().Content; !strings.Contains(v, "cube-idp-traefik") {
-		t.Fatalf("health snapshot must persist after its stage closes (spec WP3): %q", v)
+		t.Fatalf("health snapshot must persist after its stage closes: %q", v)
 	}
 
 	m = apply(t, m, event.RunDone{OK: true, Dur: time.Minute})
@@ -215,7 +215,7 @@ func TestLiveCtrlCCancelsWithoutQuitting(t *testing.T) {
 	}
 }
 
-// te1Sequence is the canonical up run behind the TE-1 frame (spec §2):
+// te1Sequence is the canonical up run behind the live step-tree frame:
 // four completed steps, then the enumerated packs step in flight with two
 // captured log lines. Every «dynamic» span is the fixed value below.
 func te1Sequence() []event.Event {
@@ -244,7 +244,7 @@ func TestTE1_UpLiveFrame(t *testing.T) {
 
 	got := stripANSI(strings.Join(scroll, "\n") + "\n" + m.View().Content + "\n")
 	if want := readGolden(t, "te1_scrollback.golden"); got != want {
-		t.Fatalf("TE-1 frame drifted:\ngot:\n%s\nwant:\n%s\ngot bytes: %q", got, want, got)
+		t.Fatalf("up live frame drifted from golden:\ngot:\n%s\nwant:\n%s\ngot bytes: %q", got, want, got)
 	}
 }
 
@@ -305,7 +305,7 @@ func TestTE2_StepFailedCarriesMsgDur(t *testing.T) {
 	plain := stripANSI(line)
 	for _, want := range []string{"✗", "[packs]", "gitea@0.1.0 pull failed", "(4s)"} {
 		if !strings.Contains(plain, want) {
-			t.Fatalf("TE-2.1 line missing %q: %q", want, plain)
+			t.Fatalf("step-failed line missing %q: %q", want, plain)
 		}
 	}
 	if empty := stripANSI(sb.stepFailedLine(event.StepFailed{Stage: "packs"})); !strings.Contains(empty, "failed") {
@@ -328,7 +328,7 @@ func TestTE2_FailureFlushesTail(t *testing.T) {
 		t.Fatalf("failure must flush ✗ line then the buffered tail in order, got %q", got)
 	}
 	if plain := stripANSI(strings.Join(got, "\n") + "\n"); plain != readGolden(t, "te2_failure.golden") {
-		t.Fatalf("TE-2 frame drifted:\ngot:\n%s\ngot bytes: %q", plain, plain)
+		t.Fatalf("failure frame drifted from golden:\ngot:\n%s\ngot bytes: %q", plain, plain)
 	}
 	if again := sb.lines(event.StepFailed{Stage: "packs", Msg: "x", Dur: time.Second}); len(again) != 1 {
 		t.Fatalf("the tail must be consumed by the flush, got %q", again)
@@ -351,6 +351,6 @@ func TestTE4_EpilogueGolden(t *testing.T) {
 		event.RunDone{OK: true, Dur: 2*time.Minute + 13*time.Second},
 	), "\n") + "\n")
 	if want := readGolden(t, "te4_epilogue.golden"); got != want {
-		t.Fatalf("TE-4 frame drifted:\ngot:\n%s\nwant:\n%s\ngot bytes: %q", got, want, got)
+		t.Fatalf("epilogue frame drifted from golden:\ngot:\n%s\nwant:\n%s\ngot bytes: %q", got, want, got)
 	}
 }

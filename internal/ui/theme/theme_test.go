@@ -23,6 +23,6 @@ func TestBadgeWidthCoversAllStages(t *testing.T) {
 		}
 	}
 	if !strings.Contains(GlyphOK, "✔") {
-		t.Fatal("GlyphOK changed — glyph set is normative (spec §2)")
+		t.Fatal("GlyphOK changed — the glyph set is normative")
 	}
 }

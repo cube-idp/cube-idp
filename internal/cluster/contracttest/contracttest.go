@@ -116,7 +116,7 @@ func RenderContract(t *testing.T, base, conflict config.ClusterSpec,
 
 	_, warns, err = render(conflict)
 	if err != nil {
-		t.Fatalf("render(conflict) must warn, not error (decision 1): %v", err)
+		t.Fatalf("render(conflict) must warn, not error: %v", err)
 	}
 	if len(warns) == 0 {
 		t.Fatal("render(conflict) produced no warning")

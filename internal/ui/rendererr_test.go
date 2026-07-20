@@ -45,7 +45,7 @@ func TestTE2_DiagBoxGolden(t *testing.T) {
 		t.Fatalf("golden: %v", e)
 	}
 	if got != string(want) {
-		t.Fatalf("TE-2 box drifted from golden:\n got:\n%s\nwant:\n%s", got, want)
+		t.Fatalf("diagnostic box drifted from golden:\n got:\n%s\nwant:\n%s", got, want)
 	}
 	// The fix: line's content stays unstyled even before stripping — it must
 	if !strings.Contains(RenderError(err), "cube-idp repo login ghcr.io") {

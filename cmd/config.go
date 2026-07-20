@@ -21,7 +21,7 @@ func newConfigCmd() *cobra.Command {
 
 	render := &cobra.Command{
 		Use:   "render-cluster",
-		Short: "Print the final merged provider config that `up` would create (D10)",
+		Short: "Print the final merged provider config that `up` would create",
 		RunE: func(c *cobra.Command, _ []string) error {
 			cube, err := config.Load(file)
 			if err != nil {
@@ -59,7 +59,7 @@ func newConfigCmd() *cobra.Command {
 			}
 			// existing certs.d note + stdout YAML print unchanged
 			fmt.Fprintln(c.ErrOrStderr(),
-				"note: `up` also injects a containerd certs.d bind mount (kind) or registries.yaml zot mirror entry (k3d) for the local CA trust root (D6) — this rendering omits it")
+				"note: `up` also injects a containerd certs.d bind mount (kind) or registries.yaml zot mirror entry (k3d) for the local CA trust root — this rendering omits it")
 			fmt.Fprint(c.OutOrStdout(), string(out))
 			return nil
 		},

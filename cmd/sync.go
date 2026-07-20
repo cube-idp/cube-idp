@@ -24,8 +24,8 @@ func newSyncCmd() *cobra.Command {
 	var watch bool
 	c := &cobra.Command{
 		Use:   "sync <dir>",
-		Short: "Render a directory as a pack and deliver it to the running cube (D7)",
-		Long: `Render a directory as a pack and deliver it to the running cube (D7).
+		Short: "Render a directory as a pack and deliver it to the running cube",
+		Long: `Render a directory as a pack and deliver it to the running cube.
 
 Without --watch, sync runs once and exits. With --watch, sync runs once
 immediately and then re-syncs on every debounced filesystem change under

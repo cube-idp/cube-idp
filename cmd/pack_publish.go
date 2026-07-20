@@ -54,7 +54,7 @@ func newPackPublishCmd() *cobra.Command {
 		Use:   "publish <dir>",
 		Short: "Validate a pack directory and publish it as an OCI artifact",
 		Long: "Publish one pack source directory to an OCI registry — the packs-repo CI\n" +
-			"entrypoint. Unlike `pack push` it enforces the GT9 release invariant first:\n" +
+			"entrypoint. Unlike `pack push` it enforces the release invariant first:\n" +
 			"the ref's tag must equal pack.cue's version (a missing tag defaults to it).\n" +
 			"Prints the pushed manifest digest; auth is the ambient docker credential\n" +
 			"chain (docker login).",
@@ -76,7 +76,7 @@ func newPackPublishCmd() *cobra.Command {
 						if tag := ociRefTag(target); tag != p.Version {
 							return diag.New(diag.CodePackRefInvalid,
 								fmt.Sprintf("pack %s version %s does not match the publish tag %q", p.Name, p.Version, tag),
-								"the publish tag must equal pack.cue's version (GT9: git tag <name>/vX.Y.Z publishes :X.Y.Z) — retag the ref or bump the pack version")
+								"the publish tag must equal pack.cue's version (git tag <name>/vX.Y.Z publishes :X.Y.Z) — retag the ref or bump the pack version")
 						}
 					}
 					digest, err := oci.PushPackDir(ctx, dir, target)

@@ -24,7 +24,7 @@ func newTrustCmd() *cobra.Command {
 	var file string
 	c := &cobra.Command{
 		Use:   "trust",
-		Short: "Add (or remove, --uninstall) the cube-idp local CA to your OS trust stores — opt-in, fully reverted by `down` (D6)",
+		Short: "Add (or remove, --uninstall) the cube-idp local CA to your OS trust stores — opt-in, fully reverted by `down`",
 		RunE: func(c *cobra.Command, _ []string) error {
 			dir, err := trust.Dir()
 			if err != nil {

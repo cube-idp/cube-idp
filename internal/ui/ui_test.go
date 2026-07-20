@@ -18,7 +18,7 @@ func TestPlainMatchesPhase1Format(t *testing.T) {
 	p.Step("tls", "gateway certificate ready")
 	const want = "▸ [tls] gateway certificate ready\n"
 	if got := b.String(); got != want {
-		t.Fatalf("plain output drifted from the phase-1 format:\ngot:  %q\nwant: %q", got, want)
+		t.Fatalf("plain output drifted from the frozen step() format:\ngot:  %q\nwant: %q", got, want)
 	}
 	if strings.Contains(b.String(), "\x1b[") {
 		t.Fatal("plain mode must emit zero ANSI escapes")

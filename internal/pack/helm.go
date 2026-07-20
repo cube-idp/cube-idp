@@ -3,8 +3,8 @@ package pack
 // renderHelm is the ONLY file in internal/pack that imports the Helm SDK
 // (plan-header risk rule): a chart.yaml next to pack.cue is a reference to
 // a chart, rendered client-side with `helm template` semantics — no
-// cluster access, no install, no helm-controller in the loop (spec §4:
-// engines receive rendered manifests). It reads chart.yaml, pulls the
+// cluster access, no install, no helm-controller in the loop (engines
+// receive rendered manifests). It reads chart.yaml, pulls the
 // pinned chart, template-renders it with the pack's chart-level default
 // values merged UNDER the caller's (already CUE-validated) values, and
 // returns unstructured objects.

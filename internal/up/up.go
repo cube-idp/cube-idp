@@ -275,7 +275,7 @@ func Run(ctx context.Context, opts Options) error {
 	if ssaEngine {
 		pr.Done("%s installed", cube.Spec.Engine.Type)
 	} else {
-		pr.Done("%s healthy — self-managed, install SSA skipped (GT16)", cube.Spec.Engine.Type)
+		pr.Done("%s healthy — self-managed, install SSA skipped", cube.Spec.Engine.Type)
 	}
 
 	// The gateway pack's websecure listener references this secret by name
@@ -481,7 +481,7 @@ func Run(ctx context.Context, opts Options) error {
 		// now — the CRD wait, the CoreDNS restart, and the health
 		// convergence all ran since — and a client-go port-forward that old
 		// can be dead (its local listener closes once the SPDY session
-		// drops; the live P8 leg caught exactly that as a connection-refused
+		// drops; a live run caught exactly that as a connection-refused
 		// push). The push therefore gets a fresh bounded tunnel of its own,
 		// acquired at use time like the gitea session is.
 		selfAddr, selfStop, err := registry.PortForward(ctx, conn.REST)
@@ -638,9 +638,9 @@ func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDe
 					return err
 				}
 			}
-			// P7: the delivery tail branches on the ref's delivery mode —
-			// deliverPackOCI is the pre-P7 tail moved verbatim; delivery:
-			// repo renders into an engine-watched Gitea repo instead.
+			// The delivery tail branches on the ref's delivery mode:
+			// deliverPackOCI is the OCI path; delivery: repo renders
+			// into an engine-watched Gitea repo instead.
 			if err := deliverPack(ctx, deps, pref, rendered); err != nil {
 				return err
 			}

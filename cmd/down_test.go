@@ -181,7 +181,7 @@ func stubTrustSeams(t *testing.T) {
 	restoreDir, restoreUninstall := trustDir, trustUninstall
 	trustDir = func() (string, error) { return dir, nil }
 	trustUninstall = func(string) error {
-		t.Error("trustUninstall must never run from a TE-3 test")
+		t.Error("trustUninstall must never run from a down-preview test")
 		return nil
 	}
 	t.Cleanup(func() { trustDir, trustUninstall = restoreDir, restoreUninstall })
@@ -212,7 +212,7 @@ func TestTE3_DownPreviewGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != string(want) {
-		t.Fatalf("TE-3.1 preview drifted from golden.\ngot:\n%s\nwant:\n%s", got, want)
+		t.Fatalf("down preview drifted from golden.\ngot:\n%s\nwant:\n%s", got, want)
 	}
 
 	// keep-cluster branch mirrors runDown's engine/cascade path, not a

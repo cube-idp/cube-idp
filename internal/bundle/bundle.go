@@ -21,7 +21,7 @@
 //	                       OCI-layout tars natively — what kind
 //	                       (LoadImageArchive) and k3d
 //	                       (ImageImportIntoClusterMulti) hand it — but that
-//	                       is NOT YET PROVEN LIVE (Task 0 review finding):
+//	                       is NOT YET PROVEN LIVE:
 //	                       chosen — plausible but unverified until the bundle
 //	                       e2e exercises it. FALLBACK if either importer
 //	                       rejects the OCI-layout tar: convert to

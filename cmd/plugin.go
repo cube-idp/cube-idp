@@ -46,7 +46,7 @@ func validatePluginName(name string) error {
 func newPluginCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "plugin",
-		Short: "Discover and manage cube-idp exec-plugins (spec §4.4 tier 2)",
+		Short: "Discover and manage cube-idp exec-plugins",
 	}
 	root.AddCommand(newPluginListCmd())
 	root.AddCommand(newPluginTrustCmd())

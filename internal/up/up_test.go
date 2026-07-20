@@ -938,7 +938,7 @@ func TestSelfManageSSADecision(t *testing.T) {
 		t.Fatal("selfManage off must always SSA")
 	}
 	if off.calls != 0 {
-		t.Fatalf("selfManage off must not consult Health (pre-P8 path), got %d calls", off.calls)
+		t.Fatalf("selfManage off must not consult Health, got %d calls", off.calls)
 	}
 
 	cases := []struct {
@@ -988,7 +988,7 @@ func TestSelfManageDeliverEngineSelf(t *testing.T) {
 			return engine.ArtifactRef{Repo: "packs/" + r.Name, Tag: r.Version, Digest: "sha256:d1"}, nil
 		},
 		gitea: func(context.Context) (giteaPacks, error) {
-			t.Fatal("engine self-management must never touch gitea (GT16: zot only)")
+			t.Fatal("engine self-management must never touch gitea (zot only)")
 			return nil, nil
 		},
 	}
