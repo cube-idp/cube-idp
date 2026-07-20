@@ -17,8 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
-	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/ui"
 )
 
@@ -169,7 +169,7 @@ func newGetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cube, err := config.Load(file)
+			cube, err := cfgload.Load(c.Context(), file)
 			if err != nil {
 				return err
 			}

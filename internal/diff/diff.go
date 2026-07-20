@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/engine"
@@ -45,9 +46,14 @@ const ensureTimeout = 3 * time.Minute
 // doc), so a re-run of `up` could still have DNS work to do even when Run
 // reports changed=false.
 func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
-	cube, err := config.Load(cfgPath)
+	cube, err := cfgload.Load(ctx, cfgPath)
 	if err != nil {
 		return false, err
+	}
+	// Remote -f provenance: a tag ref is not reproducible, so at
+	// minimum make the ref and the pin it resolved to visible in the output.
+	if o := cube.Origin(); o.Remote {
+		ui.NewFor(out).Section(fmt.Sprintf("using remote config %s (%s)", o.Ref, o.Pin))
 	}
 	prov, err := cluster.New(cube.Spec.Cluster, cube.Spec.Gateway)
 	if err != nil {
@@ -109,7 +115,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	}
 
 	// Pack content drift: compare fresh rendered hashes against cube.lock.
-	prev, err := lock.Read(lock.PathFor(cfgPath))
+	prev, err := lock.Read(lock.PathForOrigin(cfgPath, cube.Origin().Remote))
 	if err != nil {
 		return false, err
 	}
@@ -235,11 +241,14 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		// Mirror up.Run — RenderWith enforces the values stone (values: are helm
-		// values only, never engine tuning; see docs/adr/0004-pack-values-and-extra-manifests.md)
-		// and appends extraManifests, so diff previews exactly what up
-		// would deliver (including CUBE-4016/4017 failures).
-		rendered, err := p.RenderWith(pr.Values, pr.ExtraManifests, cube.Spec.Gateway)
+		// Mirror up.Run — RenderResolved resolves valuesRef (CUBE-4021) and
+		// merges inline over it, then RenderWith enforces the values stone
+		// (values: are helm values only, never engine tuning; see
+		// docs/adr/0004-pack-values-and-extra-manifests.md) and appends
+		// extraManifests, so diff previews exactly what up would deliver
+		// (including CUBE-4016/4017 failures) and a changed remote values
+		// file shows up as manifest drift.
+		rendered, valuesPin, err := pack.RenderResolved(ctx, p, pr, cube.Spec.Gateway, dir)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -247,7 +256,8 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		entries = append(entries, lock.Entry{Name: rendered.Name, RenderedHash: rh})
+		entries = append(entries, lock.Entry{Name: rendered.Name, RenderedHash: rh,
+			ValuesRef: pr.ValuesRef, ValuesPin: valuesPin})
 		dPacks = append(dPacks, p)
 		dRenders = append(dRenders, rendered)
 	}

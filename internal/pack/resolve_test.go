@@ -2,8 +2,35 @@ package pack
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+// upgrade --plan compares ResolveRemote's would-be pin against the pin
+// cube.lock recorded via FetchFile. For a local single-file ref (valuesRef,
+// providerConfigRef, remote -f) that means both must produce the SAME
+// file:<sha256-hex> — a dirhash here would report permanent drift.
+func TestResolveRemoteLocalFileMatchesFetchFile(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "values.yaml")
+	if err := os.WriteFile(f, []byte("replicas: 3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, want, err := FetchFile(context.Background(), f, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin, err := ResolveRemote(context.Background(), f, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pin != want {
+		t.Fatalf("ResolveRemote %q != FetchFile pin %q", pin, want)
+	}
+	if len(pin) < 5 || pin[:5] != "file:" {
+		t.Fatalf("want file:<sha256>, got %q", pin)
+	}
+}
 
 func TestResolveRemoteLocalDirMatchesFetch(t *testing.T) {
 	p, err := Fetch(context.Background(), "testdata/demo", t.TempDir())

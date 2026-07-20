@@ -9,6 +9,29 @@ type Cube struct {
 	Kind       string   `yaml:"kind" json:"kind"`
 	Metadata   Metadata `yaml:"metadata" json:"metadata"`
 	Spec       Spec     `yaml:"spec" json:"spec"`
+
+	// origin records where this document came from. Unexported on purpose:
+	// yaml/json marshalers skip unexported fields, so origin can never leak
+	// into a written cube.yaml or a CUE re-validation (spec 2026-07-19 §7.2).
+	origin Origin
+}
+
+// Origin describes where a Cube document was loaded from (spec 2026-07-19
+// §7.2). Remote-origin cubes are read-only: SaveValidated refuses them.
+type Origin struct {
+	Ref    string
+	Pin    string
+	Remote bool
+}
+
+// Origin reports where this Cube was loaded from. Zero value = local file.
+func (c *Cube) Origin() Origin { return c.origin }
+
+// MarkRemoteOrigin flags this Cube as loaded from a remote ref (cfgload's
+// remote -f path). SaveValidated refuses to write remote-origin cubes, and
+// up/diff put cube.lock in the CWD for them.
+func (c *Cube) MarkRemoteOrigin(ref, pin string) {
+	c.origin = Origin{Ref: ref, Pin: pin, Remote: true}
 }
 
 // Metadata identifies the Cube profile.
@@ -190,6 +213,13 @@ func (g GatewaySpec) PackRef() string {
 // PackRef references an installable pack and its values overrides.
 type PackRef struct {
 	Ref string `yaml:"ref" json:"ref"`
+	// ValuesRef optionally fetches a BASE values document via the pack ref
+	// grammar (one YAML mapping — pack.FetchFile); inline Values are RFC
+	// 7386 merge-patched on top (null deletes, arrays replace) before the
+	// chart-defaults merge. Same values rule as
+	// Values: set on a chartless pack it is CUBE-4016 at render time. The
+	// resolved pin is recorded in cube.lock (valuesPin).
+	ValuesRef string `yaml:"valuesRef,omitempty" json:"valuesRef,omitempty"`
 	// Values holds pack value overrides. Numeric entries are normalized by
 	// Load to int/float64 (never int64, CUE's raw decode type). omitempty:
 	// see the ClusterSpec comment above — a nil Values map must round-trip

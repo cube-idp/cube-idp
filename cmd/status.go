@@ -19,8 +19,8 @@ import (
 	"github.com/fluxcd/cli-utils/pkg/object"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
-	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/doctor"
 	"github.com/cube-idp/cube-idp/internal/engine"
@@ -273,7 +273,7 @@ type statusCollector func(ctx context.Context) (statusSnapshot, error)
 var statusConnect = connectStatus
 
 func connectStatus(ctx context.Context, file string, withAccess bool) (string, statusCollector, error) {
-	cube, err := config.Load(file)
+	cube, err := cfgload.Load(ctx, file)
 	if err != nil {
 		return "", nil, err
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
@@ -31,7 +32,7 @@ func newSpokeAddCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			name := args[0]
-			cube, err := config.Load(file)
+			cube, err := cfgload.Load(c.Context(), file)
 			if err != nil {
 				return err
 			}
@@ -66,7 +67,7 @@ func newSpokeListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List spokes declared in cube.yaml (with live hub state when reachable)",
 		RunE: func(c *cobra.Command, args []string) error {
-			cube, err := config.Load(file)
+			cube, err := cfgload.Load(c.Context(), file)
 			if err != nil {
 				return err
 			}
@@ -134,7 +135,7 @@ func newSpokeRemoveCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			name := args[0]
-			cube, err := config.Load(file)
+			cube, err := cfgload.Load(c.Context(), file)
 			if err != nil {
 				return err
 			}

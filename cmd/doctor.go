@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
@@ -32,7 +33,7 @@ func newDoctorCmd() *cobra.Command {
 			out := c.OutOrStdout()
 			var findings []diag.Finding
 
-			cube, err := config.Load(file)
+			cube, err := cfgload.Load(c.Context(), file)
 			if err != nil {
 				// A broken config is itself a finding; host checks still run
 				// against the default profile rather than bailing out.

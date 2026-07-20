@@ -18,7 +18,20 @@ type File struct {
 	APIVersion string     `yaml:"apiVersion" json:"apiVersion"`
 	Kind       string     `yaml:"kind" json:"kind"`
 	Engine     EngineLock `yaml:"engine" json:"engine"`
-	Packs      []Entry    `yaml:"packs" json:"packs"`
+	// Cluster records the hub cluster's remote provider-config source and
+	// pin; nil (and so an ABSENT key) for inline-only clusters, which keeps
+	// locks for ref-less cubes byte-identical to pre-RV5 output.
+	Cluster *ClusterLock `yaml:"cluster,omitempty" json:"cluster,omitempty"`
+	Packs   []Entry      `yaml:"packs" json:"packs"`
+}
+
+// ClusterLock records the cluster's remote provider-config source and pin
+// (spec 2026-07-19 §6); the whole section is absent for inline-only
+// clusters (omitempty pointer). Hub cluster only — spoke
+// cluster.providerConfigRef pins are deliberately out of scope.
+type ClusterLock struct {
+	ProviderConfigRef string `yaml:"providerConfigRef,omitempty" json:"providerConfigRef,omitempty"`
+	ProviderConfigPin string `yaml:"providerConfigPin,omitempty" json:"providerConfigPin,omitempty"`
 }
 
 // EngineLock records the GitOps engine: its type plus (engine-as-pack,
@@ -49,6 +62,11 @@ type Entry struct {
 	Version      string `yaml:"version" json:"version"`
 	Resolved     string `yaml:"resolved" json:"resolved"`
 	RenderedHash string `yaml:"renderedHash" json:"renderedHash"`
+	// ValuesRef/ValuesPin record the pack's remote values source and its
+	// resolved pin (spec 2026-07-19 §6) — absent for inline-only packs, so
+	// ref-less locks stay byte-identical to pre-RV2 output (omitempty).
+	ValuesRef string `yaml:"valuesRef,omitempty" json:"valuesRef,omitempty"`
+	ValuesPin string `yaml:"valuesPin,omitempty" json:"valuesPin,omitempty"`
 	// Images is the sorted union of every container image this pack pulls:
 	// images found by walking the rendered manifests (lock.ImagesFrom) PLUS
 	// any images the pack declares itself via pack.cue's optional images:
@@ -63,6 +81,16 @@ type Entry struct {
 // PathFor returns the cube.lock path that sits next to cfgPath (cube.yaml).
 func PathFor(cfgPath string) string {
 	return filepath.Join(filepath.Dir(cfgPath), "cube.lock")
+}
+
+// PathForOrigin picks the cube.lock path: next to cube.yaml for local
+// configs, ./cube.lock in the working directory for remote -f refs
+// (spec 2026-07-19 §7.3 — dir(<ref>) is meaningless for a ref).
+func PathForOrigin(cfgPath string, remote bool) string {
+	if remote {
+		return "cube.lock"
+	}
+	return PathFor(cfgPath)
 }
 
 // Write serializes f to path deterministically (sigs.k8s.io/yaml marshals

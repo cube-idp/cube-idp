@@ -34,6 +34,14 @@ func isGetterRef(ref string) bool {
 		strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://")
 }
 
+// IsRemoteRef reports whether ref is remote-shaped under the pack ref
+// grammar: oci://, the bare git form, or an explicit getter form. Local
+// paths and plain filenames are not remote. cfgload uses this for the -f
+// dispatch (stat wins first — this is only consulted for missing paths).
+func IsRemoteRef(ref string) bool {
+	return strings.HasPrefix(ref, "oci://") || isGitRef(ref) || isGetterRef(ref)
+}
+
 // NeedsGitCLI reports whether ref would be fetched with the git CLI (go-getter's
 // GitGetter shells out to it): the bare git grammar <host>/<org>/<repo>@<rev>
 // (isGitRef), or an explicit git:: getter form. `cube-idp doctor` uses this to

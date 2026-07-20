@@ -2,7 +2,10 @@ package pack
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -104,6 +107,20 @@ func ResolveRemote(ctx context.Context, ref, cacheDir string) (string, error) {
 		abs, err := filepath.Abs(ref)
 		if err != nil {
 			return "", diag.Wrap(err, diag.CodePackRefInvalid, "bad pack path", "use a valid directory path")
+		}
+		// A pack ref is always a directory, but the same grammar also carries
+		// single-file refs (valuesRef, providerConfigRef, remote -f), which
+		// FetchFile pins as file:<sha256-hex>. Mirror that exactly, or
+		// upgrade --plan would compare a dirhash against a file hash and
+		// report permanent drift for every local-file values source.
+		if info, statErr := os.Stat(abs); statErr == nil && !info.IsDir() {
+			b, readErr := os.ReadFile(abs)
+			if readErr != nil {
+				return "", diag.Wrap(readErr, diag.CodePackFetchFail, fmt.Sprintf("cannot read %s", ref),
+					"check file permissions")
+			}
+			sum := sha256.Sum256(b)
+			return "file:" + hex.EncodeToString(sum[:]), nil
 		}
 		return dirPin(abs) // the same dirhash helper Fetch records pins with
 	}

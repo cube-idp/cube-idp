@@ -114,6 +114,7 @@ spec:
 | `spec.gateway.ref` | string | `oci://ghcr.io/cube-idp/packs/traefik:0.2.0` | the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); `init` always writes it — the published oci ref by default, an absolute path with `--local`. Falls back to `packs/<pack>` when unset (hand-written config), which only resolves from a cube-idp/packs checkout root |
 | `spec.packs` | `[{ref, values, extraManifests, delivery}]` | gitea + argocd | additional packs delivered after the gateway; `ref` is `oci://` or a local dir (git `github.com/...` refs are also supported); `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
 | `spec.packs[].values` | map | — | helm values, only, always (the vocabulary stone) — consumed exclusively by the pack's `chart.yaml` render; setting them on a chartless pack is CUBE-4016. A pack with non-empty `values` is CUSTOMIZED (`kubectl get packs`) |
+| `spec.packs[].valuesRef` | string | — | a ref (OCI artifact, git subdirectory, or local path — same grammar as `ref`) to a YAML mapping used as the pack's **values base**; inline `values` are merge-patched on top (RFC 7386: inline wins, `null` deletes, arrays replace). Resolved by `up`/`diff` only; its pin lands in `cube.lock` as `valuesPin`. Fetch/shape/merge failures are CUBE-4021. See "Remote values and config" below |
 | `spec.packs[].extraManifests` | string (multi-doc YAML) | — | the uniform extras channel valid for **every** pack kind: parsed, `${GATEWAY_*}`-substituted, and appended after the pack's own objects; invalid YAML is CUBE-4017. A pack with non-empty `extraManifests` is CUSTOMIZED |
 | `spec.packs[].delivery` | `oci` \| `repo` | `oci` | how `up` hands the pack to the engine: `oci` (default) pushes the render to zot and registers an OCI source; `repo` pushes it into a Gitea repo (`cube-pack-<name>`) and registers a git source for an editable in-cluster fork. `repo` requires the gitea pack in `spec.packs`; gitea itself can never be repo-delivered (CUBE-7304). Shown as the `DELIVERY` column in `kubectl get packs` |
 | `spec.packs[].dependsOn` | `[string]` | — | list of pack *names* (not refs) this pack needs delivered/healthy first; unioned with the pack's own `pack.cue` `dependsOn` at graph time. Cycles and unknown names are rejected at `up`/`diff` time (CUBE-4019, CUBE-4018). `flux` orders reconciliation natively (Kustomization `spec.dependsOn`); `argocd` orders delivery only (annotation + a wave gate `up` enforces, since Argo CD has no native cross-Application ordering primitive). Shown as the `DEPENDS-ON` column in `kubectl get packs` |
@@ -360,6 +361,12 @@ change.
     by `diff` to detect pack-level drift without re-rendering everything.
   - `images` — every container image referenced by the rendered objects,
     for offline auditing/vulnerability scanning.
+  - `valuesRef` / `valuesPin` — the pack's remote values source and its
+    resolved pin, when `spec.packs[].valuesRef` is set (absent otherwise).
+
+  Plus a top-level `cluster:` section carrying `providerConfigRef` /
+  `providerConfigPin` when the hub cluster uses a `providerConfigRef`
+  (absent otherwise). See "Remote values and config" below.
 
   Commit `cube.lock` alongside `cube.yaml` — it pins what actually shipped,
   the way a lockfile does for a package manager.
@@ -563,6 +570,105 @@ binary-pure. `cube-idp doctor` warns (CUBE-0105) if git-sourced packs are
 configured but `git` isn't on `PATH`. Every fetched tree, regardless of
 source, passes cube-idp's extraction guards (path traversal / symlink
 escape, CUBE-4014) before anything is read from it.
+
+### Remote values and config
+
+The ref grammar above is not just for pack *code*. Two more surfaces ride
+exactly the same grammar, cache, auth, and extraction guards, so a platform
+team can publish a shared values base — or a whole cube definition — once and
+reference it from every cube.
+
+**1. `spec.packs[].valuesRef` — a fetched values base.** One ref, one YAML
+mapping, merged *under* the pack's inline `values:`:
+
+```yaml
+spec:
+  packs:
+    - ref: oci://ghcr.io/cube-idp/packs/traefik:0.2.0
+      valuesRef: oci://ghcr.io/acme/values/traefik:1.2.0   # the org-wide base
+      values:                                              # optional local overrides
+        deployment: {replicas: 3}
+```
+
+`valuesRef` on its own is the common case — the fetched document *is* the
+pack's values. Both fields are independent: ref only, inline only, both, or
+neither are all valid.
+
+**2. Remote `-f` — the cube definition itself.** Every command's `-f` accepts
+the same refs, read-only:
+
+```bash
+cube-idp up -f oci://ghcr.io/acme/cubes/prod:1.4.0
+cube-idp status -f github.com/acme/cubes//prod@v1.4.0
+```
+
+A local file always wins: `-f` stats the path first, so
+`configs.d/cube.yaml` still loads from disk even though it also parses as a
+bare-git ref. Only when no such file exists is the argument treated as a ref
+(and a non-ref-shaped missing path is still the plain CUBE-0001).
+
+**Accepted forms and pins** — the pack-ref table above, plus one wrinkle:
+these two surfaces target a single *file*, so a ref that resolves to one file
+pins by content hash rather than by tree hash.
+
+| Form | Example | Pin recorded |
+| --- | --- | --- |
+| local file | `./values/traefik.yaml` | `file:<sha256>` |
+| local directory | `./values/traefik` (must hold exactly one `*.yaml`) | `dir:<dirhash>` |
+| OCI | `oci://ghcr.io/acme/values/traefik:1.2.0` | `oci:<manifest-digest>` |
+| bare git | `github.com/acme/values//traefik@v1.2.0` | `git+<full-sha>` — the `@rev` is **required** (CUBE-4007) |
+| explicit go-getter | `git::…`, `s3::…` | `dir:<dirhash>` |
+
+Refs are **git/oci-shaped**. A directory-shaped ref (local dir, git
+`//subdir`, OCI artifact) must contain exactly one top-level `*.yaml`/`*.yml`.
+A plain `https://example.com/values.yaml` object URL is *not* a working ref:
+the fetcher resolves every `http(s)://` ref as a directory, so point these
+fields at OCI artifacts, git subdirectories, or local paths instead.
+
+**Merge semantics** are RFC 7386 merge-patch — the same algorithm and the
+same precedence direction the cluster's `providerConfigRef`/`forProvider`
+pair already uses: **inline wins**, a `null` in the inline layer **deletes**
+that key from the fetched base, and arrays **replace** wholesale (never
+concatenate). The merged result then enters the normal ladder — chart
+defaults, then the merged values, then `${GATEWAY_*}` substitution, then
+`#Values` validation (CUBE-4002). The values rule still holds: `valuesRef` is
+helm values, so setting it on a chartless pack is CUBE-4016, and a pack with a
+`valuesRef` is CUSTOMIZED in `kubectl get packs`.
+
+**Refs resolve at desired-state build time** — inside `up` and `diff`, never
+in config loading — so `status`, `doctor`, and `get` stay offline and
+network-silent, and a changed remote values file shows up as ordinary
+manifest drift in `diff`.
+
+**Pins land in `cube.lock`**: each pack entry gains `valuesRef` + `valuesPin`,
+and a cube with `spec.cluster.providerConfigRef` gains a top-level `cluster:`
+section with `providerConfigRef` + `providerConfigPin` (hub cluster only).
+Both keys are omitted when empty, so locks for ref-less cubes are unchanged.
+`cube-idp upgrade --plan` re-resolves them and reports each as its **own**
+row — `values(<ref>)` and `providerConfig(<ref>)` — never conflated with the
+chart/pack rows, so "the shared values base moved" reads differently from
+"the pack moved".
+
+**Remote configs are read-only.** Any command that would rewrite `cube.yaml`
+(`pack install`, `spoke add`, `spoke remove`) refuses with **CUBE-0014** when
+`-f` was a ref — fetch it locally to edit it. Read-side commands work
+transparently, printing one `using remote config <ref> (<pin>)` line so a
+mutable tag ref is at least visible in the logs. Since a ref has no
+directory, `cube.lock` for a remote `-f` run is written as `./cube.lock` in
+the current working directory.
+
+**Offline rails still hold.** `up --bundle` promises no network, and remote
+values/config sources are not vendored into the bundle, so a cube that
+carries a `valuesRef` — or that was loaded from a remote `-f` ref — is
+refused up front with **CUBE-7007** rather than reaching for the network
+mid-install.
+
+| Code | Meaning |
+| --- | --- |
+| `CUBE-4021` | `valuesRef` fetch failed, is not a YAML mapping, or the merge with inline `values:` failed |
+| `CUBE-7007` | `up --bundle` with a remote values/config source (not vendored — offline rails would be violated) |
+| `CUBE-0014` | a config-mutating command ran against a remote `-f` ref (remote configs are read-only) |
+| `CUBE-0015` | remote `-f` ref fetch failed, or did not yield exactly one YAML document |
 
 ## Pack discoverability
 

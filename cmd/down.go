@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cube-idp/cube-idp/internal/apply"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
@@ -40,7 +41,7 @@ func newDownCmd() *cobra.Command {
 			// The destructive-consent gate runs BEFORE ui.RunPipeline —
 			// a prompt and the pipeline must never share the terminal.
 			if !yes {
-				cube, err := config.Load(file)
+				cube, err := cfgload.Load(c.Context(), file)
 				if err != nil {
 					return err
 				}
@@ -154,7 +155,7 @@ func downSpokes(ctx context.Context, con *ui.Console, cube *config.Cube, keepClu
 }
 
 func runDown(ctx context.Context, con *ui.Console, file string, keepCluster bool) error {
-	cube, err := config.Load(file)
+	cube, err := cfgload.Load(ctx, file)
 	if err != nil {
 		return err
 	}

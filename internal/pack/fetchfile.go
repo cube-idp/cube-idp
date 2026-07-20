@@ -2,6 +2,8 @@ package pack
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,53 +14,68 @@ import (
 
 // FetchFile resolves ref — the same grammar Fetch accepts (local path,
 // oci://host/repo:tag, <host>/<org>/<repo>[//subdir]@rev, git::/s3::/http(s)
-// getter forms) — to the bytes of exactly ONE YAML file. It is the fetch
-// primitive for spec.cluster.providerConfigRef (compose.Resolve): unlike
-// Fetch it never parses pack.cue, and a ref that yields a directory must
-// contain exactly one top-level *.yaml/*.yml or the fetch fails (a base
-// cluster config is one document, not a tree).
-func FetchFile(ctx context.Context, ref, cacheDir string) ([]byte, error) {
+// getter forms) — to the bytes of exactly ONE YAML file plus the cube.lock
+// pin of what was fetched (oci:<digest> / git+<sha> / dir:<dirhash>;
+// file:<sha256-hex> for a direct local file). It is the fetch primitive for
+// spec.cluster.providerConfigRef, packs[].valuesRef and
+// remote -f: unlike Fetch it never parses pack.cue, and a ref that yields a
+// directory must contain exactly one top-level *.yaml/*.yml or the fetch
+// fails (a config/values document is one file, not a tree).
+func FetchFile(ctx context.Context, ref, cacheDir string) ([]byte, string, error) {
 	switch {
 	case strings.HasPrefix(ref, "oci://"):
-		dir, _, err := pullOCI(ctx, strings.TrimPrefix(ref, "oci://"), cacheDir)
+		dir, digest, err := pullOCI(ctx, strings.TrimPrefix(ref, "oci://"), cacheDir)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return singleYAML(ref, dir)
+		b, err := singleYAML(ref, dir)
+		return b, "oci:" + digest, err
 	case isGitRef(ref):
-		dir, _, err := fetchGitTree(ctx, ref, cacheDir)
+		dir, pin, err := fetchGitTree(ctx, ref, cacheDir)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return singleYAML(ref, dir)
+		b, err := singleYAML(ref, dir)
+		return b, pin, err
 	case isGetterRef(ref):
 		dst := filepath.Join(cacheDir, "getter", sanitizeRef(ref))
 		if err := fetchGetter(ctx, ref, dst); err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return singleYAML(ref, dst)
+		pin, err := dirPin(dst)
+		if err != nil {
+			return nil, "", err
+		}
+		b, err := singleYAML(ref, dst)
+		return b, pin, err
 	case strings.Contains(ref, "://"):
-		return nil, diag.New(diag.CodePackRefInvalid, fmt.Sprintf("unsupported ref scheme in %q", ref),
+		return nil, "", diag.New(diag.CodePackRefInvalid, fmt.Sprintf("unsupported ref scheme in %q", ref),
 			"use a local path, oci://host/repo:tag, github.com/org/repo//path@rev, or an explicit go-getter URL (git::…, s3::…, https://…)")
 	default:
 		abs, err := filepath.Abs(ref)
 		if err != nil {
-			return nil, diag.Wrap(err, diag.CodePackRefInvalid, "bad ref path", "use a valid file or directory path")
+			return nil, "", diag.Wrap(err, diag.CodePackRefInvalid, "bad ref path", "use a valid file or directory path")
 		}
 		info, err := os.Stat(abs)
 		if err != nil {
-			return nil, diag.Wrap(err, diag.CodePackFetchFail, fmt.Sprintf("cannot read %s", ref),
+			return nil, "", diag.Wrap(err, diag.CodePackFetchFail, fmt.Sprintf("cannot read %s", ref),
 				"point the ref at a readable YAML file or a directory containing exactly one")
 		}
 		if info.IsDir() {
-			return singleYAML(ref, abs)
+			pin, err := dirPin(abs)
+			if err != nil {
+				return nil, "", err
+			}
+			b, err := singleYAML(ref, abs)
+			return b, pin, err
 		}
 		b, err := os.ReadFile(abs)
 		if err != nil {
-			return nil, diag.Wrap(err, diag.CodePackFetchFail, fmt.Sprintf("cannot read %s", ref),
+			return nil, "", diag.Wrap(err, diag.CodePackFetchFail, fmt.Sprintf("cannot read %s", ref),
 				"check file permissions")
 		}
-		return b, nil
+		sum := sha256.Sum256(b)
+		return b, "file:" + hex.EncodeToString(sum[:]), nil
 	}
 }
 

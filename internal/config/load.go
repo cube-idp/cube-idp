@@ -30,9 +30,19 @@ func Load(path string) (*Cube, error) {
 		return nil, diag.Wrap(err, diag.CodeConfigRead, fmt.Sprintf("cannot read %s", path),
 			"run `cube-idp init` to generate a starter cube.yaml")
 	}
+	return LoadBytes(raw, path)
+}
+
+// LoadBytes runs the full validation pipeline (YAML decode, spoke +
+// migration probes, CUE unify/validate/decode with defaults, pack-values
+// normalization, cross-field checks, k8s-version default) on an
+// already-read document. src labels errors — a file path for Load, the
+// remote ref for cfgload's remote -f (spec 2026-07-19 §7.1). The split is
+// behavior-neutral: Load is os.ReadFile + LoadBytes, nothing else.
+func LoadBytes(raw []byte, src string) (*Cube, error) {
 	var doc map[string]any
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return nil, diag.Wrap(err, diag.CodeConfigInvalid, fmt.Sprintf("%s is not valid YAML", path),
+		return nil, diag.Wrap(err, diag.CodeConfigInvalid, fmt.Sprintf("%s is not valid YAML", src),
 			"fix the YAML syntax; run `cube-idp config schema` for the expected shape")
 	}
 
@@ -105,13 +115,13 @@ func Load(path string) (*Cube, error) {
 	schema := ctx.CompileString(schemaCUE).LookupPath(cuePath("#Cube"))
 	val := schema.Unify(ctx.Encode(doc))
 	if err := val.Validate(); err != nil {
-		return nil, diag.Wrap(err, diag.CodeConfigInvalid, fmt.Sprintf("%s failed validation", path),
+		return nil, diag.Wrap(err, diag.CodeConfigInvalid, fmt.Sprintf("%s failed validation", src),
 			"run `cube-idp config schema` to see allowed fields and values")
 	}
 
 	var c Cube
 	if err := val.Decode(&c); err != nil { // decodes with CUE defaults applied
-		return nil, diag.Wrap(err, diag.CodeConfigInvalid, fmt.Sprintf("%s failed validation", path),
+		return nil, diag.Wrap(err, diag.CodeConfigInvalid, fmt.Sprintf("%s failed validation", src),
 			"run `cube-idp config schema` to see allowed fields and values")
 	}
 	normalizePackValues(&c)
@@ -135,7 +145,16 @@ func Load(path string) (*Cube, error) {
 // leaves the file untouched. Lifted from cmd's pack-install writer (W2.T11)
 // so every config-mutating command (pack install, spoke add/remove) shares
 // one save path.
+//
+// A cube loaded from a remote -f ref is read-only (spec 2026-07-19 §7.2):
+// this one guard covers every mutating call site, and it runs before any
+// write so a refused mutation leaves no temp file behind.
 func SaveValidated(file string, cube *Cube) error {
+	if o := cube.Origin(); o.Remote {
+		return diag.New(diag.CodeConfigRemoteReadOnly,
+			fmt.Sprintf("config was loaded from remote ref %q — remote configs are read-only", o.Ref),
+			"fetch the file locally (git clone / curl / oras pull), edit it, and pass the local path to -f")
+	}
 	raw, err := sigyaml.Marshal(cube)
 	if err != nil {
 		return err

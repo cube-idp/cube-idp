@@ -20,6 +20,7 @@ import (
 
 	"github.com/cube-idp/cube-idp/internal/apply"
 	"github.com/cube-idp/cube-idp/internal/bundle"
+	"github.com/cube-idp/cube-idp/internal/cfgload"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
@@ -30,6 +31,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/lock"
 	"github.com/cube-idp/cube-idp/internal/oci"
 	"github.com/cube-idp/cube-idp/internal/pack"
+	"github.com/cube-idp/cube-idp/internal/refval"
 	"github.com/cube-idp/cube-idp/internal/registry"
 	"github.com/cube-idp/cube-idp/internal/spoke"
 	"github.com/cube-idp/cube-idp/internal/trust"
@@ -98,12 +100,17 @@ type Options struct {
 func Run(ctx context.Context, opts Options) error {
 	con := opts.Con
 	cfgPath := opts.ConfigPath
-	cube, err := config.Load(cfgPath)
+	cube, err := cfgload.Load(ctx, cfgPath)
 	if err != nil {
 		return err // no RunStarted: a failed load emits only RunDone+Diagnosis
 	}
 	con.Start("up", cube.Metadata.Name)
 	con.Step("config", "cube %q loaded and validated", cube.Metadata.Name)
+	// Remote -f provenance: a tag ref is not reproducible, so at
+	// minimum make the ref and the pin it resolved to visible in the log.
+	if o := cube.Origin(); o.Remote {
+		con.Step("config", "using remote config %s (%s)", o.Ref, o.Pin)
+	}
 
 	// Offline mode: open and verify the bundle up front so a
 	// corrupt or incomplete bundle fails before any cluster artifact exists.
@@ -118,6 +125,9 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		con.Step("bundle", "bundle verified — content hashes OK, %d packs / %d images present",
 			len(opened.Lock.Packs), len(opened.Manifest.Images))
+		if err := bundleRailsCheck(cube); err != nil {
+			return err
+		}
 	}
 
 	// Cert material is generated before cluster creation
@@ -375,10 +385,13 @@ func Run(ctx context.Context, opts Options) error {
 				}
 			}
 			packs = append(packs, pk)
-			// RenderWith is RenderFor plus the values rule —
-			// values on a chartless pack is CUBE-4016, and extraManifests
-			// (any pack kind) are substituted + appended (CUBE-4017).
-			rendered, err := pk.RenderWith(pref.Values, pref.ExtraManifests, cube.Spec.Gateway)
+			// RenderResolved is RenderWith plus the values rule extended to
+			// valuesRef — the remote base fetch (CUBE-4021) and the RFC 7386
+			// inline-over-fetched merge run first, then RenderWith enforces
+			// the rule itself (values or valuesRef on a chartless pack is
+			// CUBE-4016) and substitutes + appends extraManifests
+			// (CUBE-4017). Inline-only packs pass straight through, unchanged.
+			rendered, valuesPin, err := pack.RenderResolved(ctx, pk, pref, cube.Spec.Gateway, dir)
 			if err != nil {
 				return err
 			}
@@ -392,6 +405,8 @@ func Run(ctx context.Context, opts Options) error {
 				Version:      rendered.Version,
 				Resolved:     pk.Pinned,
 				RenderedHash: rh,
+				ValuesRef:    pref.ValuesRef,
+				ValuesPin:    valuesPin,
 				// Union rendered-manifest images with the pack's own
 				// declared images (pack.cue images:) — see the Entry.Images
 				// field comment for why both sources matter.
@@ -422,13 +437,30 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
+	// Cluster providerConfig pin (spec 2026-07-19 §6): re-resolve the ref the
+	// cluster ensure already fetched (so this is a cache hit) purely to
+	// surface its pin, instead of plumbing a pin return through the whole
+	// provider interface. Best-effort by design: the cluster is already up
+	// from this exact ref, so a transient re-resolve failure must not fail
+	// the whole `up` — it only leaves the lock's cluster section absent. Say so
+	// out loud, though: an absent cluster section makes the next
+	// `upgrade --plan` report the providerConfigRef as "new (not in cube.lock)".
+	var clusterLock *lock.ClusterLock
+	if ref := cube.Spec.Cluster.ProviderConfigRef; ref != "" {
+		if _, pin, err := refval.Resolve(ctx, ref, dir); err == nil {
+			clusterLock = &lock.ClusterLock{ProviderConfigRef: ref, ProviderConfigPin: pin}
+		} else {
+			con.Note("warning: could not pin providerConfigRef %s (%v); cube.lock records no cluster section, so `cube-idp upgrade --plan` will report it as new", ref, err)
+		}
+	}
 	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
 		Engine: lock.EngineLock{Type: cube.Spec.Engine.Type, Ref: cube.Spec.Engine.PackRef(),
 			Name: engineRendered.Name, Version: engineRendered.Version, Resolved: enginePk.Pinned,
 			RenderedHash: engRH,
 			Images:       mergeImages(lock.ImagesFrom(engineRendered.Objects), enginePk.Images)},
-		Packs: entries}
-	if err := lock.Write(lock.PathFor(cfgPath), lf); err != nil {
+		Cluster: clusterLock,
+		Packs:   entries}
+	if err := lock.Write(lock.PathForOrigin(cfgPath, cube.Origin().Remote), lf); err != nil {
 		return err
 	}
 	con.Step("lock", "cube.lock written (%d packs)", len(entries))
@@ -533,7 +565,9 @@ func Run(ctx context.Context, opts Options) error {
 	// CUSTOMIZED and DELIVERY columns.
 	packObjs := make([]*unstructured.Unstructured, 0, len(packs))
 	for i, pk := range packs {
-		customized := len(refs[i].Values) > 0 || refs[i].ExtraManifests != ""
+		// RV2: a remotely-valued pack IS customized — valuesRef carries the
+		// same "not the pack author's stock render" meaning as inline values.
+		customized := len(refs[i].Values) > 0 || refs[i].ValuesRef != "" || refs[i].ExtraManifests != ""
 		packObjs = append(packObjs, pack.PackObject(pk, cube.Spec.Gateway, healthByName["cube-idp-"+pk.Name], customized, refs[i].Delivery, packDeps[pk.Name]))
 	}
 	// Engine-as-pack §3.3.7: the engine's own row. READY is true by
@@ -594,6 +628,27 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 	con.Access(access, "credentials: cube-idp get secrets")
+	return nil
+}
+
+// bundleRailsCheck enforces offline honesty for --bundle runs (CUBE-7007):
+// the bundle vendors pack refs and images, NOT remote values/config sources —
+// any of those alongside a bundle would either touch the network or fail
+// mid-install, so refuse before any cluster mutation (the CUBE-7005
+// fail-fast precedent). Pure and unit-testable: no bundle, no cluster.
+func bundleRailsCheck(cube *config.Cube) error {
+	if o := cube.Origin(); o.Remote {
+		return diag.New(diag.CodeBundleRemoteSource,
+			fmt.Sprintf("config was loaded from remote ref %q — remote configs are not vendored into the bundle", o.Ref),
+			"fetch the cube.yaml locally and pass the local path to -f for air-gapped installs")
+	}
+	for _, p := range cube.Spec.Packs {
+		if p.ValuesRef != "" {
+			return diag.New(diag.CodeBundleRemoteSource,
+				fmt.Sprintf("pack %q has valuesRef %q — remote values are not vendored into the bundle", p.Ref, p.ValuesRef),
+				"inline the values (remove valuesRef) for air-gapped installs, or run without --bundle")
+		}
+	}
 	return nil
 }
 

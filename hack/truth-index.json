@@ -705,6 +705,16 @@
       "range": "0xxx: preflight/config"
     },
     {
+      "id": "CUBE-0014",
+      "summary": "a config-mutating command ran against a remote -f ref (remote configs are read-only)",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0015",
+      "summary": "remote -f ref fetch failed or did not yield one YAML document",
+      "range": "0xxx: preflight/config"
+    },
+    {
       "id": "CUBE-0101",
       "summary": "container runtime not found",
       "range": "01xx: doctor preflight checks"
@@ -1005,6 +1015,11 @@
       "range": "4xxx: pack"
     },
     {
+      "id": "CUBE-4021",
+      "summary": "packs[].valuesRef fetch failed, not a YAML mapping, or merge with inline values failed",
+      "range": "4xxx: pack"
+    },
+    {
       "id": "CUBE-5001",
       "summary": "embedded zot manifests invalid",
       "range": "5xxx: registry"
@@ -1087,6 +1102,11 @@
     {
       "id": "CUBE-7006",
       "summary": "bundled image load into cluster nodes failed (kind/k3d LoadImages, consume side)",
+      "range": "70xx: vendor / air-gap bundle"
+    },
+    {
+      "id": "CUBE-7007",
+      "summary": "`up --bundle` with a remote values/tuning/config source — remote refs are not vendored, offline rails would be violated",
       "range": "70xx: vendor / air-gap bundle"
     },
     {
@@ -1345,6 +1365,11 @@
       "path": "spec.packs.ref",
       "type": "string",
       "tag": "ref"
+    },
+    {
+      "path": "spec.packs.valuesRef",
+      "type": "string",
+      "tag": "valuesRef"
     },
     {
       "path": "spec.packs.values",

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 	"github.com/cube-idp/cube-idp/internal/engine"
+	"github.com/cube-idp/cube-idp/internal/lock"
 	"github.com/cube-idp/cube-idp/internal/pack"
 	"github.com/cube-idp/cube-idp/internal/registry"
 )
@@ -394,5 +396,102 @@ func TestDesiredStateFailsOnDepCycle(t *testing.T) {
 	}
 	if de.Code != diag.CodePackDepCycle {
 		t.Fatalf("want CUBE-4019, got %v", de.Code)
+	}
+}
+
+// writeValuesChartPack materializes a network-free CHART-bearing pack (a
+// local helm chart referenced by absolute path from chart.yaml) whose single
+// ConfigMap templates two values — so a valuesRef base and an inline override
+// are both observable in the rendered content hash. Mirrors
+// writeEngineFixture's on-disk-fixture convention.
+func writeValuesChartPack(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	chartDir := filepath.Join(root, "vr-chart")
+	if err := os.MkdirAll(filepath.Join(chartDir, "templates"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(chartDir, "Chart.yaml"), []byte("apiVersion: v2\nname: vr-chart\nversion: 0.1.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(chartDir, "values.yaml"), []byte("replicas: 1\nmessage: chart-default\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(chartDir, "templates", "cm.yaml"),
+		[]byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vr-cm\ndata:\n  replicas: {{ .Values.replicas | quote }}\n  message: {{ .Values.message | quote }}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	packDir := filepath.Join(root, "vr-pack")
+	if err := os.MkdirAll(packDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packDir, "pack.cue"), []byte("name:    \"vr-pack\"\nversion: \"0.1.0\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packDir, "chart.yaml"),
+		[]byte("chart: \""+chartDir+"\"\nreleaseName: vr\nnamespace: vr\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return packDir
+}
+
+// TestDesiredStateValuesRef is where valuesRef must take effect for BOTH diff
+// and up (up shares pack.RenderResolved): the fetched base reaches the render
+// (a different rendered hash than the ref-less cube), the inline layer still
+// wins on top of it, and the resolved pin lands in the lock entry.
+func TestDesiredStateValuesRef(t *testing.T) {
+	packDir := writeValuesChartPack(t)
+	vals := filepath.Join(t.TempDir(), "values.yaml")
+	if err := os.WriteFile(vals, []byte("replicas: 2\nmessage: from-ref\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	newCube := func() *config.Cube {
+		return &config.Cube{
+			Metadata: config.Metadata{Name: "test"},
+			Spec: config.Spec{
+				Engine:  config.EngineSpec{Type: "flux", Ref: writeEngineFixture(t)},
+				Gateway: config.GatewaySpec{Pack: "demo", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo"},
+				Packs:   []config.PackRef{{Ref: packDir, Values: map[string]any{"message": "inline"}}},
+			},
+		}
+	}
+
+	// Baseline: same cube WITHOUT valuesRef — inline only.
+	_, _, baseEntries, err := desiredState(context.Background(), newCube(), fakeEngine{})
+	if err != nil {
+		t.Fatalf("desiredState (no valuesRef): %v", err)
+	}
+
+	cube := newCube()
+	cube.Spec.Packs[0].ValuesRef = vals
+	_, _, entries, err := desiredState(context.Background(), cube, fakeEngine{})
+	if err != nil {
+		t.Fatalf("desiredState (valuesRef): %v", err)
+	}
+
+	find := func(list []lock.Entry) *lock.Entry {
+		for i := range list {
+			if list[i].Name == "vr-pack" {
+				return &list[i]
+			}
+		}
+		return nil
+	}
+	// diff's entries carry {Name, RenderedHash} (+ the RV2 values fields), not
+	// Ref — look the pack up by its rendered name.
+	e, base := find(entries), find(baseEntries)
+	if e == nil || base == nil {
+		t.Fatalf("vr-pack entry missing: %+v / %+v", entries, baseEntries)
+	}
+	if e.ValuesRef != vals || !strings.HasPrefix(e.ValuesPin, "file:") {
+		t.Fatalf("lock entry missing values pin: %+v", e)
+	}
+	if base.ValuesRef != "" || base.ValuesPin != "" {
+		t.Fatalf("inline-only pack must carry no values fields: %+v", base)
+	}
+	// The fetched base actually reached the render (replicas: 2 vs the
+	// chart default 1); the inline layer still won on `message`.
+	if e.RenderedHash == base.RenderedHash {
+		t.Fatalf("valuesRef did not change the rendered content: %s", e.RenderedHash)
 	}
 }

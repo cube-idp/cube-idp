@@ -35,6 +35,8 @@ var registry = map[Code]Desc{
 	CodeProviderConfigRemoved: {Summary: "cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)"},
 	CodeEngineTuningRemoved:   {Summary: "engine.tuning was removed (engine-as-pack) — move the knobs to engine.values as chart values of the cube-engine-<type> pack"},
 	CodeEnginePackMismatch:    {Summary: "engine.ref points at a pack whose pack.cue name != cube-engine-<engine.type>"},
+	CodeConfigRemoteReadOnly:  {Summary: "a config-mutating command ran against a remote -f ref (remote configs are read-only)"},
+	CodeConfigRemoteFetch:     {Summary: "remote -f ref fetch failed or did not yield one YAML document"},
 
 	// 01xx: doctor preflight checks
 	CodeDoctorRuntime: {Summary: "container runtime not found"},
@@ -117,6 +119,7 @@ var registry = map[Code]Desc{
 	CodePackDepUnknown:      {Summary: "dependsOn names a pack not in this cube"},
 	CodePackDepCycle:        {Summary: "pack dependency cycle (the message shows the path)"},
 	CodePackDepGateway:      {Summary: "gateway pack cannot carry a dependsOn of its own"},
+	CodePackValuesRefFetch:  {Summary: "packs[].valuesRef fetch failed, not a YAML mapping, or merge with inline values failed"},
 
 	// 5xxx: registry
 	CodeZotManifestsInv:         {Summary: "embedded zot manifests invalid"},
@@ -140,6 +143,7 @@ var registry = map[Code]Desc{
 	CodeVendorIncomplete:    {Summary: "vendor bundle is missing or has corrupt content for a locked pack or image (Verify)"},
 	CodeBundleNoImageLoader: {Summary: "`up --bundle` needs a provider that node-loads images (kind/k3d); `existing` cannot"},
 	CodeBundleImageLoadFail: {Summary: "bundled image load into cluster nodes failed (kind/k3d LoadImages, consume side)"},
+	CodeBundleRemoteSource:  {Summary: "`up --bundle` with a remote values/tuning/config source — remote refs are not vendored, offline rails would be violated"},
 
 	// 71xx: exec-plugin discovery
 	CodePluginNotFound:    {Summary: "unknown command and no cube-idp-<name> plugin found on PATH"},

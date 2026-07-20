@@ -131,19 +131,22 @@ literal tokens pass through untouched.
 > **`values:` are helm values, only, always — consumed exclusively by the
 > pack's `chart.yaml` render.**
 
-Setting `values:` on a pack that has no `chart.yaml` is a **typed error,
-CUBE-4016**, raised at render time (a pack's layout is unknowable until
-the ref is fetched). Values never parametrize `manifests/` or kustomize
-output.
+Setting `values:` — or `valuesRef:` — on a pack that has no `chart.yaml` is
+a **typed error, CUBE-4016**, raised at render time (a pack's layout is
+unknowable until the ref is fetched). Values never parametrize `manifests/`
+or kustomize output.
 
 **Merge order for helm packs** (each later layer wins; maps deep-merge,
 scalars and lists replace):
 
 1. the chart's own built-in defaults (`values.yaml` inside the chart);
 2. `chart.yaml`'s `values:` block (the pack author's defaults);
-3. the user's `packs[].values` from cube.yaml — first unified with
-   `#Values` when the pack declares one, which fills CUE defaults and
-   rejects violations (CUBE-4002);
+3. the user's effective values from cube.yaml — `packs[].valuesRef`'s
+   fetched YAML mapping with inline `packs[].values` RFC 7386
+   merge-patched on top (inline wins, `null` deletes, arrays replace;
+   fetch/shape/merge failures are CUBE-4021), then unified with `#Values`
+   when the pack declares one, which fills CUE defaults and rejects
+   violations (CUBE-4002);
 4. `${GATEWAY_*}` substitution over the merged result's string leaves
    (§3).
 
@@ -161,8 +164,8 @@ error, **CUBE-4017**.
 
 ### CUSTOMIZED
 
-A pack installed with non-empty `values` or `extraManifests` is
-**CUSTOMIZED**: recorded on its in-cluster Pack record and shown as a
+A pack installed with a non-empty `values`, `valuesRef`, or
+`extraManifests` is **CUSTOMIZED**: recorded on its in-cluster Pack record and shown as a
 printer column in `kubectl get packs`. A vanilla install shows no marker.
 
 Vocabulary triad, fixed: **values → chart render (packs and the engine
