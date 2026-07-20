@@ -47,18 +47,18 @@ applies itself, outside any pack.
 ## Consequences
 
 * Good, because a pack authored once renders identically whether it is delivered as a
-  chart, raw manifests or a kustomization — the substitution is a single shared function.
+ chart, raw manifests or a kustomization — the substitution is a single shared function.
 * Good, because packs with no Gateway API content are not forced to queue behind the
-  gateway pack, so installs parallelize as far as the real constraints allow.
+ gateway pack, so installs parallelize as far as the real constraints allow.
 * Good, because the CRD wait is bounded and typed (CUBE-5005) rather than an unbounded
-  spin, so a stuck gateway controller surfaces as a diagnosable error.
+ spin, so a stuck gateway controller surfaces as a diagnosable error.
 * Bad, because token substitution is textual: it happens on raw bytes and string leaves,
-  so a literal `${GATEWAY_HOST}` a pack wanted to keep cannot be escaped.
+ so a literal `${GATEWAY_HOST}` a pack wanted to keep cannot be escaped.
 * Bad, because the gateway edge depends on render output, meaning ordering cannot be
-  computed from pack metadata alone — every pack must be rendered before the graph is
-  resolvable.
+ computed from pack metadata alone — every pack must be rendered before the graph is
+ resolvable.
 * Bad, because one Gateway API consumer (the registry HTTPRoute) sits outside the pack
-  graph and needs its own hand-written gate, so the readiness logic exists in two places.
+ graph and needs its own hand-written gate, so the readiness logic exists in two places.
 
 ## Implementation Status
 
@@ -66,26 +66,26 @@ applies itself, outside any pack.
 
 | Decision | Implemented at |
 | --- | --- |
-| Pack rendering substitutes `${GATEWAY_HOST}`, `${GATEWAY_FQDN}` and `${GATEWAY_PACK}` across expose URLs, chart values, pack manifest bytes and `extraManifests`, applied after the defaults merge, with the kustomize path substituting built YAML bytes before parsing; a zero gateway spec is a no-op. | `internal/pack/expose.go:58-66`; `internal/pack/helm.go:142`; `internal/pack/render.go:83,140`; `internal/pack/kustomize.go:34` |
-| `up` waits for the `httproutes` CRD to become Established with a CUBE-5005-typed deadline before applying the registry HTTPRoute, and this gate is retained in `up.Run` because it guards a route outside any pack. | `internal/up/up.go:442`; `internal/diag/codes.go:123` |
-| *(superseded)* Gitea is never itself repo-delivered, is hard-ordered immediately after the gateway, and repo delivery is gated on gitea API readiness. | `internal/up/up.go:1163-1170`, `internal/up/up.go:1179-1190` |
+| Pack rendering substitutes `${GATEWAY_HOST}`, `${GATEWAY_FQDN}` and `${GATEWAY_PACK}` across expose URLs, chart values, pack manifest bytes and `extraManifests`, applied after the defaults merge, with the kustomize path substituting built YAML bytes before parsing; a zero gateway spec is a no-op. | `internal/pack/expose.go`; `internal/pack/helm.go`; `internal/pack/render.go`; `internal/pack/kustomize.go` |
+| `up` waits for the `httproutes` CRD to become Established with a CUBE-5005-typed deadline before applying the registry HTTPRoute, and this gate is retained in `up.Run` because it guards a route outside any pack. | `internal/up/up.go`; `internal/diag/codes.go` |
+| *(superseded)* Gitea is never itself repo-delivered, is hard-ordered immediately after the gateway, and repo delivery is gated on gitea API readiness. | `internal/up/up.go` |
 
 ### Verification
 
-- [ ] `internal/pack/expose.go:58-66` — `substitute` replaces all three tokens and is a
+- [ ] `internal/pack/expose.go` — `substitute` replaces all three tokens and is a
       no-op when `gw.Host == ""`.
-- [ ] `internal/pack/helm.go:142` — `substituteValues` is called on
+- [ ] `internal/pack/helm.go` — `substituteValues` is called on
       `mergeValues(ref.Values, values)`, i.e. after the defaults merge, not before.
-- [ ] `internal/pack/render.go:83` and `internal/pack/kustomize.go:34` — both call
+- [ ] `internal/pack/render.go` and `internal/pack/kustomize.go` — both call
       `substitute` on raw/built YAML bytes before `apply.ParseMultiDoc`.
-- [ ] `internal/pack/render.go:140` — `substitute` is applied to
+- [ ] `internal/pack/render.go` — `substitute` is applied to
       `packs[].extraManifests` before `apply.ParseMultiDoc`.
-- [ ] `internal/pack/kustomize.go:42` — `RenderDir` calls `RenderDirFor` with
+- [ ] `internal/pack/kustomize.go` — `RenderDir` calls `RenderDirFor` with
       `config.GatewaySpec{}`, the gateway-less path the no-op preserves tokens for.
-- [ ] `internal/up/up.go:442` — `waitCRDEstablished(ctx, a, con, httpRouteCRD,
+- [ ] `internal/up/up.go` — `waitCRDEstablished(ctx, a, con, httpRouteCRD,
       gatewayCRDTimeout)` precedes the registry HTTPRoute apply; `httpRouteCRD` is
-      defined at `internal/up/up.go:68`.
-- [ ] `internal/diag/codes.go:123` — `CodeRegistryRouteCRDTimeout` is `CUBE-5005`.
+      defined at `internal/up/up.go`.
+- [ ] `internal/diag/codes.go` — `CodeRegistryRouteCRDTimeout` is `CUBE-5005`.
 
 ## History
 
@@ -94,10 +94,10 @@ itself delivered via repo delivery, was hard-ordered immediately after the gatew
 repo delivery was gated on Gitea API readiness. Two of those three sub-claims still
 hold — gitea can never be repo-delivered, and repo delivery is still gated on gitea API
 readiness by `giteaSession`'s bounded poll returning CUBE-7301
-(`internal/up/up.go:1179-1190`). The hard ordering is gone: `orderPackRefs`
-(`internal/up/up.go:1168-1170`) now only prepends the gateway, and the gitea hoist moved
+(`internal/up/up.go`). The hard ordering is gone: `orderPackRefs`
+(`internal/up/up.go`) now only prepends the gateway, and the gitea hoist moved
 to `pack.ResolveOrder`'s implicit repo→gitea graph edge with a declared-order tie-break
-(`internal/up/up.go:1163-1167`). This is consistent with the wider move to deriving
+(`internal/up/up.go`). This is consistent with the wider move to deriving
 ordering edges from rendered content rather than hard-coding them.
 
 ## More Information

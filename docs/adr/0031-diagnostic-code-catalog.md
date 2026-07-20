@@ -47,22 +47,22 @@ each stay in their own range.
 ## Consequences
 
 * Good, because a code number is a durable identifier: an operator can search a
-  five-month-old log line and still find the right constant, call site and summary.
+ five-month-old log line and still find the right constant, call site and summary.
 * Good, because the literal ban makes collisions structurally impossible — two
-  meanings for one number cannot both compile past the test.
+ meanings for one number cannot both compile past the test.
 * Good, because the registry-coverage test is bidirectional by cardinality: a code
-  cannot ship without documentation, and a stale entry is caught unless an addition
-  in the same commit masks the count.
+ cannot ship without documentation, and a stale entry is caught unless an addition
+ in the same commit masks the count.
 * Good, because the numeric partition lets a reader infer the subsystem from the code
-  alone, before opening any source.
+ alone, before opening any source.
 * Bad, because the number space is consumed permanently; retired numbers stay as dead
-  weight in the catalog and registry forever.
+ weight in the catalog and registry forever.
 * Bad, because allocating a code is a two-file edit plus a domain-range judgement,
-  which is friction on every new error path.
+ which is friction on every new error path.
 * Bad, because the append-only rule is a convention over deletion, not a mechanical
-  guarantee: a code removed from `codes.go` in the same commit as its registry entry
-  leaves no in-place marker, and the tests stay green. `CUBE-1002` and `CUBE-3002` are
-  absent with no marker, showing this gap.
+ guarantee: a code removed from `codes.go` in the same commit as its registry entry
+ leaves no in-place marker, and the tests stay green. `CUBE-1002` and `CUBE-3002` are
+ absent with no marker, showing this gap.
 
 ## Implementation Status
 
@@ -70,47 +70,47 @@ each stay in their own range.
 
 | Decision | Implemented at |
 | --- | --- |
-| Every CUBE code declared in `internal/diag/codes.go` matches `^CUBE-[0-9]{4}$` and is unique. | `internal/diag/codes_test.go:168-185` |
-| No non-test Go file outside the catalog may contain a `CUBE-` string literal. | `internal/diag/codes_test.go:38,44,49-84,90-99` |
-| CUBE codes live in a central sentinel catalog enforced by `TestNoCubeLiteralsOutsideCatalog`, whose regex also catches backtick raw-string literals. | `internal/diag/codes_test.go:44` |
-| Every new diag code must have an entry in `internal/diag/registry.go`, and that entry's summary must be non-empty. | `internal/diag/registry_test.go:41-58`, `internal/diag/registry_test.go:11-18` |
-| CUBE diagnostic codes are append-only: retired codes are marked in place by comment edit and never deleted or reused. | `internal/diag/codes.go:78` |
-| The code surface is append-only in the registry too: retired codes such as CUBE-3009 keep their registry entry marked retired rather than being removed. | `internal/diag/registry.go:89` |
-| Pack dependency diagnostics use CUBE-4018, CUBE-4019 and CUBE-4020, and the argocd dependency wait failure uses CUBE-3011. | `internal/diag/codes.go:112-114`, `internal/diag/codes.go:87` |
-| A new config-family diagnostic covers engine pack ref mismatch, mirroring CUBE-0008. | `internal/pack/enginepack.go:39` |
+| Every CUBE code declared in `internal/diag/codes.go` matches `^CUBE-[0-9]{4}$` and is unique. | `internal/diag/codes_test.go` |
+| No non-test Go file outside the catalog may contain a `CUBE-` string literal. | `internal/diag/codes_test.go` |
+| CUBE codes live in a central sentinel catalog enforced by `TestNoCubeLiteralsOutsideCatalog`, whose regex also catches backtick raw-string literals. | `internal/diag/codes_test.go` |
+| Every new diag code must have an entry in `internal/diag/registry.go`, and that entry's summary must be non-empty. | `internal/diag/registry_test.go` |
+| CUBE diagnostic codes are append-only: retired codes are marked in place by comment edit and never deleted or reused. | `internal/diag/codes.go` |
+| The code surface is append-only in the registry too: retired codes such as CUBE-3009 keep their registry entry marked retired rather than being removed. | `internal/diag/registry.go` |
+| Pack dependency diagnostics use CUBE-4018, CUBE-4019 and CUBE-4020, and the argocd dependency wait failure uses CUBE-3011. | `internal/diag/codes.go` |
+| A new config-family diagnostic covers engine pack ref mismatch, mirroring CUBE-0008. | `internal/pack/enginepack.go` |
 
 ### Verification
 
-- [ ] `internal/diag/codes_test.go:38` anchors the single exemption to the exact
+- [ ] `internal/diag/codes_test.go` anchors the single exemption to the exact
       repo-relative path `internal/diag/codes.go`, not to the basename.
-- [ ] `internal/diag/codes_test.go:44` compiles `cubeLiteralRe` from the character class
+- [ ] `internal/diag/codes_test.go` compiles `cubeLiteralRe` from the character class
       of both quote characters, so a backtick raw string containing `CUBE-` is an
       offender, not only a double-quoted one.
-- [ ] `TestNoCubeLiteralsOutsideCatalog` (`internal/diag/codes_test.go:90`) fails when a
+- [ ] `TestNoCubeLiteralsOutsideCatalog` (`internal/diag/codes_test.go`) fails when a
       non-test `.go` file outside the catalog holds a `CUBE-` literal.
-- [ ] `TestRegistryCoversEveryDeclaredCode` (`internal/diag/registry_test.go:41`) fails
+- [ ] `TestRegistryCoversEveryDeclaredCode` (`internal/diag/registry_test.go`) fails
       both when `Describe()` misses a declared code and when
       `len(AllCodes()) != len(declared)`.
-- [ ] `internal/diag/codes.go:78` and `:84` still declare CUBE-3003 and CUBE-3009 with
-      `(RETIRED 2026-07-19 …)` annotations, and `internal/diag/registry.go:83` and `:89`
+- [ ] `internal/diag/codes.go` and still declare CUBE-3003 and CUBE-3009 with
+      `(RETIRED 2026-07-19 …)` annotations, and `internal/diag/registry.go` and
       carry the matching retired summaries.
 - [ ] `internal/diag/codes.go` carries range section headers (`0xxx: preflight/config`,
       `3xxx: engine`, `4xxx: pack`, …) and CUBE-4018/4019/4020 sit under
-      `Pack dependencies` at `internal/diag/codes.go:112-114`.
-- [ ] CUBE-4018/4019/4020 are live at `internal/pack/depgraph.go:34,56,77`, `:142` and
-      `:41`; CUBE-3011 at `internal/up/up.go:682`.
-- [ ] `internal/diag/codes.go:18` declares `CodeEnginePackMismatch Code = "CUBE-0013"` in
-      the 0xxx config family and it is raised at `internal/pack/enginepack.go:39`.
+      `Pack dependencies` at `internal/diag/codes.go`.
+- [ ] CUBE-4018/4019/4020 are live at `internal/pack/depgraph.go`, and
+; CUBE-3011 at `internal/up/up.go`.
+- [ ] `internal/diag/codes.go` declares `CodeEnginePackMismatch Code = "CUBE-0013"` in
+      the 0xxx config family and it is raised at `internal/pack/enginepack.go`.
 
 ## History
 
 The config-load family was originally split: a missing local path that is not
 ref-shaped failed with CUBE-0001, while a remote fetch or single-YAML failure was to
 fail with CUBE-0013. The CUBE-0013 remote branch was never built.
-`internal/config/load.go:28-32` now has a single unconditional read-failure path
+`internal/config/load.go` now has a single unconditional read-failure path
 emitting CUBE-0001 with the `cube-idp init` remediation, and no ref-shape test precedes
 it. The number CUBE-0013 was reallocated to mean engine pack ref mismatch
-(`CodeEnginePackMismatch`, `internal/diag/codes.go:18`).
+(`CodeEnginePackMismatch`, `internal/diag/codes.go`).
 
 That reallocation predates the append-only rule reaching its current form. Under the
 rule as it now stands, superseded numbers keep a retired or reassigned marker in the

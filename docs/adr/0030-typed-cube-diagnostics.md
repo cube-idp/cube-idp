@@ -46,31 +46,31 @@ Every wait has a hard deadline and ends in a rendered diagnosis rather than an i
 
 | Decision | Implemented at |
 | --- | --- |
-| Failures are typed `CUBE-xxxx` `diag.Error` values built by `New`/`Wrap`, each taking a summary and a required `remediation` argument. | `internal/diag/diag.go:14-29` |
-| `CUBE-xxxx` codes are declared as typed `Code` constants in a single catalog. | `internal/diag/codes.go:5-19` (first of several const blocks) |
-| Every declared diagnostic code must also have a `Desc` entry with a non-empty summary in `internal/diag/registry.go`, enforced by `TestRegistryCoversEveryDeclaredCode`. | `internal/diag/registry_test.go:41` |
-| Component health is polled every 5 seconds until all components are ready or the deadline expires, at which point `CUBE-3004` lists each unready component with its message. | `internal/up/up.go:893` |
-| `deployRepo` wraps every deploy-registration failure occurring after the repo was created in a single `CUBE-7303` wrapper stating the repo was created but the deploy source could not be registered, with a remediation noting repo creation is idempotent. | `cmd/repo.go:152` |
-| `diag.Error{Code, Summary, Cause, Remediation}` and its `Render` emit the diagnosis block `✗ CUBE-xxxx summary`, with optional `cause:` and `fix:` lines emitted only when those fields are set. | `internal/diag/diag.go:14-53` |
-| The styled panel renders the same block and appends a `more:  cube-idp explain <code>` footer. | `internal/ui/rendererr.go:85` |
-| `diagnosis` is a first-class JSON event type: `v`/`ts`/`type`/`raw` always present, `code`/`summary`/`cause`/`remediation` `omitempty` and populated only from a typed `*diag.Error`. | `internal/ui/render/json.go:70-80` (emission), `internal/ui/render/json.go:160-167` (wire struct) |
-| The in-process `event.Diagnosis` struct carries the typed `*diag.Error` plus the raw string, and is a member of the event union. | `internal/ui/event/event.go:123-129` |
-| On failure `Diagnosis` is always the terminal event, emitted after `RunDone{OK:false}`; on success nothing follows `RunDone{OK:true}`. | `internal/ui/pipeline.go:151-154` |
-| `Diagnosis.Raw` is always set to `err.Error()`, while `Diagnosis.Err` holds the typed error only when `errors.As` finds one. | `internal/ui/pipeline.go:191-197` |
-| Remediation text (`fix:` lines) is always rendered in copy-paste-safe unstyled plain text, even inside the styled diagnosis panel. | `internal/ui/rendererr.go:76-79` |
+| Failures are typed `CUBE-xxxx` `diag.Error` values built by `New`/`Wrap`, each taking a summary and a required `remediation` argument. | `internal/diag/diag.go` |
+| `CUBE-xxxx` codes are declared as typed `Code` constants in a single catalog. | `internal/diag/codes.go` (first of several const blocks) |
+| Every declared diagnostic code must also have a `Desc` entry with a non-empty summary in `internal/diag/registry.go`, enforced by `TestRegistryCoversEveryDeclaredCode`. | `internal/diag/registry_test.go` |
+| Component health is polled every 5 seconds until all components are ready or the deadline expires, at which point `CUBE-3004` lists each unready component with its message. | `internal/up/up.go` |
+| `deployRepo` wraps every deploy-registration failure occurring after the repo was created in a single `CUBE-7303` wrapper stating the repo was created but the deploy source could not be registered, with a remediation noting repo creation is idempotent. | `cmd/repo.go` |
+| `diag.Error{Code, Summary, Cause, Remediation}` and its `Render` emit the diagnosis block `✗ CUBE-xxxx summary`, with optional `cause:` and `fix:` lines emitted only when those fields are set. | `internal/diag/diag.go` |
+| The styled panel renders the same block and appends a `more:  cube-idp explain <code>` footer. | `internal/ui/rendererr.go` |
+| `diagnosis` is a first-class JSON event type: `v`/`ts`/`type`/`raw` always present, `code`/`summary`/`cause`/`remediation` `omitempty` and populated only from a typed `*diag.Error`. | `internal/ui/render/json.go` (emission), `internal/ui/render/json.go` (wire struct) |
+| The in-process `event.Diagnosis` struct carries the typed `*diag.Error` plus the raw string, and is a member of the event union. | `internal/ui/event/event.go` |
+| On failure `Diagnosis` is always the terminal event, emitted after `RunDone{OK:false}`; on success nothing follows `RunDone{OK:true}`. | `internal/ui/pipeline.go` |
+| `Diagnosis.Raw` is always set to `err.Error()`, while `Diagnosis.Err` holds the typed error only when `errors.As` finds one. | `internal/ui/pipeline.go` |
+| Remediation text (`fix:` lines) is always rendered in copy-paste-safe unstyled plain text, even inside the styled diagnosis panel. | `internal/ui/rendererr.go` |
 
 ### Verification
 
 - [ ] `internal/diag/codes.go` declares typed `CUBE-xxxx` `Code` constants only (109 `CUBE-` literals as of this record).
 - [ ] `internal/diag/diag.go` exposes exactly `New(code, summary, remediation)` and `Wrap(cause, code, summary, remediation)` — no constructor omits remediation.
-- [ ] `go test ./internal/diag/` passes `TestRegistryCoversEveryDeclaredCode` (`registry_test.go:41`) and `TestEveryCodeHasDescription` (`registry_test.go:11`).
-- [ ] `internal/up/up.go:47` sets `healthPoll = 5 * time.Second` and `up.go:57` sets `healthTimeout = 5 * time.Minute`.
-- [ ] `internal/up/up.go:893` returns `diag.New(diag.CodeEngineHealthTimeout, …unreadySummary(health)…)` on deadline expiry (`CodeEngineHealthTimeout` = `CUBE-3004`, `codes.go:79`).
-- [ ] `cmd/repo.go:152` defines a single `wrap` closure producing `diag.CodeRepoDeployFail` (`CUBE-7303`, `codes.go:166`) and every failure arm in `deployRepo` routes through it.
-- [ ] `internal/ui/pipeline.go:192` sets `Raw: err.Error()` unconditionally and `d.Err` only inside the `errors.As` branch (`pipeline.go:194-196`).
-- [ ] `internal/ui/rendererr.go:77-79` styles only the `fix:` label, interpolating `de.Remediation` raw.
-- [ ] `go test ./internal/ui/` passes `TestModeMatrixFence`, whose assertion at `internal/ui/pipeline_test.go:309` is the diagnosis-last fence (`types[n-2] == "run_done" && types[n-1] == "diagnosis"`), together with `TestRunPipelineFailureOrderAndErrorPassthrough` (`pipeline_test.go:86-95`), which pins the full failure lifecycle order and asserts the diagnosis is the final JSON line.
-- [ ] `go test ./internal/ui/` passes `TestRunPipelineLiveDiagnosisAfterExit` (`rendererr_test.go:62`), which proves the diagnosis never leaks into live-mode stdout and renders only via `RenderError` after the terminal is released — it does not check event ordering.
+- [ ] `go test ./internal/diag/` passes `TestRegistryCoversEveryDeclaredCode` (`registry_test.go`) and `TestEveryCodeHasDescription` (`registry_test.go`).
+- [ ] `internal/up/up.go` sets `healthPoll = 5 * time.Second` and `up.go` sets `healthTimeout = 5 * time.Minute`.
+- [ ] `internal/up/up.go` returns `diag.New(diag.CodeEngineHealthTimeout, …unreadySummary(health)…)` on deadline expiry (`CodeEngineHealthTimeout` = `CUBE-3004`, `codes.go`).
+- [ ] `cmd/repo.go` defines a single `wrap` closure producing `diag.CodeRepoDeployFail` (`CUBE-7303`, `codes.go`) and every failure arm in `deployRepo` routes through it.
+- [ ] `internal/ui/pipeline.go` sets `Raw: err.Error()` unconditionally and `d.Err` only inside the `errors.As` branch (`pipeline.go`).
+- [ ] `internal/ui/rendererr.go` styles only the `fix:` label, interpolating `de.Remediation` raw.
+- [ ] `go test ./internal/ui/` passes `TestModeMatrixFence`, whose assertion at `internal/ui/pipeline_test.go` is the diagnosis-last fence (`types[n-2] == "run_done" && types[n-1] == "diagnosis"`), together with `TestRunPipelineFailureOrderAndErrorPassthrough` (`pipeline_test.go`), which pins the full failure lifecycle order and asserts the diagnosis is the final JSON line.
+- [ ] `go test ./internal/ui/` passes `TestRunPipelineLiveDiagnosisAfterExit` (`rendererr_test.go`), which proves the diagnosis never leaks into live-mode stdout and renders only via `RenderError` after the terminal is released — it does not check event ordering.
 
 ## More Information
 

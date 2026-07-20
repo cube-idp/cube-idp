@@ -46,17 +46,17 @@ pack's `gatewayService:` block.
 ## Consequences
 
 * Good, because a single cube can mix transports — the platform packs stay on OCI while the
-  one pack a team wants to fork is repo-delivered.
+ one pack a team wants to fork is repo-delivered.
 * Good, because absent means `oci`: existing cube.yaml files and pack records need no
-  migration, and `--via oci` leaves the file byte-identical to no flag at all.
+ migration, and `--via oci` leaves the file byte-identical to no flag at all.
 * Good, because the gitea coupling is caught at config load, before any cluster mutation,
-  with a stable code (CUBE-7304) rather than a mid-`up` failure.
+ with a stable code (CUBE-7304) rather than a mid-`up` failure.
 * Bad, because repo delivery makes the gitea pack a hard dependency of any cube that uses
-  it, coupling an otherwise optional pack into the cube's validity.
+ it, coupling an otherwise optional pack into the cube's validity.
 * Bad, because the same rendered pack can now exist behind two different source types,
-  so debugging a reconciliation problem requires first checking which transport is in play.
+ so debugging a reconciliation problem requires first checking which transport is in play.
 * Bad, because gitea presence is detected by a ref-substring convention (`strings.Contains(p.Ref, "gitea")`)
-  rather than resolved pack identity, which is approximate.
+ rather than resolved pack identity, which is approximate.
 
 ## Implementation Status
 
@@ -64,19 +64,19 @@ pack's `gatewayService:` block.
 
 | Decision | Implemented at |
 | --- | --- |
-| Gitea delivery is selected per pack via a pack-level field, not as a cube-wide delivery mode. | `internal/config/types.go:207-217` |
-| Every pack's Pack record carries `delivery: oci\|repo` (an empty `PackRef.Delivery` maps to `oci`) and the Pack CRD exposes a DELIVERY printer column. | `internal/pack/expose.go:97-105`, `internal/pack/manifests/pack-crd.yaml:45,61` |
-| A cube declaring any `delivery: repo` pack must also include the gitea pack, and the gitea pack itself may not be repo-delivered; both fail config load with CUBE-7304. | `internal/config/load.go:202-225`, `internal/diag/codes.go:168` |
+| Gitea delivery is selected per pack via a pack-level field, not as a cube-wide delivery mode. | `internal/config/types.go` |
+| Every pack's Pack record carries `delivery: oci\|repo` (an empty `PackRef.Delivery` maps to `oci`) and the Pack CRD exposes a DELIVERY printer column. | `internal/pack/expose.go`, `internal/pack/manifests/pack-crd.yaml` |
+| A cube declaring any `delivery: repo` pack must also include the gitea pack, and the gitea pack itself may not be repo-delivered; both fail config load with CUBE-7304. | `internal/config/load.go`, `internal/diag/codes.go` |
 
 ### Verification
 
-* [ ] `internal/config/schema.cue:41` constrains `delivery?: "oci" | "repo"` on `spec.packs` entries and declares no top-level `delivery` key.
-* [ ] `internal/pack/expose.go:102-104` rewrites an empty `delivery` argument to `"oci"` before writing `spec["delivery"]`.
-* [ ] `internal/pack/manifests/pack-crd.yaml:45` declares the `delivery` schema field and line 61 declares `- {name: DELIVERY, type: string, jsonPath: .spec.delivery}`.
-* [ ] `internal/config/load.go:209-218` returns `diag.CodeRepoDeliveryConfig` when a pack whose ref contains `gitea` declares `delivery: repo`; lines 220-225 return the same code when any pack is `delivery: repo` and no gitea pack is present.
-* [ ] `internal/diag/codes.go:168` binds `CodeRepoDeliveryConfig` to `CUBE-7304`.
-* [ ] `cmd/pack.go:253` rejects a `--via` value other than `oci` or `repo`, and `cmd/pack.go:308` defaults the flag to `oci`.
-* [ ] `internal/up/up.go:1071` (`deliverPack`) dispatches on `ref.Delivery == "repo"` and has no third arm.
+* [ ] `internal/config/schema.cue` constrains `delivery?: "oci" | "repo"` on `spec.packs` entries and declares no top-level `delivery` key.
+* [ ] `internal/pack/expose.go` rewrites an empty `delivery` argument to `"oci"` before writing `spec["delivery"]`.
+* [ ] `internal/pack/manifests/pack-crd.yaml` declares the `delivery` schema field and line 61 declares `- {name: DELIVERY, type: string, jsonPath: .spec.delivery}`.
+* [ ] `internal/config/load.go` returns `diag.CodeRepoDeliveryConfig` when a pack whose ref contains `gitea` declares `delivery: repo`; lines 220-225 return the same code when any pack is `delivery: repo` and no gitea pack is present.
+* [ ] `internal/diag/codes.go` binds `CodeRepoDeliveryConfig` to `CUBE-7304`.
+* [ ] `cmd/pack.go` rejects a `--via` value other than `oci` or `repo`, and `cmd/pack.go` defaults the flag to `oci`.
+* [ ] `internal/up/up.go` (`deliverPack`) dispatches on `ref.Delivery == "repo"` and has no third arm.
 * [ ] `grep -rn '"ssa"' internal/` returns no delivery-marker hit — the enum has exactly two members.
 
 ## History
@@ -84,10 +84,10 @@ pack's `gatewayService:` block.
 An earlier form of this decision specified a three-value delivery marker — `oci`, `repo`,
 and `ssa`, the last for prerequisite packs applied directly by the CLI via server-side
 apply — alongside the `pack install --via repo` flag. The `ssa` value was never added. The
-marker settled as the two-value `oci|repo` enum pinned by `internal/config/schema.cue:41`;
+marker settled as the two-value `oci|repo` enum pinned by `internal/config/schema.cue`;
 everything else in that earlier statement (the marker itself, the empty-to-`oci` default,
-and `--via repo` driving Gitea repo creation and push via `internal/gitea/client.go:67`
-`EnsureRepo` and `internal/gitea/client.go:196` `SyncDir`) is implemented as stated.
+and `--via repo` driving Gitea repo creation and push via `internal/gitea/client.go`
+`EnsureRepo` and `internal/gitea/client.go` `SyncDir`) is implemented as stated.
 
 ## More Information
 
@@ -102,5 +102,5 @@ Member origins:
 * `docs/archive/superpowers/plans/2026-07-18-cube-idp-phase5.md:3432` — the gitea coupling rules and CUBE-7304.
 * `docs/archive/superpowers/specs/2026-07-19-cube-idp-prerequisites-packs-design.md:73` — the superseded three-value marker.
 
-Delivery is consumed per-ref at `internal/up/up.go:1071` (`deliverPack`) and
-`internal/pack/depgraph.go:72`.
+Delivery is consumed per-ref at `internal/up/up.go` (`deliverPack`) and
+`internal/pack/depgraph.go`.

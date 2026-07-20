@@ -44,15 +44,15 @@ constraint.
 ## Consequences
 
 * Good, because a single module path means imports, ldflags and release target cannot
-  drift apart — a mismatch fails the build rather than shipping a mislabelled binary.
+ drift apart — a mismatch fails the build rather than shipping a mislabelled binary.
 * Good, because `go-version-file: go.mod` removes an entire class of "CI uses a different
-  Go than my machine" bugs; bumping `go.mod` bumps CI.
+ Go than my machine" bugs; bumping `go.mod` bumps CI.
 * Bad, because the rename breaks the imports of any external consumer that has the old
-  path written into its source, even though `go get` on the old path still resolves
-  through the transfer redirect.
+ path written into its source, even though `go get` on the old path still resolves
+ through the transfer redirect.
 * Bad, because pinning the *toolchain* but installing tools (`kind`, `setup-envtest`)
-  with `@latest` leaves CI exposed to upstream tool changes — the pinning discipline was
-  applied to the toolchain only.
+ with `@latest` leaves CI exposed to upstream tool changes — the pinning discipline was
+ applied to the toolchain only.
 
 ## Implementation Status
 
@@ -60,18 +60,18 @@ constraint.
 
 | Decision | Implemented at |
 | --- | --- |
-| The Go module path is `github.com/cube-idp/cube-idp`. | `go.mod:1` |
-| Build-time ldflags stamp version metadata against that same module path. | `.goreleaser.yaml:18-20` |
-| Release builds cover darwin/linux × amd64/arm64 and emit a sha256 `checksums.txt`. | `.goreleaser.yaml:14-15,28-30` |
-| Releases publish to the `cube-idp/cube-idp` repository as non-draft releases with prerelease detection set to auto. | `.goreleaser.yaml:54-59` |
-| The Go toolchain is resolved from `go.mod` via `go-version-file: go.mod` rather than a hardcoded version. | `.github/workflows/ci.yaml:13,35,61`; `.github/workflows/release.yaml:14` |
+| The Go module path is `github.com/cube-idp/cube-idp`. | `go.mod` |
+| Build-time ldflags stamp version metadata against that same module path. | `.goreleaser.yaml` |
+| Release builds cover darwin/linux × amd64/arm64 and emit a sha256 `checksums.txt`. | `.goreleaser.yaml` |
+| Releases publish to the `cube-idp/cube-idp` repository as non-draft releases with prerelease detection set to auto. | `.goreleaser.yaml` |
+| The Go toolchain is resolved from `go.mod` via `go-version-file: go.mod` rather than a hardcoded version. | `.github/workflows/ci.yaml`; `.github/workflows/release.yaml` |
 
 ### Verification
 
-- [ ] `go.mod:1` declares `module github.com/cube-idp/cube-idp`.
+- [ ] `go.mod` declares `module github.com/cube-idp/cube-idp`.
 - [ ] `grep -rn "rafpe" go.mod .goreleaser.yaml .github/workflows/` returns nothing.
-- [ ] `.goreleaser.yaml:18-20` stamps ldflags against `github.com/cube-idp/cube-idp/cmd`.
-- [ ] `.goreleaser.yaml:54-59` sets release github owner `cube-idp`, name `cube-idp`,
+- [ ] `.goreleaser.yaml` stamps ldflags against `github.com/cube-idp/cube-idp/cmd`.
+- [ ] `.goreleaser.yaml` sets release github owner `cube-idp`, name `cube-idp`,
       `draft: false`, `prerelease: auto`.
 - [ ] `.goreleaser.yaml` builds `goos: [darwin, linux]` × `goarch: [amd64, arm64]` and
       emits `checksums.txt`.
@@ -88,7 +88,7 @@ prerelease halves of that original decision carried over unchanged.
 
 CI was originally required to pin *all* tool versions explicitly — a pinned
 `sigs.k8s.io/kind` CLI and a Makefile-pinned `setup-envtest`. Only the
-`go-version-file: go.mod` clause survived. `.github/workflows/ci.yaml:40` installs
+`go-version-file: go.mod` clause survived. `.github/workflows/ci.yaml` installs
 `sigs.k8s.io/kind@latest`, the adjacent k3d install curls an unpinned `install.sh` from
 `main`, and `Makefile:16,19,23` run `setup-envtest@latest` (only the Kubernetes asset
 version `1.33` is fixed). The explicit-tool-pinning rule is therefore not in force; the
@@ -101,12 +101,12 @@ Origin: mined from the archived planning corpus (`docs/archive/superpowers/`) du
 before this record was written.
 
 - `docs/archive/superpowers/specs/2026-07-16-org-migration-design.md:15` — module path
-  (decision row 2: rename to `github.com/cube-idp/cube-idp`).
+ (decision row 2: rename to `github.com/cube-idp/cube-idp`).
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:305` — release
-  artifact shape and target.
+ artifact shape and target.
 - `docs/archive/superpowers/plans/2026-07-15-cube-idp-phase4-first-release.md:19` — toolchain
-  resolved from `go.mod` (`go-version-file: go.mod`); the accompanying tool-version pinning
-  rule is largely superseded.
+ resolved from `go.mod` (`go-version-file: go.mod`); the accompanying tool-version pinning
+ rule is largely superseded.
 
 The Charm v2 line and the `internal/ui/theme` leaf-package rule are decided in ADR-0026,
 which carries their provenance.

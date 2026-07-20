@@ -45,20 +45,20 @@ cube. `upgrade` is read-only by default: without `--plan` it errors and points a
 ## Consequences
 
 * Good, because the CLI contract is falsifiable — a surface change fails CI rather than
-  reaching users unannounced.
+ reaching users unannounced.
 * Good, because the golden file doubles as a readable, always-current index of every command,
-  flag and default.
+ flag and default.
 * Good, because there is exactly one apply path — `upgrade`'s interactive hand-off runs the
-  same `up` pipeline — so `up` and `upgrade` cannot disagree about what the cluster should
-  look like.
+ same `up` pipeline — so `up` and `upgrade` cannot disagree about what the cluster should
+ look like.
 * Good, because `--plan` being mandatory makes `upgrade`'s reporting-first nature hard to
-  stumble past; applying from `upgrade` requires both a TTY and an explicit confirmation.
+ stumble past; applying from `upgrade` requires both a TTY and an explicit confirmation.
 * Bad, because every intentional surface change costs an extra `-update` round and a golden
-  diff in review.
+ diff in review.
 * Bad, because the golden is byte-exact, so cosmetic edits (a typo fix in a `Short`) are as
-  loud as semantic ones.
+ loud as semantic ones.
 * Bad, because the golden skips hidden commands and hidden flags, so the fence does not cover
-  them at all.
+ them at all.
 
 ## Implementation Status
 
@@ -66,12 +66,12 @@ cube. `upgrade` is read-only by default: without `--plan` it errors and points a
 
 | Decision | Implemented at |
 | --- | --- |
-| The visible CLI surface is fenced — any added, removed or renamed command or flag, any changed default or `Short`, forces a golden regeneration — enforced by `TestCommandTreeGolden` against `cmd/testdata/clitree.golden`, which must pass without `-update` at every commit. | `cmd/clitree_test.go:40-62` |
-| Hidden commands and hidden flags are outside the fence: the renderer skips both. | `cmd/clitree_test.go:70-72`, `cmd/clitree_test.go:88-90` |
-| The `-f`/`--yes` spellings are enforced only indirectly: the golden pins the flag names and defaults, while `--yes` prompt behaviour is covered by per-command tests. | `cmd/down_test.go:259-273`, `cmd/trust_test.go:105-127`, `cmd/plugininstall_test.go:120-135` |
-| `upgrade` without `--plan` errors with `diag.CodeUpgradeGuard` and a pointer to `up`; with `--plan` it reports, and only on an interactive TTY does a confirmed prompt hand off to the same `up` pipeline. | `cmd/upgrade.go:19-24`, `cmd/upgrade.go:29-46` |
-| Re-running `cube-idp up` is the upgrade command: it succeeds unchanged on an already-provisioned cube. | `internal/up/up.go:97` (apply path), `tests/e2e/e2e_test.go:114` (idempotent re-run) |
-| `cube config render-engine` exists as a twin of `render-cluster`, printing the tuned engine manifests for inspection from the rendered engine pack, without breaking the golden fence. | `cmd/config.go:75-102` |
+| The visible CLI surface is fenced — any added, removed or renamed command or flag, any changed default or `Short`, forces a golden regeneration — enforced by `TestCommandTreeGolden` against `cmd/testdata/clitree.golden`, which must pass without `-update` at every commit. | `cmd/clitree_test.go` |
+| Hidden commands and hidden flags are outside the fence: the renderer skips both. | `cmd/clitree_test.go` |
+| The `-f`/`--yes` spellings are enforced only indirectly: the golden pins the flag names and defaults, while `--yes` prompt behaviour is covered by per-command tests. | `cmd/down_test.go`, `cmd/trust_test.go`, `cmd/plugininstall_test.go` |
+| `upgrade` without `--plan` errors with `diag.CodeUpgradeGuard` and a pointer to `up`; with `--plan` it reports, and only on an interactive TTY does a confirmed prompt hand off to the same `up` pipeline. | `cmd/upgrade.go` |
+| Re-running `cube-idp up` is the upgrade command: it succeeds unchanged on an already-provisioned cube. | `internal/up/up.go` (apply path), `tests/e2e/e2e_test.go` (idempotent re-run) |
+| `cube config render-engine` exists as a twin of `render-cluster`, printing the tuned engine manifests for inspection from the rendered engine pack, without breaking the golden fence. | `cmd/config.go` |
 
 ### Verification
 

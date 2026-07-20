@@ -44,24 +44,24 @@ reports the actual cluster provider in its output rather than always naming kind
 ## Consequences
 
 * Good, because a user's pre-existing cluster is never destroyed by `down`; the
-  blast radius is bounded by what cube-idp actually recorded in the inventory.
+ blast radius is bounded by what cube-idp actually recorded in the inventory.
 * Good, because engine removal needs no per-engine teardown logic — adding an engine
-  does not require writing an uninstall path, only being present in the inventory.
+ does not require writing an uninstall path, only being present in the inventory.
 * Good, because the missing resources-finalizer on the self-Application makes the
-  ordering safe by construction rather than by careful sequencing.
+ ordering safe by construction rather than by careful sequencing.
 * Good, because `down` is honest about the machine-level state it mutated: trust
-  store, CoreDNS, and spoke clusters are all addressed.
+ store, CoreDNS, and spoke clusters are all addressed.
 * Bad, because the cascade ignores dependency order, so packs with runtime coupling
-  may see dependents and dependencies deleted in an arbitrary relative order; only
-  reverse-apply order is guaranteed.
+ may see dependents and dependencies deleted in an arbitrary relative order; only
+ reverse-apply order is guaranteed.
 * Bad, because anything cube-idp created but failed to record in the inventory
-  survives teardown silently.
+ survives teardown silently.
 * Bad, because `existing` spoke clusters retain cube-idp RBAC and namespaces that the
-  user must clean up manually.
+ user must clean up manually.
 * Bad, because a CoreDNS revert failure aborts teardown before any inventory deletion
-  happens, stranding the whole recorded inventory in the cluster.
+ happens, stranding the whole recorded inventory in the cluster.
 * Bad, because a failing `trustUninstall` still exits `down` non-zero even though the
-  cluster-side teardown has already succeeded by that point.
+ cluster-side teardown has already succeeded by that point.
 
 ## Implementation Status
 
@@ -69,24 +69,24 @@ reports the actual cluster provider in its output rather than always naming kind
 
 | Decision | Implemented at |
 | --- | --- |
-| Engine removal is inventory-driven: the argocd engine's `Uninstall` is a literal no-op and its objects are removed by the inventory cascade. | `internal/engine/argocd/argocd.go:70-74` |
-| The argocd self-Application deliberately carries no resources-finalizer, so a cascade delete cannot tear the engine down from inside (normal pack Applications do carry it). | `internal/engine/argocd/deliverself.go:25-27`, contrast `internal/engine/argocd/deliver.go:48` |
-| `down` is dependency-agnostic: `eng.Uninstall` runs first, then `a.DeleteAll` performs bulk inventory deletion with no dependency ordering. | `cmd/down.go:197`, `cmd/down.go:212` |
-| Inventory deletion runs in reverse apply order — objects applied later are deleted first. | `internal/apply/inventory.go:158-166` |
-| `provider: existing` or `--keep-cluster` takes the cascade arm and returns without touching the cluster; otherwise `prov.Delete` removes the kind/k3d cluster. | `cmd/down.go:168`, `cmd/down.go:222` |
-| Output names the actual provider rather than hardcoding "kind". | `cmd/down.go:221`, `cmd/down.go:226` |
-| The CoreDNS rewrite is reverted on the keep-cluster path *before* the cascade, and its failure aborts `down` prior to `DeleteAll`. | `cmd/down.go:205-210` |
-| `cube-idp trust`'s OS trust-store install is reverted on both teardown paths; an unreadable trust dir/state degrades to a warning, but a failing `trustUninstall` still fails `down` (`cmd/down.go:257-258`). | `cmd/down.go:243-263` |
-| Cube-created kind spoke clusters are deleted best-effort after hub teardown, except under `--keep-cluster`, which keeps them; `existing` spokes are left untouched with a manual-cleanup note. | `cmd/down.go:134-155`, `cmd/down.go:139-142` |
+| Engine removal is inventory-driven: the argocd engine's `Uninstall` is a literal no-op and its objects are removed by the inventory cascade. | `internal/engine/argocd/argocd.go` |
+| The argocd self-Application deliberately carries no resources-finalizer, so a cascade delete cannot tear the engine down from inside (normal pack Applications do carry it). | `internal/engine/argocd/deliverself.go`, contrast `internal/engine/argocd/deliver.go` |
+| `down` is dependency-agnostic: `eng.Uninstall` runs first, then `a.DeleteAll` performs bulk inventory deletion with no dependency ordering. | `cmd/down.go` |
+| Inventory deletion runs in reverse apply order — objects applied later are deleted first. | `internal/apply/inventory.go` |
+| `provider: existing` or `--keep-cluster` takes the cascade arm and returns without touching the cluster; otherwise `prov.Delete` removes the kind/k3d cluster. | `cmd/down.go` |
+| Output names the actual provider rather than hardcoding "kind". | `cmd/down.go` |
+| The CoreDNS rewrite is reverted on the keep-cluster path *before* the cascade, and its failure aborts `down` prior to `DeleteAll`. | `cmd/down.go` |
+| `cube-idp trust`'s OS trust-store install is reverted on both teardown paths; an unreadable trust dir/state degrades to a warning, but a failing `trustUninstall` still fails `down` (`cmd/down.go`). | `cmd/down.go` |
+| Cube-created kind spoke clusters are deleted best-effort after hub teardown, except under `--keep-cluster`, which keeps them; `existing` spokes are left untouched with a manual-cleanup note. | `cmd/down.go` |
 
 ### Verification
 
 - [ ] `internal/engine/argocd/argocd.go` defines `(*ArgoCD).Uninstall` as `return nil`
       with the comment "removal is inventory-driven by `down`".
 - [ ] `internal/engine/argocd/deliverself.go` sets no `finalizers` on the self-Application,
-      while `internal/engine/argocd/deliver.go:48` sets
+      while `internal/engine/argocd/deliver.go` sets
       `resources-finalizer.argocd.argoproj.io` on pack Applications.
-- [ ] `cmd/down.go:168` branches on `cube.Spec.Cluster.Provider == "existing" || keepCluster`
+- [ ] `cmd/down.go` branches on `cube.Spec.Cluster.Provider == "existing" || keepCluster`
       and that arm returns before any `prov.Delete` call.
 - [ ] `grep -n "DependsOn\|dependsOn\|dependency" cmd/down.go` returns no matches
       (dependency ordering lives only in `up`'s wave gate, not teardown).
@@ -101,7 +101,7 @@ reports the actual cluster provider in its output rather than always naming kind
 ## More Information
 
 Note the known asymmetry: Flux's `Uninstall`
-(`internal/engine/flux/flux.go:54-83`) is *not* a no-op — it deletes delivered
+(`internal/engine/flux/flux.go`) is *not* a no-op — it deletes delivered
 Kustomizations/OCIRepositories and waits for prune finalizers so workloads are removed
 while its controllers are still alive. The inventory-driven cascade is the common
 mechanism; engines may still do engine-specific pre-work in `Uninstall`.
@@ -109,7 +109,7 @@ mechanism; engines may still do engine-specific pre-work in `Uninstall`.
 Kubeconfig context removal is left to the vendored kind/k3d libraries on cluster
 delete; cube-idp does not manage it, and the cascade arm (`existing`/`--keep-cluster`)
 does not touch the kubeconfig at all. The `down` dry-run preview does mention the
-context alongside the cluster it would delete (`cmd/down.go:101-102`).
+context alongside the cluster it would delete (`cmd/down.go`).
 
 Origin: mined from the archived planning corpus (`docs/archive/superpowers/`) during
 the 2026-07-20 documentation audit; the underlying statements were validated against

@@ -64,18 +64,18 @@ the gate.
 ## Consequences
 
 * Good, because a prompt can never hang CI: the gate is false for every non-`*os.File`
-  stream, and the fence table test fails the build if a new prompt escapes it.
+ stream, and the fence table test fails the build if a new prompt escapes it.
 * Good, because every interactive path has a scriptable twin, so automation is a first-class
-  path rather than an accident of the gate returning false.
+ path rather than an accident of the gate returning false.
 * Good, because destruction is legible and consented: the operator sees the actual deletion
-  set and must type the cube name, and non-interactive destruction requires an explicit flag.
+ set and must type the cube name, and non-interactive destruction requires an explicit flag.
 * Good, because color-stripped output (logs, CI, pipes) loses no meaning.
 * Bad, because every new prompt costs more than a prompt: a flag twin, a fence-table row, and
-  placement outside the pipeline.
+ placement outside the pipeline.
 * Bad, because the gate is deliberately conservative — a terminal cube-idp cannot prove is a
-  TTY gets no prompt, and the user must reach for the flag instead.
+ TTY gets no prompt, and the user must reach for the flag instead.
 * Bad, because restricting to ANSI 8/16 gives up finer palettes and hands final appearance to
-  the user's terminal theme.
+ the user's terminal theme.
 
 ## Implementation Status
 
@@ -83,42 +83,42 @@ the gate.
 
 | Decision | Implemented at |
 | --- | --- |
-| `ui.PromptsAllowed` is the gate for every huh-based interactive surface — false unless both streams are real TTYs, the mode is styled or live, and no pipeline owns the terminal; every prompt has a flag twin and runs before `RunPipeline`. | `internal/ui/prompt.go:13-22` |
-| Exception: `cube-idp trust` keeps a plain-text `Proceed? [y/N]` fallback on the branch taken when `PromptsAllowed` is false; it reads stdin directly and is EOF-safe rather than gate-guarded. | `cmd/trust.go:66-72` |
-| `prompt.Allowed(in, out)` semantics are realised as `ui.PromptsAllowed`, which must be false for every non-`*os.File` stream combination. | `internal/ui/prompt.go:13-22` |
-| Every prompt-capable command (`down`, `trust`, `upgrade`, `pack install`, and others) appears in a shared prompt-fence table test driven with empty-buffer stdin under a timeout, so CI can never hang. | `cmd/promptfence_test.go:28-94` |
-| On an interactive terminal `cube-idp down` prints a preview of the real deletion set and requires the typed cube name; declining prints `aborted — nothing was changed` and exits 0 without running the pipeline. | `cmd/down.go:54-64` |
-| `cube-idp down` validates the typed name against the exact cube name via a huh v2 Input, offers `--confirm=<name>` and `--yes` as scriptable twins, and on the successful-confirmation branch only prints the unstyled flag-twin hint line `hint: cube-idp down --yes` (two leading spaces). | `cmd/down.go:42-70` |
-| Plugin trust is a prompt-gated surface: the interactive consent prompt is reached only when `ui.PromptsAllowed` is true, and the non-gated path returns the byte-for-byte CUBE-7104 diagnosis. Trust semantics themselves are owned by ADR-0034. | `internal/plugin/trust.go:158-162` |
-| `cube-idp init` runs its interactive huh wizard (a main form plus a conditional kubeconfig-context follow-up form when provider is `existing`) only when stdin and stdout are TTYs and the corresponding flag was not passed; explicit flags always win and non-TTY falls back to the unchanged flag-driven write. | `cmd/init.go:280-284` |
-| The init wizard is gated on `wizardApplicable`, and huh v2 accessible mode is enabled form-level. | `cmd/init.go:280-285` |
-| Semantic colors come only from the basic ANSI 8/16 range, paired with glyph constants so meaning never rides on color alone. | `internal/ui/theme/theme.go:44-52` |
-| Pruning honours a per-resource opt-out annotation so hand-edited or undeclared resources are never silently deleted. *(The always-show-a-preview-diff half of this decision was superseded — see History.)* | `internal/apply/inventory.go:152` |
-| No Go version is hardcoded anywhere in the repo; every CI workflow pins the toolchain via `go-version-file: go.mod`. | `.github/workflows/ci.yaml:13` |
+| `ui.PromptsAllowed` is the gate for every huh-based interactive surface — false unless both streams are real TTYs, the mode is styled or live, and no pipeline owns the terminal; every prompt has a flag twin and runs before `RunPipeline`. | `internal/ui/prompt.go` |
+| Exception: `cube-idp trust` keeps a plain-text `Proceed? [y/N]` fallback on the branch taken when `PromptsAllowed` is false; it reads stdin directly and is EOF-safe rather than gate-guarded. | `cmd/trust.go` |
+| `prompt.Allowed(in, out)` semantics are realised as `ui.PromptsAllowed`, which must be false for every non-`*os.File` stream combination. | `internal/ui/prompt.go` |
+| Every prompt-capable command (`down`, `trust`, `upgrade`, `pack install`, and others) appears in a shared prompt-fence table test driven with empty-buffer stdin under a timeout, so CI can never hang. | `cmd/promptfence_test.go` |
+| On an interactive terminal `cube-idp down` prints a preview of the real deletion set and requires the typed cube name; declining prints `aborted — nothing was changed` and exits 0 without running the pipeline. | `cmd/down.go` |
+| `cube-idp down` validates the typed name against the exact cube name via a huh v2 Input, offers `--confirm=<name>` and `--yes` as scriptable twins, and on the successful-confirmation branch only prints the unstyled flag-twin hint line `hint: cube-idp down --yes` (two leading spaces). | `cmd/down.go` |
+| Plugin trust is a prompt-gated surface: the interactive consent prompt is reached only when `ui.PromptsAllowed` is true, and the non-gated path returns the byte-for-byte CUBE-7104 diagnosis. Trust semantics themselves are owned by ADR-0034. | `internal/plugin/trust.go` |
+| `cube-idp init` runs its interactive huh wizard (a main form plus a conditional kubeconfig-context follow-up form when provider is `existing`) only when stdin and stdout are TTYs and the corresponding flag was not passed; explicit flags always win and non-TTY falls back to the unchanged flag-driven write. | `cmd/init.go` |
+| The init wizard is gated on `wizardApplicable`, and huh v2 accessible mode is enabled form-level. | `cmd/init.go` |
+| Semantic colors come only from the basic ANSI 8/16 range, paired with glyph constants so meaning never rides on color alone. | `internal/ui/theme/theme.go` |
+| Pruning honours a per-resource opt-out annotation so hand-edited or undeclared resources are never silently deleted. *(The always-show-a-preview-diff half of this decision was superseded — see History.)* | `internal/apply/inventory.go` |
+| No Go version is hardcoded anywhere in the repo; every CI workflow pins the toolchain via `go-version-file: go.mod`. | `.github/workflows/ci.yaml` |
 
 ### Verification
 
-- [ ] `internal/ui/prompt.go:13-22` returns false when `pipelineActive` is set, when either
+- [ ] `internal/ui/prompt.go` returns false when `pipelineActive` is set, when either
       stream fails `IsTerminal`, or when the mode is neither `ModeStyled` nor `ModeLive`.
-- [ ] `cmd/promptfence_test.go:28` (`TestPromptFenceNeverBlocksOnBufferStdin`) runs every
+- [ ] `cmd/promptfence_test.go` (`TestPromptFenceNeverBlocksOnBufferStdin`) runs every
       prompt-capable command with an empty `bytes.Buffer` stdin and fails on blocking.
-- [ ] `internal/ui/prompt_test.go:13` proves `PromptsAllowed` is false for buffer streams.
-- [ ] `cmd/down.go:54-64` calls `printDownPreview`, then `downConfirmName`, and on decline
+- [ ] `internal/ui/prompt_test.go` proves `PromptsAllowed` is false for buffer streams.
+- [ ] `cmd/down.go` calls `printDownPreview`, then `downConfirmName`, and on decline
       prints exactly `aborted — nothing was changed` and returns nil before `ui.RunPipeline`.
-- [ ] `cmd/down.go:65` prints `hint: cube-idp down --yes` (two leading spaces, unstyled) on
+- [ ] `cmd/down.go` prints `hint: cube-idp down --yes` (two leading spaces, unstyled) on
       the success branch only, and `--confirm=<name>` mismatch raises
-      `diag.CodeConfirmRequired` (`cmd/down.go:48-52`).
+      `diag.CodeConfirmRequired` (`cmd/down.go`).
 - [ ] `cmd/down_test.go` pins the preview against `cmd/testdata/te3_preview.golden`.
-- [ ] `internal/plugin/trust.go:158-162` returns `diag.CodePluginUntrusted` (CUBE-7104)
+- [ ] `internal/plugin/trust.go` returns `diag.CodePluginUntrusted` (CUBE-7104)
       whenever `!interactive || !ui.PromptsAllowed(os.Stdin, os.Stderr)`.
-- [ ] `cmd/init.go:280-285` (`wizardApplicable`) returns false if `--name`, `--engine`, or
+- [ ] `cmd/init.go` (`wizardApplicable`) returns false if `--name`, `--engine`, or
       `--gateway-pack` was changed, and otherwise requires `ui.IsTerminal` on both streams.
-- [ ] `cmd/init.go:313` reads `$ACCESSIBLE` once and passes it to `.WithAccessible(...)` on
+- [ ] `cmd/init.go` reads `$ACCESSIBLE` once and passes it to `.WithAccessible(...)` on
       each huh form.
-- [ ] `internal/ui/theme/theme.go:44-52` uses only bare ANSI indices `"0"`–`"15"` (no hex, no
-      256-color values), and glyph constants exist at `internal/ui/theme/theme.go:18-21`.
-- [ ] `internal/apply/inventory.go:152` skips objects annotated with `PruneAnnotation`
-      (`internal/apply/applier.go:23`) set to `disabled`.
+- [ ] `internal/ui/theme/theme.go` uses only bare ANSI indices `"0"`–`"15"` (no hex, no
+      256-color values), and glyph constants exist at `internal/ui/theme/theme.go`.
+- [ ] `internal/apply/inventory.go` skips objects annotated with `PruneAnnotation`
+      (`internal/apply/applier.go`) set to `disabled`.
 - [ ] Every `setup-go` step in `.github/workflows/` uses `go-version-file: go.mod` and no
       workflow hardcodes a Go version.
 

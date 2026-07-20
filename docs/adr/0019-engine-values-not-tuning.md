@@ -53,20 +53,20 @@ drops the redundant argocd pack when argocd is chosen.
 ## Consequences
 
 * Good, because there is one customization vocabulary to learn and to document: `values`
-  means Helm values everywhere, `extraManifests` means raw objects everywhere.
+ means Helm values everywhere, `extraManifests` means raw objects everywhere.
 * Good, because engine customization inherits Helm's own merge and validation semantics
-  instead of a hand-written patcher that had to be extended per knob.
+ instead of a hand-written patcher that had to be extended per knob.
 * Good, because the failure modes are typed and specific — CUBE-0012 carries a migration
-  recipe, CUBE-4016 names the chartless-pack cause, CUBE-0005 names the redundant pack.
+ recipe, CUBE-4016 names the chartless-pack cause, CUBE-0005 names the redundant pack.
 * Good, because deleting the tuning path removed the `EngineTuning`/`ComponentTuning`
-  types, `internal/engine/tune.go` and the schema.cue tuning block outright.
+ types, `internal/engine/tune.go` and the schema.cue tuning block outright.
 * Bad, because existing cube.yaml files using `engine.tuning` break at load rather than
-  degrading; the migration is manual, guided only by the diagnostic.
+ degrading; the migration is manual, guided only by the diagnostic.
 * Bad, because `engine.values` is silently useless for `type: flux` until render time —
-  the chartless flux engine pack rejects values structurally, so the constraint is not
-  visible in the schema.
+ the chartless flux engine pack rejects values structurally, so the constraint is not
+ visible in the schema.
 * Bad, because the engine and packs now share a failure mechanism that is structural
-  (has-chart) rather than a named check, so the flux-specific error message is generic.
+ (has-chart) rather than a named check, so the flux-specific error message is generic.
 
 ## Implementation Status
 
@@ -74,27 +74,27 @@ drops the redundant argocd pack when argocd is chosen.
 
 | Decision | Implemented at |
 | --- | --- |
-| `config.EngineSpec` exposes exactly Type, Ref, Values and SelfManage; the schema's engine block declares only those keys (CUE closure rejects others), and `EngineTuning`/`ComponentTuning` no longer exist. | `internal/config/types.go:91`, `internal/config/schema.cue:21-31` |
-| The configuration vocabulary is the same pair for packs and the engine alike: `values` renders Helm and `extraManifests` appends objects. | `internal/config/types.go:103`, `internal/config/types.go:196`, `internal/config/types.go:205` |
-| Engine customization is expressed as real Helm chart values under `engine.values`, the documented replacement for the retired `tuning` noun. | `internal/config/types.go:98-103` |
-| `engine.tuning` is removed rather than deprecated: config load rejects a present tuning key with a typed migration diagnostic (CUBE-0012) and no dual code path is kept. | `internal/config/load.go:96` |
-| `values:` are Helm values only: setting them on a chartless pack — including `spec.engine.values` with engine type flux — is the typed error CUBE-4016 at render time (rule owned by ADR-0004). | `internal/pack/render.go:130` |
-| `engine.values` is therefore supported only for `type: argocd`; the chartless `cube-engine-flux` pack routes through the same render check. | `internal/pack/enginepack.go:24` |
-| Argo CD ships as a UI-only pack for flux users; a pack whose ref contains `packs/argocd` while `engine.type` is argocd is CUBE-0005 (substring convention over the ref, not pack-identity resolution). | `internal/config/load.go:193-199` |
-| `cube-idp init` writes a kind + flux + traefik + gitea + argocd default profile (`config.Default`) and accepts `--engine` (flux\|argocd, default flux), dropping the redundant argocd pack when argocd is selected. | `internal/config/types.go:238`, `cmd/init.go:169`, `cmd/init.go:109` |
-| `cube-idp init --local` derives `spec.engine.ref` from the local packs checkout; published mode leaves `engine.ref` unset so the default published pin applies. | `cmd/init.go:153` |
+| `config.EngineSpec` exposes exactly Type, Ref, Values and SelfManage; the schema's engine block declares only those keys (CUE closure rejects others), and `EngineTuning`/`ComponentTuning` no longer exist. | `internal/config/types.go`, `internal/config/schema.cue` |
+| The configuration vocabulary is the same pair for packs and the engine alike: `values` renders Helm and `extraManifests` appends objects. | `internal/config/types.go` |
+| Engine customization is expressed as real Helm chart values under `engine.values`, the documented replacement for the retired `tuning` noun. | `internal/config/types.go` |
+| `engine.tuning` is removed rather than deprecated: config load rejects a present tuning key with a typed migration diagnostic (CUBE-0012) and no dual code path is kept. | `internal/config/load.go` |
+| `values:` are Helm values only: setting them on a chartless pack — including `spec.engine.values` with engine type flux — is the typed error CUBE-4016 at render time (rule owned by ADR-0004). | `internal/pack/render.go` |
+| `engine.values` is therefore supported only for `type: argocd`; the chartless `cube-engine-flux` pack routes through the same render check. | `internal/pack/enginepack.go` |
+| Argo CD ships as a UI-only pack for flux users; a pack whose ref contains `packs/argocd` while `engine.type` is argocd is CUBE-0005 (substring convention over the ref, not pack-identity resolution). | `internal/config/load.go` |
+| `cube-idp init` writes a kind + flux + traefik + gitea + argocd default profile (`config.Default`) and accepts `--engine` (flux\|argocd, default flux), dropping the redundant argocd pack when argocd is selected. | `internal/config/types.go`, `cmd/init.go` |
+| `cube-idp init --local` derives `spec.engine.ref` from the local packs checkout; published mode leaves `engine.ref` unset so the default published pin applies. | `cmd/init.go` |
 
 ### Verification
 
 - [ ] `internal/config/types.go` `EngineSpec` has exactly four fields: Type, Ref, Values, SelfManage.
 - [ ] `internal/config/schema.cue` engine block accepts only `type`, `ref?`, `values?`, `selfManage?` — no `tuning`.
 - [ ] `grep -rn "EngineTuning\|ComponentTuning" --include='*.go'` matches only diagnostic code definitions, never a type declaration.
-- [ ] `internal/config/load.go` returns `diag.CodeEngineTuningRemoved` (CUBE-0012) when raw YAML carries `spec.engine.tuning`; covered by `TestEngineTuningRemovedIsCube0012` (`internal/config/load_test.go:373`).
+- [ ] `internal/config/load.go` returns `diag.CodeEngineTuningRemoved` (CUBE-0012) when raw YAML carries `spec.engine.tuning`; covered by `TestEngineTuningRemovedIsCube0012` (`internal/config/load_test.go`).
 - [ ] `internal/pack/render.go` `RenderWith` returns `diag.CodePackValuesChartless` (CUBE-4016) when `len(values) > 0 && !p.HasChart()`.
 - [ ] `internal/pack/enginepack.go` `FetchRenderEngine` calls `pk.RenderWith(spec.Values, ...)`, so engine values reach the same guard.
-- [ ] `internal/config/load.go` cross-validation returns `diag.CodeArgoPackRedun` (CUBE-0005) for an argocd pack under `engine.type: argocd`; covered by `TestLoadRejectsArgoPackWithArgoEngine` (`internal/config/load_test.go:116`).
+- [ ] `internal/config/load.go` cross-validation returns `diag.CodeArgoPackRedun` (CUBE-0005) for an argocd pack under `engine.type: argocd`; covered by `TestLoadRejectsArgoPackWithArgoEngine` (`internal/config/load_test.go`).
 - [ ] `cmd/init.go` registers `--engine` defaulting to `"flux"` and omits the argocd pack when `engineType == "argocd"`.
-- [ ] `cmd/init.go` sets `Spec.Engine.Ref` only when `--local` is given; `EngineSpec.PackRef()` otherwise falls back to `defaultEngineRefs` (`internal/config/types.go:116`).
+- [ ] `cmd/init.go` sets `Spec.Engine.Ref` only when `--local` is given; `EngineSpec.PackRef()` otherwise falls back to `defaultEngineRefs` (`internal/config/types.go`).
 
 ## History
 
@@ -105,8 +105,8 @@ path had no Helm chart to merge values into. With the engine shipped as a pack,
 by Helm. The `EngineTuning`/`ComponentTuning` types, `internal/engine/tune.go` and the
 schema.cue tuning block were deleted, and the `tuning` key now produces a migration
 diagnostic. The old per-component diagnostic CUBE-3009 is retained but marked retired — as
-a constant (`internal/diag/codes.go:84`) and as its registry entry, which is what
-`cube-idp explain CUBE-3009` still surfaces (`internal/diag/registry.go:89`) — and has not
+a constant (`internal/diag/codes.go`) and as its registry entry, which is what
+`cube-idp explain CUBE-3009` still surfaces (`internal/diag/registry.go`) — and has not
 been emitted since.
 
 ## More Information

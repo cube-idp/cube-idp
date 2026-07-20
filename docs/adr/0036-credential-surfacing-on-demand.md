@@ -54,17 +54,17 @@ than an enum. This ADR relies on both but does not restate them as its own commi
 ## Consequences
 
 * Good, because a routine `up` transcript is safe to share: it names what was installed and
-  where to get credentials, but contains none.
+ where to get credentials, but contains none.
 * Good, because `expose.authSecretRef` makes the credential location part of the pack's
-  declared contract, discoverable through `kubectl get packs` without any cube-idp tooling.
+ declared contract, discoverable through `kubectl get packs` without any cube-idp tooling.
 * Good, because the inline rendering model owned by ADR-0026 leaves the run's history in
-  native scrollback, so the access summary survives the program exiting.
+ native scrollback, so the access summary survives the program exiting.
 * Bad, because operators must run a second command to get what a naive installer would have
-  handed them, which is friction on first use.
+ handed them, which is friction on first use.
 * Bad, because supporting the deprecated label lookup means carrying two resolution paths
-  for a release.
+ for a release.
 * Bad, because `impliedFields` merging encodes knowledge about a pack's credential shape
-  (e.g. Argo CD's implicit `admin` username) that the Secret itself does not carry.
+ (e.g. Argo CD's implicit `admin` username) that the Secret itself does not carry.
 
 ## Implementation Status
 
@@ -72,32 +72,32 @@ than an enum. This ADR relies on both but does not restate them as its own commi
 
 | Decision | Implemented at |
 | --- | --- |
-| `cube-idp get secrets` pivots Pack → `expose.authSecretRef` → Secret and merges `impliedFields` under the Secret's own keys. | `cmd/get.go:76-119` |
-| The legacy `cube-idp.dev/cli-secret=true` label lookup is deprecated behind a notice and honored one more release, only for packs not already resolved via `authSecretRef`. | `cmd/get.go:124-154` |
-| Output is filterable by pack via `-p` and printed as an aligned PACK/NAMESPACE/NAME/DATA table whose DATA cell is comma-joined `key=value` pairs. | `cmd/get.go:215`; `cmd/get.go:253-273` |
-| The `Pack` CRD defines `additionalPrinterColumns` including an AUTH-SECRET column, so `kubectl get packs` shows where each pack's credential lives. The full column set is VERSION / URL / AUTH-SECRET / READY / CUSTOMIZED / DELIVERY / DEPENDS-ON (NAME is implicit). | `internal/pack/manifests/pack-crd.yaml:55-62` |
-| A successful `up` ends with a styled access summary listing delivered pack URLs plus a `cube-idp get secrets` hint; plain mode keeps its single final line plus the `Access` block. | `internal/up/up.go:570-590`; `internal/ui/render/plain.go:42-50` |
+| `cube-idp get secrets` pivots Pack → `expose.authSecretRef` → Secret and merges `impliedFields` under the Secret's own keys. | `cmd/get.go` |
+| The legacy `cube-idp.dev/cli-secret=true` label lookup is deprecated behind a notice and honored one more release, only for packs not already resolved via `authSecretRef`. | `cmd/get.go` |
+| Output is filterable by pack via `-p` and printed as an aligned PACK/NAMESPACE/NAME/DATA table whose DATA cell is comma-joined `key=value` pairs. | `cmd/get.go`; `cmd/get.go` |
+| The `Pack` CRD defines `additionalPrinterColumns` including an AUTH-SECRET column, so `kubectl get packs` shows where each pack's credential lives. The full column set is VERSION / URL / AUTH-SECRET / READY / CUSTOMIZED / DELIVERY / DEPENDS-ON (NAME is implicit). | `internal/pack/manifests/pack-crd.yaml` |
+| A successful `up` ends with a styled access summary listing delivered pack URLs plus a `cube-idp get secrets` hint; plain mode keeps its single final line plus the `Access` block. | `internal/up/up.go`; `internal/ui/render/plain.go` |
 
 ### Verification
 
-- [ ] `cmd/get.go:76-119` (`packSecretRows`) reads `spec.authSecretRef.namespace`/`name` off
+- [ ] `cmd/get.go` (`packSecretRows`) reads `spec.authSecretRef.namespace`/`name` off
       each Pack, follows it to the Secret, and merges `spec.impliedFields` *underneath* the
       Secret's keys.
-- [ ] `cmd/get.go:124-127` (`legacyDeprecationNote`) builds a note naming the legacy
+- [ ] `cmd/get.go` (`legacyDeprecationNote`) builds a note naming the legacy
       `cube-idp.dev/cli-secret` and `cube-idp.dev/pack-name` labels and stating that label
-      support ends next release; it is appended to `notes` at `cmd/get.go:149` and printed
-      via `p.Warn` at `cmd/get.go:207-210`.
-- [ ] `cmd/get.go:255` prints the header `PACK\tNAMESPACE\tNAME\tDATA`, and `:262-268` joins
+      support ends next release; it is appended to `notes` at `cmd/get.go` and printed
+      via `p.Warn` at `cmd/get.go`.
+- [ ] `cmd/get.go` prints the header `PACK\tNAMESPACE\tNAME\tDATA`, and joins
       each row's sorted `key=value` pairs with commas into the DATA cell.
-- [ ] `internal/pack/manifests/pack-crd.yaml:55-62` declares seven printer columns —
+- [ ] `internal/pack/manifests/pack-crd.yaml` declares seven printer columns —
       VERSION, URL, AUTH-SECRET, READY, CUSTOMIZED, DELIVERY, DEPENDS-ON — in that order.
-- [ ] `internal/pack/discovery_test.go:23-45` reads the column slice back but only asserts
+- [ ] `internal/pack/discovery_test.go` reads the column slice back but only asserts
       `len(cols) >= 5` plus explicit CUSTOMIZED and DELIVERY presence checks. **AUTH-SECRET
       is not pinned by any test** — the CRD manifest is the only guarantee.
-- [ ] `internal/up/up.go:570-576` emits `event.Epilogue` with hint
-      `"credentials: cube-idp get secrets"`, and `:590` calls `con.Access(...)` with the same
+- [ ] `internal/up/up.go` emits `event.Epilogue` with hint
+      `"credentials: cube-idp get secrets"`, and calls `con.Access(...)` with the same
       hint — no credential value appears in either.
-- [ ] `internal/ui/render/plain.go:42` prints the single final line and `:45-50` the `Access`
+- [ ] `internal/ui/render/plain.go` prints the single final line and the `Access`
       block.
 
 ## More Information
@@ -109,9 +109,9 @@ before this record was written.
 Member provenance:
 
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase3-draft.md:51` — the `get secrets` pivot
-  and label deprecation.
+ and label deprecation.
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:4393` — the Pack CRD printer
-  columns.
+ columns.
 - `docs/archive/superpowers/plans/2026-07-13-cube-idp-phase2-draft.md:5743` — the `up` access summary.
 
 The inline/never-alt-screen rendering model and the open-`Stage`-string rule were previously

@@ -64,22 +64,22 @@ state (degrading to declared config on any failure), and `spoke remove
 ## Consequences
 
 * Good, because the lockfile is reviewable in a pull request, diffable, and
-  vendorable into an air-gapped bundle without a cluster.
+ vendorable into an air-gapped bundle without a cluster.
 * Good, because `diff` and `up` both call `pack.ResolveOrder`, so a preview cannot
-  fabricate drift on dependency-bearing cubes; the object-identity half of that
-  property is fenced by a test asserting diff's desired set matches `up.Run`'s
-  applied set, while order parity rests on the shared call rather than on a test.
+ fabricate drift on dependency-bearing cubes; the object-identity half of that
+ property is fenced by a test asserting diff's desired set matches `up.Run`'s
+ applied set, while order parity rests on the shared call rather than on a test.
 * Good, because declared-order lock entries keep the file stable under dependency
-  changes: adding a `dependsOn` reorders delivery but leaves `cube.lock` untouched.
+ changes: adding a `dependsOn` reorders delivery but leaves `cube.lock` untouched.
 * Good, because idempotent Gitea sync means a re-run of `up` leaves no commit churn,
-  and the repo outside `manifests/` stays an editable working copy.
+ and the repo outside `manifests/` stays an editable working copy.
 * Bad, because the lock is not authoritative in-cluster: two operators can drift
-  their local `cube.lock` files against the same cluster with nothing to arbitrate.
+ their local `cube.lock` files against the same cluster with nothing to arbitrate.
 * Bad, because `pack install` accepts a ref whose dependencies cannot be satisfied;
-  the failure surfaces later, at the next `up` or `diff`, not at the point of edit.
+ the failure surfaces later, at the next `up` or `diff`, not at the point of edit.
 * Bad, because delivery order must be recomputed on every read of the lock rather
-  than looked up, and any change to the ordering rule silently changes past runs'
-  reproduction.
+ than looked up, and any change to the ordering rule silently changes past runs'
+ reproduction.
 
 ## Implementation Status
 
@@ -87,33 +87,33 @@ state (degrading to declared config on any failure), and `spoke remove
 
 | Decision | Implemented at |
 | --- | --- |
-| `cube.lock` is defined by the KRM-shaped `File` struct with `APIVersion`/`Kind` and read/written as a local file, not an in-cluster CRD; the `cube-idp.dev/v1alpha1` / `CubeLock` values are stamped by `up`. | `internal/lock/lock.go:16-22`; `internal/up/up.go:422` |
-| `EngineLock` records the standard `lock.Entry` fields (Ref, Name, Version, resolved pin, RenderedHash, Images) in addition to Type, making the engine install reproducible. | `internal/lock/lock.go:28-43` |
-| `cube.lock` entries are accumulated in declared `cube.yaml` order and written as-is; the `Entry` struct carries no order field, so delivery order is derivable rather than stored. | `internal/up/up.go:342-403`; `internal/up/up.go:422-429`; `internal/lock/lock.go:46-61` |
-| Repo-delivered manifests are written as `manifests/NN-<kind>-<name>.yaml` in stable order, and the sync only creates/updates/deletes under the passed dir subtree. | `internal/up/up.go:1157`; `internal/gitea/client.go:196-225` |
-| `cube-idp diff` mutates nothing: it gates on `prov.Exists` rather than creating a cluster, then computes kernel changes via SSA dry-run, pack drift via lock rendered hashes, and orphans via the inventory. | `internal/diff/diff.go:46-140` (gate at `:60`) |
-| `diff.desiredState` calls the same `pack.ResolveOrder` as `up`, so diff previews byte-identical delivery objects and cannot fabricate drift. | `internal/diff/diff.go:257`; `internal/diff/diff_test.go:157` |
-| `upgrade --plan` classifies each pack as "new (not in cube.lock)", "up to date" or "update available". | `internal/upgrade/plan.go:76-83` |
-| On drift, `upgrade --plan` exits 1 — except when prompts are allowed (real TTY), where it offers to apply immediately and runs `runUpPipeline` on consent. | `cmd/upgrade.go:29-47` |
-| `pack install` and `spoke add` only edit `cube.yaml` and validate by round-trip; no cluster mutation. | `cmd/pack.go:340-379`; `cmd/spoke.go:31-53` |
-| `spoke list` reads live cluster state read-only and degrades to declared config on any failure. | `cmd/spoke.go:82`; `cmd/spoke.go:111-125` |
-| `spoke remove --delete-cluster` deletes a kind spoke cluster via `prov.Delete`, behind a consent prompt that refuses non-interactively without `--yes`. | `cmd/spoke.go:159`; `cmd/spoke.go:189-211` |
-| The install path does not validate the dependency graph; graph validation happens at the next `up` or `diff`. | `cmd/pack.go:340-379` |
-| The `up` "packs-crd" step applies and inventories only the `Pack` CRD; step text is "Pack CRD established". | `internal/up/up.go:209-224` |
-| `docs/machine-readable-output.md` documents the `encode_error` event — no `ts` field, emitted so a marshal failure surfaces on-stream rather than dropping an event silently. | `internal/ui/render/json.go:31`; `docs/machine-readable-output.md:238-256` |
+| `cube.lock` is defined by the KRM-shaped `File` struct with `APIVersion`/`Kind` and read/written as a local file, not an in-cluster CRD; the `cube-idp.dev/v1alpha1` / `CubeLock` values are stamped by `up`. | `internal/lock/lock.go`; `internal/up/up.go` |
+| `EngineLock` records the standard `lock.Entry` fields (Ref, Name, Version, resolved pin, RenderedHash, Images) in addition to Type, making the engine install reproducible. | `internal/lock/lock.go` |
+| `cube.lock` entries are accumulated in declared `cube.yaml` order and written as-is; the `Entry` struct carries no order field, so delivery order is derivable rather than stored. | `internal/up/up.go`; `internal/up/up.go`; `internal/lock/lock.go` |
+| Repo-delivered manifests are written as `manifests/NN-<kind>-<name>.yaml` in stable order, and the sync only creates/updates/deletes under the passed dir subtree. | `internal/up/up.go`; `internal/gitea/client.go` |
+| `cube-idp diff` mutates nothing: it gates on `prov.Exists` rather than creating a cluster, then computes kernel changes via SSA dry-run, pack drift via lock rendered hashes, and orphans via the inventory. | `internal/diff/diff.go` (gate) |
+| `diff.desiredState` calls the same `pack.ResolveOrder` as `up`, so diff previews byte-identical delivery objects and cannot fabricate drift. | `internal/diff/diff.go`; `internal/diff/diff_test.go` |
+| `upgrade --plan` classifies each pack as "new (not in cube.lock)", "up to date" or "update available". | `internal/upgrade/plan.go` |
+| On drift, `upgrade --plan` exits 1 — except when prompts are allowed (real TTY), where it offers to apply immediately and runs `runUpPipeline` on consent. | `cmd/upgrade.go` |
+| `pack install` and `spoke add` only edit `cube.yaml` and validate by round-trip; no cluster mutation. | `cmd/pack.go`; `cmd/spoke.go` |
+| `spoke list` reads live cluster state read-only and degrades to declared config on any failure. | `cmd/spoke.go`; `cmd/spoke.go` |
+| `spoke remove --delete-cluster` deletes a kind spoke cluster via `prov.Delete`, behind a consent prompt that refuses non-interactively without `--yes`. | `cmd/spoke.go`; `cmd/spoke.go` |
+| The install path does not validate the dependency graph; graph validation happens at the next `up` or `diff`. | `cmd/pack.go` |
+| The `up` "packs-crd" step applies and inventories only the `Pack` CRD; step text is "Pack CRD established". | `internal/up/up.go` |
+| `docs/machine-readable-output.md` documents the `encode_error` event — no `ts` field, emitted so a marshal failure surfaces on-stream rather than dropping an event silently. | `internal/ui/render/json.go`; `docs/machine-readable-output.md` |
 
 ### Verification
 
 - [ ] `internal/lock/lock.go` defines `File` with `APIVersion`/`Kind`, and `lock.Read`/`lock.Write` are plain file YAML I/O with no Kubernetes client.
 - [ ] No `cubelocks.cube-idp.dev` CRD manifest exists in the tree; `internal/pack/manifests/pack-crd.yaml` is the only `cube-idp.dev` CRD.
 - [ ] `internal/lock/lock.go` `Entry` has no order or wave field, and `EngineLock.Entry()` projects the same fields as `Entry`.
-- [ ] Delivery ordering itself is ADR-0005's; this ADR only relies on it being derivable. `internal/pack/depgraph.go:96-125` and `internal/pack/depgraph_test.go:75` (`TestResolveOrderNoDepsDeclaredOrder`) are the ordering owner's evidence.
-- [ ] `internal/up/up.go:1157` formats repo files as `manifests/%02d-%s-%s.yaml`; `internal/gitea/client.go` `SyncDir` confines create/update/delete to the passed dir subtree and skips blobs whose SHA matches.
+- [ ] Delivery ordering itself is ADR-0005's; this ADR only relies on it being derivable. `internal/pack/depgraph.go` and `internal/pack/depgraph_test.go` (`TestResolveOrderNoDepsDeclaredOrder`) are the ordering owner's evidence.
+- [ ] `internal/up/up.go` formats repo files as `manifests/%02d-%s-%s.yaml`; `internal/gitea/client.go` `SyncDir` confines create/update/delete to the passed dir subtree and skips blobs whose SHA matches.
 - [ ] `internal/diff/diff.go` checks `prov.Exists` rather than calling `Ensure`, so `diff` never creates a kind cluster.
-- [ ] `internal/diff/diff.go:257` calls `pack.ResolveOrder`, the same function `internal/up/up.go:413` reaches via `resolveAndDeliverPacks`; `internal/diff/diff_test.go:157` (`TestDesiredStateMatchesUpAppliedSet`) asserts diff's desired object set matches `up.Run`'s applied set.
-- [ ] `internal/upgrade/plan.go:76-83` returns exactly three `Change` strings, and `cmd/upgrade.go:46` maps drift to exit code 1 on the non-TTY / declined-prompt path.
-- [ ] `cmd/pack.go:340-379` contains no call to `pack.ResolveOrder` and no cluster client, applier or kube import.
-- [ ] `internal/up/up.go:224` emits `con.Step("packs-crd", "Pack CRD established")` — singular.
+- [ ] `internal/diff/diff.go` calls `pack.ResolveOrder`, the same function `internal/up/up.go` reaches via `resolveAndDeliverPacks`; `internal/diff/diff_test.go` (`TestDesiredStateMatchesUpAppliedSet`) asserts diff's desired object set matches `up.Run`'s applied set.
+- [ ] `internal/upgrade/plan.go` returns exactly three `Change` strings, and `cmd/upgrade.go` maps drift to exit code 1 on the non-TTY / declined-prompt path.
+- [ ] `cmd/pack.go` contains no call to `pack.ResolveOrder` and no cluster client, applier or kube import.
+- [ ] `internal/up/up.go` emits `con.Step("packs-crd", "Pack CRD established")` — singular.
 
 ## History
 

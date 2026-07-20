@@ -52,22 +52,22 @@ authoritative statement of the render-derived gateway dependency edge, and ADR-0
 ## Consequences
 
 * Good, because the orchestrator has no engine-specific branches in the delivery path — a
-  new engine is added by implementing the interface, not by editing `up`.
+ new engine is added by implementing the interface, not by editing `up`.
 * Good, because flux keeps full delivery parallelism: ordering is enforced by the
-  controller in-cluster rather than by serialising the CLI's apply loop.
+ controller in-cluster rather than by serialising the CLI's apply loop.
 * Good, because the contract test makes "did you think about ordering?" a compile-and-test
-  gate for every engine implementation.
+ gate for every engine implementation.
 * Good, because argo CD users still get a machine-readable record of the dependency edges
-  even though the engine cannot act on them.
+ even though the engine cannot act on them.
 * Bad, because argo CD delivery is slower: the caller must block on dependency health
-  before applying each dependent pack.
+ before applying each dependent pack.
 * Bad, because the two engines express the same intent in structurally different shapes,
-  so the contract test can only assert that *something* was emitted, not that it is
-  semantically equivalent.
+ so the contract test can only assert that *something* was emitted, not that it is
+ semantically equivalent.
 * Bad, because widening `DeliverGit` with a `dependsOn` parameter was a breaking interface
-  change that every implementation and test fake had to absorb.
+ change that every implementation and test fake had to absorb.
 * Bad, because the flux dependency reference is name-only and therefore silently assumes
-  every cube-idp Kustomization stays in `flux-system`.
+ every cube-idp Kustomization stays in `flux-system`.
 
 ## Implementation Status
 
@@ -75,43 +75,43 @@ authoritative statement of the render-derived gateway dependency edge, and ADR-0
 
 | Decision | Implemented at |
 | --- | --- |
-| `Engine` exposes `OrdersDeliveries() bool`, declaring whether the engine orders deliveries natively; flux returns true and therefore never enters the wave gate. | `internal/engine/engine.go:99` |
-| Engines self-describe ordering capability below the engine seam, so `up` branches on `OrdersDeliveries()` rather than type-switching on engine type; when it returns false `up` wave-gates delivery itself, blocking on each dependency's health before applying the dependent pack. | `internal/up/up.go:632` |
-| `Engine.DeliverGit` widens to `DeliverGit(ctx, name string, src GitSource, dependsOn []string)`, forcing every implementation and fake to accept resolved dependencies. | `internal/engine/engine.go:70` |
-| The flux engine adds name-only `spec.dependsOn` entries (`cube-idp-<name>`, same `flux-system` namespace) to the Kustomization only when dependencies exist, and skips the wave machinery entirely. | `internal/engine/flux/delivergit.go:53` |
-| Flux dependency references are name-only because every cube-idp Kustomization lives in the `flux-system` namespace. | `internal/engine/flux/deliver.go:64` |
-| The argocd engine reports `OrdersDeliveries() == false` and records dependencies as the Application annotation `cube-idp.dev/depends-on` (comma-separated), leaving `syncPolicy` untouched. | `internal/engine/argocd/deliver.go:50` |
-| The engine contract test asserts that every implementation translates a non-empty `DependsOn` into engine-native ordering intent. | `internal/engine/contract/contract.go:139` |
-| Pack dependencies are declared and resolved into a graph with cycle detection and translated per delivery engine. *(Superseded in part — see History.)* | `internal/pack/depgraph.go:29` |
+| `Engine` exposes `OrdersDeliveries() bool`, declaring whether the engine orders deliveries natively; flux returns true and therefore never enters the wave gate. | `internal/engine/engine.go` |
+| Engines self-describe ordering capability below the engine seam, so `up` branches on `OrdersDeliveries()` rather than type-switching on engine type; when it returns false `up` wave-gates delivery itself, blocking on each dependency's health before applying the dependent pack. | `internal/up/up.go` |
+| `Engine.DeliverGit` widens to `DeliverGit(ctx, name string, src GitSource, dependsOn []string)`, forcing every implementation and fake to accept resolved dependencies. | `internal/engine/engine.go` |
+| The flux engine adds name-only `spec.dependsOn` entries (`cube-idp-<name>`, same `flux-system` namespace) to the Kustomization only when dependencies exist, and skips the wave machinery entirely. | `internal/engine/flux/delivergit.go` |
+| Flux dependency references are name-only because every cube-idp Kustomization lives in the `flux-system` namespace. | `internal/engine/flux/deliver.go` |
+| The argocd engine reports `OrdersDeliveries() == false` and records dependencies as the Application annotation `cube-idp.dev/depends-on` (comma-separated), leaving `syncPolicy` untouched. | `internal/engine/argocd/deliver.go` |
+| The engine contract test asserts that every implementation translates a non-empty `DependsOn` into engine-native ordering intent. | `internal/engine/contract/contract.go` |
+| Pack dependencies are declared and resolved into a graph with cycle detection and translated per delivery engine. *(Superseded in part — see History.)* | `internal/pack/depgraph.go` |
 
 ### Verification
 
-- [ ] `internal/engine/engine.go:99` declares `OrdersDeliveries() bool` on the `Engine`
-      interface; `internal/engine/flux/flux.go:37` returns `true` and
-      `internal/engine/argocd/argocd.go:68` returns `false`.
-- [ ] `internal/engine/engine.go:70` declares
+- [ ] `internal/engine/engine.go` declares `OrdersDeliveries() bool` on the `Engine`
+      interface; `internal/engine/flux/flux.go` returns `true` and
+      `internal/engine/argocd/argocd.go` returns `false`.
+- [ ] `internal/engine/engine.go` declares
       `DeliverGit(ctx, name string, src GitSource, dependsOn []string)`, and both
-      `internal/engine/flux/delivergit.go:17` and `internal/engine/argocd/delivergit.go:18`
+      `internal/engine/flux/delivergit.go` and `internal/engine/argocd/delivergit.go`
       match that signature.
 - [ ] `grep -rn 'OrdersDeliveries' internal/up/up.go` shows the wave gate guarded by
-      `if !deps.eng.OrdersDeliveries()` (around `internal/up/up.go:632`) and no type switch
+      `if !deps.eng.OrdersDeliveries()` (around `internal/up/up.go`) and no type switch
       on engine type anywhere in the delivery path.
-- [ ] `internal/engine/flux/deliver.go:64` (`dependsOnRefs`) emits only
+- [ ] `internal/engine/flux/deliver.go` (`dependsOnRefs`) emits only
       `{"name": cube-idp-<dep>}` — no `namespace` field.
-- [ ] `internal/engine/flux/delivergit.go:53` sets `spec.dependsOn` only when
+- [ ] `internal/engine/flux/delivergit.go` sets `spec.dependsOn` only when
       `len(dependsOn) > 0`.
-- [ ] `internal/engine/argocd/deliver.go:50` sets
+- [ ] `internal/engine/argocd/deliver.go` sets
       `metadata.annotations["cube-idp.dev/depends-on"]` only when the list is non-empty,
       and the `syncPolicy` block below it is unconditional.
 - [ ] `go test ./internal/engine/contract/...` runs `deliver_translates_depends_on`
-      (`internal/engine/contract/contract.go:139`) for every registered implementation and
+      (`internal/engine/contract/contract.go`) for every registered implementation and
       fails an engine that drops a non-empty `DependsOn`.
-- [ ] `internal/pack/depgraph.go:29` (`ResolveOrder`) detects cycles via `cycleError`
-      (`internal/pack/depgraph.go:141`, diagnostic `CUBE-4019` at
-      `internal/diag/codes.go:113`).
-- [ ] `internal/pack/depgraph.go:67` adds the implicit gateway edge by scanning rendered
+- [ ] `internal/pack/depgraph.go` (`ResolveOrder`) detects cycles via `cycleError`
+      (`internal/pack/depgraph.go`, diagnostic `CUBE-4019` at
+      `internal/diag/codes.go`).
+- [ ] `internal/pack/depgraph.go` adds the implicit gateway edge by scanning rendered
       objects for group `gateway.networking.k8s.io`.
-- [ ] `internal/lock/lock.go:17-22` shows `File` with only `APIVersion`/`Kind`/`Engine`/
+- [ ] `internal/lock/lock.go` shows `File` with only `APIVersion`/`Kind`/`Engine`/
       `Packs` — no `metadata`/`spec`, and no CubeLock CRD manifest or apply path exists
       under `internal/`.
 
@@ -120,7 +120,7 @@ authoritative statement of the render-derived gateway dependency edge, and ADR-0
 The original dependency decision paired graph resolution with `cube.lock` as a KRM object
 backed by an in-cluster inert `CubeLock` CRD record. Dependency resolution shipped as
 described, but the in-cluster CRD record was dropped: `cube.lock` remains a purely local
-`apiVersion`/`kind` file (`internal/lock/lock.go:17-22`), there is no `CubeLock` CRD
+`apiVersion`/`kind` file (`internal/lock/lock.go`), there is no `CubeLock` CRD
 manifest, and there is no in-cluster `Cube` record. The gateway dependency edge is instead
 derived at render time.
 
@@ -133,14 +133,14 @@ before this record was written.
 Member origins:
 
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-pack-depends-and-cubelock-crd.md:599` —
-  `OrdersDeliveries()` and the flux wave-gate skip.
+ `OrdersDeliveries()` and the flux wave-gate skip.
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-pack-depends-and-cubelock-crd.md:31` — no
-  in-cluster Cube record; render-derived gateway edge.
+ in-cluster Cube record; render-derived gateway edge.
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-pack-depends-and-cubelock-crd.md:559` —
-  name-only flux dependency references.
+ name-only flux dependency references.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-pack-depends-and-cubelock-crd-design.md:226`
-  — the `DeliverGit` signature widening.
+ — the `DeliverGit` signature widening.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-pack-depends-and-cubelock-crd-design.md:262`
-  — the argocd `cube-idp.dev/depends-on` annotation.
+ — the argocd `cube-idp.dev/depends-on` annotation.
 
 Related: ADR 0005 (pack dependency graph and ordering), ADR 0006 (per-pack delivery mode).

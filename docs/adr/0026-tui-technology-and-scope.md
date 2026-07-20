@@ -43,20 +43,20 @@ cancel, guaranteed drain, and nil-input-on-pipes lifecycle guarantees.
 ## Consequences
 
 * Good, because one pinned major line means one renderer, one color pipeline, and one
-  style vocabulary — no v1/v2 skew to debug.
+ style vocabulary — no v1/v2 skew to debug.
 * Good, because inline mode leaves completed work in native scrollback, so `up` output
-  remains readable after exit and composes with pagers, pipes and CI logs.
+ remains readable after exit and composes with pagers, pipes and CI logs.
 * Good, because the leaf-package rule for `internal/ui/theme` dissolves the cycle that
-  previously forced the renderer to duplicate the CLI's styles.
+ previously forced the renderer to duplicate the CLI's styles.
 * Good, because a guaranteed-drain, cancel-on-ctrl-c renderer means the producer can never
-  block on a dead UI and no goroutine outlives the command.
+ block on a dead UI and no goroutine outlives the command.
 * Bad, because pinning majors for the project's duration forecloses upstream fixes and
-  features that land only in a newer major.
+ features that land only in a newer major.
 * Bad, because the alt-screen prohibition rules out multi-pane dashboards outright, so
-  richer views must be expressed within a single managed bottom region.
+ richer views must be expressed within a single managed bottom region.
 * Bad, because every watch-style command needs two renderers — an inline Bubble Tea path
-  for a rich TTY and a plain appending loop for pipes, CI and JSON — doubling the surface
-  to test.
+ for a rich TTY and a plain appending loop for pipes, CI and JSON — doubling the surface
+ to test.
 
 ## Implementation Status
 
@@ -64,27 +64,27 @@ cancel, guaranteed drain, and nil-input-on-pipes lifecycle guarantees.
 
 | Decision | Implemented at |
 | --- | --- |
-| The TUI is built exclusively on Charm v2 libraries at the versions pinned in `go.mod` (bubbletea/v2 v2.0.8 inline, bubbles/v2 v2.1.1 spinner/progress/table, lipgloss/v2 v2.0.5, huh/v2 v2.0.3, fang/v2 v2.0.1 as the cobra dispatcher), and these majors are not bumped during the project. | `go.mod:45-49` |
-| A transient inline Bubble Tea program is permitted for `up`/`down` (and later `sync --watch`), but persistent, daemon or alt-screen TUIs are forbidden and the rich view exits cleanly with the command. | `internal/ui/render/live.go:20-36` |
-| The live renderer evolves the existing `liveModel` rather than being rewritten, preserving verbatim its inline mode, `p.Println` scrollback, `eofMsg` quit, ctrl-c context cancel, guaranteed drain and nil-input-on-pipes lifecycle guarantees. | `internal/ui/render/live.go:20-63,210-283,336-339` |
-| The CLI is built on cobra v1.10 with huh for the init wizard and missing-value prompts and lipgloss for status lines. (Superseded: the kernel does hold Bubble Tea programs — see `internal/ui/render/live.go:36`.) | `go.mod:16` (cobra v1.10.2); `cmd/init.go`, `internal/ui/prompt.go` (huh) |
-| cube-idp rejects fang, pterm, tview and tuist as UI dependencies. (Superseded: fang v2 is now the cobra dispatcher; pterm/tview/tuist remain absent.) | `cmd/root.go:134-141` |
-| `status` renders a rich static lipgloss snapshot that exits immediately; a `--watch` mode for status is out of scope. (Superseded: `--watch` shipped.) | `cmd/status.go:81-83` |
-| `diff` and `upgrade --plan` reuse the existing Section/Glyph styling only — no live view and no JSON document. (Superseded for `upgrade --plan`; still true for `diff`.) | `cmd/upgrade.go:33-45` |
-| Out of scope: resident `status --watch`, multi-pane dashboards or any alt-screen/persistent view, interactive doctor "apply fix" actions, fang-style themed help, and `sync --watch`. (Superseded for `status --watch`, fang-style themed help and `sync --watch`; the alt-screen prohibition and interactive doctor "apply fix" remain out of scope.) | `cmd/status.go:81-83`; `cmd/sync.go:39-77` |
+| The TUI is built exclusively on Charm v2 libraries at the versions pinned in `go.mod` (bubbletea/v2 v2.0.8 inline, bubbles/v2 v2.1.1 spinner/progress/table, lipgloss/v2 v2.0.5, huh/v2 v2.0.3, fang/v2 v2.0.1 as the cobra dispatcher), and these majors are not bumped during the project. | `go.mod` |
+| A transient inline Bubble Tea program is permitted for `up`/`down` (and later `sync --watch`), but persistent, daemon or alt-screen TUIs are forbidden and the rich view exits cleanly with the command. | `internal/ui/render/live.go` |
+| The live renderer evolves the existing `liveModel` rather than being rewritten, preserving verbatim its inline mode, `p.Println` scrollback, `eofMsg` quit, ctrl-c context cancel, guaranteed drain and nil-input-on-pipes lifecycle guarantees. | `internal/ui/render/live.go` |
+| The CLI is built on cobra v1.10 with huh for the init wizard and missing-value prompts and lipgloss for status lines. (Superseded: the kernel does hold Bubble Tea programs — see `internal/ui/render/live.go`.) | `go.mod` (cobra v1.10.2); `cmd/init.go`, `internal/ui/prompt.go` (huh) |
+| cube-idp rejects fang, pterm, tview and tuist as UI dependencies. (Superseded: fang v2 is now the cobra dispatcher; pterm/tview/tuist remain absent.) | `cmd/root.go` |
+| `status` renders a rich static lipgloss snapshot that exits immediately; a `--watch` mode for status is out of scope. (Superseded: `--watch` shipped.) | `cmd/status.go` |
+| `diff` and `upgrade --plan` reuse the existing Section/Glyph styling only — no live view and no JSON document. (Superseded for `upgrade --plan`; still true for `diff`.) | `cmd/upgrade.go` |
+| Out of scope: resident `status --watch`, multi-pane dashboards or any alt-screen/persistent view, interactive doctor "apply fix" actions, fang-style themed help, and `sync --watch`. (Superseded for `status --watch`, fang-style themed help and `sync --watch`; the alt-screen prohibition and interactive doctor "apply fix" remain out of scope.) | `cmd/status.go`; `cmd/sync.go` |
 
 ### Verification
 
 - [ ] `go.mod` pins `charm.land/bubbles/v2 v2.1.1`, `charm.land/bubbletea/v2 v2.0.8`,
-      `charm.land/huh/v2 v2.0.3`, `charm.land/lipgloss/v2 v2.0.5` (`go.mod:45-49`).
+      `charm.land/huh/v2 v2.0.3`, `charm.land/lipgloss/v2 v2.0.5` (`go.mod`).
 - [ ] No v1 Charm TUI import exists: `grep -rn "github.com/charmbracelet/\(bubbletea\|lipgloss\|bubbles\|huh\)" --include='*.go' .` returns nothing.
 - [ ] `internal/ui/theme/theme.go` imports only `charm.land/lipgloss/v2`, `golang.org/x/term` and stdlib, and imports neither `internal/ui` nor `internal/ui/render`.
-- [ ] `internal/ui/render/live.go:36` constructs `tea.NewProgram` with only `WithOutput`/`WithInput` — no `WithAltScreen`, no mouse capture anywhere in the file.
+- [ ] `internal/ui/render/live.go` constructs `tea.NewProgram` with only `WithOutput`/`WithInput` — no `WithAltScreen`, no mouse capture anywhere in the file.
 - [ ] `internal/ui/render/live.go` still centers on `liveModel` (line 215) with `p.Println` scrollback (line 49), `eofMsg` quit (lines 53, 254), ctrl+c mapped to the cancel func (lines 269-276) and the drain loop (line 47) with the
       post-`Run` join (line 62).
-- [ ] `cmd/status.go:81-83` registers `--watch`, `--interval` and `--exit-status`, and `cmd/status.go:215` runs an inline Bubble Tea program with AltScreen never set.
-- [ ] `cmd/sync.go:39-77` documents `--watch` as the sanctioned long-running foreground mode and calls `syncer.Watch`.
-- [ ] `cmd/root.go:134-141` dispatches the root command through `fang.Execute` with `WithColorSchemeFunc(cubeColorScheme)`.
+- [ ] `cmd/status.go` registers `--watch`, `--interval` and `--exit-status`, and `cmd/status.go` runs an inline Bubble Tea program with AltScreen never set.
+- [ ] `cmd/sync.go` documents `--watch` as the sanctioned long-running foreground mode and calls `syncer.Watch`.
+- [ ] `cmd/root.go` dispatches the root command through `fang.Execute` with `WithColorSchemeFunc(cubeColorScheme)`.
 - [ ] `cmd/diff.go` remains styling-only: `diff.Run` into `c.OutOrStdout()`, `errExitCode(1)` on drift, no output-format flag.
 
 ## History

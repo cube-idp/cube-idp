@@ -51,19 +51,19 @@ YAML bytes so the closed schema cannot swallow them as a generic `CUBE-0002`.
 ## Consequences
 
 * Good, because operators author a file that looks like every other Kubernetes manifest
-  they already read; no CUE knowledge is required to use cube-idp.
+ they already read; no CUE knowledge is required to use cube-idp.
 * Good, because the open `values?: {...}` block means engine chart options the schema has
-  never heard of work immediately — value validation is the chart's job, not CUE's.
+ never heard of work immediately — value validation is the chart's job, not CUE's.
 * Good, because `omitempty` discipline makes config and lock files round-trip: a loaded
-  document re-serialises to something the schema still accepts, and diffs stay small.
+ document re-serialises to something the schema still accepts, and diffs stay small.
 * Good, because removed keys produce a named diagnostic with a migration recipe rather
-  than an opaque schema rejection.
+ than an opaque schema rejection.
 * Bad, because free-form `values` means a typo in a chart value path is not caught at
-  config load time — it surfaces later, at render or reconcile.
+ config load time — it surfaces later, at render or reconcile.
 * Bad, because every removed key needs a hand-written pre-CUE probe to keep its
-  diagnostic; the guards are manual and must be added deliberately.
+ diagnostic; the guards are manual and must be added deliberately.
 * Bad, because the engine living outside `spec.packs` is a special case: engine fetch and
-  render follow a separate code path from the ordinary pack loop.
+ render follow a separate code path from the ordinary pack loop.
 
 ## Implementation Status
 
@@ -71,34 +71,34 @@ YAML bytes so the closed schema cannot swallow them as a generic `CUBE-0002`.
 
 | Decision | Implemented at |
 | --- | --- |
-| `cube.yaml` uses `apiVersion: cube-idp.dev/v1alpha1` and `kind: Cube`; users author plain YAML while CUE is an internal-only implementation detail, never the authoring surface. | `internal/config/schema.cue:3-5` |
-| The literal `apiVersion`/`kind` pinning is non-optional and non-defaulted, so any other value is rejected at validation. | `internal/config/schema.cue:3-5` |
-| The engine pack source is resolved from `spec.engine` (explicit `ref`, else the published default) and is never listed in `spec.packs`. | `internal/config/types.go:90-131`; `internal/up/up.go:244-254` |
-| `schema.cue` has no `engine.tuning` block and declares an open `values?: {...}` field, replacing the fixed tuning knob set with free-form engine pack values. | `internal/config/schema.cue:21-31`; `internal/config/types.go:99-104` |
-| The `engine.tuning` migration guard is probed pre-CUE from the raw YAML so the closed schema cannot swallow it as a generic `CUBE-0002`. | `internal/config/load.go:85-100` |
-| Optional nil-able config and lock fields carry `yaml`/`json` `omitempty` so an unset value marshals as an absent key, matching `PackRef.Values` nil-map round-trip discipline. | `internal/config/types.go:196-224` |
-| Non-pointer struct fields are the recorded exception: `ClusterSpec.Registry` carries no `omitempty` (the tag is a no-op there) and always marshals, which `schema.cue`'s `registry?` accepts. | `internal/config/types.go:48-54` |
+| `cube.yaml` uses `apiVersion: cube-idp.dev/v1alpha1` and `kind: Cube`; users author plain YAML while CUE is an internal-only implementation detail, never the authoring surface. | `internal/config/schema.cue` |
+| The literal `apiVersion`/`kind` pinning is non-optional and non-defaulted, so any other value is rejected at validation. | `internal/config/schema.cue` |
+| The engine pack source is resolved from `spec.engine` (explicit `ref`, else the published default) and is never listed in `spec.packs`. | `internal/config/types.go`; `internal/up/up.go` |
+| `schema.cue` has no `engine.tuning` block and declares an open `values?: {...}` field, replacing the fixed tuning knob set with free-form engine pack values. | `internal/config/schema.cue`; `internal/config/types.go` |
+| The `engine.tuning` migration guard is probed pre-CUE from the raw YAML so the closed schema cannot swallow it as a generic `CUBE-0002`. | `internal/config/load.go` |
+| Optional nil-able config and lock fields carry `yaml`/`json` `omitempty` so an unset value marshals as an absent key, matching `PackRef.Values` nil-map round-trip discipline. | `internal/config/types.go` |
+| Non-pointer struct fields are the recorded exception: `ClusterSpec.Registry` carries no `omitempty` (the tag is a no-op there) and always marshals, which `schema.cue`'s `registry?` accepts. | `internal/config/types.go` |
 
 ### Verification
 
-- [ ] `internal/config/schema.cue:3-5` pins `apiVersion: "cube-idp.dev/v1alpha1"` and
+- [ ] `internal/config/schema.cue` pins `apiVersion: "cube-idp.dev/v1alpha1"` and
       `kind: "Cube"` as literal constraints, and `config.Default` in
       `internal/config/types.go` writes exactly those values for `cube-idp init`.
 - [ ] `grep -c 'tuning' internal/config/schema.cue` prints `0`, and
       `grep -n 'values?' internal/config/schema.cue` shows the `values?: {...}` open struct
-      inside the `engine` block at `internal/config/schema.cue:21-31`.
-- [ ] `internal/config/load.go:85-100` unmarshals a `legacyTuning` struct from the raw
+      inside the `engine` block at `internal/config/schema.cue`.
+- [ ] `internal/config/load.go` unmarshals a `legacyTuning` struct from the raw
       YAML bytes *before* the cuecontext unify that follows it, returning
       `diag.CodeEngineTuningRemoved` (`CUBE-0012`) with a migration remediation.
 - [ ] `CUBE-0012` is registered in `internal/diag/codes.go` and `internal/diag/registry.go`
       with an `engine.tuning was removed` summary.
-- [ ] `internal/up/up.go:244-254` resolves the engine through
+- [ ] `internal/up/up.go` resolves the engine through
       `cube.Spec.Engine.PackRef()` and `pack.FetchRenderEngine`, outside the `spec.Packs`
-      loop (which starts at `internal/up/up.go:299` via `orderPackRefs`).
-- [ ] Every optional `PackRef` field in `internal/config/types.go:196-224` carries both
+      loop (which starts at `internal/up/up.go` via `orderPackRefs`).
+- [ ] Every optional `PackRef` field in `internal/config/types.go` carries both
       `yaml:",omitempty"` and `json:",omitempty"`; the same holds for `EngineLock` fields
-      in `internal/lock/lock.go:30-35` (`Type` at line 29 is required and carries none).
-- [ ] `cmd/config.go:111` prints `config.Schema()` and nothing else.
+      in `internal/lock/lock.go` (`Type` at line 29 is required and carries none).
+- [ ] `cmd/config.go` prints `config.Schema()` and nothing else.
 - [ ] No other command renders or accepts CUE; the `CUBE-0002`/`CUBE-0012` remediations in
       `internal/config/load.go` only *reference* the `config schema` command.
 
@@ -111,15 +111,15 @@ before this record was written.
 Member origins:
 
 - `docs/archive/superpowers/specs/2026-07-13-cube-idp-architecture-design.md:194` — plain
-  YAML authoring surface, CUE internal-only.
+ YAML authoring surface, CUE internal-only.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-prerequisites-packs-design.md:24` —
-  `apiVersion`/`kind` pinning.
+ `apiVersion`/`kind` pinning.
 - `docs/archive/superpowers/plans/2026-07-19-cube-idp-engine-as-pack.md:144` — engine referenced
-  via `spec.engine.ref`, never `spec.packs`.
+ via `spec.engine.ref`, never `spec.packs`.
 - `docs/archive/superpowers/specs/2026-07-19-cube-idp-engine-as-pack-design.md:111` —
-  `engine.tuning` replaced by open `values?: {...}`.
+ `engine.tuning` replaced by open `values?: {...}`.
 - `docs/archive/superpowers/plans/2026-07-19-valuesref-remote-config.md:17` — `omitempty`
-  round-trip discipline.
+ round-trip discipline.
 
 Rationale for the merge of these statements into one record was not recorded in the source
 material.

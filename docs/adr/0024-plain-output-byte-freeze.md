@@ -40,21 +40,21 @@ ratified alongside them but is a consent gate that refuses to run, not a plain-b
 ## Consequences
 
 * Good, because e2e assertions and CI log scraping keep working across releases: piped output
-  is byte-identical regardless of terminal capabilities, absent an explicit color-force
-  override.
+ is byte-identical regardless of terminal capabilities, absent an explicit color-force
+ override.
 * Good, because "producers never render" keeps exactly one renderer per run, so adding a new
-  presentation mode does not require touching orchestrator code.
+ presentation mode does not require touching orchestrator code.
 * Good, because a plain projection exists for every live view, so a CI log is never less
-  informative than the interactive view.
+ informative than the interactive view.
 * Good, because the same-commit test rule makes every intentional output change visible in
-  review as a golden diff.
+ review as a golden diff.
 * Bad, because improving plain output requires a ratification step and a golden update, which
-  is friction on what looks like a cosmetic fix.
+ is friction on what looks like a cosmetic fix.
 * Bad, because the freeze is now defined relative to a growing list of sanctioned deltas
-  rather than a single recorded byte set, so the true contract lives in the renderer's
-  comments plus the goldens.
+ rather than a single recorded byte set, so the true contract lives in the renderer's
+ comments plus the goldens.
 * Bad, because information the styled renderer can afford to show (durations, context,
-  registry) is deliberately withheld from plain, so CI logs are less detailed by design.
+ registry) is deliberately withheld from plain, so CI logs are less detailed by design.
 
 ## Implementation Status
 
@@ -62,42 +62,42 @@ ratified alongside them but is a consent gate that refuses to run, not a plain-b
 
 | Decision | Implemented at |
 | --- | --- |
-| Plain-mode output is byte-frozen, golden/e2e-pinned, additive only, routed through `internal/ui`, and any deliberate change updates its test in the same commit. | `internal/ui/ui.go:1-17` |
-| The sanctioned deviations from byte-stable plain output are the ratified R1 (StepStarted start line) and R2 (epilogue glyph as presentation) changes. | `internal/ui/render/plain.go:19-23` |
-| R3 is a consent gate, not a plain-byte delta: a non-TTY `down` without `--yes` refuses to run rather than changing plain output. | `cmd/down.go:67-70` |
-| Richness routes through `ModeStyled`/`ModeLive` on a real TTY (or the color-forced styled-static arm on a pipe), and producers never render. | `internal/ui/pipeline.go:78-89`; `internal/ui/console.go:12-17` |
-| Plain-mode CLI output is byte-frozen and golden/e2e-pinned; new output is additive and routed through `internal/ui`. | `internal/ui/render/plain.go:24-59` |
+| Plain-mode output is byte-frozen, golden/e2e-pinned, additive only, routed through `internal/ui`, and any deliberate change updates its test in the same commit. | `internal/ui/ui.go` |
+| The sanctioned deviations from byte-stable plain output are the ratified R1 (StepStarted start line) and R2 (epilogue glyph as presentation) changes. | `internal/ui/render/plain.go` |
+| R3 is a consent gate, not a plain-byte delta: a non-TTY `down` without `--yes` refuses to run rather than changing plain output. | `cmd/down.go` |
+| Richness routes through `ModeStyled`/`ModeLive` on a real TTY (or the color-forced styled-static arm on a pipe), and producers never render. | `internal/ui/pipeline.go`; `internal/ui/console.go` |
+| Plain-mode CLI output is byte-frozen and golden/e2e-pinned; new output is additive and routed through `internal/ui`. | `internal/ui/render/plain.go` |
 | The CLI surface itself (commands, flags, defaults, Short strings) is separately frozen against a golden. | `cmd/clitree_test.go` `TestCommandTreeGolden` (line 40) |
 
 ### Verification
 
-- [ ] `internal/ui/ui.go:1-17` states the phase-1 plain format `"▸ [%s] %s\n"` IS the CI/e2e
+- [ ] `internal/ui/ui.go` states the phase-1 plain format `"▸ [%s] %s\n"` IS the CI/e2e
       contract and that piped output is byte-identical (the later W2.T13 color policy adds
       the force-color carve-out below).
 - [ ] `internal/ui/ui_test.go` `TestPlainMatchesPhase1Format` (line 15) and
       `TestNonTTYWriterForcesPlain` (line 28) pin the format and the non-TTY downgrade.
 - [ ] `internal/ui/render/plain_test.go` pins the projection bytes against recorded goldens
       `internal/ui/render/testdata/plain_up_pretask.golden` and `plain_fail_pretask.golden`.
-- [ ] `internal/ui/pipeline_test.go:234` `TestModeMatrixFence` is the cross-mode fence.
-- [ ] `internal/ui/render/plain.go:53-56` emits zero bytes for `RunStarted`, `StepFailed`,
+- [ ] `internal/ui/pipeline_test.go` `TestModeMatrixFence` is the cross-mode fence.
+- [ ] `internal/ui/render/plain.go` emits zero bytes for `RunStarted`, `StepFailed`,
       `StepLog`, `HealthTick`, `Diagnosis` and `RunDone`.
-- [ ] `internal/ui/render/plain.go:19-23` names R1 (StepStarted start line) and R2 (epilogue
-      glyph as presentation) as sanctioned deviations; `cmd/down.go:67-70` implements R3, the
+- [ ] `internal/ui/render/plain.go` names R1 (StepStarted start line) and R2 (epilogue
+      glyph as presentation) as sanctioned deviations; `cmd/down.go` implements R3, the
       non-TTY confirmation refusal (`diag.CodeConfirmRequired`).
-- [ ] `internal/ui/console.go:12-17` states the Console constructs events and never renders —
+- [ ] `internal/ui/console.go` states the Console constructs events and never renders —
       exactly one renderer, chosen by `RunPipeline`.
-- [ ] `internal/ui/pipeline.go:78-110` selects Styled/Live only on `ModeStyled`/`ModeLive`
+- [ ] `internal/ui/pipeline.go` selects Styled/Live only on `ModeStyled`/`ModeLive`
       plus `IsTerminal`, defaulting to `render.Plain`; styled richness lives only in
       `internal/ui/render/styled.go` and `internal/ui/render/live.go`.
-- [ ] `internal/ui/pipeline.go:112-118` `forceColorUpgrade` is the one carve-out: with
+- [ ] `internal/ui/pipeline.go` `forceColorUpgrade` is the one carve-out: with
       `--color=always`/`CLICOLOR_FORCE` and no explicit plain/json ask, a pipe renders the
       styled-static arm instead of `render.Plain`
       (`internal/ui/ui_test.go` `TestColorForcePipesStyledStatic`, line 328).
 - [ ] JSON additivity is enforced by `omitempty`-shaped records in
       `internal/ui/render/json.go`.
-- [ ] All command output routes through `ui.RunPipeline`/`RunPipelineStatic`: `cmd/up.go:32`,
-      `cmd/down.go:72`, `cmd/sync.go:86`, `cmd/vendor.go:28`, `cmd/pack.go:36`,
-      `cmd/plugin.go:65`, `cmd/repo.go:74`.
+- [ ] All command output routes through `ui.RunPipeline`/`RunPipelineStatic`: `cmd/up.go`,
+      `cmd/down.go`, `cmd/sync.go`, `cmd/vendor.go`, `cmd/pack.go`,
+      `cmd/plugin.go`, `cmd/repo.go`.
 - [ ] CLI-surface goldens exist: `cmd/testdata/clitree.golden` and
       `cmd/testdata/te3_preview.golden`; the first is fenced by `cmd/clitree_test.go`
       `TestCommandTreeGolden` (line 40), which pins command/flag structure — not plain-mode
@@ -110,16 +110,16 @@ renderer ignoring `StepStarted` and `HealthTick` and emitting zero bytes for a s
 completed — the Access block being the sole exception.
 
 Two ratifications changed that. R1 (TUI design doc §5) made plain emit a start line per
-started step, so CI logs can distinguish a hung step from a slow one; `plain.go:27-30` now
+started step, so CI logs can distinguish a hung step from a slow one; `plain.go` now
 prints `▸ [stage] msg...` for `event.StepStarted`. R1 removed only `StepStarted` from the
 zero-byte set; the set still holds all six of `RunStarted`, `StepFailed`, `StepLog`,
-`HealthTick`, `Diagnosis` and `RunDone` (`plain.go:53-56`). R2 made the epilogue glyph
-presentation, so plain projects the epilogue without the `✔` glyph (`plain.go:37-42`).
+`HealthTick`, `Diagnosis` and `RunDone` (`plain.go`). R2 made the epilogue glyph
+presentation, so plain projects the epilogue without the `✔` glyph (`plain.go`).
 
 The freeze itself survives both; what changed is its baseline. Plain output is now frozen
 relative to three sanctioned byte deltas — the Access block, the epilogue glyph, and the
 `StepStarted` start line — rather than to the original pre-Task-14b byte set. R3
-(`cmd/down.go:67-70`) was ratified in the same period but changes no plain bytes; it refuses
+(`cmd/down.go`) was ratified in the same period but changes no plain bytes; it refuses
 to run a non-TTY `down` without `--yes`.
 
 ## More Information
