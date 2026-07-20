@@ -1,7 +1,7 @@
 // Package tests holds cross-package smoke tests that don't belong to any
 // single internal package: this file renders every starter pack end-to-end
 // (pack.Fetch -> Render), the same path cube-idp's `up` orchestration
-// exercises for a real cluster. P4: the starter packs live in the
+// exercises for a real cluster. The starter packs live in the
 // cube-idp/packs monorepo — these tests scan a local checkout of it
 // (packsTree) and SKIP when none is present; the authoritative per-pack
 // gate is the packs repo's own conformance harness.
@@ -138,7 +138,7 @@ func TestStarterPacksRender(t *testing.T) {
 				t.Errorf("%s: certgen Job still carries the helm.sh/hook annotation: %v", dir, certgenJob.GetAnnotations())
 			}
 
-			// R7b collision check (spec §7 risk): the name pack.cue's
+			// Gateway-Service name collision check: the name pack.cue's
 			// gatewayService: declares (and the raw EnvoyProxy's
 			// envoyService.name pins) MUST be free in the rendered stream —
 			// no rendered v1 Service already claims it in the

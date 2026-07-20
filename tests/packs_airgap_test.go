@@ -9,7 +9,7 @@ import (
 
 // TestPackManifestsNoAlwaysPull is the starter-pack twin of the engine-side
 // TestInstallManifestNoAlwaysPull (internal/engine/argocd): the air-gap guard
-// for `up --bundle` (Task 7). A kubelet ignores an image node-loaded from a
+// for `up --bundle`. A kubelet ignores an image node-loaded from a
 // vendor bundle when its pod pins imagePullPolicy: Always, reaching instead
 // for a registry the air-gapped host cannot see — ImagePullBackOff on a host
 // with no egress. This sweeps EVERY packs/*/manifests/*.yaml so a future pack
