@@ -26,11 +26,12 @@ import (
 
 // vendorForTest drives Vendor through ui.RunPipeline with ModePlain forced
 // (a bytes.Buffer target is never a TTY, so this is deterministic without
-// SetMode) — the sanctioned test-construction path for a *ui.Console (Task
-// R3: no new ui test-constructor API; route through RunPipeline instead,
-// mirroring cmd/vendor.go's real call shape). Every pre-R3 call site in
-// this file that passed os.Stderr as Vendor's io.Writer now calls this
-// helper instead; none of those tests assert output bytes (that is
+// SetMode) — the sanctioned test-construction path for a *ui.Console: there
+// is deliberately no ui test-constructor API, so tests route through
+// RunPipeline instead, mirroring cmd/vendor.go's real call shape. Every call
+// site in this file that predates Vendor's io.Writer -> *ui.Console migration
+// passed os.Stderr as Vendor's io.Writer and now calls this helper
+// instead; none of those tests assert output bytes (that is
 // vendor_pipeline_test.go's job), so discarding the buffer here is fine.
 func vendorForTest(t *testing.T, lockPath, outPath, platform string) error {
 	t.Helper()
@@ -630,7 +631,7 @@ func TestOpenRejectsV1Bundle(t *testing.T) {
 }
 
 // TestVerifyDetectsPackContentSwap: flip one byte in a pack file WITHOUT
-// changing its size — presence+size verification (the pre-R2 state) cannot
+// changing its size — the manifest v1 presence+size verification cannot
 // catch this; the dirhash comparison must, naming the pack.
 func TestVerifyDetectsPackContentSwap(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")

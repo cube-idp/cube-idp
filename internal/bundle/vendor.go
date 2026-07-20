@@ -29,9 +29,10 @@ import (
 // Vendor reads the cube.lock at lockPath and writes a self-contained
 // air-gap bundle to outPath: every locked pack source at its pin, and every
 // image referenced anywhere in the cube — per-pack Entry.Images (including
-// D14 pack-declared runtime images) plus the GitOps engine's and the
-// in-cluster registry's own install images — as one per-image OCI-layout
-// tar apiece. platform selects which image variant is pulled ("os/arch";
+// images a pack declares in its own pack.cue images: list, which operators
+// pull at runtime and which appear in no rendered manifest) plus the
+// GitOps engine's and the in-cluster registry's own install images — as one
+// per-image OCI-layout tar apiece. platform selects which image variant is pulled ("os/arch";
 // "" defaults to "linux/"+runtime.GOARCH — bundle consumers are Linux
 // cluster nodes, so the OS half is never the host's; only the arch follows
 // the host as a pragmatic default).
@@ -133,11 +134,11 @@ func Vendor(ctx context.Context, lockPath, outPath, platform string, con *ui.Con
 // pack's dirhash.Hash1 content hash keyed by entry.Name, for Manifest.
 // PackHashes — the same digest Verify recomputes later to catch tampering.
 //
-// Each pack is a Progress/Done pair (Task R3): the live tree shows a spinner
+// Each pack is a Progress/Done pair: the live tree shows a spinner
 // while the pull is in flight; on success Done prints the identical
-// "▸ [vendor] pack %s (%s)" content Step used to print eagerly. Deliberate
-// plain-output delta (named in the R3 commit message): pre-R3 the pack line
-// printed BEFORE the pull attempt, so a failing pull still left the line in
+// "▸ [vendor] pack %s (%s)" content Step used to print eagerly. This is a
+// deliberate plain-output delta: before the event-stream migration the pack
+// line printed BEFORE the pull attempt, so a failing pull still left it in
 // plain output; now Stop prints nothing on error and the failure surfaces
 // only as the run's terminal Diagnosis — no per-pack line for a pack that
 // never finished.
@@ -211,8 +212,9 @@ func defaultRegistryInstallImages() ([]string, error) {
 // ORIGINAL ref string in both the returned index and (via pullImageTar's
 // Tag call) the layout's org.opencontainers.image.ref.name annotation
 // (Owner Decisions #2). The union mirrors exactly how `up` derives images
-// for delivery: every pack's locked Entry.Images (D14: including
-// pack-declared runtime images) plus the GitOps engine's own install images
+// for delivery: every pack's locked Entry.Images (including the runtime
+// images a pack declares in its own pack.cue images: list, which appear in
+// no rendered manifest) plus the GitOps engine's own install images
 // plus the in-cluster registry's install images — so an air-gapped install
 // never comes up short an image `up` would otherwise have pulled live.
 // Also returns each written tar's sha256, keyed by the ORIGINAL ref, for
