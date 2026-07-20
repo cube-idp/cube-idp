@@ -51,8 +51,8 @@ REAL registry, pinned by digest, never by mutable tag. It is doubly gated:
 }
 ```
 
-To (re)seed after a publish, take the digests from the publish workflow's
-output (`published <name>:<version> @ sha256:…`), or resolve them from the
+To (re)seed after a publish, take the digests from `cube-idp pack publish`'s
+output (`published oci://…/<name>:<version>@sha256:…`), or resolve them from the
 registry with the `cube-idp pack` toolchain:
 
 ```sh

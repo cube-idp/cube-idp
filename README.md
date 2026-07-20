@@ -12,9 +12,8 @@ GitOps engine's job in-cluster. Re-running `cube-idp up` **is** the upgrade
 command. The inventory makes `cube-idp down` a true cascading delete.
 
 There is no in-process controller-runtime manager, no cube-idp CRDs, no
-daemon left running on your laptop after `up` exits. The full design
-rationale lives in the spec:
-[`docs/superpowers/specs/2026-07-13-cube-idp-architecture-design.md`](docs/superpowers/specs/2026-07-13-cube-idp-architecture-design.md).
+daemon left running on your laptop after `up` exits. The design rationale
+is captured in the Architecture Decision Records under [`docs/adr/`](docs/adr/).
 
 ## Install
 
@@ -51,23 +50,22 @@ provider. Nothing else — cube-idp fetches everything it needs itself.
 ```bash
 go build -o cube-idp .
 
-./cube-idp init --name dev          # writes cube.yaml (D9 default profile:
+./cube-idp init --name dev          # writes cube.yaml (default profile:
                                      # kind + flux + traefik + gitea + argocd)
 ./cube-idp up                       # cluster + engine + registry + packs, <60s goal
 ./cube-idp status                   # component health + inventory size
-./cube-idp get secrets -p gitea     # gitea_admin credentials (D9)
+./cube-idp get secrets -p gitea     # gitea_admin credentials
 ./cube-idp down                     # cascading delete, then the cluster
 ```
 
 `cube-idp up` is idempotent — re-running it after editing `cube.yaml` (or
-just re-running it unchanged) **is** the upgrade command; there is no
-separate `upgrade` verb in Phase 1.
+just re-running it unchanged) **is** the upgrade command.
 
 **Caveat — cluster-shape fields apply only at cluster creation.** For
 `provider: kind`, the fields that shape the node itself (`extraPorts`,
-`mounts`, `registry`, `providerConfig`, `kubernetesVersion`,
-`gateway.port`, and `gateway.httpPort`) are baked into the cluster when it
-is first created;
+`mounts`, `registry`, `providerConfigRef`, `forProvider`,
+`kubernetesVersion`, `gateway.port`, and `gateway.httpPort`) are baked into
+the cluster when it is first created;
 re-running `up` against an existing cluster will not apply changes to them.
 To change any of these, recreate the cluster:
 `cube-idp down && cube-idp up`.
@@ -82,7 +80,7 @@ Developing packs, or working offline? Use
 ## `cube.yaml` reference
 
 ```yaml
-apiVersion: cube-idp.dev/v1alpha1   # frozen pre-1.0 (D5); `cube-idp migrate` at v1
+apiVersion: cube-idp.dev/v1alpha1   # frozen pre-1.0; a migration path is deferred to v1
 kind: Cube
 metadata:
   name: dev
@@ -99,26 +97,27 @@ spec:
 | `spec.cluster.provider` | `kind` \| `k3d` \| `existing` | `kind` | `kind` and `k3d` create a local cluster; `existing` targets any kubeconfig context (see "k3d provider" below) |
 | `spec.cluster.context` | string | — | kubeconfig context, for `provider: existing` |
 | `spec.cluster.kubernetesVersion` | string | `v1.33.1` | local providers only (kind node image `kindest/node:<ver>`, k3d node image `rancher/k3s:<ver>-k3s1`); rejected for `existing` (CUBE-1003) |
-| `spec.cluster.extraPorts` | `[{hostPort, nodePort}]` | — | D10 layer 1: extra host→node port mappings beyond the gateway's |
-| `spec.cluster.registry.mirrors` | map | — | D10 layer 1: registry mirror rewrites for the node's containerd |
-| `spec.cluster.registry.insecure` | `[string]` | — | D10 layer 1: registries the node's containerd treats as HTTP/self-signed |
-| `spec.cluster.mounts` | `[{hostPath, nodePath}]` | — | D10 layer 1: host paths mounted into the node |
-| `spec.cluster.providerConfig` | string | — | D10 layer 2 escape hatch: a file path or inline provider-native config (e.g. a full kind config). cube-idp merges in only what it *requires* and fails with a typed error on real conflicts; inspect the merged result with `cube-idp config render-cluster` |
-| `spec.engine.type` | `flux` \| `argocd` | `flux` | GitOps reconciler; `argocd` ships in Phase 2 (D2) |
+| `spec.cluster.extraPorts` | `[{hostPort, nodePort}]` | — | extra host→node port mappings beyond the gateway's |
+| `spec.cluster.registry.mirrors` | map | — | registry mirror rewrites for the node's containerd |
+| `spec.cluster.registry.insecure` | `[string]` | — | registries the node's containerd treats as HTTP/self-signed |
+| `spec.cluster.mounts` | `[{hostPath, nodePath}]` | — | host paths mounted into the node |
+| `spec.cluster.providerConfigRef` | string | — | escape hatch (fetched base): a ref (`oci://…`, a local dir, or an absolute path) to a provider-native config document (e.g. a full kind config) used as the base layer. cube-idp merges in only what it *requires* and fails with a typed error on real conflicts; inspect the merged result with `cube-idp config render-cluster` |
+| `spec.cluster.forProvider` | object | — | escape hatch (inline overrides): an RFC 7386 merge-patch applied over `providerConfigRef` for provider-native fields cube-idp does not model directly |
+| `spec.engine.type` | `flux` \| `argocd` | `flux` | GitOps reconciler; `argocd` is supported |
 | `spec.engine.ref` | string | published `cube-engine-<type>` pin | optional override for the engine pack source (`oci://…`, a local dir, or an absolute path) the engine now installs from (engine-as-pack, 2026-07-19). Unset = the published `oci://ghcr.io/cube-idp/packs/cube-engine-<type>:<pin>` default. `up` verifies the fetched pack's `pack.cue` name equals `cube-engine-<type>` and fails with CUBE-0013 on mismatch |
-| `spec.engine.values` | map | — | open chart values for the engine pack (D3), merged over its baked defaults — the operator-in-control replacement for the retired `engine.tuning`. **argocd only** in this phase: the `cube-engine-flux` pack is vendored-manifests (chartless), so `engine.values` with `type: flux` is CUBE-4016 (values are helm-only) — flux engine customization arrives later via `selfManage`. Preview the render with `cube-idp config render-engine` |
-| `spec.engine.selfManage` | bool | `false` | **opt-in** engine self-management (GT16): after the health gate, `up` pushes the rendered engine pack (values applied) to the in-cluster registry (zot) as the `cube-engine` artifact and attaches an engine-native self-source with pruning disabled — the engine reconciles its own install from then on, correcting drift between `up`s. First install and unhealthy-at-start recovery still apply directly. Sourced from zot only (never Gitea); works offline |
+| `spec.engine.values` | map | — | open chart values for the engine pack, merged over its baked defaults — the operator-in-control replacement for the retired `engine.tuning`. **argocd only** in this phase: the `cube-engine-flux` pack is vendored-manifests (chartless), so `engine.values` with `type: flux` is CUBE-4016 (values are helm-only) — flux engine customization arrives later via `selfManage`. Preview the render with `cube-idp config render-engine` |
+| `spec.engine.selfManage` | bool | `false` | **opt-in** engine self-management: after the health gate, `up` pushes the rendered engine pack (values applied) to the in-cluster registry (zot) as the `cube-engine` artifact and attaches an engine-native self-source with pruning disabled — the engine reconciles its own install from then on, correcting drift between `up`s. First install and unhealthy-at-start recovery still apply directly. Sourced from zot only (never Gitea); works offline |
 | `spec.gateway.pack` | `traefik` \| `envoy-gateway` (any pack name is accepted when paired with `spec.gateway.ref`) | `traefik` | Gateway API implementation; `cube-idp init --gateway-pack` writes this and `spec.gateway.ref` coherently |
 | `spec.gateway.host` | string | `cube-idp.localtest.me` | routable hostname for delivered packs |
 | `spec.gateway.port` | int | `8443` | host port mapped to the gateway's `websecure` (HTTPS) listener — see the note below |
 | `spec.gateway.httpPort` | int | — | **opt-in** host port mapped to the gateway's plain-HTTP `web` listener (NodePort `30080`, already pinned by both gateway packs); absent = no HTTP exposure (today's behavior). Must differ from `gateway.port` and every `extraPorts.hostPort` (CUBE-0002). Cluster-shape field: recreate the cluster (`down` && `up`) to change it |
 | `spec.gateway.ref` | string | `oci://ghcr.io/cube-idp/packs/traefik:0.2.0` | the pack source `up` fetches for the gateway pack (`oci://…`, a local dir, or an absolute path); `init` always writes it — the published oci ref by default, an absolute path with `--local`. Falls back to `packs/<pack>` when unset (hand-written config), which only resolves from a cube-idp/packs checkout root |
-| `spec.packs` | `[{ref, values, extraManifests, delivery}]` | gitea + argocd (D9) | additional packs delivered after the gateway; `ref` is `oci://` or a local dir (git `github.com/...` refs ship in Phase 2); `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
-| `spec.packs[].values` | map | — | helm values, only, always (the vocabulary stone, GT15) — consumed exclusively by the pack's `chart.yaml` render; setting them on a chartless pack is CUBE-4016. A pack with non-empty `values` is CUSTOMIZED (`kubectl get packs`) |
-| `spec.packs[].extraManifests` | string (multi-doc YAML) | — | the uniform extras channel valid for **every** pack kind (GT15): parsed, `${GATEWAY_*}`-substituted, and appended after the pack's own objects; invalid YAML is CUBE-4017. A pack with non-empty `extraManifests` is CUSTOMIZED |
-| `spec.packs[].delivery` | `oci` \| `repo` | `oci` | how `up` hands the pack to the engine (GT19, P7): `oci` (default) pushes the render to zot and registers an OCI source; `repo` pushes it into a Gitea repo (`cube-pack-<name>`) and registers a git source for an editable in-cluster fork. `repo` requires the gitea pack in `spec.packs`; gitea itself can never be repo-delivered (CUBE-7304). Shown as the `DELIVERY` column in `kubectl get packs` |
+| `spec.packs` | `[{ref, values, extraManifests, delivery}]` | gitea + argocd | additional packs delivered after the gateway; `ref` is `oci://` or a local dir (git `github.com/...` refs are also supported); `values` are validated against the pack's `#Values` CUE schema before anything touches the cluster |
+| `spec.packs[].values` | map | — | helm values, only, always (the vocabulary stone) — consumed exclusively by the pack's `chart.yaml` render; setting them on a chartless pack is CUBE-4016. A pack with non-empty `values` is CUSTOMIZED (`kubectl get packs`) |
+| `spec.packs[].extraManifests` | string (multi-doc YAML) | — | the uniform extras channel valid for **every** pack kind: parsed, `${GATEWAY_*}`-substituted, and appended after the pack's own objects; invalid YAML is CUBE-4017. A pack with non-empty `extraManifests` is CUSTOMIZED |
+| `spec.packs[].delivery` | `oci` \| `repo` | `oci` | how `up` hands the pack to the engine: `oci` (default) pushes the render to zot and registers an OCI source; `repo` pushes it into a Gitea repo (`cube-pack-<name>`) and registers a git source for an editable in-cluster fork. `repo` requires the gitea pack in `spec.packs`; gitea itself can never be repo-delivered (CUBE-7304). Shown as the `DELIVERY` column in `kubectl get packs` |
 | `spec.packs[].dependsOn` | `[string]` | — | list of pack *names* (not refs) this pack needs delivered/healthy first; unioned with the pack's own `pack.cue` `dependsOn` at graph time. Cycles and unknown names are rejected at `up`/`diff` time (CUBE-4019, CUBE-4018). `flux` orders reconciliation natively (Kustomization `spec.dependsOn`); `argocd` orders delivery only (annotation + a wave gate `up` enforces, since Argo CD has no native cross-Application ordering primitive). Shown as the `DEPENDS-ON` column in `kubectl get packs` |
-| `spec.spokes` | `[{name, cluster}]` | — | managed spoke clusters this cube's engine registers (spec §5). Each entry names a spoke and its `cluster` (`provider: kind` \| `existing` only in v1 — GT6; k3d spokes are deferred). Declared with `cube-idp spoke add`; applied on the next `cube-idp up` (hub registration prunes removed spokes). cube-idp only bootstraps and registers spokes — delivering workloads to them is engine content, not packs |
+| `spec.spokes` | `[{name, cluster}]` | — | managed spoke clusters this cube's engine registers. Each entry names a spoke and its `cluster` (`provider: kind` \| `existing` only in v1; k3d spokes are deferred). Declared with `cube-idp spoke add`; applied on the next `cube-idp up` (hub registration prunes removed spokes). cube-idp only bootstraps and registers spokes — delivering workloads to them is engine content, not packs |
 
 **Precedence:** when both `spec.gateway.ref` and `spec.gateway.pack` are
 set, the REF decides what is fetched; `up` verifies the ref'd pack.cue name
@@ -126,7 +125,7 @@ equals `gateway.pack` and fails with CUBE-0008 on mismatch. `cube-idp init`
 always writes the two coherently (`--gateway-pack`).
 
 Run `cube-idp config render-cluster` to preview the final merged kind
-provider config (D10 layer 2) before `up` creates anything. Run `cube-idp
+provider config before `up` creates anything. Run `cube-idp
 config render-engine` to preview the engine install manifests `up` would
 apply — rendered from the `cube-engine-<type>` pack with `spec.engine.values`
 applied (engine-as-pack, 2026-07-19), so the result is inspectable before any
@@ -134,24 +133,21 @@ cluster exists. Run `cube-idp config schema` to print the CUE schema
 `cube.yaml` is validated against — every CUBE-0002 (config validation
 failure) remediation points here.
 
-> **Phase 1 → Phase 2 behavior change:** Phase 1 mapped host
-> `spec.gateway.port` (default `8443`) to Traefik's plain-HTTP NodePort
-> `30080` while printing an `https://` URL. Phase 2 makes that URL true:
-> host `gateway.port` now maps to the `websecure` NodePort `30443` (TLS
-> terminated by Traefik with a cube-idp CA-issued cert from `up`), and
-> plain HTTP stays available in-cluster on the `web` listener. Existing
-> kind clusters need `down`/`up` to pick up the new mapping.
+> **Gateway port mapping:** host `spec.gateway.port` (default `8443`)
+> maps to the `websecure` NodePort `30443` (TLS terminated by Traefik with
+> a cube-idp CA-issued cert from `up`), so the printed `https://` URL is
+> real, and plain HTTP stays available in-cluster on the `web` listener.
 
 ## k3d provider
 
 `spec.cluster.provider: k3d` stands the platform up on k3d (k3s-in-docker,
-D4) instead of kind — same single-binary flow, same everything-else. It is a
+instead of kind — same single-binary flow, same everything-else. It is a
 drop-in alternative to `kind`: both are cluster-creating providers that
 node-load images (so both support air-gapped `up --bundle`, below), both map
 the host `gateway.port` onto the gateway's pinned NodePort `30443`, and both
-honor the D10 layer-1/2 cluster-shape fields (`extraPorts`, `mounts`,
-`registry`, `providerConfig`). The e2e suite runs the full `{kind, k3d}`
-provider matrix in CI.
+honor the cluster-shape fields (`extraPorts`, `mounts`, `registry`,
+`providerConfigRef`, `forProvider`). The e2e suite runs the full
+`{kind, k3d}` provider matrix in CI.
 
 ```yaml
 spec:
@@ -165,13 +161,13 @@ for k3d exactly as it does for kind — pipe it out and inspect the k3d
 `SimpleConfig` before `up` creates anything. The `--local` node-image cache
 recipe below applies to k3d too (mount over the k3s containerd store).
 
-## Node-image cache (warm `up`, spec §3's <60s goal)
+## Node-image cache (warm `up`, the <60s goal)
 
-Spec §3's "`up` completes in under 60 seconds" is a **warm** goal: it
+The "`up` completes in under 60 seconds" goal is a **warm** one: it
 excludes the time a cold node spends pulling `kindest/node:<version>` and
 every pack's images from upstream registries the first time. cube-idp does
 no pre-pull engineering itself (no bundled image cache, no background
-warmer) — `spec.cluster.mounts` (D10 layer 1) is general enough to build one
+warmer) — `spec.cluster.mounts` is general enough to build one
 yourself:
 
 ```yaml
@@ -208,8 +204,8 @@ Two caveats:
 ## Pack format
 
 A pack (`internal/pack`) is a directory, fetched from a local dir or
-`oci://registry/pack:tag` (git `github.com/org/repo//path@ref` sources ship
-in Phase 2). It is **data only** — no code runs from a pack beyond CUE/Helm
+`oci://registry/pack:tag` (git `github.com/org/repo//path@ref` sources are
+also supported). It is **data only** — no code runs from a pack beyond CUE/Helm
 rendering, entirely client-side:
 
 ```
@@ -285,13 +281,13 @@ so a chart can't leave dependents in a namespace that doesn't exist yet.
 
 Rendered objects (raw manifests + chart render) are pushed as an OCI
 artifact to the in-cluster zot registry and delivered via the configured
-`GitOpsEngine` (a Flux `OCIRepository` + `Kustomization` in Phase 1) — the
+`GitOpsEngine` (a Flux `OCIRepository` + `Kustomization` for the flux engine) — the
 engine, not cube-idp, owns continuous reconciliation from then on.
 
 ## Engines
 
 `spec.engine.type: flux | argocd` selects the in-cluster GitOps reconciler.
-Both pass the identical contract suite (`make test-engines`, D2) — the same
+Both pass the identical contract suite (`make test-engines`) — the same
 behavior (install → deliver a pack → report health → uninstall) is asserted
 delivery-mechanism-agnostically, so either engine is a drop-in choice:
 
@@ -307,14 +303,14 @@ delivery-mechanism-agnostically, so either engine is a drop-in choice:
   not include the one cube-idp's shared pusher writes
   (`application/vnd.cncf.flux.content.v1.tar+gzip` — chosen so the same
   artifact byte-for-byte satisfies Flux's `OCIRepository` reconciler too);
-  the vendored `argocd-cmd-params-cm` ConfigMap in
-  `internal/engine/argocd/manifests/install.yaml` patches
-  `reposerver.oci.layer.media.types` to add it, so the argocd engine accepts
-  cube-idp's artifacts out of the box with no extra configuration.
+  the `cube-engine-argocd` pack ships an `argocd-cmd-params-cm` ConfigMap that
+  adds this media type to `reposerver.oci.layer.media.types`, so the argocd
+  engine accepts cube-idp's artifacts out of the box with no extra
+  configuration.
 
 ## HTTPS & trust
 
-`cube-idp up` gives you real HTTPS from first boot (D12): a local
+`cube-idp up` gives you real HTTPS from first boot: a local
 certificate authority is generated (or an existing mkcert root is adopted
 automatically — same CA, zero prompts, green padlocks if your browser
 already trusts mkcert) *before* the cluster is even created, then mounted
@@ -327,15 +323,12 @@ browser trust the generated CA (so it stops just being "not actively
 warning because you added an exception") is `cube-idp trust` — opt-in,
 consent-prompted (`--yes` to skip the prompt in scripts). `cube-idp trust
 --uninstall`, or a plain `cube-idp down`, fully reverts the OS trust store
-change (D6).
+change.
 
-> **Phase 1 → Phase 2 port-mapping change:** Phase 1 mapped host
-> `spec.gateway.port` (default `8443`) to Traefik's plain-HTTP NodePort
-> `30080` while merely *printing* an `https://` URL. Phase 2 makes that URL
-> true: `gateway.port` now maps to the `websecure` NodePort `30443` (TLS
-> terminated by Traefik with the cube-idp-issued cert), and plain HTTP stays
-> reachable only in-cluster on the `web` listener. Existing kind clusters
-> need `down`/`up` to pick up the new mapping.
+> **Port mapping:** host `spec.gateway.port` (default `8443`) maps to the
+> `websecure` NodePort `30443` (TLS terminated by Traefik with the
+> cube-idp-issued cert), making the printed `https://` URL real, and plain
+> HTTP stays reachable only in-cluster on the `web` listener.
 
 ## Day 2
 
@@ -376,7 +369,7 @@ change (D6).
 Two ways to get *your* manifests onto a running cube, beyond the packs in
 `cube.yaml`:
 
-### `cube-idp sync <dir>` — push a directory (D7)
+### `cube-idp sync <dir>` — push a directory
 
 `sync` renders a local directory as a pack, pushes it to the cube's
 in-cluster registry, delivers it through the configured engine, and pokes
@@ -394,7 +387,7 @@ cube-idp sync ./my-manifests --watch   # re-sync on every debounced change until
 edit loop, not a daemon: it runs once immediately, then re-syncs on every
 debounced filesystem change under `dir` until interrupted, and a sync
 failure mid-watch is printed in full without stopping the watch (fix the
-file and save again). **Boundary (D7):** `sync` pushes OCI artifacts
+file and save again). **Boundary:** `sync` pushes OCI artifacts
 directly to the registry; it is *not* a git-push flow. The git-push
 delivery flow lives in the gitea pack — see `repo create` below.
 
@@ -418,7 +411,7 @@ CA); the engine reaches the gitea Service directly in-cluster. Re-running is
 idempotent (`--deploy` re-registers the same source). Admin credentials come
 from `cube-idp get secrets -p gitea`.
 
-## Spokes (hub/spoke, spec §5)
+## Spokes (hub/spoke)
 
 A cube can register **spoke** clusters with its own engine, so one hub
 delivers to many clusters. cube-idp bootstraps and registers spokes and
@@ -439,7 +432,7 @@ deferred); the hub itself may still be any provider.
 ## Air-gapped install (`vendor` + `up --bundle`)
 
 For a host with no registry access, split the install into a connected
-*vendor* step and an offline *up* step (spec §4.1):
+*vendor* step and an offline *up* step:
 
 ```bash
 # On a connected machine (reads cube.lock; pure lock consumer, no cluster):
@@ -467,7 +460,7 @@ exceeding either limit fails extraction with CUBE-7003.
 
 ## Plugins
 
-cube-idp is extensible via exec-plugins (spec §4.4 tier 2): any executable
+cube-idp is extensible via exec-plugins (tier 2): any executable
 named `cube-idp-<name>` on `$PATH` (or in the plugin install dir) is
 invokable as `cube-idp <name>`, and `cube-idp plugin list` shows every one
 discovered.
@@ -571,7 +564,7 @@ configured but `git` isn't on `PATH`. Every fetched tree, regardless of
 source, passes cube-idp's extraction guards (path traversal / symlink
 escape, CUBE-4014) before anything is read from it.
 
-## Pack discoverability (D11)
+## Pack discoverability
 
 Every delivered pack gets a cluster-scoped `Pack` custom resource
 (`packs.cube-idp.dev`), so `kubectl get packs` works with zero cube-idp
@@ -673,14 +666,14 @@ success block as data.
 layer — the only sanctioned ones (everything else that moves plain bytes
 is a bug by definition):
 
-- **R3 — `down` refuses without consent on non-TTY runs.** A piped or CI
+- **`down` refuses without consent on non-TTY runs.** A piped or CI
   `cube-idp down` without `--yes` now exits 1 with `CUBE-0010` instead of
   silently destroying the cube. **Update your scripts: add `--yes`** (or
   `--confirm=<cube-name>`).
-- **R1 — started steps print a start line.** Plain output gains
+- **Started steps print a start line.** Plain output gains
   `▸ [stage] msg...` when a step begins, so a minutes-long cluster or
   engine wait is visible in CI and "hung" is distinguishable from "slow".
-- **R2 — the up epilogue is data.** Plain prints the final
+- **The up epilogue is data.** Plain prints the final
   `cube "<name>" is up — <url>` block without the `✔` glyph (renderers add
   it as presentation); JSON gains the `epilogue` record.
 
@@ -710,7 +703,7 @@ falls back (everything else).
   trust-store revert when applicable), then asks you to type the cube name.
   Twins: `--yes`, `--confirm=<cube-name>`. Declining prints
   `aborted — nothing was changed` and exits 0. Non-TTY without a twin
-  refuses (R3 above).
+  refuses, as above.
 - **`cube-idp trust`** — consent prompt; `--yes` is the twin.
 - **`cube-idp upgrade --plan`** — after reporting drift on a TTY, offers
   `apply now (runs cube-idp up)?` (default No); non-TTY behavior is
@@ -738,7 +731,7 @@ given on a TTY; any flag short-circuits the wizard for scripted/CI use.
   `cube-idp status --watch --exit-status && run-e2e`. `--compact` hides
   Ready rows. On a non-TTY the view is appended per interval with no ANSI
   clearing.
-- **`cube-idp doctor`** — a tri-state checklist (GT18): every registered
+- **`cube-idp doctor`** — a tri-state checklist: every registered
   check renders exactly one row — green `✔` passed (with a one-line
   detail), yellow `⚠` warning, or red `✗` error (warnings and errors carry
   a `CUBE-xxxx` code), glyph and word always paired. Passing checks are
@@ -789,7 +782,7 @@ go vet ./...
 go test ./... -short
 make test-apply
 make test-engines
-# real cluster; needs docker. Provider x engine matrix (spec §5):
+# real cluster; needs docker. Provider x engine matrix:
 CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=kind CUBE_IDP_E2E_ENGINE=flux   go test ./tests/e2e/ -v -timeout 35m
 CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=k3d  CUBE_IDP_E2E_ENGINE=flux   go test ./tests/e2e/ -v -timeout 35m
 CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=kind CUBE_IDP_E2E_ENGINE=argocd go test ./tests/e2e/ -v -timeout 35m
@@ -799,23 +792,23 @@ CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=k3d  CUBE_IDP_E2E_ENGINE=argocd go test ./t
 The e2e suite is skipped unless `CUBE_IDP_E2E=1`, and runs across the
 `{kind, k3d} x {flux, argocd}` matrix via `CUBE_IDP_E2E_PROVIDER` (default
 `kind`) and `CUBE_IDP_E2E_ENGINE` (default `flux`); CI runs all four legs as
-a matrix job (spec §5: `{kind, k3d} x {flux, argocd} x {up, diff, upgrade,
-down}`). The Phase 1 loop (`tests/e2e/e2e_test.go`) builds the binary,
+a matrix job (`{kind, k3d} x {flux, argocd} x {up, diff, upgrade,
+down}`). The core loop (`tests/e2e/e2e_test.go`) builds the binary,
 `init --local`s against this checkout, runs `doctor` then `up` twice
 (proving idempotency), asserts `cube.lock` was written with a `renderedHash`,
 that a converged cube's `diff`/`upgrade --plan` both exit 0, that `status`
-and `kubectl get packs` (D11) surface the expected components/printer
+and `kubectl get packs` surface the expected components/printer
 columns, that the gateway serves a cube-idp CA-issued TLS cert, that `cnoe
 import` round-trips a fixture Application, and that `get secrets -p gitea`
-surfaces `gitea_admin` — then `down`s the cluster. The Phase 3 scenarios
-(`tests/e2e/phase3_test.go`) add: k3d up/down, `vendor` → offline `up
+surfaces `gitea_admin` — then `down`s the cluster. The scenarios in
+`tests/e2e/phase3_test.go` add: k3d up/down, `vendor` → offline `up
 --bundle` (asserting the image node-load ran and that every per-pack
 `fetching <source>` output line resolves into the bundle staging dir, never
 an `oci://` ref), `sync` one-shot, `repo create --deploy` (git push over the
 gateway → engine syncs → ConfigMap appears), and an envoy-gateway smoke test.
 It records the first `up`'s wall-clock time as a tracked metric (`t.Logf`,
 plus a `GITHUB_STEP_SUMMARY` line when running under GitHub Actions) —
-spec §3's <60s goal is warm, not a hard assertion here, since image-pull
+the <60s goal is warm, not a hard assertion here, since image-pull
 time varies by host and network and this repo's own CI runs are typically
 cold (see "Node-image cache" above).
 
@@ -825,5 +818,5 @@ cluster: `CUBE_IDP_E2E_GATEWAY_PORT=18443` rewrites the generated
 `cube.yaml`'s `spec.gateway.port` before `up` runs. CI always uses the real
 default (`8443`).
 
-See [`docs/superpowers/specs/2026-07-13-cube-idp-architecture-design.md`](docs/superpowers/specs/2026-07-13-cube-idp-architecture-design.md)
-for the full architecture, decision log (D1–D10), and phased roadmap.
+See the Architecture Decision Records under [`docs/adr/`](docs/adr/) for the
+architecture and the rationale behind each design decision.

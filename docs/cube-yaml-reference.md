@@ -41,10 +41,11 @@ spec:
     mounts:
       - {hostPath: /Users/me/data,   nodePath: /mnt/data}
       - {hostPath: /Users/me/certs,  nodePath: /mnt/certs}
-    # Layer-1 escape hatch: a NAMED reference to provider-native config
-    # (a file path / registered config). Merged in; real conflicts fail typed.
+    # Layer-1 escape hatch: a ref (oci:// , a local dir, or an absolute path)
+    # to a provider-native config document — one YAML file, the fetched base.
     providerConfigRef: ./kind-extra.yaml
-    # Layer-2 escape hatch: inline provider-native config (full kind/k3d config).
+    # Layer-2 escape hatch: inline provider-native overrides, merge-patched
+    # (RFC 7386) on top of the providerConfigRef base.
     # (providerConfigRef and forProvider are both "escape hatches" — usually you
     #  use one, not both; shown together only to exhaust the schema.)
     forProvider:
@@ -73,7 +74,7 @@ spec:
       global:
         image:
           imagePullPolicy: IfNotPresent
-    # Opt-in engine self-management (GT16): after install, the engine
+    # Opt-in engine self-management: after install, the engine
     # reconciles its own install from the cube-engine zot artifact.
     selfManage: true
 
@@ -85,7 +86,9 @@ spec:
     host: cube-idp.localtest.me         # routable hostname for delivered packs
     port: 8443                          # host port → gateway's HTTPS (websecure) listener
     httpPort: 8080                      # OPT-IN host port → gateway's plain-HTTP listener (NodePort 30080)
-    # If pack != the ref'd pack.cue name → CUBE-0008. Unset ref falls back to published default.
+    # If pack != the ref'd pack.cue name → CUBE-0008. `init` fills the published
+    # default; unset in a hand-written cube.yaml falls back to `packs/<pack>`
+    # (a checkout-relative last resort, only resolves from a packs checkout root).
     ref: oci://ghcr.io/cube-idp/packs/traefik:0.2.0
 
   # ─────────────────────────────────────────────────────────────
@@ -123,14 +126,14 @@ spec:
         - cert-manager
 
   # ─────────────────────────────────────────────────────────────
-  # SPOKES — managed spoke clusters this cube's engine registers (Phase 5)
+  # SPOKES — managed spoke clusters this cube's engine registers
   # ─────────────────────────────────────────────────────────────
   spokes:
     - name: spoke-dev                   # ^[a-z0-9][a-z0-9-]{0,30}$
       cluster:
-        provider: kind                  # kind | existing (k3d spokes deferred — GT6)
+        provider: kind                  # kind | existing (k3d spokes deferred)
         kubernetesVersion: v1.33.1
-        # spokes reuse ClusterSpec but extraPorts/mounts are disallowed (GT6):
+        # spokes reuse ClusterSpec but extraPorts/mounts are disallowed:
         registry:
           mirrors:
             docker.io: https://mirror.gcr.io
@@ -164,9 +167,11 @@ spec:
 - `cluster.provider: kind`, `cluster.kubernetesVersion: v1.33.1` (kind only)
 - `engine.type: flux` + the published engine ref
   `oci://ghcr.io/cube-idp/packs/cube-engine-flux:0.1.0`
-- `gateway`: `pack: traefik`, `host: cube-idp.localtest.me`, `port: 8443`,
-  ref `oci://ghcr.io/cube-idp/packs/traefik:0.2.0`
-- `spec.packs`: gitea + argocd (D9) when omitted
+- `gateway`: `pack: traefik`, `host: cube-idp.localtest.me`, `port: 8443`;
+  `init` writes ref `oci://ghcr.io/cube-idp/packs/traefik:0.2.0` (an unset ref
+  in a hand-written cube.yaml instead falls back to `packs/traefik`)
+- `spec.packs`: none injected when omitted; `cube-idp init` scaffolds
+  gitea + argocd into the default cube.yaml
 
 ## Minimal valid cube.yaml
 

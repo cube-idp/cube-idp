@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.0 (unreleased — cut by Phase 4 R10)
+## v0.1.0 (unreleased)
 
 First release. Private distribution via GitHub Releases (`gh release download`).
 
@@ -13,16 +13,16 @@ First release. Private distribution via GitHub Releases (`gh release download`).
 
 ### Phase 2 — Trust, sources, day-2 (2026-07-14)
 - Local CA + OS trust store (`cube-idp trust`), HTTPS gateway (NodePort 30443),
-  CoreDNS `*.<host>` in-cluster resolution, registry certs.d wiring (D12).
+  CoreDNS `*.<host>` in-cluster resolution, registry certs.d wiring.
 - Pack sources: OCI, bare-git grammar, go-getter refs; `cube.lock` pins
   (`oci:sha256:…`, `git+<sha>`, `dir:h1:…`); `upgrade --plan`; pack
-  discoverability records (`kubectl get packs`, D11); cnoe-compat import.
+  discoverability records (`kubectl get packs`); cnoe-compat import.
 
 ### Phase 3 — Providers, air-gap, delivery (2026-07-14/15)
-- k3d provider (D4/D10/D12) + shared provider contract suite.
+- k3d provider + shared provider contract suite.
 - Air-gap: `cube-idp vendor [--platform]` → `up --bundle` (per-image OCI tars).
 - Exec-plugins with sha256-pinned index (`plugin list|trust|install`).
-- `sync [--watch]` (D7), `repo create [--deploy]`, pack catalog
+- `sync [--watch]`, `repo create [--deploy]`, pack catalog
   (backstage, cert-manager, external-secrets, turnkey envoy-gateway),
   `pack push --also-tag`.
 - One-console UX: typed event stream, plain/live/JSON renderers,
@@ -32,7 +32,7 @@ First release. Private distribution via GitHub Releases (`gh release download`).
 - Release pipeline (goreleaser, 4 platforms, checksums) + version stamping.
 - Bundle integrity: content-hashed manifest v2, extraction caps.
 - Event stream covers vendor/sync/repo/plugin/pack push (`--progress=json`).
-- Diag taxonomy sweep; plugin trust/index hardening; D15 kustomize
+- Diag taxonomy sweep; plugin trust/index hardening; kustomize
   substitution; gateway pack/ref coherence + envoy in-cluster CoreDNS fix.
 
 ### Phase 5 — In progress (2026-07-18)
