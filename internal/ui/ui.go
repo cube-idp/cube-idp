@@ -1,9 +1,9 @@
 // Package ui is the single seam every command uses to print user-facing
-// progress. It preserves the phase-1 plain output format byte-for-byte
-// (checkpoint 0.13: "▸ [%s] %s\n") and adds an opt-in, TTY-only styled
+// progress. It preserves the original plain output format byte-for-byte
+// ("▸ [%s] %s\n") and adds an opt-in, TTY-only styled
 // presentation on top of the exact same content — never different content.
 //
-// Design rule (Task 13.8): the phase-1 plain format IS the CI/e2e contract.
+// Design rule (ADR-0024): the plain format IS the CI/e2e contract.
 // Styled output only ever engages when stdout is a real terminal, --plain
 // was not passed, and $CI is unset; piped output (every e2e run helper,
 // every CI log, every `go test` writer that isn't an *os.File) is therefore
@@ -47,7 +47,7 @@ const (
 	// rich (auto-resolved): styled static output; the LiveRenderer on
 	// event-stream commands; per-writer downgradeable (NewFor).
 	ModeStyled Mode = iota
-	// ModePlain reproduces the phase-1 step() format verbatim — the
+	// ModePlain reproduces the original step() format verbatim — the
 	// byte-stable projection.
 	ModePlain
 	// ModeJSON is the machine mode: a JSON-lines event stream on
@@ -87,10 +87,10 @@ type Request struct {
 	CIEnv        string // $CI
 	NoColor      bool   // $NO_COLOR present AND non-empty (EnvColorPolicy; no-color.org: empty = unset). Since W2.T13 this feeds the color policy, not a mode rung.
 	Term         string // $TERM
-	ColorFlag    string // --color value (auto|always|never); consumed by SetColorPolicy, never by a mode rung — WP8 refines the ladder's inputs, not its precedence
+	ColorFlag    string // --color value (auto|always|never); consumed by SetColorPolicy, never by a mode rung — color governance refines the ladder's inputs, not its precedence
 }
 
-// Resolve is the pure, side-effect-free resolve ladder (design doc §6.2) —
+// Resolve is the pure, side-effect-free resolve ladder (see ADR 0023) —
 // single resolve, highest rung wins; codifies gh/buildx/terraform practice,
 // clig.dev, and no-color.org:
 //
@@ -200,7 +200,7 @@ func (p colorPolicy) colorForce() bool {
 	return p.force && !p.noColor
 }
 
-// ColorEnabled implements the WP8 color ladder for one writer:
+// ColorEnabled implements the color ladder for one writer:
 // --color=never or non-empty NO_COLOR → false; --color=always or non-empty
 // CLICOLOR_FORCE → true; otherwise whether w is a real terminal.
 func ColorEnabled(w io.Writer) bool {
@@ -311,7 +311,7 @@ func (p *Printer) Out() io.Writer { return p.out }
 
 // Step prints one line of user-facing progress: name is the stage tag
 // (e.g. "tls", "ca", "cluster"); format/args build the message exactly like
-// fmt.Sprintf. In ModePlain this reproduces the phase-1 format verbatim —
+// fmt.Sprintf. In ModePlain this reproduces the original step format verbatim —
 // "▸ [%s] %s\n" — byte-for-byte. In ModeStyled the same stage tag and
 // message are rendered with a lipgloss badge and a dimmed message: content
 // identical, presentation only.
@@ -329,7 +329,7 @@ func (p *Printer) Step(name, format string, args ...any) {
 // Section prints a heading line (e.g. internal/diff's "KERNEL OBJECTS",
 // upgrade's "Kernel + delivery object changes:"). In ModePlain this is
 // EXACTLY fmt.Fprintln(out, title) — the same call every one of these
-// commands made directly before Task 15.3 — so callers that migrate to
+// commands made directly before this helper existed — so callers that migrate to
 // Section keep byte-identical plain output. ModeStyled renders it bold.
 func (p *Printer) Section(title string) {
 	if p.mode == ModePlain {
@@ -340,8 +340,8 @@ func (p *Printer) Section(title string) {
 }
 
 // Severity glyphs shared by status, doctor, and get secrets — the "one
-// visual language" unification (Task 15.3b). These are the exact literal
-// characters phase-1 code already printed inline; Glyph makes the choice of
+// visual language" unification. These are the exact literal
+// characters these commands already printed inline; Glyph makes the choice of
 // character and its styling one decision instead of N copy-pasted literals.
 const (
 	GlyphOK   = "✔"
@@ -394,7 +394,7 @@ type PackAccess = event.PackAccess
 // AccessSummary prints a short "here's what you just got" block after `up`
 // finishes: one line per pack URL plus a closing hint (typically
 // "credentials: cube-idp get secrets"). As of Task 14b (Owner Decision #15,
-// design doc §9) this is DATA with a stable plain projection — the one
+// see ADR 0023) this is DATA with a stable plain projection — the one
 // owner-ratified plain-output change: scripts and CI want to scrape "what
 // URLs did I just get". The plain bytes mirror the styled layout minus ANSI
 // and are pinned by TestAccessSummaryPlainStableLines (and reproduced by

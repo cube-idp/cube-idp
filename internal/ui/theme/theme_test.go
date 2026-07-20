@@ -6,7 +6,7 @@ import (
 )
 
 // Light and dark palettes must actually differ (adaptivity is the point),
-// and every semantic color must stay in the basic ANSI-16 range (spec §2
+// and every semantic color must stay in the basic ANSI-16 range (the
 // color-roles rule: user terminal themes keep control).
 func TestThemeLightDarkDiffer(t *testing.T) {
 	light, dark := New(false), New(true)

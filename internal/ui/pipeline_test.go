@@ -145,7 +145,7 @@ func TestRunPipelineContextCancelUnwinds(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("want context.Canceled through the pipeline, got %v", err)
 	}
-	// R1 (spec §5): an aborted progress leaves exactly its start line — the
+	// An aborted progress leaves exactly its start line — the
 	// whole point is that an interrupted/hung wait is visible in the log.
 	// Stop()'s StepFailed still projects to zero plain bytes.
 	if got, want := out.String(), "▸ [health] waiting...\n"; got != want {
@@ -221,7 +221,7 @@ func TestConsoleHealthChangeFilter(t *testing.T) {
 	}
 }
 
-// TestModeMatrixFence is the WP10 regression fence (spec §6.2): one
+// TestModeMatrixFence is the cross-mode regression fence: one
 // canonical producer — RunStarted, an enumerated ProgressN start/done, a
 // StepLog line, a failing step resolved by Stop, an Epilogue, and an error
 // return — driven through every mode × both pipeline runners, into a
@@ -323,7 +323,7 @@ func TestModeMatrixFence(t *testing.T) {
 }
 
 // ConsoleProgress.Stop must forward the message and elapsed it already
-// holds — the bare information-free StepFailed{Stage} is audit P4.
+// holds — a bare StepFailed{Stage} tells the renderer nothing.
 func TestConsoleStopCarriesMsg(t *testing.T) {
 	ch := make(chan event.Event, 4)
 	con := &Console{ch: ch}

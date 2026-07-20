@@ -26,7 +26,7 @@ var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 
 func stripANSI(s string) string { return ansiRE.ReplaceAllString(s, "") }
 
-// TestTE2_DiagBoxGolden pins the TE-2.3 box anatomy (spec §6.1 matrix):
+// TestTE2_DiagBoxGolden pins the diagnosis-box anatomy:
 // rounded border, ✗ + code badge, cause: line, copy-paste-safe fix: line,
 // and the explain footer — the box may only advertise `cube-idp explain`
 // because the command ships in the same wave. Name is normative.
@@ -47,14 +47,14 @@ func TestTE2_DiagBoxGolden(t *testing.T) {
 	if got != string(want) {
 		t.Fatalf("TE-2 box drifted from golden:\n got:\n%s\nwant:\n%s", got, want)
 	}
-	// The fix: line's content stays unstyled even before stripping (TE-2.5).
+	// The fix: line's content stays unstyled even before stripping — it must
 	if !strings.Contains(RenderError(err), "cube-idp repo login ghcr.io") {
 		t.Fatal("remediation must appear verbatim (copy-paste safe)")
 	}
 }
 
 // TestRunPipelineLiveDiagnosisAfterExit is the diagnosis-last structural
-// test the design doc §12 names: a FAILING event stream through the LIVE
+// test for the ordering guarantee: a FAILING event stream through the LIVE
 // renderer must (a) return the producer's error only after the bubbletea
 // program has fully exited and the terminal is released, (b) never write
 // the diagnosis to stdout — it renders afterwards, via ui.RenderError, at
@@ -206,7 +206,7 @@ func TestRenderErrorStyledPanel(t *testing.T) {
 	}
 }
 
-// TestRenderErrorToNonTerminalStaysPlain pins the WP9 writer-aware seam:
+// TestRenderErrorToNonTerminalStaysPlain pins the writer-aware error seam:
 // even under a styled process-wide mode, RenderErrorTo for a non-terminal
 // writer (every `2>file` redirect, every test buffer) is diag.Render
 // byte-for-byte — zero ANSI ever lands in a redirected stderr (audit P11).

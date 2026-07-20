@@ -18,7 +18,8 @@ import (
 )
 
 // Live runs the LiveRenderer: a transient Bubble Tea v2 program in INLINE
-// mode — never the alt screen (design doc §5.2; spec §4.1 as amended).
+// mode — never the alt screen. Persistent full-screen dashboards were
+// evaluated and rejected; see ADR-0026.
 // Completed steps stream into native scrollback via the program's Println;
 // the managed bottom region holds only in-flight state (spinner lines and
 // the health table); the program exits leaving clean scrollback.
@@ -77,9 +78,10 @@ type eofMsg struct{}
 
 // scrollback projects events into permanent scrollback lines. Stateful:
 // it buffers StepLog lines per open stage so a failure can dump the full
-// captured tail (TE-2.2) ahead of the diagnosis box. Content-identical
-// rule: styled presentation may add color, alignment, and a duration
-// suffix, never different words (design doc §5.2).
+// captured tail — the whole buffer, not the 5-line live window — ahead of
+// the diagnosis box, so logs are never lost behind progress UI.
+// Content-identical rule: styled presentation may add color, alignment,
+// and a duration suffix, never different words.
 type scrollback struct {
 	th    theme.Theme
 	tails map[string][]string
@@ -145,14 +147,14 @@ func (s *scrollback) lines(ev event.Event) []string {
 	}
 }
 
-// TE-1 layout: fixed badge column, message field, right-aligned dim
+// Scrollback line layout: fixed badge column, message field, right-aligned dim
 // duration at durCol (golden-pinned at 80 cols; wider terminals keep the
 // same columns — scrollback lines are permanent and must not depend on
 // resize).
 const durCol = 62
 
 // regionIndent hangs progress-bar and log-tail lines under their step
-// (TE-1 frame).
+// line.
 const regionIndent = "             "
 
 func (s *scrollback) stepDoneLine(e event.StepDone) string {
@@ -162,7 +164,7 @@ func (s *scrollback) stepDoneLine(e event.StepDone) string {
 func (s *scrollback) stepFailedLine(e event.StepFailed) string {
 	msg := e.Msg
 	if msg == "" {
-		msg = "failed" // never a naked ✗ again (audit P4)
+		msg = "failed" // never a naked ✗ with no message
 	}
 	return s.stepLine(s.th.Err.Render(theme.GlyphErr), e.Stage, msg, e.Dur)
 }
@@ -180,10 +182,10 @@ func (s *scrollback) stepLine(glyph, stage, msg string, dur time.Duration) strin
 	return line
 }
 
-// epilogueLines renders the TE-4 block: blank separator, headline, one
+// epilogueLines renders the success epilogue: blank separator, headline, one
 // key-value row per non-empty field, next-hint. The headline carries no
 // duration — RunDone arrives after Epilogue and prints the run summary
-// line with the total (TE-4's «2m13s» lives there).
+// line with the total (the run duration is rendered there, not here).
 func (s *scrollback) epilogueLines(e event.Epilogue) []string {
 	out := []string{"", fmt.Sprintf("%s cube %q is up", s.th.OK.Render(theme.GlyphOK), e.Cube)}
 	row := func(key, val string) string {
@@ -223,7 +225,7 @@ type liveModel struct {
 	packStage  string // stage of the open enumerated step ("" = none)
 	packIdx    int
 	packTotal  int
-	tails      map[string][]string // last ≤5 StepLog lines per open stage (TE-1.4)
+	tails      map[string][]string // last ≤5 StepLog lines per open stage
 	components []event.ComponentState
 	collapsed  bool
 	now        func() time.Time // injectable clock for elapsed rendering in tests
@@ -235,11 +237,11 @@ func newLiveModel(cancel func()) liveModel {
 		cancel: cancel,
 		th:     th,
 		spin:   spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(th.Warn)),
-		// █/░ fill per the TE-1 frame (glyphs are literal, spec §2) — the
+		// █/░ fill: these glyphs are literal, not decorative — the
 		// bubbles v2 default is a half-block.
-		prog: progress.New(progress.WithWidth(30), progress.WithFillCharacters('█', '░')),
-		tails:  map[string][]string{},
-		now:    time.Now,
+		prog:  progress.New(progress.WithWidth(30), progress.WithFillCharacters('█', '░')),
+		tails: map[string][]string{},
+		now:   time.Now,
 	}
 }
 
@@ -379,7 +381,7 @@ func (m liveModel) View() tea.View {
 }
 
 // clamp truncates a rendered line to w cells with a trailing … — the region
-// must never wrap (TE-1.5). w == 0 means the width is unknown: no clamping.
+// must never wrap. w == 0 means the width is unknown: no clamping.
 func clamp(s string, w int) string {
 	if w <= 0 || lipgloss.Width(s) <= w {
 		return s

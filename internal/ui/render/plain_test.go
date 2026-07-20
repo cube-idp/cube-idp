@@ -89,7 +89,7 @@ func project(t *testing.T, evs []event.Event, r func(event.Event)) {
 // TestPlainGoldenUpRun is Task 14b's byte-neutrality proof for `up | cat`:
 // the plain projection of the canonical up stream must equal the bytes the
 // pre-task code emitted for the same run (recorded golden) plus exactly the
-// owner-ratified Access block — nothing else may differ (design doc §8/§9).
+// owner-ratified Access block — nothing else may differ (ADR-0024).
 func TestPlainGoldenUpRun(t *testing.T) {
 	pretask, err := os.ReadFile("testdata/plain_up_pretask.golden")
 	if err != nil {
@@ -98,12 +98,12 @@ func TestPlainGoldenUpRun(t *testing.T) {
 	const accessBlock = "\nAccess\n" +
 		"  gitea        https://gitea.cube.local:8443\n" +
 		"  credentials: cube-idp get secrets\n"
-	// R2 (ratified, spec §5): the plain bytes differ from the pre-task
+	// Sanctioned glyph drift: the plain bytes differ from the pre-rewrite
 	// recording by EXACTLY the epilogue's leading "✔ " — the glyph moved
 	// from content to presentation. The golden keeps the historical bytes;
 	// this transform is the entire ratified diff.
 	want := strings.Replace(string(pretask), "✔ ", "", 1) + accessBlock
-	// R1 (ratified, spec §5): each StepStarted in the fixture now projects
+	// Sanctioned start-line drift: each StepStarted in the fixture now projects
 	// a start line the pre-task recording lacks. Inserting exactly these
 	// three lines is the entire ratified R1 diff for this stream.
 	for _, ins := range [][2]string{
@@ -135,7 +135,7 @@ func TestPlainGoldenFailedRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// R1 (ratified, spec §5): the opened-then-failed cluster step now leaves
+	// Sanctioned start-line drift: the opened-then-failed cluster step now leaves
 	// its start line — hung and slow are distinguishable in CI logs.
 	want := string(pretask) + "▸ [cluster] creating kind cluster...\n"
 	var b bytes.Buffer
@@ -149,7 +149,7 @@ func TestPlainGoldenFailedRun(t *testing.T) {
 // in both Plain and Styled (RunStarted/StepFailed/HealthTick/Diagnosis/
 // RunDone) — shared by TestPlainSilentEvents and
 // TestStyledSilentEventsAreZeroBytes (styled_test.go). StepStarted left
-// this set with ratified R1 (spec §5): it now projects a start line.
+// this set when start lines were sanctioned: it now projects a start line.
 func silentEventsFixture() []event.Event {
 	return []event.Event{
 		event.RunStarted{Cmd: "up", Cube: "dev"},
@@ -173,7 +173,7 @@ func TestPlainSilentEvents(t *testing.T) {
 	}
 }
 
-// R1 (spec §5): a started step is visible in CI logs — hung and slow must
+// A started step is visible in CI logs — hung and slow must
 // be distinguishable (audit P12). Exact bytes: "▸ [stage] msg...\n".
 func TestPlainStepStartedLine(t *testing.T) {
 	var buf bytes.Buffer
@@ -183,9 +183,9 @@ func TestPlainStepStartedLine(t *testing.T) {
 	}
 }
 
-// R2 (spec §5): the epilogue is data; plain projects it WITHOUT the glyph.
-// These bytes are the new frozen contract for event.Epilogue. (Name is
-// normative — spec §6.1 matrix.)
+// The epilogue is data; plain projects it WITHOUT the glyph — the ✔ is
+// presentation. These bytes are the frozen contract for event.Epilogue.
+// (Name is normative — renaming it breaks the conformance matrix goldens.)
 func TestTE4_PlainBytesR2Only(t *testing.T) {
 	var buf bytes.Buffer
 	Plain(&buf)(event.Epilogue{

@@ -10,8 +10,8 @@ import (
 )
 
 // JSON returns the machine projection: exactly one JSON object per line, one
-// event per object — never batched, never pretty-printed (design doc §5.3;
-// the moby/buildkit #4769 lesson). Every line carries "v":1 (schema version,
+// event per object — never batched, never pretty-printed (the
+// moby/buildkit #4769 lesson). Every line carries "v":1 (schema version,
 // EXPERIMENTAL until the D5 v1 config freeze) and "ts" (RFC3339Nano).
 // Stream target is stdout; stderr stays free for the human-readable
 // diagnosis block main.go still prints in JSON mode.
@@ -83,7 +83,7 @@ func JSONWithClock(w io.Writer, now func() time.Time) func(event.Event) {
 }
 
 // jsonHead is the common prefix of every stream line (field names normative,
-// design doc §5.3).
+// normative).
 type jsonHead struct {
 	V    int    `json:"v"`
 	TS   string `json:"ts"`
@@ -128,7 +128,7 @@ type jsonMsg struct {
 	Msg string `json:"msg"`
 }
 
-// jsonEpilogue is the additive "epilogue" record (R2 / TE-4.4): the up
+// jsonEpilogue is the additive "epilogue" record: the up
 // success block as structured data. Context/Registry are omitted when the
 // producer does not know them.
 type jsonEpilogue struct {
