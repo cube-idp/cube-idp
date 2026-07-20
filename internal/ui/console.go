@@ -77,7 +77,7 @@ func (c *Console) Note(format string, args ...any) {
 
 // Epilogue emits the post-success "what you actually need" block: the
 // headline, gateway/context/registry rows, and the next-step hint.
-// R2: the event carries no glyph — renderers add it as presentation.
+// The event carries no glyph — renderers add it as presentation.
 func (c *Console) Epilogue(e event.Epilogue) {
 	c.ch <- e
 }

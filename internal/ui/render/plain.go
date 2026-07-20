@@ -18,9 +18,10 @@ import (
 //
 // The one deliberate new projection is Access (§9): previously a styled-only
 // block, now stable plain lines — "what URLs did I just get" is exactly what
-// scripts and CI want to scrape. The epilogue's one-glyph change (ratified
-// R2) and the StepStarted start line (ratified R1) are the other sanctioned
-// deltas; both were signed off by the owner as the only sanctioned drifts.
+// scripts and CI want to scrape. The epilogue's one-glyph change (the ✔
+// moved from content to presentation) and the StepStarted start line are the
+// other sanctioned deltas; those three are the only drifts from the frozen
+// bytes. See docs/adr/0024-plain-output-byte-freeze.md.
 func Plain(w io.Writer) func(event.Event) {
 	return func(ev event.Event) {
 		switch e := ev.(type) {

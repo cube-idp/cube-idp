@@ -59,7 +59,7 @@ func TestScrollbackLineContentIdentical(t *testing.T) {
 		}
 	}
 
-	// R2: the epilogue no longer travels as a Note — this sample is just a
+	// The epilogue no longer travels as a Note — this sample is just a
 	// neutral passthrough line (glyph-free, like all Note content now).
 	const noteMsg = "\ncube \"dev\" is up — https://cube.local:8443\n  credentials: cube-idp get secrets"
 	if got := sb.lines(event.Note{Msg: noteMsg}); len(got) != 1 || got[0] != noteMsg {

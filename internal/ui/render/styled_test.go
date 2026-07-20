@@ -27,7 +27,7 @@ func stripANSI(s string) string { return ansiRE.ReplaceAllString(s, "") }
 // rule: Styled renders "⚠ msg" (glyph prefix) while Plain renders the bare
 // "msg" (see styled.go's and plain.go's Warn cases) — by design, not a
 // drift bug. Do not add Warn to canonicalUpRun() to "complete" this test's
-// coverage. The epilogue's "✔ " is the second such exception (ratified R2):
+// coverage. The epilogue's "✔ " is the second such exception:
 // Styled re-adds the glyph as presentation, so it is normalized away below.
 func TestStyledContentIdenticalToPlain(t *testing.T) {
 	evs := canonicalUpRun()
@@ -39,7 +39,7 @@ func TestStyledContentIdenticalToPlain(t *testing.T) {
 	project(t, evs, Styled(&styledBuf))
 
 	gotStyled := stripANSI(styledBuf.String())
-	// R2: drop the epilogue's presentation glyph (exactly one occurrence)
+	// Drop the epilogue's presentation glyph (exactly one occurrence)
 	// before comparing — content identity holds glyph-excepted.
 	gotStyled = strings.Replace(gotStyled, "✔ ", "", 1)
 	wantPlain := plainBuf.String()

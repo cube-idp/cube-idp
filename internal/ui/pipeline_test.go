@@ -39,10 +39,10 @@ func TestRunPipelinePlainByteNeutrality(t *testing.T) {
 		t.Fatal(err)
 	}
 	const want = "▸ [config] cube \"dev\" loaded and validated\n" +
-		// R1: the opened progress step now prints its start line.
+		// An opened progress step prints its start line.
 		"▸ [cluster] creating kind cluster...\n" +
 		"▸ [cluster] kind cluster ready (context kind-dev)\n" +
-		// R2: the epilogue's ✔ left the content — plain projects it bare.
+		// The epilogue's ✔ is presentation, not content — plain projects it bare.
 		"\ncube \"dev\" is up — https://cube.local:8443\n  credentials: cube-idp get secrets\n" +
 		"\nAccess\n" +
 		"  gitea        https://gitea.cube.local:8443\n" +

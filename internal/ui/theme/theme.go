@@ -13,7 +13,7 @@ import (
 )
 
 // Glyphs — the single normative set. Renderers own glyphs; event
-// content never carries them (spec R2).
+// content never carries them.
 const (
 	GlyphStep = "▸"
 	GlyphOK   = "✔"

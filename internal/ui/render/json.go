@@ -12,7 +12,8 @@ import (
 // JSON returns the machine projection: exactly one JSON object per line, one
 // event per object — never batched, never pretty-printed (the
 // moby/buildkit #4769 lesson). Every line carries "v":1 (schema version,
-// EXPERIMENTAL until the D5 v1 config freeze) and "ts" (RFC3339Nano).
+// EXPERIMENTAL while the config schema is v1alpha1, frozen to v1 later) and
+// "ts" (RFC3339Nano).
 // Stream target is stdout; stderr stays free for the human-readable
 // diagnosis block main.go still prints in JSON mode.
 func JSON(w io.Writer) func(event.Event) {

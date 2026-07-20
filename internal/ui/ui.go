@@ -52,7 +52,7 @@ const (
 	ModePlain
 	// ModeJSON is the machine mode: a JSON-lines event stream on
 	// event-stream commands (up/down); the plain projection elsewhere.
-	// Never styled. EXPERIMENTAL until the D5 v1 config freeze.
+	// Never styled. EXPERIMENTAL while the config schema is v1alpha1.
 	ModeJSON
 	// ModeLive is explicitly forced live (CUBE_IDP_PROGRESS=live; the
 	// --progress=live flag ships in stage B): the LiveRenderer even on a

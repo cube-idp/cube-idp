@@ -40,7 +40,7 @@ func Styled(w io.Writer) func(event.Event) {
 		case event.Note:
 			fmt.Fprintln(w, e.Msg)
 		case event.Epilogue:
-			// R2: the ✔ is presentation — Styled re-adds it here; the words
+			// The ✔ is presentation — Styled re-adds it here; the words
 			// stay identical to Plain's projection (content-identical rule,
 			// glyph excepted like Warn's ⚠). The full key-value epilogue
 			// rows belong to the live renderer, not here.

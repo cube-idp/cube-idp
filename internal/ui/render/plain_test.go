@@ -17,9 +17,9 @@ import (
 // golden-stream fixture. Its plain projection must be byte-identical to
 // what the pre-Task-14b code emitted for the same run
 // (testdata/plain_up_pretask.golden, recorded from the pre-task tree)
-// plus ONLY the owner-ratified Access block (§9), the R2 one-glyph change
+// plus ONLY the owner-ratified Access block (§9), the one-glyph change
 // (the epilogue's leading "✔ " moved from content to presentation), and the
-// R1 start lines (each StepStarted now projects "▸ [stage] msg...\n").
+// start lines (each StepStarted now projects "▸ [stage] msg...\n").
 func canonicalUpRun() []event.Event {
 	return []event.Event{
 		event.RunStarted{Cmd: "up", Cube: "dev"},
@@ -105,7 +105,7 @@ func TestPlainGoldenUpRun(t *testing.T) {
 	want := strings.Replace(string(pretask), "✔ ", "", 1) + accessBlock
 	// Sanctioned start-line drift: each StepStarted in the fixture now projects
 	// a start line the pre-task recording lacks. Inserting exactly these
-	// three lines is the entire ratified R1 diff for this stream.
+	// three lines is the entire sanctioned start-line diff for this stream.
 	for _, ins := range [][2]string{
 		{"▸ [cluster] kind cluster ready", "▸ [cluster] creating kind cluster...\n"},
 		{"▸ [engine] flux installed", "▸ [engine] installing flux...\n"},
@@ -126,7 +126,7 @@ func TestPlainGoldenUpRun(t *testing.T) {
 }
 
 // TestPlainGoldenFailedRun pins the failure projection: the pre-task bytes
-// (the two completed step lines) plus ONLY the R1 start line of the step
+// (the two completed step lines) plus ONLY the start line of the step
 // that then fails — StepFailed/RunDone/Diagnosis still project to zero
 // plain bytes; the diagnosis block belongs to main.go's stderr print, not
 // the renderer.
