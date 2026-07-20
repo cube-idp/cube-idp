@@ -364,8 +364,8 @@ Nothing in phases 2–5 executes until each item below is annotated. Record deci
 
 | # | finding | ask | Decision |
 |---|---|---|---|
-| D1.1 | `packs/argocd/pack.cue:9` — hardcoded `cube-idp.localtest.me` in `packs/argocd/manifests/20-httproute.yaml:16` instead of `${GATEWAY_FQDN}` | approve for separate code-fix triage, or reject as intended behaviour | _Decision:_ |
-| D1.2 | `packs/gitea/pack.cue:10` — hardcoded `cube-idp.localtest.me` in `packs/gitea/manifests/20-httproute.yaml:21` instead of `${GATEWAY_FQDN}` | approve for separate code-fix triage, or reject as intended behaviour | _Decision:_ |
+| D1.1 | `packs/argocd/pack.cue:9` — hardcoded `cube-idp.localtest.me` in `packs/argocd/manifests/20-httproute.yaml:16` instead of `${GATEWAY_FQDN}` | approve for separate code-fix triage, or reject as intended behaviour | **APPROVED** → filed as [cube-idp/packs#3](https://github.com/cube-idp/packs/issues/3) |
+| D1.2 | `packs/gitea/pack.cue:10` — hardcoded `cube-idp.localtest.me` in `packs/gitea/manifests/20-httproute.yaml:21` instead of `${GATEWAY_FQDN}` | approve for separate code-fix triage, or reject as intended behaviour | **APPROVED** → filed as [cube-idp/packs#4](https://github.com/cube-idp/packs/issues/4) |
 
 If approved, note that the fix has prose fallout in the same repo: `packs/argocd/README.md:17` and `packs/gitea/README.md:4` both repeat the hardcoded hostname and would need updating alongside the code change. This audit does **not** propose those edits, because editing them now would document a hostname the code is about to stop using.
 
@@ -381,7 +381,7 @@ If approved, note that the fix has prose fallout in the same repo: `packs/argocd
 
 **The operator must choose one of:** (a) leave the line untouched and close the finding; (b) add an inline citation to the GitHub Actions documentation paragraph so a reader can check it independently; (c) something else. Options (a) and (b) are both defensible; the audit has no basis to pick.
 
-**Decision:** _(operator: a / b / other)_
+**Decision (2026-07-20):** **Filed for dedicated resolution** → [cube-idp/plugins#1](https://github.com/cube-idp/plugins/issues/1). Not resolved inside this audit; the verifier split (1-1) is recorded in the issue so the decision is made once, with both arguments visible. No edit made to `CONTRACT-PLUGINS.md`, `README.md`, or `publish.yml` by this project.
 
 ### D3 — Approve the registry-summary rewrites (changes `cube-idp explain` output) ⚠ HIGH ATTENTION
 
@@ -418,7 +418,11 @@ These are called out separately because they are the only proposed edits that ch
 | `internal/diag/registry.go:9` | `(rustc --explain pattern, spec WP8)` | `(rustc --explain pattern)` |
 | `internal/diag/registry.go:11` | `…lifted verbatim from the constant's comment in codes.go` | `…kept in sync with the constant's comment in codes.go (the registry wording may be slightly expanded for the explain surface)` |
 
-**Decision (D3 as a block):** _(operator: approve all / approve with exceptions — list them / reject)_
+**Decision (D3 as a block), 2026-07-20:** **APPROVED — all 12 registry-summary rewrites, plus the 11 companion non-printed `codes.go`/`registry.go` comment edits.**
+
+This is the approved list Task 13 consumes. Phase 5's `explain` diff must show **exactly these 12 codes/keys changed and no others** — CUBE-0008, CUBE-0009, CUBE-0013, CUBE-1003, CUBE-3003, CUBE-3006, CUBE-3009, CUBE-4016, and ranges `70`/`71`/`72`/`73`. Any 13th difference fails the batch.
+
+Note on D3.4 (CUBE-1003): this one is a correctness fix, not cosmetics — the shipped summary currently names `providerConfig`, the exact field `CUBE-0011` rejects as removed. The error text contradicts the product's own migration guidance.
 
 ### D4 — Known issue flagged for operator attention: a user-facing error points at a soon-to-be-archived path
 
@@ -434,11 +438,22 @@ return nil, nil, diag.Wrap(err, diag.CodeKindConfigInvalid,
 
 `docs/superpowers/specs/2026-07-18-kind-config-reference.md` is **archived in phase 2**. Once it moves, a user who mistypes a field in `forProvider` gets an error telling them to read a file that does not exist. The kind upstream URL in the same string stays valid, so the minimum fix is dropping the second reference; the better fix is repointing it at whatever durable reference survives the archive.
 
-**Decision:** _(operator: drop the archived-path reference / repoint it to `___` / keep the spec unarchived / other)_ — and note this must land in the **same PR** as the phase-2 archive, not after it.
+**Decision (2026-07-20):** **Filed for dedicated resolution** → [cube-idp/cube-idp#15](https://github.com/cube-idp/cube-idp/issues/15).
+
+⚠ **Scheduling constraint retained:** the issue is tracked separately, but the fix is still coupled to phase 2. Whoever performs the archive move must either land the fix in that PR or confirm the issue is resolved first — otherwise the CLI ships a remediation string pointing at a nonexistent file. Phase 2 execution will re-surface this before the move.
 
 ---
 
 ## Gate
 
-**GATE 1 (AUD-5) is CLOSED.** Phase 2 (ADRs + archive) does not start until D1–D4 are annotated above and this report is re-committed with the operator's decisions in place.
+**GATE 1 (AUD-5) is OPEN as of 2026-07-20.** All four decisions are recorded above.
+
+| Decision | Outcome |
+| --- | --- |
+| D1 (2 suspected bugs) | Approved → dedicated issues [packs#3](https://github.com/cube-idp/packs/issues/3), [packs#4](https://github.com/cube-idp/packs/issues/4) |
+| D2 (1 unverifiable) | Dedicated issue [plugins#1](https://github.com/cube-idp/plugins/issues/1); no edit by this project |
+| D3 (12 registry summaries) | Approved as a block; binds Task 13 and the phase-5 `explain` diff |
+| D4 (`kindp/merge.go:82`) | Dedicated issue [cube-idp#15](https://github.com/cube-idp/cube-idp/issues/15); coupled to the phase-2 archive move |
+
+**Phase 2 (ADR extraction + archive) is authorised to proceed.** The 58 `planning-leak`, 38 `stale-doc`, and 10 `dangling` findings remain scoped to phases 2–4 as planned.
 
