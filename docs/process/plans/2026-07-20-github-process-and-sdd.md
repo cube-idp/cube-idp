@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **AMENDMENT 2026-07-20 (issue #33 — applied before execution; no task had run yet):**
+> 1. **ADR renumber:** main already carries `0040-diagnostic-code-identifier-stability.md` and `0041-changelog-content-policy.md` (audit merges #32). The process ADR is **ADR-0042**, the pilot is **ADR-0043**. The branch name `process/0040-adr-first-sdd` is historical and stays (renaming would break PR #22); the PR title/body should be updated to say ADR-0042 when next touched with outward authorization.
+> 2. **T1 is OBSOLETE:** audit phases 2+3 are merged to main and merged into this branch — ADRs 0001–0041 are present. Skip T1.
+> 3. **Plan relocated** from `docs/superpowers/plans/` to `docs/process/plans/` — the audit archived `docs/superpowers/` and T9's own rules freeze it.
+> 4. **Projects v2 delivery board adopted** (issue #33 decision): board Status field owns pipeline state; `status:triage`/`status:needs-adr` labels are dropped (only `status:blocked` survives, as an orthogonal flag); board writes are automation-only. New tasks **T13** (board-sync workflow) and **T14** (board instantiation, owner-gated). T2/T4/T5/T9/T10 amended accordingly.
+
 **Goal:** Install a binding, GitHub-native delivery process for the cube-idp org — ADR-first two-track intake, namespaced labels, milestones, issue forms, a CI process gate — plus committed rules and templates for subagent-driven development (SDD): a reusable dispatch prompt, a plan-ledger format, and a mandatory 10-minute visual status heartbeat.
 
 **Architecture:** Decisions live as files in `docs/adr/` (source of truth, merged at acceptance); issues track delivery (epic + sub-issues); `CLAUDE.md` at repo root binds every agent session and absorbs the operational doctrine currently re-pasted into each dispatch prompt; `docs/process/` holds the three SDD templates the rules reference; one tiny GitHub Actions job converts the convention into a gate.
@@ -16,7 +22,7 @@
 - Every commit message is the step's exact message and ends with the trailer:
   `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
 - Commit with explicit pathspecs only — never `git add -A` (known stray-staged-files gotcha on this machine).
-- Next free ADR numbers: `0040` (process ADR) and `0041` (pilot). ADRs `0001–0039` live on branch `audit/phase-2-adrs` until T1 lands them on main.
+- Next free ADR numbers: `0042` (process ADR) and `0043` (pilot). ADRs `0001–0041` are already on main (audit merges, PRs #31/#32) — T1 is OBSOLETE.
 - Verification is real commands with pasted output — never editor/LSP diagnostics.
 - YAML validity gate used throughout: `python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1])); print('OK')" <file>`.
 
@@ -25,8 +31,8 @@
 This plan is itself Track-A-shaped work and follows the process it installs:
 
 1. **Bootstrap (done at plan creation):** worktree + branch `process/0040-adr-first-sdd`; this plan file committed there; tracking issue opened; PR opened referencing the issue (`Closes #<tracking>`). The PR stays open for the whole run — every task's commits update it.
-2. **Execution:** tasks T1–T11 land as commits on the branch (worktree only), pushed to keep the PR current.
-3. **Completion (T12):** all tasks DONE in the ledger → final verification → ADR-0040 flipped to `accepted` → owner merges the PR → the tracking issue closes automatically via the PR's `Closes` reference. Plan is complete only when the PR is merged AND the issue is closed.
+2. **Execution:** tasks T2–T11 and T13 land as commits on the branch (worktree only), pushed to keep the PR current. T14 (board instantiation) is owner-gated and may land after merge.
+3. **Completion (T12):** all tasks DONE in the ledger → final verification → ADR-0042 flipped to `accepted` → owner merges the PR → the tracking issue closes automatically via the PR's `Closes` reference. Plan is complete only when the PR is merged AND the issue is closed.
 
 Tracking issue: [#21](https://github.com/cube-idp/cube-idp/issues/21) · PR: [#22](https://github.com/cube-idp/cube-idp/pull/22).
 
@@ -34,10 +40,11 @@ Tracking issue: [#21](https://github.com/cube-idp/cube-idp/issues/21) · PR: [#2
 
 | Phase | Tasks | Deliverable |
 | --- | --- | --- |
-| 1 — Foundations | T1–T4 | ADRs on main, labels, milestone, issue forms |
-| 2 — Decision & Rules | T5–T9 | ADR-0040, three SDD templates, CLAUDE.md |
-| 3 — Enforcement | T10 | CI process gate |
+| 1 — Foundations | T2–T4 (T1 obsolete) | Labels, milestone, issue forms |
+| 2 — Decision & Rules | T5–T9 | ADR-0042 (incl. board spec), three SDD templates, CLAUDE.md |
+| 3 — Enforcement | T10, T13 | CI process gate + board-sync workflow |
 | 4 — Pilot & Closeout | T11–T12 | Issue #7 through Track A, PR, owner checklist |
+| 5 — Board (owner) | T14 | Projects v2 board instantiated per ADR-0042 §Board |
 
 ## Task Index & Ledger
 
@@ -45,24 +52,28 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 
 | ID | Task | Depends | Outward? | STATUS |
 | --- | --- | --- | --- | --- |
-| T1 | Land `docs/adr/` 0001–0039 on main | — | no | UNCLAIMED · **OWNER-GATED** |
-| T2 | Label taxonomy across org repos + relabel open issues | — | **yes** | UNCLAIMED |
+| T1 | ~~Land `docs/adr/` 0001–0039 on main~~ | — | no | **OBSOLETE** (audit merged via #31/#32) |
+| T2 | Label taxonomy across org repos + relabel open issues + `labels.yml` | — | **yes** | UNCLAIMED |
 | T3 | Milestone `v0.2.0` + assignments | T2 | **yes** | UNCLAIMED |
 | T4 | Issue forms | T2 | no | UNCLAIMED |
-| T5 | ADR-0040: the process ADR | T1 | no | UNCLAIMED |
+| T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | UNCLAIMED |
 | T6 | SDD dispatch prompt template | — | no | UNCLAIMED |
 | T7 | SDD status heartbeat template | — | no | UNCLAIMED |
 | T8 | SDD plan-ledger template | — | no | UNCLAIMED |
 | T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | UNCLAIMED |
-| T10 | CI process gate workflow | — | no | UNCLAIMED |
-| T11 | Pilot: issue #7 → ADR-0041 Track A | T2,T5,T9 | **yes** | UNCLAIMED |
-| T12 | Open the PR + owner closeout checklist | all | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
+| T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | UNCLAIMED |
+| T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | UNCLAIMED |
+| T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
+| T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | UNCLAIMED |
+| T14 | Instantiate the Projects v2 board per ADR-0042 §Board | T5,T13 | **yes** | UNCLAIMED · **OWNER-GATED** |
 
 Per-task Outcome blocks live at the bottom of this file under "Ledger Outcomes".
 
 ---
 
-### Task T1: Land `docs/adr/` (0001–0039) on main — OWNER-GATED
+### Task T1: Land `docs/adr/` (0001–0039) on main — OBSOLETE
+
+> **OBSOLETE (amendment):** the audit workstream merged to main (PRs #31/#32) and main was merged into this branch — `docs/adr/0001–0041` and `docs/archive/superpowers/` are already present. Do not claim; do not execute any step below. Kept for the record only.
 
 The 39 reconstructed ADRs sit on unmerged `audit/phase-2-adrs`. Unmerged decision records are invisible to every agent session on main — this is the process's hard dependency. **Owner gate:** the audit workstream (branches `audit/phase-1-oracle`, `audit/phase-2-adrs`, `audit/phase-3-comments`; the last is checked out in a worktree) may still be in flight. Claim this task only if the dispatch explicitly authorizes the merge; otherwise set `BLOCKED(owner-gate)` and continue with T2/T4/T6/T7/T8/T10, which do not depend on it.
 
@@ -132,10 +143,11 @@ for R in cube-idp/cube-idp cube-idp/cube-idp-web cube-idp/packs cube-idp/plugins
   gh label create "type:adr"      -R $R --color 5319e7 --description "Epic tracking an ADR from proposal to delivered" --force
   gh label create "type:spike"    -R $R --color fbca04 --description "Timeboxed exploration — must end in an ADR PR or close-with-reason" --force
   gh label create "type:question" -R $R --color d876e3 --description "Decision or information requested" --force
-  # status: —— minimal; assignment+milestone models in-progress, not labels
-  gh label create "status:triage"    -R $R --color f9d0c4 --description "Untriaged — needs type/area/milestone" --force
-  gh label create "status:blocked"   -R $R --color b60205 --description "Cannot proceed — blocker named in body" --force
-  gh label create "status:needs-adr" -R $R --color c5def5 --description "Waits on an architectural decision (Track A) before work starts" --force
+  # status: —— exactly ONE status label survives (amendment / ADR-0042 §Board):
+  # pipeline position lives on the delivery board's Status field (automation-owned).
+  # status:blocked stays a label because blocked-ness is orthogonal to pipeline
+  # position (an In-progress item can be blocked) and must be readable without GraphQL.
+  gh label create "status:blocked"   -R $R --color b60205 --description "Cannot proceed — blocker named in body (orthogonal to board Status)" --force
 done
 # area: —— mirrors the ADR domains; main repo only (others inherit later if needed)
 R=cube-idp/cube-idp
@@ -157,7 +169,7 @@ Expected: each line prints `✓ Label "…" created` (or updated, with `--force`
 | --- | --- | --- |
 | #5 | `type:bug,area:cluster` | `bug` |
 | #6 | `type:bug,area:cluster` | `bug` |
-| #7 | `type:adr,area:cluster,status:needs-adr` | — |
+| #7 | `type:adr,area:cluster` | — |
 | #8 | `type:feature,area:packs` | `enhancement` |
 | #9 | `type:feature,area:gateway` | `enhancement` |
 | #10 | `type:feature,area:registry` | `enhancement` |
@@ -166,18 +178,18 @@ Expected: each line prints `✓ Label "…" created` (or updated, with `--force`
 | #13 | `type:chore,area:ci` | `enhancement` |
 | #14 | `type:chore,area:ci` | `enhancement` |
 | #15 | `type:bug,area:cluster` | — |
-| #16 | `type:chore,status:needs-adr` | — |
-| #17 | `type:question,area:packs,status:needs-adr` | — |
-| #18 | `type:question,area:packs,status:needs-adr` | — |
-| #19 | `type:question,area:packs,status:needs-adr` | — |
-| #20 | `type:question,status:needs-adr` | — |
+| #16 | `type:chore` | — |
+| #17 | `type:question,area:packs` | — |
+| #18 | `type:question,area:packs` | — |
+| #19 | `type:question,area:packs` | — |
+| #20 | `type:question` | — |
 | #21 (this plan's tracking issue) | `type:adr,area:ci` | — |
 
 ```bash
 R=cube-idp/cube-idp
 gh issue edit 5  -R $R --add-label "type:bug,area:cluster" --remove-label "bug"
 gh issue edit 6  -R $R --add-label "type:bug,area:cluster" --remove-label "bug"
-gh issue edit 7  -R $R --add-label "type:adr,area:cluster,status:needs-adr"
+gh issue edit 7  -R $R --add-label "type:adr,area:cluster"
 gh issue edit 8  -R $R --add-label "type:feature,area:packs" --remove-label "enhancement"
 gh issue edit 9  -R $R --add-label "type:feature,area:gateway" --remove-label "enhancement"
 gh issue edit 10 -R $R --add-label "type:feature,area:registry" --remove-label "enhancement"
@@ -186,11 +198,11 @@ gh issue edit 12 -R $R --add-label "type:feature,area:packs" --remove-label "enh
 gh issue edit 13 -R $R --add-label "type:chore,area:ci" --remove-label "enhancement"
 gh issue edit 14 -R $R --add-label "type:chore,area:ci" --remove-label "enhancement"
 gh issue edit 15 -R $R --add-label "type:bug,area:cluster"
-gh issue edit 16 -R $R --add-label "type:chore,status:needs-adr"
-gh issue edit 17 -R $R --add-label "type:question,area:packs,status:needs-adr"
-gh issue edit 18 -R $R --add-label "type:question,area:packs,status:needs-adr"
-gh issue edit 19 -R $R --add-label "type:question,area:packs,status:needs-adr"
-gh issue edit 20 -R $R --add-label "type:question,status:needs-adr"
+gh issue edit 16 -R $R --add-label "type:chore"
+gh issue edit 17 -R $R --add-label "type:question,area:packs"
+gh issue edit 18 -R $R --add-label "type:question,area:packs"
+gh issue edit 19 -R $R --add-label "type:question,area:packs"
+gh issue edit 20 -R $R --add-label "type:question"
 ```
 
 - [ ] **Step 3: Retire replaced defaults in the main repo** (`duplicate`/`wontfix`/`invalid` go too — GitHub close-reasons replaced them; keep `good first issue` and `help wanted`, GitHub UI understands those)
@@ -207,9 +219,32 @@ done
 gh label list -R cube-idp/cube-idp --limit 50 --json name -q '.[].name' | sort
 gh issue list -R cube-idp/cube-idp --limit 30 --json number,labels -q '.[] | select((.labels|length)==0) | .number'
 ```
-Expected: only `type:*` (7), `area:*` (9), `status:*` (3), `good first issue`, `help wanted`; second command prints nothing (no unlabeled open issues).
+Expected: only `type:*` (7), `area:*` (9), `status:blocked` (the single status label), `good first issue`, `help wanted`; second command prints nothing (no unlabeled open issues).
 
-No commit — this task is GitHub-state only. Record label list output in the ledger Outcome as evidence.
+- [ ] **Step 5: Commit the taxonomy as `.github/labels.yml`** — single source of truth for label names (amendment / issue #33 G3-B). T4 forms, T9 CLAUDE.md, T10's doc-consistency job, and T13's board-sync all reference label names; this file is what they are checked against.
+
+```yaml
+# .github/labels.yml — normative label taxonomy (ADR-0042).
+# CI (process-gate doc-consistency) asserts referenced labels exist here.
+type:
+  [bug, feature, chore, docs, adr, spike, question]
+area:
+  [cluster, packs, engine, registry, gateway, tui-output, diagnostics, trust, ci]
+status:
+  [blocked]   # pipeline position lives on the delivery board, not in labels
+community:
+  ["good first issue", "help wanted"]
+```
+
+```bash
+python3 -c "import yaml,sys; yaml.safe_load(open('.github/labels.yml')); print('OK')"
+git add .github/labels.yml
+git commit -m "chore: labels.yml — normative label taxonomy (ADR-0042)
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+```
+
+Record label list output in the ledger Outcome as evidence for steps 1–4.
 
 ---
 
@@ -266,7 +301,7 @@ blank_issues_enabled: false
 name: Bug report
 description: Shipped behavior is wrong
 title: "bug: "
-labels: ["type:bug", "status:triage"]
+labels: ["type:bug"]
 body:
   - type: textarea
     id: repro
@@ -306,7 +341,7 @@ body:
 name: Feature request
 description: New capability or enhancement (Track B — or flags itself into Track A)
 title: "feat: "
-labels: ["type:feature", "status:triage"]
+labels: ["type:feature"]
 body:
   - type: textarea
     id: problem
@@ -351,7 +386,7 @@ body:
     id: adr
     attributes:
       label: ADR
-      description: Path once the ADR PR exists, e.g. docs/adr/0041-multinode-mounts-ports.md (PR link until merged)
+      description: Path once the ADR PR exists, e.g. docs/adr/0043-multinode-mounts-ports.md (PR link until merged)
     validations:
       required: true
   - type: textarea
@@ -424,18 +459,18 @@ Expected: 5× `OK`; one commit.
 
 ---
 
-### Task T5: ADR-0040 — the process ADR
+### Task T5: ADR-0042 — the process ADR (incl. the delivery board)
 
-The process itself is the first exercise of the process: recorded as an ADR, accepted when the PR merges.
+The process itself is the first exercise of the process: recorded as an ADR, accepted when the PR merges. **Amendment:** numbered 0042 (0040/0041 are taken on main); includes the Projects v2 delivery-board decision from issue #33.
 
 **Files:**
-- Create: `docs/adr/0040-adr-first-two-track-delivery-process.md`
-- Modify: `docs/adr/README.md` (append index row; if T1 was blocked, create a minimal README with the 0040 row and a note that 0001–0039 land with the audit merge)
+- Create: `docs/adr/0042-adr-first-two-track-delivery-process.md`
+- Modify: `docs/adr/README.md` (append index row)
 
 - [ ] **Step 1: Write the ADR** (full text; status `proposed` — flipped to `accepted` in T12 when the PR merges)
 
 ```markdown
-# 0040 — ADR-First Two-Track Delivery Process on GitHub
+# 0042 — ADR-First Two-Track Delivery Process on GitHub
 
 Status: proposed
 Date: 2026-07-20
@@ -476,8 +511,58 @@ abandonment is the failure mode this process exists to kill; a reasoned
 "not doing X because Y" close is a first-class outcome.
 
 **Taxonomy:** namespaced labels — `type:` (bug/feature/chore/docs/adr/spike/
-question), `area:` (mirrors ADR domains), `status:` (triage/blocked/
-needs-adr). Milestones are per-repo release buckets; unassigned = backlog.
+question), `area:` (mirrors ADR domains), `status:blocked` (the only status
+label — an orthogonal impediment flag, readable without GraphQL). Pipeline
+position lives exclusively on the delivery board's Status field (§Board).
+Normative label list: `.github/labels.yml`. Milestones are per-repo release
+buckets; unassigned = backlog.
+
+## Delivery board (Projects v2)
+
+One org-level Projects v2 board ("cube-idp delivery") is the **single owner
+of workflow state**. Issues only — PRs are never board items (they are
+transient, and the one PR-driven transition below keys off the *linked*
+issue, which built-in workflows cannot do anyway).
+
+**Division of labor:** labels are the machine-readable API (`type:`,
+`area:`, `status:blocked` — cheap for agents/CI to read via REST); the
+board Status is the pipeline view — machine-written, human-read. Agents
+NEVER write board state; automation owns it.
+
+**Fields (deliberately minimal — no duplication of what labels carry):**
+- `Status` (single-select): `Backlog → Proposed → Accepted → In progress →
+  In review → Done`.
+- `Iteration`, `Estimate` — the only typed fields labels cannot express.
+- NO `Area`/`Track`/`ADR` fields: area is a label, track is derivable
+  (`type:adr`/`type:spike`), the ADR number is in the epic title
+  `[ADR-NNNN] …` (that prefix is machine-parseable and load-bearing —
+  it is the join key between an ADR PR and its epic).
+
+**Status transitions (all automated; manual Status edits are a process
+violation):**
+
+| Transition | Trigger | Mechanism |
+| --- | --- | --- |
+| → Backlog | issue opened / added | built-in (auto-add + item-added workflow) |
+| → Proposed | ADR PR opened carrying `ADR-NNNN` | `board-sync` workflow |
+| → Accepted | that PR merged (adds `docs/adr/NNNN-*.md`) | `board-sync` workflow |
+| → In progress | draft PR opened with `Closes #N` | `board-sync` workflow |
+| → In review | PR ready for review with `Closes #N` | `board-sync` workflow |
+| → Done | issue closed (incl. auto-close on merge) | built-in (item-closed workflow) |
+
+**Credential:** org-installed GitHub App (org Projects: read/write) minted
+per-run via `actions/create-github-app-token`; `GITHUB_TOKEN` cannot write
+org projects. Org config: variable `BOARD_APP_ID`, secret
+`BOARD_APP_PRIVATE_KEY`, variable `BOARD_PROJECT_NUMBER`.
+
+**Instantiation:** the board cannot be created by committing a file. This
+section is the board's source of truth; the board is its instantiation
+(plan task T14 — scripted `gh project` commands plus a documented one-time
+UI checklist for built-in workflows, which have no write API).
+
+**What the board does NOT do:** milestones stay (release grouping); the
+SDD status heartbeat stays the intra-run truth; decisions stay in ADRs —
+the board tracks delivery, never decisions.
 
 **WIP rule:** before opening a new Track-A epic, list open epics in the
 current milestone; an unfinished one must be justified as non-blocking in
@@ -487,12 +572,16 @@ the new epic's Scope field.
 before implementing in a governed area; propose an ADR on triggers; every
 PR references an issue or ADR; no new design docs outside `docs/adr/`).
 CI job `process-gate` rejects PRs whose body references neither `#N` nor
-`ADR-NNNN`. Subagent-driven execution follows `docs/process/` templates.
+`ADR-NNNN` — the same guarantee makes `board-sync` deterministic (every PR
+carries a join key). Subagent-driven execution follows `docs/process/`
+templates.
 
 ## Non-Goals
 
-- No org-level GitHub Project boards yet — revisit when cross-repo epics hurt.
-- No retroactive re-issueing of shipped work; ADRs 0001–0039 already record it.
+- Board auto-add across all five org repos from day one — main repo only;
+  extend when other repos' issue volume warrants (auto-add workflow count
+  is plan-tier-limited; the `board-sync` script path has no such limit).
+- No retroactive re-issueing of shipped work; ADRs 0001–0041 already record it.
 - Issue forms gate the web UI only; agent-side enforcement is CLAUDE.md's job.
 
 ## Consequences
@@ -505,31 +594,37 @@ CI job `process-gate` rejects PRs whose body references neither `#N` nor
 ## Implementation Plan
 
 - **Affected paths:** `.github/ISSUE_TEMPLATE/`, `.github/workflows/process-gate.yaml`,
-  `CLAUDE.md`, `AGENTS.md`, `docs/process/`, `docs/adr/README.md`.
-- **Installed by:** `docs/superpowers/plans/2026-07-20-github-process-and-sdd.md`
-  (tasks T2–T11), which is also the first SDD run using the new templates.
-- **Pattern for future Track-A work:** pilot ADR-0041 (issue #7).
+  `.github/workflows/board-sync.yaml`, `.github/labels.yml`, `CLAUDE.md`,
+  `AGENTS.md`, `docs/process/`, `docs/adr/README.md`.
+- **Installed by:** `docs/process/plans/2026-07-20-github-process-and-sdd.md`
+  (tasks T2–T13; board instantiation T14), the first SDD run using the new
+  templates.
+- **Pattern for future Track-A work:** pilot ADR-0043 (issue #7).
 
 ## Verification
 
-- [ ] `gh label list` shows only the namespaced taxonomy (+ community labels)
+- [ ] `gh label list` shows only the namespaced taxonomy (+ community labels);
+      the only `status:*` label is `status:blocked`
 - [ ] Every open issue carries a `type:` label
 - [ ] `process-gate` fails a PR with no `#N`/`ADR-NNNN` reference, passes one with
-- [ ] Issue #7 retitled `[ADR-0041] …` with an accepted ADR and sub-issues
+- [ ] Issue #7 retitled `[ADR-0043] …` with an accepted ADR and sub-issues
 - [ ] `CLAUDE.md` present at repo root; agent session confirms it loads
+- [ ] Board: a test issue lands in Backlog on open and moves to Done on close
+      with zero manual Status edits; an ADR PR open/merge moves its epic to
+      Proposed/Accepted (T14 verification)
 ```
 
 - [ ] **Step 2: Append the index row to `docs/adr/README.md`**
 
 ```markdown
-| 0040 | [ADR-First Two-Track Delivery Process on GitHub](0040-adr-first-two-track-delivery-process.md) | — |
+| 0042 | [ADR-First Two-Track Delivery Process on GitHub](0042-adr-first-two-track-delivery-process.md) | — |
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/adr/0040-adr-first-two-track-delivery-process.md docs/adr/README.md
-git commit -m "docs(adr): 0040 — ADR-first two-track delivery process (proposed)
+git add docs/adr/0042-adr-first-two-track-delivery-process.md docs/adr/README.md
+git commit -m "docs(adr): 0042 — ADR-first two-track delivery process + delivery board (proposed)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
@@ -854,8 +949,8 @@ The constitution. Absorbs the operational doctrine currently re-pasted into ever
 
 This file binds every AI agent session in this repository. Deviation
 requires an explicit human instruction in the current session; note the
-instruction in the work's FINDINGS/PR body. Process authority: ADR-0040
-(`docs/adr/0040-adr-first-two-track-delivery-process.md`).
+instruction in the work's FINDINGS/PR body. Process authority: ADR-0042
+(`docs/adr/0042-adr-first-two-track-delivery-process.md`).
 
 ## 1. Decisions live in `docs/adr/`
 
@@ -869,7 +964,7 @@ instruction in the work's FINDINGS/PR body. Process authority: ADR-0040
 - Reference decisions in code as `ADR-NNNN` comments at the entry point;
   reference them in PR bodies as `Implements ADR-NNNN`.
 
-## 2. Two-track intake (ADR-0040)
+## 2. Two-track intake (ADR-0042)
 
 - **Track A** (features, architecture, hard-to-reverse): epic issue
   `[ADR-NNNN] <name>` (`type:adr`) → PR adding the ADR (status `proposed`,
@@ -890,7 +985,12 @@ instruction in the work's FINDINGS/PR body. Process authority: ADR-0040
   forms (`.github/ISSUE_TEMPLATE/`): type + area labels, repro/scope,
   version. `gh issue create` bypassing the forms does not bypass the fields.
 - Labels are namespaced: exactly one `type:*`, `area:*` where known,
-  `status:*` sparingly. No new labels without updating ADR-0040.
+  `status:blocked` only when genuinely blocked. The normative label list is
+  `.github/labels.yml`; no new labels without updating it AND ADR-0042.
+- **Workflow status lives on the delivery board (ADR-0042 §Board), and the
+  board is automation-owned. NEVER set board Status manually and NEVER
+  script board mutations — `board-sync` and built-in workflows are the only
+  writers.** `status:*` labels other than `status:blocked` do not exist.
 - New design/planning documents go ONLY into `docs/adr/` (via Track A).
   `docs/superpowers/` is a frozen archive — never add to it.
 
@@ -936,7 +1036,9 @@ files) is never omitted.
 ## 7. Outward actions & owner gates
 
 - Outward = anything leaving this machine: pushing refs, tags, creating/
-  editing GitHub issues/labels/milestones/releases, publishing packages.
+  editing GitHub issues/labels/milestones/releases/project boards,
+  publishing packages. (Board *Status* is never yours to set even with
+  outward authorization — see §3.)
 - Outward actions require explicit per-dispatch authorization
   (`Outward actions authorized: yes` + scope). Absent that → NEEDS_CONTEXT.
 - HARD LIMITS regardless of authorization: never push branches of this
@@ -1024,8 +1126,35 @@ jobs:
           case "$HEAD_REF" in
             release/*) echo "ok: release branch exempt"; exit 0 ;;
           esac
-          echo "::error::PR body must reference an issue (#N) or an ADR (ADR-NNNN). See CLAUDE.md §3 / ADR-0040."
+          echo "::error::PR body must reference an issue (#N) or an ADR (ADR-NNNN). See CLAUDE.md §3 / ADR-0042."
           exit 1
+  doc-consistency:
+    name: Process docs are internally consistent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: AGENTS.md points at CLAUDE.md and the target exists
+        run: |
+          test -f CLAUDE.md
+          grep -q 'CLAUDE.md' AGENTS.md
+      - name: No machine-specific absolute paths committed
+        run: |
+          ! grep -rEn '/Users/[a-z]' --include='*.md' CLAUDE.md AGENTS.md docs/process/ .github/ 2>/dev/null
+      - name: Labels referenced by forms and rules exist in labels.yml
+        run: |
+          python3 - <<'EOF'
+          import yaml, re, glob, sys
+          tax = yaml.safe_load(open('.github/labels.yml'))
+          known = {f"{ns}:{n}" for ns in ('type','area','status') for n in tax.get(ns, [])}
+          referenced = set()
+          for f in glob.glob('.github/ISSUE_TEMPLATE/*.yml'):
+              for lbl in (yaml.safe_load(open(f)) or {}).get('labels', []):
+                  referenced.add(lbl)
+          referenced |= set(re.findall(r'`((?:type|area|status):[a-z-]+)`', open('CLAUDE.md').read()))
+          missing = referenced - known
+          if missing: sys.exit(f"labels referenced but not in labels.yml: {sorted(missing)}")
+          print("OK", len(referenced), "label refs checked")
+          EOF
 ```
 
 - [ ] **Step 2: Validate and commit**
@@ -1034,33 +1163,33 @@ jobs:
 python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/process-gate.yaml')); print('OK')"
 command -v actionlint >/dev/null && actionlint .github/workflows/process-gate.yaml || echo "actionlint not installed — YAML parse gate only"
 git add .github/workflows/process-gate.yaml
-git commit -m "ci: process-gate — PRs must reference an issue or ADR
+git commit -m "ci: process-gate — work-item reference + process-doc consistency
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task T11: Pilot — issue #7 through Track A as ADR-0041 `[OUTWARD]`
+### Task T11: Pilot — issue #7 through Track A as ADR-0043 `[OUTWARD]`
 
 #7 ("cluster mounts and extraPorts semantics for multi-node") already says "deliverable: a short design doc deciding the semantics, then implementation" — it is the perfect first Track-A exercise. The agent scaffolds; the OWNER decides in PR review.
 
 **Files:**
-- Create: `docs/adr/0041-multinode-mounts-and-extraports.md`
+- Create: `docs/adr/0043-multinode-mounts-and-extraports.md`
 - Modify: `docs/adr/README.md` (index row)
 
 - [ ] **Step 1: Convert #7 into the epic**
 
 ```bash
 R=cube-idp/cube-idp
-gh issue edit 7 -R $R --title "[ADR-0041] Cluster mounts and extraPorts semantics for multi-node clusters"
+gh issue edit 7 -R $R --title "[ADR-0043] Cluster mounts and extraPorts semantics for multi-node clusters"
 gh issue edit 7 -R $R --milestone "v0.2.0"
 ```
 
 - [ ] **Step 2: Scaffold the ADR** — status `proposed`, options taken verbatim from #7's four questions, one recommendation per question marked `RECOMMENDED (agent) — owner adjudicates in PR review`:
 
 ```markdown
-# 0041 — Cluster mounts and extraPorts Semantics for Multi-Node Clusters
+# 0043 — Cluster mounts and extraPorts Semantics for Multi-Node Clusters
 
 Status: proposed
 Date: 2026-07-20
@@ -1108,8 +1237,8 @@ _Pending PR review — the merge of this PR is the acceptance._
 - [ ] **Step 3: Index row + commit**
 
 ```bash
-git add docs/adr/0041-multinode-mounts-and-extraports.md docs/adr/README.md
-git commit -m "docs(adr): 0041 scaffold — multi-node mounts/extraPorts (proposed, decision pending review)
+git add docs/adr/0043-multinode-mounts-and-extraports.md docs/adr/README.md
+git commit -m "docs(adr): 0043 scaffold — multi-node mounts/extraPorts (proposed, decision pending review)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
@@ -1120,7 +1249,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 # For each Implementation Plan deliverable:
 NEW=$(gh issue create -R cube-idp/cube-idp --title "<deliverable>" \
   --label "type:feature,area:cluster" --milestone "v0.2.0" \
-  --body "Sub-issue of #7. Implements ADR-0041." | grep -oE '[0-9]+$')
+  --body "Sub-issue of #7. Implements ADR-0043." | grep -oE '[0-9]+$')
 ID=$(gh api repos/cube-idp/cube-idp/issues/$NEW --jq .id)
 gh api repos/cube-idp/cube-idp/issues/7/sub_issues -X POST -F sub_issue_id=$ID
 ```
@@ -1139,16 +1268,16 @@ git diff main..process/0040-adr-first-sdd --stat
 for F in .github/ISSUE_TEMPLATE/*.yml .github/workflows/process-gate.yaml; do
   python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1])); print('OK', sys.argv[1])" "$F"; done
 ```
-Expected: commits from T4,T5,T6,T7,T8,T9,T10,T11; all YAML `OK`.
+Expected: commits from T2(labels.yml),T4,T5,T6,T7,T8,T9,T10,T11,T13; all YAML `OK`.
 
 - [ ] **Step 2: Confirm the ledger** — Task Index shows T2–T11 DONE/DONE_WITH_CONCERNS (T1 DONE or BLOCKED(owner-gate) with the fallback noted); every Outcome block filled with evidence.
 
-- [ ] **Step 3: Flip ADR-0040 to `accepted`** (owner has approved the PR): edit `Status: proposed` → `Status: accepted` in `docs/adr/0040-…`, commit in the worktree:
+- [ ] **Step 3: Flip ADR-0042 to `accepted`** (owner has approved the PR): edit `Status: proposed` → `Status: accepted` in `docs/adr/0042-…`, commit in the worktree:
 
 ```bash
-git commit -m "docs(adr): 0040 accepted
+git commit -m "docs(adr): 0042 accepted
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- docs/adr/0040-adr-first-two-track-delivery-process.md
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- docs/adr/0042-adr-first-two-track-delivery-process.md
 git push origin process/0040-adr-first-sdd
 ```
 
@@ -1163,7 +1292,8 @@ git -C $ROOT worktree remove $ROOT/.claude/worktrees/process-0040-adr-first-sdd
 - [ ] **Step 5: Owner checklist (recorded here; not agent work)**
 
 - [ ] Decide #17–#20: revive (→ Track A epic) or close-with-reason each
-- [ ] Approve/adjust ADR-0041's recommendations in its PR review
+- [ ] Approve/adjust ADR-0043's recommendations in its PR review
+- [ ] Execute T14 (board instantiation) — the only piece that cannot land by merging this PR
 - [ ] Optional: org-level Issue Types (Bug/Feature/Task/Epic) via org settings — labels already cover this; adopt only if the web UI view matters
 - [ ] Optional: repeat T2's `area:` labels in packs/plugins when their issue volume warrants
 - [ ] Delete merged audit branches after the audit workstream completes
@@ -1171,10 +1301,166 @@ git -C $ROOT worktree remove $ROOT/.claude/worktrees/process-0040-adr-first-sdd
 
 ---
 
+### Task T13: `board-sync` workflow — automated status lifecycle
+
+Implements ADR-0042 §Board's four custom transitions (Proposed / Accepted / In progress / In review). Backlog and Done are built-in board workflows (T14). First-party GraphQL via `gh api` — no third-party marketplace actions (`actions/add-to-project` is unmaintained; a marketplace dependency also sits badly with this org's trust posture).
+
+Deterministic join keys, both guaranteed present by `process-gate`: `ADR-NNNN` in the PR body/title joins an ADR PR to its epic (titled `[ADR-NNNN] …`); `Closes #N` joins a delivery PR to its issue.
+
+**Files:**
+- Create: `.github/workflows/board-sync.yaml`
+
+**Interfaces:**
+- Consumes: org variable `BOARD_APP_ID`, org secret `BOARD_APP_PRIVATE_KEY`, org variable `BOARD_PROJECT_NUMBER` (all created in T14 — until T14 runs, the workflow exits cleanly when they are unset).
+
+- [ ] **Step 1: Write the workflow**
+
+```yaml
+name: board-sync
+on:
+  pull_request:
+    types: [opened, ready_for_review, converted_to_draft, closed]
+permissions:
+  contents: read
+concurrency:
+  group: board-sync-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip until the board exists (T14 not yet executed)
+        id: gate
+        env:
+          N: ${{ vars.BOARD_PROJECT_NUMBER }}
+        run: |
+          if [ -z "$N" ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "board not instantiated — nothing to sync"; fi
+      - name: Mint board token (org App)
+        if: steps.gate.outputs.skip != 'true'
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+          owner: cube-idp
+      - name: Resolve target issue and status
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BODY: ${{ github.event.pull_request.body }}
+          TITLE: ${{ github.event.pull_request.title }}
+          ACTION: ${{ github.event.action }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          PROJECT_NUMBER: ${{ vars.BOARD_PROJECT_NUMBER }}
+        run: |
+          set -euo pipefail
+          ADR=$(printf '%s\n%s' "$TITLE" "$BODY" | grep -oE 'ADR-[0-9]{4}' | head -1 || true)
+          CLOSES=$(printf '%s' "$BODY" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
+          ISSUE="" STATUS=""
+          if [ -n "$ADR" ]; then
+            # ADR PR → move the epic titled "[ADR-NNNN] …"
+            ISSUE=$(gh api graphql \
+              -f query='query($q:String!){search(query:$q,type:ISSUE,first:1){nodes{... on Issue{number}}}}' \
+              -f q="repo:$GITHUB_REPOSITORY is:issue in:title \"[$ADR]\"" \
+              --jq '.data.search.nodes[0].number' 2>/dev/null || true)
+            case "$ACTION" in
+              opened|ready_for_review) STATUS="Proposed" ;;
+              closed) if [ "$MERGED" = "true" ]; then STATUS="Accepted"; fi ;;
+            esac
+          elif [ -n "$CLOSES" ]; then
+            ISSUE=$CLOSES
+            case "$ACTION" in
+              opened) if [ "$DRAFT" = "true" ]; then STATUS="In progress"; else STATUS="In review"; fi ;;
+              ready_for_review) STATUS="In review" ;;
+              converted_to_draft) STATUS="In progress" ;;
+              closed) : ;;   # merge auto-closes the issue; built-in workflow moves it to Done
+            esac
+          fi
+          if [ -z "$ISSUE" ] || [ -z "$STATUS" ]; then echo "nothing to sync"; exit 0; fi
+          echo "sync: issue #$ISSUE -> $STATUS"
+
+          PID=$(gh api graphql \
+            -f query='query($org:String!,$n:Int!){organization(login:$org){projectV2(number:$n){id}}}' \
+            -f org="${GITHUB_REPOSITORY_OWNER}" -F n="$PROJECT_NUMBER" \
+            --jq '.data.organization.projectV2.id')
+          FIELD=$(gh api graphql \
+            -f query='query($p:ID!){node(id:$p){... on ProjectV2{field(name:"Status"){... on ProjectV2SingleSelectField{id options{id name}}}}}}' \
+            -f p="$PID" --jq '.data.node.field')
+          FID=$(echo "$FIELD" | jq -r '.id')
+          OID=$(echo "$FIELD" | jq -r --arg s "$STATUS" '.options[] | select(.name==$s) | .id')
+          CID=$(gh api graphql \
+            -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issue(number:$n){id}}}' \
+            -f o="${GITHUB_REPOSITORY_OWNER}" -f r="${GITHUB_REPOSITORY#*/}" -F n="$ISSUE" \
+            --jq '.data.repository.issue.id')
+          ITEM=$(gh api graphql \
+            -f query='mutation($p:ID!,$c:ID!){addProjectV2ItemById(input:{projectId:$p,contentId:$c}){item{id}}}' \
+            -f p="$PID" -f c="$CID" --jq '.data.addProjectV2ItemById.item.id')   # idempotent: returns the existing item
+          gh api graphql \
+            -f query='mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){projectV2Item{id}}}' \
+            -f p="$PID" -f i="$ITEM" -f f="$FID" -f o="$OID" --jq '.data.updateProjectV2ItemFieldValue.projectV2Item.id'
+```
+
+- [ ] **Step 2: Validate and commit**
+
+```bash
+python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/board-sync.yaml')); print('OK')"
+command -v actionlint >/dev/null && actionlint .github/workflows/board-sync.yaml || echo "actionlint not installed — YAML parse gate only"
+git add .github/workflows/board-sync.yaml
+git commit -m "ci: board-sync — automated delivery-board status lifecycle (ADR-0042 §Board)
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task T14: Instantiate the Projects v2 board — OWNER-GATED `[OUTWARD]`
+
+The board cannot be created by committing a file: creation needs a `project`-scoped token (`gh auth refresh -s project`), and built-in workflow configuration has **no write API** (UI only). ADR-0042 §Board is the spec; this task is its instantiation. May run after PR #22 merges.
+
+- [ ] **Step 1 (scripted): create the project and fields**
+
+```bash
+gh project create --owner cube-idp --title "cube-idp delivery"
+N=$(gh project list --owner cube-idp --format json --jq '.projects[] | select(.title=="cube-idp delivery") | .number')
+gh project field-create $N --owner cube-idp --name "Estimate" --data-type NUMBER
+# Iteration fields cannot be created via CLI — create "Iteration" in the UI.
+# Status options: edit the built-in Status field to exactly:
+#   Backlog · Proposed · Accepted · In progress · In review · Done
+# (UI, or GraphQL updateProjectV2Field with singleSelectOptions — names must
+#  match board-sync's strings byte-for-byte.)
+```
+
+- [ ] **Step 2 (UI checklist): built-in workflows**
+
+- Auto-add: repo `cube-idp/cube-idp`, filter `is:issue is:open` (issues only — PRs are never items). Auto-add workflow count is plan-tier-limited; other repos join via a `board-sync` extension, not more auto-add slots.
+- "Item added to project" → Status: `Backlog`
+- "Item closed" → Status: `Done`
+- "Item reopened" → Status: `In progress`
+- Disable any default PR-related built-ins (PRs are not items).
+
+- [ ] **Step 3: credential for board-sync**
+
+- Create an org GitHub App (`cube-idp-board-bot`): org permission **Projects: read & write**, repo permission **Issues: read**. Install on the org.
+- Org **variable** `BOARD_APP_ID`, org **secret** `BOARD_APP_PRIVATE_KEY`, org **variable** `BOARD_PROJECT_NUMBER` = `$N`.
+
+- [ ] **Step 4: end-to-end verification (per ADR-0042 Verification)**
+
+```bash
+# open a scratch issue → appears on board in Backlog with zero manual edits
+gh issue create -R cube-idp/cube-idp --title "board smoke test" --label "type:chore" --body "Scratch — verifying ADR-0042 §Board automation."
+# open a draft PR with "Closes #<that issue>" → In progress; mark ready → In review;
+# merge → issue auto-closes → Done. Then check the epic path with an ADR PR (Proposed → Accepted).
+gh project item-list $N --owner cube-idp --format json --jq '.items[] | {title: .content.title, status: .status}'
+```
+Expected: every transition happened without a human or agent touching Status.
+
+---
+
 ## Ledger Outcomes
 
 #### T1 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: OBSOLETE · BRANCH: n/a · COMMITS: n/a · FINDINGS: audit phases 2+3 merged to main (#31/#32) before execution started; ADRs 0001–0041 present on this branch via merge `ced665a` · REVIEW: n/a · BLOCKERS: none · HANDOFF: next free ADR numbers are 0042/0043
 
 #### T2 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
@@ -1207,4 +1493,10 @@ git -C $ROOT worktree remove $ROOT/.claude/worktrees/process-0040-adr-first-sdd
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
 
 #### T12 Outcome
+- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+
+#### T13 Outcome
+- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+
+#### T14 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
