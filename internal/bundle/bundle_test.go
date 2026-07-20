@@ -26,11 +26,12 @@ import (
 
 // vendorForTest drives Vendor through ui.RunPipeline with ModePlain forced
 // (a bytes.Buffer target is never a TTY, so this is deterministic without
-// SetMode) — the sanctioned test-construction path for a *ui.Console (Task
-// R3: no new ui test-constructor API; route through RunPipeline instead,
-// mirroring cmd/vendor.go's real call shape). Every pre-R3 call site in
-// this file that passed os.Stderr as Vendor's io.Writer now calls this
-// helper instead; none of those tests assert output bytes (that is
+// SetMode) — the sanctioned test-construction path for a *ui.Console: there
+// is deliberately no ui test-constructor API, so tests route through
+// RunPipeline instead, mirroring cmd/vendor.go's real call shape. Every call
+// site in this file that predates Vendor's io.Writer -> *ui.Console migration
+// passed os.Stderr as Vendor's io.Writer and now calls this helper
+// instead; none of those tests assert output bytes (that is
 // vendor_pipeline_test.go's job), so discarding the buffer here is fine.
 func vendorForTest(t *testing.T, lockPath, outPath, platform string) error {
 	t.Helper()
@@ -43,7 +44,7 @@ func vendorForTest(t *testing.T, lockPath, outPath, platform string) error {
 }
 
 // TestMain keeps every test in this file fully local (in-process registry,
-// random.Image — no network, per Task 6's constraints): the production
+// random.Image — no network, as vendor's tests require): the production
 // default for registryInstallImages derives images from the REAL zot
 // manifests, which reference real registry images. Tests neutralize that
 // seam here; TestVendorImagesIncludesEngineAndRegistry restores a synthetic
@@ -58,7 +59,7 @@ func TestMain(m *testing.M) {
 
 // writeEngineLockEntry pushes a minimal cube-engine-flux pack to host (the
 // caller's in-process registry) and returns a fully-pinned lock.EngineLock
-// mirroring Task 6's shape (type + the six pack fields). Engine-as-pack
+// mirroring the lock's engine shape (type + the six pack fields). Engine-as-pack
 // vendors the engine pack like every chart pack, so every lock fixture in
 // this file must carry a fetchable engine entry — Vendor now rejects a lock
 // with no engine.ref and vendorPacks fetches the engine pack.
@@ -612,7 +613,7 @@ func TestVerifyDetectsDeletedImageEntry(t *testing.T) {
 
 // TestOpenRejectsV1Bundle: a bundle whose manifest says formatVersion 1 is
 // refused with CUBE-7003 and the format-upgraded remediation — bundles are
-// ephemeral transport artifacts, no compatibility shim (spec §5.2).
+// ephemeral transport artifacts, no compatibility shim.
 func TestOpenRejectsV1Bundle(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
 	if err := vendorForTest(t, writeLockFixture(t), out, ""); err != nil {
@@ -630,7 +631,7 @@ func TestOpenRejectsV1Bundle(t *testing.T) {
 }
 
 // TestVerifyDetectsPackContentSwap: flip one byte in a pack file WITHOUT
-// changing its size — presence+size verification (the pre-R2 state) cannot
+// changing its size — the manifest v1 presence+size verification cannot
 // catch this; the dirhash comparison must, naming the pack.
 func TestVerifyDetectsPackContentSwap(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "bundle.tar.gz")

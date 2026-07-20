@@ -134,7 +134,7 @@ func TestPackPushPlainOutputByteStable(t *testing.T) {
 }
 
 // gh doctrine: args → never prompt; non-TTY bare invocation → refuse with
-// the flag twin named, never hang (spec WP6 + Decision 4).
+// the flag twin named, never hang.
 func TestPackInstallWithArgsNeverPrompts(t *testing.T) {
 	file := cubeYAMLFixture(t)
 	ref := "oci://ghcr.io/cube-idp/packs/demo:0.1.0"
@@ -199,7 +199,7 @@ func TestPackInstallBareNonTTYRefuses(t *testing.T) {
 
 // packMenuSeams routes the TTY-only menu path through test stubs (down_test's
 // seam pattern): prompting allowed, menu returns names, confirm returns ok.
-// It also isolates the P6 catalog loader — a fresh $HOME (throwaway index
+// It also isolates the remote-catalog loader — a fresh $HOME (throwaway index
 // cache) and CUBE_IDP_PACK_INDEX at a dead loopback port — so the menu path
 // falls back to the built-in catalog fast and deterministically instead of
 // ever reaching the real published index from a unit test.
@@ -234,7 +234,7 @@ func packlessCubeYAML(t *testing.T) string {
 	return "cube.yaml"
 }
 
-// Menu path (spec WP6): selection → one summary confirm → append → the
+// Menu path: selection → one summary confirm → append → the
 // scriptable-twin hint carrying the ACTUAL refs.
 func TestPackInstallMenuAppendsAndHints(t *testing.T) {
 	file := packlessCubeYAML(t)
@@ -268,7 +268,8 @@ func TestPackInstallMenuAppendsAndHints(t *testing.T) {
 }
 
 // Decline path: the summary confirm answered No must change nothing and use
-// the project's exact abort wording (TE-3.3's, from cmd/trust.go).
+// the project's exact abort wording — "aborted — nothing was changed", the
+// same string cmd/trust.go prints — and exit 0.
 func TestPackInstallDeclineAborts(t *testing.T) {
 	file := packlessCubeYAML(t)
 	packMenuSeams(t, []string{"gitea"}, false)
@@ -328,8 +329,8 @@ func TestPackInstallDuplicateRefSkipped(t *testing.T) {
 	}
 }
 
-// cmdCatalogIndexJSON is the two-entry index fixture the P6 catalog tests
-// publish — P2's schemaVersion-1 shape, entries name-sorted.
+// cmdCatalogIndexJSON is the two-entry index fixture the remote-catalog tests
+// publish — the published index's schemaVersion-1 shape, entries name-sorted.
 const cmdCatalogIndexJSON = `{
   "schemaVersion": 1,
   "packs": [
@@ -397,7 +398,7 @@ func TestPackListWithoutAvailableRefuses(t *testing.T) {
 	}
 }
 
-// TestPackListAvailableFallsBackToBuiltin is the P6 fallback contract: index
+// TestPackListAvailableFallsBackToBuiltin is the catalog fallback contract: index
 // unreachable (dead loopback port, cold cache) → one advisory line naming the
 // reason, then exactly today's built-in two-entry catalog.
 func TestPackListAvailableFallsBackToBuiltin(t *testing.T) {
@@ -515,9 +516,10 @@ func TestPackPushJSONStreamEmitsExpectedEventTypes(t *testing.T) {
 	}
 }
 
-// P7 (decision 4): `pack install --via repo` marks every written PackRef
+// Gitea delivery: `pack install --via repo` marks every written PackRef
 // for Gitea delivery; `--via oci` (the default) writes no delivery key at
-// all — byte-compatible with pre-P7 files. A bogus --via value is a typed
+// all — byte-compatible with cube.yaml files written before the delivery key
+// existed. A bogus --via value is a typed
 // flag refusal, and --via repo on a gitea-less cube is refused by the
 // load-time gitea guarantee with cube.yaml left untouched.
 func TestPackInstallViaRepo(t *testing.T) {

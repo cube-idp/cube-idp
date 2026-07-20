@@ -24,7 +24,7 @@ func TestTrustRequiresConsent(t *testing.T) {
 		t.Fatalf("declining consent must not be an error: %v", err)
 	}
 	if installed {
-		t.Fatal("trust must not touch the OS store without consent (D6)")
+		t.Fatal("trust must not touch the OS store without consent")
 	}
 	if !strings.Contains(out.String(), "aborted") {
 		t.Fatalf("expected an aborted notice, got:\n%s", out.String())

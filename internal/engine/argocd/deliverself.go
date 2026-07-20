@@ -10,7 +10,8 @@ import (
 	"github.com/cube-idp/cube-idp/internal/registry"
 )
 
-// DeliverSelf translates the pushed cube-engine artifact (GT16, P8) into
+// DeliverSelf translates the pushed cube-engine artifact — the opt-in
+// engine self-management path, spec.engine.selfManage (ADR 0020) — into
 // the single Application through which Argo CD manages ITSELF: name
 // cube-engine, ns argocd, destination its own namespace. The source shape
 // mirrors Deliver exactly (same zot repoURL derivation, targetRevision,
@@ -21,12 +22,13 @@ import (
 //
 //   - automated sync with prune: false — the engine must never prune its
 //     own controllers; selfHeal stays true so live drift between `up`s is
-//     corrected (the GT16 matrix's "yes" column).
+//     corrected — self-management requires drift between `up`s to be
+//     corrected by the engine, not left to the next CLI run.
 //   - NO resources-finalizer: on `down` the inventory-driven DeleteAll
 //     removes this Application and then the engine itself — a cascading
 //     finalizer would tear the engine down from inside instead.
 //   - the argocd.argoproj.io/refresh: normal annotation, so each `up`
-//     apply doubles as the GT16 "poke": push → apply → the controller
+//     apply doubles as a reconcile-now poke: push → apply → the controller
 //     re-resolves the tag now instead of on its refresh interval (argocd
 //     removes the annotation once processed; the next `up` re-adds it).
 //

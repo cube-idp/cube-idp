@@ -13,15 +13,15 @@ import (
 type SecretRef struct{ Namespace, Name string }
 
 // GatewayService is the optional pack.cue declaration of a gateway pack's
-// DATA-PLANE Service (spec §5.7b, R7b): the CoreDNS *.<host> rewrite target
+// DATA-PLANE Service: the CoreDNS *.<host> rewrite target
 // `up` points at once the pack is resolved. Absent, `up` falls back to
 // today's <pack>.<pack>.svc default (traefik: zero migration). Parsed from
 // pack.cue's optional gatewayService: block, the same optional-and-typed
 // shape as Expose.
 type GatewayService struct{ Name, Namespace string }
 
-// Expose is the D11 contract: how a pack declares its endpoints and
-// credentials — in data, never in Go. Parsed from pack.cue's optional
+// Expose is how a pack declares its endpoints and credentials — in data,
+// never in Go (see ADR-0002). Parsed from pack.cue's optional
 // expose: block; rendered by `up` into the pack's Pack record.
 type Expose struct {
 	URLs          []string
@@ -32,10 +32,10 @@ type Expose struct {
 // GatewayHostString renders gw as the ${GATEWAY_HOST} substitution value:
 // host[:port], with the port omitted whenever the gateway listens on 443
 // (HTTPS's default) so the resulting links are actually clickable instead
-// of dialing the bare host on 443 and failing (Task 15.1). Shared by
-// ExposeURLs and the D15 chart-value/manifest substitution below — one
+// of dialing the bare host on 443 and failing. Shared by
+// ExposeURLs and the chart-value/manifest substitution below — one
 // definition of "the gateway's host string", used everywhere it's needed.
-// Exported (Task 12) so cmd/repo.go can print the same https gateway form
+// Exported so cmd/repo.go can print the same https gateway form
 // for the printed operator clone URL without duplicating the port-omission
 // rule.
 func GatewayHostString(gw config.GatewaySpec) string {
@@ -45,12 +45,12 @@ func GatewayHostString(gw config.GatewaySpec) string {
 	return gw.Host
 }
 
-// substitute performs the D15 gateway substitution on s: ${GATEWAY_HOST}
+// substitute performs the gateway token substitution on s: ${GATEWAY_HOST}
 // expands to gw's host[:port] (GatewayHostString), ${GATEWAY_FQDN} expands
 // to the bare gw.Host (for Gateway API `hostnames:` fields, which cannot
 // carry ports), and ${GATEWAY_PACK} expands to gw.Pack — the gateway pack
 // name, which is also its namespace by convention (gatewayServiceFQDN,
-// internal/up). ${GATEWAY_PACK} exists for F9: pack HTTPRoutes must parent
+// internal/up). ${GATEWAY_PACK} exists because pack HTTPRoutes must parent
 // to the Gateway in the gateway pack's namespace (e.g. envoy-gateway), not
 // a hardcoded "traefik", or Attached Routes stays 0 and TLS/HTTP resets.
 // A zero gw (Host == "") performs no substitution — the literal tokens pass
@@ -66,11 +66,11 @@ func substitute(s string, gw config.GatewaySpec) string {
 }
 
 // ExposeURLs returns p's expose.urls with ${GATEWAY_HOST} substituted for
-// the cube's spec.gateway.host[:port] — the one substitution the D11
-// contract originally allowed, now one of two (see substitute) shared with
-// D15's chart-value/manifest substitution. Returns nil if p declares no
+// the cube's spec.gateway.host[:port] — the expose-block substitution,
+// which shares its implementation (see substitute) with the chart-value
+// and manifest substitution. Returns nil if p declares no
 // expose block or no urls. Shared by PackObject (the Pack record's
-// spec.urls/spec.url) and up.Run's Task 15.3c access summary — one
+// spec.urls/spec.url) and up.Run's end-of-run access summary — one
 // substitution, used everywhere a pack's URLs are shown.
 func ExposeURLs(p *Pack, gw config.GatewaySpec) []string {
 	if p.Expose == nil || len(p.Expose.URLs) == 0 {
@@ -84,12 +84,12 @@ func ExposeURLs(p *Pack, gw config.GatewaySpec) []string {
 }
 
 // PackObject builds the cluster-scoped Pack record `up` writes (and `down`,
-// via the inventory, deletes). customized is GT15's operator-visibility
+// via the inventory, deletes). customized is the operator-visibility
 // bit (U4): true when the pack's PackRef carried non-empty values or
 // extraManifests — the caller decides, since only it holds the ref. The
 // record always carries spec.customized as "yes"/"no" (never absent) so
 // the CUSTOMIZED printer column renders for stock packs too. delivery is
-// GT19's twin bit (P7), the ref's delivery mode verbatim: an empty
+// its twin bit, the ref's delivery mode verbatim: an empty
 // PackRef.Delivery maps to "oci" HERE, in the record writer, so every
 // pack shows a value and repo-delivered packs stand out in the DELIVERY
 // printer column. dependsOn is the pack's RESOLVED dependency list —

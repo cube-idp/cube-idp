@@ -15,7 +15,8 @@ import (
 // mode. It never reaches the network: a ref that maps to no bundled pack is a
 // hard CUBE-7004, not a fallthrough to `pack.Fetch`'s online path.
 //
-// Name resolution follows the bundle's own keying (Task 6): the embedded
+// Name resolution follows the bundle's own keying, as `cube-idp vendor` wrote
+// it: the embedded
 // cube.lock records each pack's Name alongside the Ref it was locked from, so
 // the preferred lookup matches a cube ref against lk.Packs by Ref equality
 // and resolves through packDir(entry.Name). Local-dir refs the lock records
@@ -33,7 +34,7 @@ func resolveBundleRefs(refs []config.PackRef, lk *lock.File, lookup func(name st
 				"re-run `cube-idp vendor` on a connected machine so the bundle carries every pack this cube references, then retry")
 		}
 		// Only the SOURCE is rewritten — the ref's install-shaping fields
-		// (values, GT15 extraManifests, P7 delivery) carry over so a bundle
+		// (values, extraManifests, delivery) carry over so a bundle
 		// install renders and delivers exactly like the online one (repo
 		// delivery is in-cluster and works air-gapped).
 		out[i] = config.PackRef{Ref: dir, Values: ref.Values, ExtraManifests: ref.ExtraManifests, Delivery: ref.Delivery}

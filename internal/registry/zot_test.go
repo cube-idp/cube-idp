@@ -60,7 +60,7 @@ func TestGatewayRouteShape(t *testing.T) {
 	}
 }
 
-// TestGatewayRouteParentNamespace pins F9: the registry route's parentRef
+// TestGatewayRouteParentNamespace pins a past outage: the registry route's parentRef
 // namespace tracks the gateway pack (its namespace by convention), so with
 // gateway.pack=envoy-gateway the route attaches to the Gateway in ns
 // envoy-gateway instead of a hardcoded "traefik" (which left Attached

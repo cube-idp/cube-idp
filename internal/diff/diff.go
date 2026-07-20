@@ -2,7 +2,8 @@
 // anything: kernel objects via SSA dry-run, pack content via cube.lock
 // rendered hashes, orphans via the inventory. Not modeled: the CoreDNS
 // Corefile rewrite (internal/trust.EnsureCoreDNSRewrite) that `up` applies
-// for the D6 canonical hostname — it lives in kube-system's coredns
+// for the canonical gateway hostname (docs/adr/0012-canonical-gateway-host-and-port-mapping.md)
+// — it lives in kube-system's coredns
 // ConfigMap/Deployment, outside every object this package's desiredState
 // assembles or diffs, so drift there (e.g. a manual CoreDNS edit, or a
 // host change since the last `up`) is invisible to `diff`.
@@ -49,7 +50,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	// Remote -f provenance (spec §7.3): a tag ref is not reproducible, so at
+	// Remote -f provenance: a tag ref is not reproducible, so at
 	// minimum make the ref and the pin it resolved to visible in the output.
 	if o := cube.Origin(); o.Remote {
 		ui.NewFor(out).Section(fmt.Sprintf("using remote config %s (%s)", o.Ref, o.Pin))
@@ -154,8 +155,9 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 // exactly as up.Run orders it) and returns:
 //
 //   - desired: the kernel object set safe to SSA dry-run diff — registry,
-//     the D11 Pack CRD, engine install, per-pack delivery objects, and the
-//     D6 registry gateway route. Every one of these is pure/deterministic
+//     the inert Pack CRD, engine install, per-pack delivery objects, and the
+//     registry route on the canonical gateway host. Every one of these is
+//     pure/deterministic
 //     given cube.yaml alone, so re-rendering them here and diffing against
 //     live state is accurate.
 //   - orphanOnly: identity-only stubs (kind/namespace/name, no spec) for a
@@ -164,7 +166,7 @@ func Run(ctx context.Context, cfgPath string, out io.Writer) (bool, error) {
 //     Secret (ensureGatewayTLS deliberately reuses the live secret's cert
 //     rather than reissuing one on every `up`/`diff` — reissuing here would
 //     fabricate fresh random cert bytes and misreport a stable secret as
-//     "changed" on every single diff) and each pack's D11 Pack
+//     "changed" on every single diff) and each pack's Pack
 //     discoverability record (whose `ready` field tracks live engine health
 //     at write time, not something a re-render should perturb). Sending a
 //     partial stub through a.Diff would apply-patch it under the SAME field
@@ -186,8 +188,10 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 	}
 	desired = append(desired, regObjs...)
 
-	// D11: applied by up.Run's "packs-crd" step, before the engine and the
-	// pack loop below; pure (embedded YAML, no live-state dependency).
+	// The single inert Pack CRD (packs.cube-idp.dev, no controller watches it
+	// — docs/adr/0002-pack-format-data-only-contract.md): applied by up.Run's
+	// "packs-crd" step, before the engine and the pack loop below; pure
+	// (embedded YAML, no live-state dependency).
 	crd, err := pack.CRD()
 	if err != nil {
 		return nil, nil, nil, err
@@ -207,11 +211,11 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 	}
 	desired = append(desired, engineRendered.Objects...)
 
-	// P8 (GT16): a self-managed engine additionally carries the cube-engine
+	// A self-managed engine (spec.engine.selfManage) additionally carries the cube-engine
 	// self-source objects (flux OCIRepository + Kustomization / argocd
 	// Application), applied and inventoried by up.Run's selfManage block.
 	// Identity-only, like the repo-delivery sources below: the source object
-	// carries a fresh reconcile-now annotation per render (the GT16 poke),
+	// carries a fresh reconcile-now annotation per render (the self-source poke),
 	// so re-rendering it here would fabricate a perpetual "changed" — and
 	// identity is all orphanRefs needs. A placeholder ArtifactRef suffices:
 	// the names are deterministic (cube-engine).
@@ -237,11 +241,13 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		// GT15 (U4) + RV2: mirror up.Run — RenderResolved resolves valuesRef
-		// (CUBE-4021) and merges inline over it, then RenderWith enforces the
-		// values stone and appends extraManifests, so diff previews exactly
-		// what up would deliver (including CUBE-4016/4017 failures) and a
-		// changed remote values file shows up as manifest drift.
+		// Mirror up.Run — RenderResolved resolves valuesRef (CUBE-4021) and
+		// merges inline over it, then RenderWith enforces the values stone
+		// (values: are helm values only, never engine tuning; see
+		// docs/adr/0004-pack-values-and-extra-manifests.md) and appends
+		// extraManifests, so diff previews exactly what up would deliver
+		// (including CUBE-4016/4017 failures) and a changed remote values
+		// file shows up as manifest drift.
 		rendered, valuesPin, err := pack.RenderResolved(ctx, p, pr, cube.Spec.Gateway, dir)
 		if err != nil {
 			return nil, nil, nil, err
@@ -275,7 +281,7 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		rendered.DependsOn = packDeps[rendered.Name]
 
 		if pr.Delivery == "repo" {
-			// P7: up delivers this pack as an engine git source over the
+			// With delivery: repo, up delivers this pack as an engine git source over the
 			// in-cluster Gitea repo (deliverPackRepo), whose spec embeds
 			// live-derived state — the gitea admin owner in the clone URL —
 			// so re-rendering it here for a dry-run diff would fabricate
@@ -301,18 +307,18 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 			desired = append(desired, deliverObjs...)
 		}
 
-		// D11 Pack record identity (see the orphanOnly doc above for why
+		// Pack record identity (see the orphanOnly doc above for why
 		// only identity, not the full spec, belongs here).
 		orphanOnly = append(orphanOnly, identityStub(packGVK, "", rendered.Name))
 	}
 
-	// Engine-as-pack §3.3.7: up.Run also appends the engine's own D11 Pack
+	// Engine-as-pack (docs/adr/0007-engine-as-a-pack.md): up.Run also appends the engine's own Pack
 	// record row (delivery "engine"); its identity belongs here for the same
 	// reason as the per-pack records above.
 	orphanOnly = append(orphanOnly, identityStub(packGVK, "", enginePk.Name))
 
-	// D6: applied by up.Run right after the pack loop; pure given the
-	// gateway host alone.
+	// The registry's route on the canonical gateway host: applied by up.Run
+	// right after the pack loop; pure given the gateway host alone.
 	desired = append(desired, registry.GatewayRoute(cube.Spec.Gateway.Host, cube.Spec.Gateway.Pack))
 
 	// Gateway TLS Namespace + Secret identities (see the orphanOnly doc

@@ -1,0 +1,1773 @@
+{
+  "commands": [
+    {
+      "path": "cube-idp",
+      "use": "cube-idp",
+      "short": "cube-idp stands up an internal developer platform on Kubernetes and gets out of the way",
+      "flags": [
+        {
+          "name": "color",
+          "type": "string",
+          "default": "auto",
+          "usage": "color output: auto|always|never (overrides NO_COLOR and CLICOLOR_FORCE)"
+        },
+        {
+          "name": "plain",
+          "type": "bool",
+          "default": "false",
+          "usage": "force plain, non-styled output (permanent alias for --progress=plain)"
+        },
+        {
+          "name": "progress",
+          "type": "string",
+          "default": "auto",
+          "usage": "output style: auto|plain|live|json (json is EXPERIMENTAL until the config v1 freeze)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp cnoe",
+      "use": "cnoe",
+      "short": "Compatibility tools for CNOE/idpbuilder setups",
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp cnoe import",
+      "use": "import \u003cdir\u003e",
+      "short": "Ingest idpbuilder Argo Application/ApplicationSet YAMLs into the running cube (cnoe:// paths become OCI pushes)"
+    },
+    {
+      "path": "cube-idp config",
+      "use": "config",
+      "short": "Inspect cube-idp configuration",
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp config render-cluster",
+      "use": "render-cluster",
+      "short": "Print the final merged provider config that `up` would create"
+    },
+    {
+      "path": "cube-idp config render-engine",
+      "use": "render-engine",
+      "short": "Print the engine install manifests that `up` would apply (rendered from the engine pack)"
+    },
+    {
+      "path": "cube-idp config schema",
+      "use": "schema",
+      "short": "Print the CUE schema cube.yaml is validated against"
+    },
+    {
+      "path": "cube-idp diff",
+      "use": "diff",
+      "short": "Show what a re-run of `up` would change; exit 1 if anything would",
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp doctor",
+      "use": "doctor",
+      "short": "Diagnose the host and (if reachable) the cluster; exit 1 on errors",
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        },
+        {
+          "name": "output",
+          "shorthand": "o",
+          "type": "string",
+          "usage": "output format: json (a single gh-style document; EXPERIMENTAL)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp down",
+      "use": "down",
+      "short": "Delete everything cube-idp created (inventory-driven cascade), then the cluster",
+      "flags": [
+        {
+          "name": "confirm",
+          "type": "string",
+          "usage": "confirm by cube name instead of the interactive prompt"
+        },
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        },
+        {
+          "name": "keep-cluster",
+          "type": "bool",
+          "default": "false",
+          "usage": "delete cube-idp resources but keep the cluster"
+        },
+        {
+          "name": "yes",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip the consent prompt (required on non-TTY runs)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp explain",
+      "use": "explain CUBE-XXXX",
+      "short": "Explain a cube-idp diagnostic code",
+      "flags": [
+        {
+          "name": "list",
+          "type": "bool",
+          "default": "false",
+          "usage": "list every diagnostic code with its summary"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp get",
+      "use": "get",
+      "short": "Read cube-idp-managed resources",
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp get secrets",
+      "use": "secrets",
+      "short": "List credentials packs exposed for CLI consumption (cube-idp.dev/cli-secret=true)",
+      "flags": [
+        {
+          "name": "output",
+          "shorthand": "o",
+          "type": "string",
+          "usage": "output format: json (a single gh-style document; EXPERIMENTAL)"
+        },
+        {
+          "name": "pack",
+          "shorthand": "p",
+          "type": "string",
+          "usage": "only show secrets for this pack"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp init",
+      "use": "init",
+      "short": "Write the default cube.yaml (kind + flux + traefik + gitea + argocd)",
+      "flags": [
+        {
+          "name": "engine",
+          "type": "string",
+          "default": "flux",
+          "usage": "gitops engine: flux | argocd"
+        },
+        {
+          "name": "gateway-pack",
+          "type": "string",
+          "default": "traefik",
+          "usage": "gateway implementation pack: traefik | envoy-gateway"
+        },
+        {
+          "name": "local",
+          "type": "string",
+          "usage": "use pack dirs from a local cube-idp/packs checkout (path containing packs/\u003cname\u003e) instead of published OCI refs"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "default": "dev",
+          "usage": "cube name"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp pack",
+      "use": "pack",
+      "short": "Work with cube-idp packs"
+    },
+    {
+      "path": "cube-idp pack index",
+      "use": "index",
+      "short": "Build and push the pack catalog index artifact"
+    },
+    {
+      "path": "cube-idp pack index build",
+      "use": "build \u003cpacks-dir\u003e",
+      "short": "Build index.json over every pack directory in \u003cpacks-dir\u003e",
+      "flags": [
+        {
+          "name": "digest",
+          "type": "stringArray",
+          "default": "[]",
+          "usage": "pack digest as \u003cname\u003e=\u003csha256:…\u003e (repeatable; from `pack publish` output)"
+        },
+        {
+          "name": "from-registry",
+          "type": "bool",
+          "default": "false",
+          "usage": "resolve digests missing from --digest by HEADing the registry (no pull)"
+        },
+        {
+          "name": "output",
+          "shorthand": "o",
+          "type": "string",
+          "default": "index.json",
+          "usage": "output path for the index JSON"
+        },
+        {
+          "name": "ref-base",
+          "type": "string",
+          "default": "oci://ghcr.io/cube-idp/packs",
+          "usage": "OCI ref prefix pack artifacts live under"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp pack index push",
+      "use": "push \u003cindex.json\u003e",
+      "short": "Push a built index.json as the catalog index OCI artifact",
+      "flags": [
+        {
+          "name": "ref",
+          "type": "string",
+          "usage": "target OCI ref (oci://host/repo:tag, e.g. oci://ghcr.io/cube-idp/packs/index:latest)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp pack install",
+      "use": "install [pack-ref...]",
+      "short": "Add packs to cube.yaml (delivered on the next `cube-idp up`)",
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        },
+        {
+          "name": "via",
+          "type": "string",
+          "default": "oci",
+          "usage": "delivery mode for the installed packs: oci (default) or repo (editable Gitea repo; needs the gitea pack)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp pack list",
+      "use": "list",
+      "short": "List packs available from the remote catalog",
+      "flags": [
+        {
+          "name": "available",
+          "type": "bool",
+          "default": "false",
+          "usage": "list every pack in the remote catalog"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp pack publish",
+      "use": "publish \u003cdir\u003e",
+      "short": "Validate a pack directory and publish it as an OCI artifact",
+      "flags": [
+        {
+          "name": "ref",
+          "type": "string",
+          "usage": "target OCI ref (oci://host/repo[:tag]; the tag defaults to the pack's version)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp pack push",
+      "use": "push \u003cdir\u003e \u003coci-ref\u003e",
+      "short": "Publish a pack directory as an OCI artifact",
+      "flags": [
+        {
+          "name": "also-tag",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "additional tags for the same pushed artifact (e.g. latest); repeatable"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp pack search",
+      "use": "search \u003cterm\u003e",
+      "short": "Search the pack catalog by name and description"
+    },
+    {
+      "path": "cube-idp plugin",
+      "use": "plugin",
+      "short": "Discover and manage cube-idp exec-plugins"
+    },
+    {
+      "path": "cube-idp plugin install",
+      "use": "install \u003cname\u003e[@version]",
+      "short": "Install a plugin from the official index (or a sha256-pinned git index with --index)",
+      "flags": [
+        {
+          "name": "index",
+          "type": "string",
+          "usage": "install from this sha256-pinned git index instead of the official OCI index"
+        },
+        {
+          "name": "yes",
+          "type": "bool",
+          "default": "false",
+          "usage": "trust the installed plugin without prompting (official-index installs only)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp plugin list",
+      "use": "list",
+      "short": "List every cube-idp-\u003cname\u003e plugin discovered on PATH or in the plugin install dir",
+      "flags": [
+        {
+          "name": "available",
+          "type": "bool",
+          "default": "false",
+          "usage": "list every plugin published in the official index"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp plugin search",
+      "use": "search \u003cterm\u003e",
+      "short": "Search the official plugin index by name or description"
+    },
+    {
+      "path": "cube-idp plugin trust",
+      "use": "trust \u003cname\u003e",
+      "short": "Trust a discovered plugin: record its current sha256 so it runs without prompting"
+    },
+    {
+      "path": "cube-idp repo",
+      "use": "repo",
+      "short": "Manage git repositories in the cube's built-in Gitea"
+    },
+    {
+      "path": "cube-idp repo create",
+      "use": "create \u003cname\u003e",
+      "short": "Create a Gitea repo, optionally wiring it up as an engine delivery source",
+      "flags": [
+        {
+          "name": "deploy",
+          "type": "bool",
+          "default": "false",
+          "usage": "register the repo as a continuously-synced engine delivery source"
+        },
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp spoke",
+      "use": "spoke",
+      "short": "Manage spoke clusters registered with this cube's engine"
+    },
+    {
+      "path": "cube-idp spoke add",
+      "use": "add \u003cname\u003e",
+      "short": "Declare a spoke in cube.yaml (applied on the next `cube-idp up`)",
+      "flags": [
+        {
+          "name": "context",
+          "type": "string",
+          "usage": "kubeconfig context (required for --provider existing)"
+        },
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        },
+        {
+          "name": "provider",
+          "type": "string",
+          "default": "kind",
+          "usage": "spoke cluster provider (kind|existing)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp spoke list",
+      "use": "list",
+      "short": "List spokes declared in cube.yaml (with live hub state when reachable)",
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp spoke remove",
+      "use": "remove \u003cname\u003e",
+      "short": "Remove a spoke declaration (hub registration prunes on next `up`)",
+      "flags": [
+        {
+          "name": "delete-cluster",
+          "type": "bool",
+          "default": "false",
+          "usage": "also delete a kind spoke cluster now"
+        },
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        },
+        {
+          "name": "yes",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip the delete confirmation (required non-interactively with --delete-cluster)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp status",
+      "use": "status",
+      "short": "Report cluster connectivity, engine-reported component health, and inventory size",
+      "flags": [
+        {
+          "name": "compact",
+          "type": "bool",
+          "default": "false",
+          "usage": "hide Ready component rows (plain and styled renders)"
+        },
+        {
+          "name": "details",
+          "type": "bool",
+          "default": "false",
+          "usage": "show inventory objects"
+        },
+        {
+          "name": "exit-status",
+          "type": "bool",
+          "default": "false",
+          "usage": "with --watch: exit 1 if interrupted while any component is unhealthy"
+        },
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        },
+        {
+          "name": "interval",
+          "type": "duration",
+          "default": "3s",
+          "usage": "re-render interval for --watch"
+        },
+        {
+          "name": "output",
+          "shorthand": "o",
+          "type": "string",
+          "usage": "output format: json (a single gh-style document; EXPERIMENTAL)"
+        },
+        {
+          "name": "watch",
+          "type": "bool",
+          "default": "false",
+          "usage": "re-render the status view until every component is Ready"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp sync",
+      "use": "sync \u003cdir\u003e",
+      "short": "Render a directory as a pack and deliver it to the running cube",
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        },
+        {
+          "name": "watch",
+          "type": "bool",
+          "default": "false",
+          "usage": "watch dir and re-sync on every debounced change until Ctrl-C"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp trust",
+      "use": "trust",
+      "short": "Add (or remove, --uninstall) the cube-idp local CA to your OS trust stores — opt-in, fully reverted by `down`",
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        },
+        {
+          "name": "uninstall",
+          "type": "bool",
+          "default": "false",
+          "usage": "remove the CA from the OS trust stores"
+        },
+        {
+          "name": "yes",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip the consent prompt"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp up",
+      "use": "up",
+      "short": "Create/ensure the cluster, install the engine, deliver all packs, exit",
+      "flags": [
+        {
+          "name": "bundle",
+          "type": "string",
+          "usage": "install fully offline from a cube-idp vendor bundle"
+        },
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp upgrade",
+      "use": "upgrade --plan",
+      "short": "Preview available pack updates and pending changes (apply them with `cube-idp up`)",
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "default": "cube.yaml",
+          "usage": "path to cube.yaml"
+        },
+        {
+          "name": "plan",
+          "type": "bool",
+          "default": "false",
+          "usage": "show the plan (required)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp vendor",
+      "use": "vendor",
+      "short": "Bundle every artifact and image pinned in cube.lock for air-gapped installs",
+      "flags": [
+        {
+          "name": "lock",
+          "type": "string",
+          "default": "cube.lock",
+          "usage": "path to cube.lock"
+        },
+        {
+          "name": "output",
+          "shorthand": "o",
+          "type": "string",
+          "default": "cube-bundle.tar.gz",
+          "usage": "bundle output path"
+        },
+        {
+          "name": "platform",
+          "type": "string",
+          "usage": "image platform os/arch (default: linux/\u003chost-arch\u003e)"
+        }
+      ]
+    },
+    {
+      "path": "cube-idp version",
+      "use": "version",
+      "short": "Print the cube-idp version"
+    }
+  ],
+  "diagCodes": [
+    {
+      "id": "CUBE-0001",
+      "summary": "cannot read cube.yaml",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0002",
+      "summary": "cube.yaml YAML syntax or schema validation error",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0003",
+      "summary": "cube.lock unreadable or corrupt",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0004",
+      "summary": "cluster provider config mismatch (e.g., render-cluster for non-kind)",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0005",
+      "summary": "argocd pack listed while engine.type: argocd",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0006",
+      "summary": "cube.yaml already exists; refusing overwrite",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0007",
+      "summary": "an enum flag (--progress, --output) got an unrecognized value",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0008",
+      "summary": "gateway.ref points at a pack whose pack.cue name != gateway.pack",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0009",
+      "summary": "upgrade refused: see summary (was the last un-coded user-facing error)",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0010",
+      "summary": "a destructive command refused to run without confirmation (--yes / --confirm)",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0011",
+      "summary": "cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0012",
+      "summary": "engine.tuning was removed (engine-as-pack) — move the knobs to engine.values as chart values of the cube-engine-\u003ctype\u003e pack",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0013",
+      "summary": "engine.ref points at a pack whose pack.cue name != cube-engine-\u003cengine.type\u003e",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0014",
+      "summary": "a config-mutating command ran against a remote -f ref (remote configs are read-only)",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0015",
+      "summary": "remote -f ref fetch failed or did not yield one YAML document",
+      "range": "0xxx: preflight/config"
+    },
+    {
+      "id": "CUBE-0101",
+      "summary": "container runtime not found",
+      "range": "01xx: doctor preflight checks"
+    },
+    {
+      "id": "CUBE-0102",
+      "summary": "required host port already in use",
+      "range": "01xx: doctor preflight checks"
+    },
+    {
+      "id": "CUBE-0103",
+      "summary": "low disk space in cache directory (warning)",
+      "range": "01xx: doctor preflight checks"
+    },
+    {
+      "id": "CUBE-0104",
+      "summary": "inotify limits too low (warning, Linux-only)",
+      "range": "01xx: doctor preflight checks"
+    },
+    {
+      "id": "CUBE-0105",
+      "summary": "git CLI missing while git-sourced packs are configured (doctor, warning)",
+      "range": "01xx: doctor preflight checks"
+    },
+    {
+      "id": "CUBE-1001",
+      "summary": "cluster provider type unknown or unsupported",
+      "range": "1xxx: cluster"
+    },
+    {
+      "id": "CUBE-1003",
+      "summary": "node-creation fields (extraPorts/mounts/providerConfig/kubernetesVersion) set with provider: existing (config cross-validation)",
+      "range": "1xxx: cluster"
+    },
+    {
+      "id": "CUBE-1004",
+      "summary": "cluster does not exist; run `cube-idp up`",
+      "range": "1xxx: cluster"
+    },
+    {
+      "id": "CUBE-1005",
+      "summary": "providerConfigRef fetch failed, unparsable, or not exactly one YAML mapping document",
+      "range": "1xxx: cluster"
+    },
+    {
+      "id": "CUBE-1101",
+      "summary": "cluster behind context unreachable",
+      "range": "11xx: kubeconfig/connectivity"
+    },
+    {
+      "id": "CUBE-1102",
+      "summary": "kubeconfig load/parse/validation error",
+      "range": "11xx: kubeconfig/connectivity"
+    },
+    {
+      "id": "CUBE-1201",
+      "summary": "kind providerConfig merge failed",
+      "range": "12xx: kind provider"
+    },
+    {
+      "id": "CUBE-1202",
+      "summary": "kind providerConfig structure invalid",
+      "range": "12xx: kind provider"
+    },
+    {
+      "id": "CUBE-1203",
+      "summary": "kind cluster creation failed",
+      "range": "12xx: kind provider"
+    },
+    {
+      "id": "CUBE-1204",
+      "summary": "cannot get kubeconfig from kind",
+      "range": "12xx: kind provider"
+    },
+    {
+      "id": "CUBE-1205",
+      "summary": "kind cluster deletion failed",
+      "range": "12xx: kind provider"
+    },
+    {
+      "id": "CUBE-1206",
+      "summary": "kind core injection overrode a user providerConfigRef/forProvider field (warning)",
+      "range": "12xx: kind provider"
+    },
+    {
+      "id": "CUBE-1301",
+      "summary": "k3d providerConfig merge failed",
+      "range": "13xx: k3d provider"
+    },
+    {
+      "id": "CUBE-1302",
+      "summary": "k3d providerConfig structure invalid",
+      "range": "13xx: k3d provider"
+    },
+    {
+      "id": "CUBE-1303",
+      "summary": "k3d cluster creation failed / runtime unreachable",
+      "range": "13xx: k3d provider"
+    },
+    {
+      "id": "CUBE-1304",
+      "summary": "cannot get kubeconfig from k3d",
+      "range": "13xx: k3d provider"
+    },
+    {
+      "id": "CUBE-1305",
+      "summary": "k3d cluster deletion failed",
+      "range": "13xx: k3d provider"
+    },
+    {
+      "id": "CUBE-1306",
+      "summary": "k3d core injection overrode a user providerConfigRef/forProvider field (warning)",
+      "range": "13xx: k3d provider"
+    },
+    {
+      "id": "CUBE-2001",
+      "summary": "timed out waiting for resources to become ready",
+      "range": "2xxx: apply"
+    },
+    {
+      "id": "CUBE-2002",
+      "summary": "cannot build Kubernetes client",
+      "range": "2xxx: apply"
+    },
+    {
+      "id": "CUBE-2003",
+      "summary": "server-side apply failed",
+      "range": "2xxx: apply"
+    },
+    {
+      "id": "CUBE-2004",
+      "summary": "inventory read/write/parse failed",
+      "range": "2xxx: apply"
+    },
+    {
+      "id": "CUBE-2005",
+      "summary": "server-side diff failed",
+      "range": "2xxx: apply"
+    },
+    {
+      "id": "CUBE-2006",
+      "summary": "prune delete of untracked objects failed",
+      "range": "2xxx: apply"
+    },
+    {
+      "id": "CUBE-2007",
+      "summary": "cannot parse manifest YAML",
+      "range": "2xxx: apply"
+    },
+    {
+      "id": "CUBE-3001",
+      "summary": "unknown engine type in config",
+      "range": "3xxx: engine"
+    },
+    {
+      "id": "CUBE-3003",
+      "summary": "embedded engine install manifests invalid (RETIRED 2026-07-19 by engine-as-pack — install left the engine seam)",
+      "range": "3xxx: engine"
+    },
+    {
+      "id": "CUBE-3004",
+      "summary": "engine health check timed out or components not ready",
+      "range": "3xxx: engine"
+    },
+    {
+      "id": "CUBE-3005",
+      "summary": "flux prune/uninstall timeout",
+      "range": "3xxx: engine"
+    },
+    {
+      "id": "CUBE-3006",
+      "summary": "reserved: argocd gitea-fallback capability check, unbuilt by design",
+      "range": "3xxx: engine"
+    },
+    {
+      "id": "CUBE-3007",
+      "summary": "Poke found no delivery source (OCIRepository/GitRepository/Application) for the pack",
+      "range": "3xxx: engine"
+    },
+    {
+      "id": "CUBE-3008",
+      "summary": "Poke found the delivery source but could not read/update it (transient engine IO — retry)",
+      "range": "3xxx: engine"
+    },
+    {
+      "id": "CUBE-3009",
+      "summary": "engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched) (RETIRED 2026-07-19 by engine-as-pack — never emitted since)",
+      "range": "3xxx: engine"
+    },
+    {
+      "id": "CUBE-3010",
+      "summary": "engine.selfManage failed: cube-engine artifact push, self-source build/apply, or post-attach health wait — re-run `cube-idp up`",
+      "range": "3xxx: engine"
+    },
+    {
+      "id": "CUBE-3011",
+      "summary": "a pack's dependency did not become healthy before its wave-gated delivery (argocd)",
+      "range": "3xxx: engine"
+    },
+    {
+      "id": "CUBE-4001",
+      "summary": "unsupported pack ref scheme",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4002",
+      "summary": "pack values decode or type validation error",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4003",
+      "summary": "pack.cue missing, syntax error, or compilation failure",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4004",
+      "summary": "pack manifests/ directory read or YAML parse error",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4005",
+      "summary": "Helm chart load/parse/render error",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4006",
+      "summary": "remote pack source fetch/resolution failed",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4007",
+      "summary": "remote pack ref not pinned (missing @\u003crev\u003e or :tag)",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4008",
+      "summary": "kustomize render failed",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4009",
+      "summary": "cnoe-compat document invalid or unsupported",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4010",
+      "summary": "cnoe:// path unresolvable",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4011",
+      "summary": "expose: block in pack.cue invalid",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4012",
+      "summary": "OCI pack pull/extract error (pullOCI failures)",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4013",
+      "summary": "cache directory access/creation error",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4014",
+      "summary": "extraction guard tripped (path traversal/symlink)",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4015",
+      "summary": "pack push (directory archive, OCI push, or tag) failed",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4016",
+      "summary": "values: set on a pack without chart.yaml — values are helm values only; use packs[].extraManifests for raw resources",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4017",
+      "summary": "packs[].extraManifests is not valid multi-doc YAML",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4018",
+      "summary": "dependsOn names a pack not in this cube",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4019",
+      "summary": "pack dependency cycle (the message shows the path)",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4020",
+      "summary": "gateway pack cannot carry a dependsOn of its own",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-4021",
+      "summary": "packs[].valuesRef fetch failed, not a YAML mapping, or merge with inline values failed",
+      "range": "4xxx: pack"
+    },
+    {
+      "id": "CUBE-5001",
+      "summary": "embedded zot manifests invalid",
+      "range": "5xxx: registry"
+    },
+    {
+      "id": "CUBE-5002",
+      "summary": "port-forward to registry failed",
+      "range": "5xxx: registry"
+    },
+    {
+      "id": "CUBE-5003",
+      "summary": "OCI push (artifact staging or push) failed",
+      "range": "5xxx: registry"
+    },
+    {
+      "id": "CUBE-5004",
+      "summary": "remote digest resolution failed (upgrade --plan)",
+      "range": "5xxx: registry"
+    },
+    {
+      "id": "CUBE-5005",
+      "summary": "Gateway API HTTPRoute CRD not Established before the registry HTTPRoute apply",
+      "range": "5xxx: registry"
+    },
+    {
+      "id": "CUBE-6001",
+      "summary": "local CA creation/load failed",
+      "range": "6xxx: trust/hostname"
+    },
+    {
+      "id": "CUBE-6002",
+      "summary": "OS trust-store install failed",
+      "range": "6xxx: trust/hostname"
+    },
+    {
+      "id": "CUBE-6003",
+      "summary": "OS trust-store uninstall/revert failed",
+      "range": "6xxx: trust/hostname"
+    },
+    {
+      "id": "CUBE-6004",
+      "summary": "CoreDNS rewrite patch failed or did not roll out",
+      "range": "6xxx: trust/hostname"
+    },
+    {
+      "id": "CUBE-6005",
+      "summary": "server certificate issuance failed",
+      "range": "6xxx: trust/hostname"
+    },
+    {
+      "id": "CUBE-6006",
+      "summary": "trust state file corrupt",
+      "range": "6xxx: trust/hostname"
+    },
+    {
+      "id": "CUBE-7001",
+      "summary": "cube.lock missing, unreadable, or corrupt (vendor)",
+      "range": "70xx: vendor / air-gap bundle"
+    },
+    {
+      "id": "CUBE-7002",
+      "summary": "vendor: pull of a pinned pack/image, or writing the bundle itself, failed — produce side (vendor); the consume-side load is CUBE-7006 (bundle is complete-or-error, never partial)",
+      "range": "70xx: vendor / air-gap bundle"
+    },
+    {
+      "id": "CUBE-7003",
+      "summary": "vendor bundle is unreadable or corrupt (Open)",
+      "range": "70xx: vendor / air-gap bundle"
+    },
+    {
+      "id": "CUBE-7004",
+      "summary": "vendor bundle is missing or has corrupt content for a locked pack or image (Verify)",
+      "range": "70xx: vendor / air-gap bundle"
+    },
+    {
+      "id": "CUBE-7005",
+      "summary": "`up --bundle` needs a provider that node-loads images (kind/k3d); `existing` cannot",
+      "range": "70xx: vendor / air-gap bundle"
+    },
+    {
+      "id": "CUBE-7006",
+      "summary": "bundled image load into cluster nodes failed (kind/k3d LoadImages, consume side)",
+      "range": "70xx: vendor / air-gap bundle"
+    },
+    {
+      "id": "CUBE-7007",
+      "summary": "`up --bundle` with a remote values/tuning/config source — remote refs are not vendored, offline rails would be violated",
+      "range": "70xx: vendor / air-gap bundle"
+    },
+    {
+      "id": "CUBE-7101",
+      "summary": "unknown command and no cube-idp-\u003cname\u003e plugin found on PATH",
+      "range": "71xx: exec-plugin discovery"
+    },
+    {
+      "id": "CUBE-7102",
+      "summary": "plugin trust store (~/.config/cube-idp/trust.json) read/write/hash error",
+      "range": "71xx: exec-plugin discovery"
+    },
+    {
+      "id": "CUBE-7103",
+      "summary": "plugin process failed to start/run (not the plugin's own reported exit code)",
+      "range": "71xx: exec-plugin discovery"
+    },
+    {
+      "id": "CUBE-7104",
+      "summary": "plugin refused: unknown or changed sha256, and no interactive confirmation",
+      "range": "71xx: exec-plugin discovery"
+    },
+    {
+      "id": "CUBE-7105",
+      "summary": "plugin name fails the ^[a-z0-9][a-z0-9-]*$ charset guard on `plugin install`/`plugin trust`",
+      "range": "71xx: exec-plugin discovery"
+    },
+    {
+      "id": "CUBE-7106",
+      "summary": "the official plugin index has no build for this GOOS/GOARCH (`plugin install`)",
+      "range": "71xx: exec-plugin discovery"
+    },
+    {
+      "id": "CUBE-7201",
+      "summary": "sync dir has no pack.cue and no renderable *.yaml manifests",
+      "range": "72xx: sync"
+    },
+    {
+      "id": "CUBE-7202",
+      "summary": "`sync --watch` cannot start or attach the filesystem watcher",
+      "range": "72xx: sync"
+    },
+    {
+      "id": "CUBE-7301",
+      "summary": "gitea admin secret missing or port-forward to the gitea pod failed",
+      "range": "73xx: repo"
+    },
+    {
+      "id": "CUBE-7302",
+      "summary": "gitea REST API returned an unexpected status (create/fetch repo)",
+      "range": "73xx: repo"
+    },
+    {
+      "id": "CUBE-7303",
+      "summary": "repo created but engine git source registration/apply failed",
+      "range": "73xx: repo"
+    },
+    {
+      "id": "CUBE-7304",
+      "summary": "delivery: repo needs the gitea pack in spec.packs, and gitea itself cannot be repo-delivered",
+      "range": "73xx: repo"
+    },
+    {
+      "id": "CUBE-8001",
+      "summary": "spoke cluster.provider invalid for spokes (k3d deferred; existing needs context; duplicate name)",
+      "range": "8xxx: spoke"
+    },
+    {
+      "id": "CUBE-8002",
+      "summary": "spoke RBAC bootstrap apply failed",
+      "range": "8xxx: spoke"
+    },
+    {
+      "id": "CUBE-8003",
+      "summary": "spoke ServiceAccount token issuance failed",
+      "range": "8xxx: spoke"
+    },
+    {
+      "id": "CUBE-8004",
+      "summary": "spoke cluster create/connect failed",
+      "range": "8xxx: spoke"
+    },
+    {
+      "id": "CUBE-8005",
+      "summary": "hub registration secret build/apply failed",
+      "range": "8xxx: spoke"
+    },
+    {
+      "id": "CUBE-8006",
+      "summary": "spoke hub registration missing, or spoke API server unreachable from this machine",
+      "range": "8xxx: spoke"
+    }
+  ],
+  "configSchema": [
+    {
+      "path": "apiVersion",
+      "type": "string",
+      "tag": "apiVersion"
+    },
+    {
+      "path": "kind",
+      "type": "string",
+      "tag": "kind"
+    },
+    {
+      "path": "metadata",
+      "type": "config.Metadata",
+      "tag": "metadata"
+    },
+    {
+      "path": "metadata.name",
+      "type": "string",
+      "tag": "name"
+    },
+    {
+      "path": "spec",
+      "type": "config.Spec",
+      "tag": "spec"
+    },
+    {
+      "path": "spec.cluster",
+      "type": "config.ClusterSpec",
+      "tag": "cluster"
+    },
+    {
+      "path": "spec.cluster.provider",
+      "type": "string",
+      "tag": "provider"
+    },
+    {
+      "path": "spec.cluster.context",
+      "type": "string",
+      "tag": "context"
+    },
+    {
+      "path": "spec.cluster.kubernetesVersion",
+      "type": "string",
+      "tag": "kubernetesVersion"
+    },
+    {
+      "path": "spec.cluster.extraPorts",
+      "type": "[]config.PortMapping",
+      "tag": "extraPorts"
+    },
+    {
+      "path": "spec.cluster.extraPorts.hostPort",
+      "type": "int32",
+      "tag": "hostPort"
+    },
+    {
+      "path": "spec.cluster.extraPorts.nodePort",
+      "type": "int32",
+      "tag": "nodePort"
+    },
+    {
+      "path": "spec.cluster.registry",
+      "type": "config.RegistrySpec",
+      "tag": "registry"
+    },
+    {
+      "path": "spec.cluster.registry.mirrors",
+      "type": "map[string]string",
+      "tag": "mirrors"
+    },
+    {
+      "path": "spec.cluster.registry.insecure",
+      "type": "[]string",
+      "tag": "insecure"
+    },
+    {
+      "path": "spec.cluster.mounts",
+      "type": "[]config.Mount",
+      "tag": "mounts"
+    },
+    {
+      "path": "spec.cluster.mounts.hostPath",
+      "type": "string",
+      "tag": "hostPath"
+    },
+    {
+      "path": "spec.cluster.mounts.nodePath",
+      "type": "string",
+      "tag": "nodePath"
+    },
+    {
+      "path": "spec.cluster.providerConfigRef",
+      "type": "string",
+      "tag": "providerConfigRef"
+    },
+    {
+      "path": "spec.cluster.forProvider",
+      "type": "map[string]interface {}",
+      "tag": "forProvider"
+    },
+    {
+      "path": "spec.engine",
+      "type": "config.EngineSpec",
+      "tag": "engine"
+    },
+    {
+      "path": "spec.engine.type",
+      "type": "string",
+      "tag": "type"
+    },
+    {
+      "path": "spec.engine.ref",
+      "type": "string",
+      "tag": "ref"
+    },
+    {
+      "path": "spec.engine.values",
+      "type": "map[string]interface {}",
+      "tag": "values"
+    },
+    {
+      "path": "spec.engine.selfManage",
+      "type": "bool",
+      "tag": "selfManage"
+    },
+    {
+      "path": "spec.gateway",
+      "type": "config.GatewaySpec",
+      "tag": "gateway"
+    },
+    {
+      "path": "spec.gateway.pack",
+      "type": "string",
+      "tag": "pack"
+    },
+    {
+      "path": "spec.gateway.host",
+      "type": "string",
+      "tag": "host"
+    },
+    {
+      "path": "spec.gateway.port",
+      "type": "int",
+      "tag": "port"
+    },
+    {
+      "path": "spec.gateway.httpPort",
+      "type": "int",
+      "tag": "httpPort"
+    },
+    {
+      "path": "spec.gateway.ref",
+      "type": "string",
+      "tag": "ref"
+    },
+    {
+      "path": "spec.packs",
+      "type": "[]config.PackRef",
+      "tag": "packs"
+    },
+    {
+      "path": "spec.packs.ref",
+      "type": "string",
+      "tag": "ref"
+    },
+    {
+      "path": "spec.packs.valuesRef",
+      "type": "string",
+      "tag": "valuesRef"
+    },
+    {
+      "path": "spec.packs.values",
+      "type": "map[string]interface {}",
+      "tag": "values"
+    },
+    {
+      "path": "spec.packs.extraManifests",
+      "type": "string",
+      "tag": "extraManifests"
+    },
+    {
+      "path": "spec.packs.delivery",
+      "type": "string",
+      "tag": "delivery"
+    },
+    {
+      "path": "spec.packs.dependsOn",
+      "type": "[]string",
+      "tag": "dependsOn"
+    },
+    {
+      "path": "spec.spokes",
+      "type": "[]config.SpokeSpec",
+      "tag": "spokes"
+    },
+    {
+      "path": "spec.spokes.name",
+      "type": "string",
+      "tag": "name"
+    },
+    {
+      "path": "spec.spokes.cluster",
+      "type": "config.ClusterSpec",
+      "tag": "cluster"
+    },
+    {
+      "path": "spec.spokes.cluster.provider",
+      "type": "string",
+      "tag": "provider"
+    },
+    {
+      "path": "spec.spokes.cluster.context",
+      "type": "string",
+      "tag": "context"
+    },
+    {
+      "path": "spec.spokes.cluster.kubernetesVersion",
+      "type": "string",
+      "tag": "kubernetesVersion"
+    },
+    {
+      "path": "spec.spokes.cluster.extraPorts",
+      "type": "[]config.PortMapping",
+      "tag": "extraPorts"
+    },
+    {
+      "path": "spec.spokes.cluster.extraPorts.hostPort",
+      "type": "int32",
+      "tag": "hostPort"
+    },
+    {
+      "path": "spec.spokes.cluster.extraPorts.nodePort",
+      "type": "int32",
+      "tag": "nodePort"
+    },
+    {
+      "path": "spec.spokes.cluster.registry",
+      "type": "config.RegistrySpec",
+      "tag": "registry"
+    },
+    {
+      "path": "spec.spokes.cluster.registry.mirrors",
+      "type": "map[string]string",
+      "tag": "mirrors"
+    },
+    {
+      "path": "spec.spokes.cluster.registry.insecure",
+      "type": "[]string",
+      "tag": "insecure"
+    },
+    {
+      "path": "spec.spokes.cluster.mounts",
+      "type": "[]config.Mount",
+      "tag": "mounts"
+    },
+    {
+      "path": "spec.spokes.cluster.mounts.hostPath",
+      "type": "string",
+      "tag": "hostPath"
+    },
+    {
+      "path": "spec.spokes.cluster.mounts.nodePath",
+      "type": "string",
+      "tag": "nodePath"
+    },
+    {
+      "path": "spec.spokes.cluster.providerConfigRef",
+      "type": "string",
+      "tag": "providerConfigRef"
+    },
+    {
+      "path": "spec.spokes.cluster.forProvider",
+      "type": "map[string]interface {}",
+      "tag": "forProvider"
+    }
+  ],
+  "packContract": [
+    {
+      "path": "Name",
+      "type": "string"
+    },
+    {
+      "path": "Version",
+      "type": "string"
+    },
+    {
+      "path": "Dir",
+      "type": "string"
+    },
+    {
+      "path": "Description",
+      "type": "string"
+    },
+    {
+      "path": "Pinned",
+      "type": "string"
+    },
+    {
+      "path": "Expose",
+      "type": "*pack.Expose"
+    },
+    {
+      "path": "Expose.URLs",
+      "type": "[]string"
+    },
+    {
+      "path": "Expose.AuthSecretRef",
+      "type": "*pack.SecretRef"
+    },
+    {
+      "path": "Expose.AuthSecretRef.Namespace",
+      "type": "string"
+    },
+    {
+      "path": "Expose.AuthSecretRef.Name",
+      "type": "string"
+    },
+    {
+      "path": "Expose.ImpliedFields",
+      "type": "map[string]string"
+    },
+    {
+      "path": "Images",
+      "type": "[]string"
+    },
+    {
+      "path": "GatewayService",
+      "type": "*pack.GatewayService"
+    },
+    {
+      "path": "GatewayService.Name",
+      "type": "string"
+    },
+    {
+      "path": "GatewayService.Namespace",
+      "type": "string"
+    },
+    {
+      "path": "DependsOn",
+      "type": "[]string"
+    }
+  ],
+  "exitContract": {
+    "diagnostic_error": "1 (rendered)",
+    "exit_sentinel": "N (unrendered; diff/doctor/upgrade drift signals)",
+    "plugin_exit_error": "N (unrendered; plugin's own code propagates verbatim)",
+    "success": "0"
+  },
+  "outputSchemas": {
+    "jsonAccess": [
+      {
+        "path": "packs",
+        "type": "[]render.jsonPack",
+        "tag": "packs"
+      },
+      {
+        "path": "packs.name",
+        "type": "string",
+        "tag": "name"
+      },
+      {
+        "path": "packs.urls",
+        "type": "[]string",
+        "tag": "urls"
+      },
+      {
+        "path": "hint",
+        "type": "string",
+        "tag": "hint"
+      }
+    ],
+    "jsonComponent": [
+      {
+        "path": "name",
+        "type": "string",
+        "tag": "name"
+      },
+      {
+        "path": "ready",
+        "type": "bool",
+        "tag": "ready"
+      },
+      {
+        "path": "message",
+        "type": "string",
+        "tag": "message"
+      }
+    ],
+    "jsonDiagnosis": [
+      {
+        "path": "code",
+        "type": "string",
+        "tag": "code"
+      },
+      {
+        "path": "summary",
+        "type": "string",
+        "tag": "summary"
+      },
+      {
+        "path": "cause",
+        "type": "string",
+        "tag": "cause"
+      },
+      {
+        "path": "remediation",
+        "type": "string",
+        "tag": "remediation"
+      },
+      {
+        "path": "raw",
+        "type": "string",
+        "tag": "raw"
+      }
+    ],
+    "jsonEpilogue": [
+      {
+        "path": "cube",
+        "type": "string",
+        "tag": "cube"
+      },
+      {
+        "path": "gateway_url",
+        "type": "string",
+        "tag": "gateway_url"
+      },
+      {
+        "path": "context",
+        "type": "string",
+        "tag": "context"
+      },
+      {
+        "path": "registry",
+        "type": "string",
+        "tag": "registry"
+      },
+      {
+        "path": "hint",
+        "type": "string",
+        "tag": "hint"
+      }
+    ],
+    "jsonHead": [
+      {
+        "path": "v",
+        "type": "int",
+        "tag": "v"
+      },
+      {
+        "path": "ts",
+        "type": "string",
+        "tag": "ts"
+      },
+      {
+        "path": "type",
+        "type": "string",
+        "tag": "type"
+      }
+    ],
+    "jsonHealthTick": [
+      {
+        "path": "components",
+        "type": "[]render.jsonComponent",
+        "tag": "components"
+      },
+      {
+        "path": "components.name",
+        "type": "string",
+        "tag": "name"
+      },
+      {
+        "path": "components.ready",
+        "type": "bool",
+        "tag": "ready"
+      },
+      {
+        "path": "components.message",
+        "type": "string",
+        "tag": "message"
+      }
+    ],
+    "jsonMsg": [
+      {
+        "path": "msg",
+        "type": "string",
+        "tag": "msg"
+      }
+    ],
+    "jsonPack": [
+      {
+        "path": "name",
+        "type": "string",
+        "tag": "name"
+      },
+      {
+        "path": "urls",
+        "type": "[]string",
+        "tag": "urls"
+      }
+    ],
+    "jsonRunDone": [
+      {
+        "path": "ok",
+        "type": "bool",
+        "tag": "ok"
+      },
+      {
+        "path": "dur_ms",
+        "type": "int64",
+        "tag": "dur_ms"
+      }
+    ],
+    "jsonRunStarted": [
+      {
+        "path": "cmd",
+        "type": "string",
+        "tag": "cmd"
+      },
+      {
+        "path": "cube",
+        "type": "string",
+        "tag": "cube"
+      }
+    ],
+    "jsonStep": [
+      {
+        "path": "stage",
+        "type": "string",
+        "tag": "stage"
+      },
+      {
+        "path": "msg",
+        "type": "string",
+        "tag": "msg"
+      },
+      {
+        "path": "dur_ms",
+        "type": "int64",
+        "tag": "dur_ms"
+      },
+      {
+        "path": "idx",
+        "type": "int",
+        "tag": "idx"
+      },
+      {
+        "path": "of",
+        "type": "int",
+        "tag": "of"
+      }
+    ],
+    "jsonStepFailed": [
+      {
+        "path": "stage",
+        "type": "string",
+        "tag": "stage"
+      },
+      {
+        "path": "msg",
+        "type": "string",
+        "tag": "msg"
+      },
+      {
+        "path": "dur_ms",
+        "type": "int64",
+        "tag": "dur_ms"
+      }
+    ]
+  }
+}

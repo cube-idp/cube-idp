@@ -24,7 +24,7 @@ import (
 
 // Load resolves pathOrRef to a validated *config.Cube. Remote loads carry a
 // remote Origin (ref + fetched pin) so callers can print the provenance
-// line and relocate cube.lock to the working directory (spec §7.3).
+// line and relocate cube.lock to the working directory.
 func Load(ctx context.Context, pathOrRef string) (*config.Cube, error) {
 	if _, err := os.Stat(pathOrRef); err == nil {
 		return config.Load(pathOrRef)

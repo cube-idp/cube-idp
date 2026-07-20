@@ -258,11 +258,10 @@ func TestPluginInstallWithoutIndexReportsCUBE7102(t *testing.T) {
 	}
 }
 
-// TestPluginInstallNotePlainByteStable is Step 5.3's golden for `plugin
-// install`'s success line (G7's pinned bytes, "%s plugin %q installed and
+// TestPluginInstallNotePlainByteStable is the golden for `plugin
+// install`'s success line (pinned bytes, "%s plugin %q installed and
 // trusted\n"): a full success run needs a sha256-pinned git index fixture
-// (internal/plugin/index_test.go's setup, not duplicated at the cmd level —
-// no cmd-level install-success test existed pre-R3 per Step 0's inventory),
+// (internal/plugin/index_test.go's setup, not duplicated at the cmd level),
 // so this isolates the con.Note call shape cmd/plugin.go's install RunE
 // uses on the recorded-slice pattern (14b precedent), through the real
 // ui.RunPipeline plain projection.

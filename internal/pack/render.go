@@ -16,19 +16,20 @@ import (
 // filename order, for deterministic output) plus a client-side helm render
 // of chart.yaml, if present. It is RenderFor with a zero
 // config.GatewaySpec{}, which performs no ${GATEWAY_HOST}/${GATEWAY_FQDN}
-// substitution — existing callers/tests see byte-identical output to
-// before D15.
+// substitution, leaving output byte-identical for callers that have no
+// gateway context.
 func (p *Pack) Render(values map[string]any) (*Rendered, error) {
 	return p.RenderFor(values, config.GatewaySpec{})
 }
 
-// RenderFor is Render plus the D15 gateway substitution (spec D15, Owner
-// Decisions #11): every string leaf in the chart values (pack defaults from
+// RenderFor is Render plus the gateway token substitution (ADR-0039):
+// every string leaf in the chart values (pack defaults from
 // chart.yaml merged with the caller's values, override winning) and every
 // manifests/*.yaml file's raw bytes get ${GATEWAY_HOST} -> gw's host[:port],
 // ${GATEWAY_FQDN} -> gw's bare host, and ${GATEWAY_PACK} -> gw's pack name
-// (also its namespace, for F9 HTTPRoute parentRefs) (see substitute in
-// expose.go — the replacements ExposeURLs already applies to expose.urls). A zero
+// (also its namespace, which HTTPRoute parentRefs must target) — see
+// substitute in expose.go, the same replacements ExposeURLs applies to
+// expose.urls. A zero
 // gw (Host == "") performs no substitution, so Render(values) — which calls
 // this with config.GatewaySpec{} — is unaffected.
 func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendered, error) {
@@ -41,7 +42,7 @@ func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendere
 	// Render precedence: if kustomization.yaml exists at the pack root, it
 	// is the sole source of raw manifests and governs manifests/ entirely
 	// (as `resources:`) — manifests/ is never walked independently, to
-	// avoid double-rendering the same objects. Otherwise the Phase 1
+	// avoid double-rendering the same objects. Otherwise the original
 	// behavior (walk manifests/*.yaml directly) is unchanged. chart.yaml
 	// helm rendering below is orthogonal and appended in both cases.
 	manifestsDir := filepath.Join(p.Dir, "manifests")
@@ -76,7 +77,7 @@ func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendere
 			if err != nil {
 				return nil, diag.Wrap(err, diag.CodePackManifestErr, "cannot read pack manifest "+e.Name(), "check file permissions")
 			}
-			// D15: substitute before parsing, on the raw bytes — a plain
+			// Substitute before parsing, on the raw bytes — a plain
 			// text replacement over the manifest source, same as
 			// ExposeURLs does for expose.urls, rather than a structural
 			// walk over the parsed objects.
@@ -105,7 +106,7 @@ func (p *Pack) RenderFor(values map[string]any, gw config.GatewaySpec) (*Rendere
 	return r, nil
 }
 
-// HasChart reports whether the pack carries a chart.yaml — the GT15 stone
+// HasChart reports whether the pack carries a chart.yaml — the values
 // guard: values: are helm values, so only chart-bearing packs may take
 // them. A stat error other than not-exist reads as "no chart" here; the
 // render path itself (RenderFor's chart.yaml stat) still surfaces such
@@ -115,8 +116,8 @@ func (p *Pack) HasChart() bool {
 	return err == nil
 }
 
-// RenderWith is RenderFor plus the GT15 values stone (spec decision 11,
-// Phase 5 U4): non-empty values on a pack without chart.yaml is a typed
+// RenderWith is RenderFor plus the values rule:
+// non-empty values on a pack without chart.yaml is a typed
 // CUBE-4016 error — `values:` means helm values, only, always, and the
 // check can only happen at render time because the pack layout is
 // unknowable until the ref is fetched. extraManifests is the uniform
@@ -129,7 +130,7 @@ func (p *Pack) HasChart() bool {
 func (p *Pack) RenderWith(values map[string]any, extraManifests string, gw config.GatewaySpec) (*Rendered, error) {
 	if len(values) > 0 && !p.HasChart() {
 		return nil, diag.New(diag.CodePackValuesChartless,
-			fmt.Sprintf("pack %s has no chart.yaml — values: are helm values only (GT15)", p.Name),
+			fmt.Sprintf("pack %s has no chart.yaml — values: are helm values only", p.Name),
 			"use extraManifests to add raw resources, or remove values")
 	}
 	r, err := p.RenderFor(values, gw)

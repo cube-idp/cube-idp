@@ -50,7 +50,7 @@ func TestScrollbackLineContentIdentical(t *testing.T) {
 		t.Fatalf("Dur==0 must not print a duration: %q", instant)
 	}
 
-	// TE-2.1: a failed step is never a naked ✗ again — an empty Msg falls
+	// A failed step is never a naked ✗ — an empty Msg falls
 	// back to the word "failed".
 	failed := strings.Join(sb.lines(event.StepFailed{Stage: "engine"}), "\n")
 	for _, want := range []string{"✗", "[engine]", "failed"} {
@@ -59,14 +59,14 @@ func TestScrollbackLineContentIdentical(t *testing.T) {
 		}
 	}
 
-	// R2: the epilogue no longer travels as a Note — this sample is just a
+	// The epilogue no longer travels as a Note — this sample is just a
 	// neutral passthrough line (glyph-free, like all Note content now).
 	const noteMsg = "\ncube \"dev\" is up — https://cube.local:8443\n  credentials: cube-idp get secrets"
 	if got := sb.lines(event.Note{Msg: noteMsg}); len(got) != 1 || got[0] != noteMsg {
 		t.Fatalf("Note must pass through verbatim:\ngot:  %q\nwant: %q", got, noteMsg)
 	}
 
-	// TE-4 block: renderer-supplied ✔ headline, key-value rows, next: hint.
+	// Epilogue block: renderer-supplied ✔ headline, key-value rows, next: hint.
 	epi := strings.Join(sb.lines(event.Epilogue{Cube: "dev", GatewayURL: "https://cube.local:8443",
 		Hint: "credentials: cube-idp get secrets"}), "\n")
 	for _, want := range []string{"✔", `cube "dev" is up`, "gateway", "https://cube.local:8443",
@@ -98,7 +98,7 @@ func TestScrollbackLineContentIdentical(t *testing.T) {
 // scrollback — the Diagnosis in particular renders AFTER program exit via
 // main.go's ui.RenderError, never here (diagnosis-last, §5.2). RunDone left
 // this set in T05: after a RunStarted it prints the run summary line
-// (spec WP3); without one (config.Load failed) it stays silent.
+// without one (config.Load failed) it stays silent.
 func TestScrollbackSilentEvents(t *testing.T) {
 	sb := newScrollback(theme.New(true))
 	silent := []event.Event{
@@ -134,7 +134,7 @@ func apply(t *testing.T, m liveModel, evs ...event.Event) liveModel {
 // TestLiveRegionLifecycle drives the model event-by-event and asserts the
 // managed region's state: spinner lines appear per open step and vanish on
 // resolution; the health table persists from its first HealthTick until
-// RunDone (spec WP3 — closing the health stage no longer drops it);
+// RunDone (closing the health stage no longer drops it);
 // RunDone collapses the region to zero lines.
 func TestLiveRegionLifecycle(t *testing.T) {
 	m := newLiveModel(func() {})
@@ -170,7 +170,7 @@ func TestLiveRegionLifecycle(t *testing.T) {
 
 	m = apply(t, m, event.StepDone{Stage: "health", Msg: "2 component(s) ready"})
 	if v := m.View().Content; !strings.Contains(v, "cube-idp-traefik") {
-		t.Fatalf("health snapshot must persist after its stage closes (spec WP3): %q", v)
+		t.Fatalf("health snapshot must persist after its stage closes: %q", v)
 	}
 
 	m = apply(t, m, event.RunDone{OK: true, Dur: time.Minute})
@@ -215,7 +215,7 @@ func TestLiveCtrlCCancelsWithoutQuitting(t *testing.T) {
 	}
 }
 
-// te1Sequence is the canonical up run behind the TE-1 frame (spec §2):
+// te1Sequence is the canonical up run behind the live step-tree frame:
 // four completed steps, then the enumerated packs step in flight with two
 // captured log lines. Every «dynamic» span is the fixed value below.
 func te1Sequence() []event.Event {
@@ -231,7 +231,7 @@ func te1Sequence() []event.Event {
 	}
 }
 
-// TestTE1_UpLiveFrame is spec §6.1's TE-1 golden: scrollback lines plus the
+// TestTE1_UpLiveFrame is the live-mode golden: scrollback lines plus the
 // managed region for the canonical up sequence, ANSI-stripped, against
 // testdata/te1_scrollback.golden. The golden IS the frame.
 func TestTE1_UpLiveFrame(t *testing.T) {
@@ -244,11 +244,11 @@ func TestTE1_UpLiveFrame(t *testing.T) {
 
 	got := stripANSI(strings.Join(scroll, "\n") + "\n" + m.View().Content + "\n")
 	if want := readGolden(t, "te1_scrollback.golden"); got != want {
-		t.Fatalf("TE-1 frame drifted:\ngot:\n%s\nwant:\n%s\ngot bytes: %q", got, want, got)
+		t.Fatalf("up live frame drifted from golden:\ngot:\n%s\nwant:\n%s\ngot bytes: %q", got, want, got)
 	}
 }
 
-// TestTE1_TailBounded pins TE-1.4's window: seven StepLogs for the open
+// TestTE1_TailBounded pins the bounded tail window: seven StepLogs for the open
 // stage leave exactly the LAST five lines in the region.
 func TestTE1_TailBounded(t *testing.T) {
 	m := newLiveModel(func() {})
@@ -273,7 +273,7 @@ func TestTE1_TailBounded(t *testing.T) {
 	}
 }
 
-// TestTE1_DurationColumn pins TE-1.1's right-aligned duration column:
+// TestTE1_DurationColumn pins the right-aligned duration column:
 // durations of differently-sized messages start at the same x-position.
 func TestTE1_DurationColumn(t *testing.T) {
 	sb := newScrollback(theme.New(true))
@@ -294,7 +294,7 @@ func TestTE1_DurationColumn(t *testing.T) {
 	}
 }
 
-// TestTE2_StepFailedCarriesMsgDur pins TE-2.1: the ✗ line always carries a
+// TestTE2_StepFailedCarriesMsgDur pins the failure-line contract: the ✗ line always carries a
 // message and duration — an empty Msg becomes "failed", never a naked ✗.
 func TestTE2_StepFailedCarriesMsgDur(t *testing.T) {
 	sb := newScrollback(theme.New(true))
@@ -305,7 +305,7 @@ func TestTE2_StepFailedCarriesMsgDur(t *testing.T) {
 	plain := stripANSI(line)
 	for _, want := range []string{"✗", "[packs]", "gitea@0.1.0 pull failed", "(4s)"} {
 		if !strings.Contains(plain, want) {
-			t.Fatalf("TE-2.1 line missing %q: %q", want, plain)
+			t.Fatalf("step-failed line missing %q: %q", want, plain)
 		}
 	}
 	if empty := stripANSI(sb.stepFailedLine(event.StepFailed{Stage: "packs"})); !strings.Contains(empty, "failed") {
@@ -313,7 +313,7 @@ func TestTE2_StepFailedCarriesMsgDur(t *testing.T) {
 	}
 }
 
-// TestTE2_FailureFlushesTail is spec §6.1's TE-2.2 golden: the failed
+// TestTE2_FailureFlushesTail is the recorded failure frame: the failed
 // stage's full captured tail flushes to scrollback beneath the ✗ line —
 // before the diagnosis box, which renders after program exit.
 func TestTE2_FailureFlushesTail(t *testing.T) {
@@ -328,14 +328,14 @@ func TestTE2_FailureFlushesTail(t *testing.T) {
 		t.Fatalf("failure must flush ✗ line then the buffered tail in order, got %q", got)
 	}
 	if plain := stripANSI(strings.Join(got, "\n") + "\n"); plain != readGolden(t, "te2_failure.golden") {
-		t.Fatalf("TE-2 frame drifted:\ngot:\n%s\ngot bytes: %q", plain, plain)
+		t.Fatalf("failure frame drifted from golden:\ngot:\n%s\ngot bytes: %q", plain, plain)
 	}
 	if again := sb.lines(event.StepFailed{Stage: "packs", Msg: "x", Dur: time.Second}); len(again) != 1 {
 		t.Fatalf("the tail must be consumed by the flush, got %q", again)
 	}
 }
 
-// TestTE4_EpilogueGolden is spec §6.1's TE-4 golden: the structured
+// TestTE4_EpilogueGolden is the recorded success-epilogue frame: the structured
 // Epilogue renders the headline + key-value rows + next-hint, and RunDone
 // follows with the run summary carrying the total duration.
 func TestTE4_EpilogueGolden(t *testing.T) {
@@ -351,6 +351,6 @@ func TestTE4_EpilogueGolden(t *testing.T) {
 		event.RunDone{OK: true, Dur: 2*time.Minute + 13*time.Second},
 	), "\n") + "\n")
 	if want := readGolden(t, "te4_epilogue.golden"); got != want {
-		t.Fatalf("TE-4 frame drifted:\ngot:\n%s\nwant:\n%s\ngot bytes: %q", got, want, got)
+		t.Fatalf("epilogue frame drifted from golden:\ngot:\n%s\nwant:\n%s\ngot bytes: %q", got, want, got)
 	}
 }

@@ -59,13 +59,13 @@ func filterCLISecrets(secrets []corev1.Secret, packFilter string) []secretRow {
 	return rows
 }
 
-// packListGVK identifies the D11 Pack CRD's list kind (internal/pack's
+// packListGVK identifies the Pack CRD's list kind (internal/pack's
 // discoverability record). get secrets lists it unstructured so this
 // read-only command never has to import internal/pack, which would drag in
 // the fetch/render machinery it has no need of.
 var packListGVK = schema.GroupVersionKind{Group: "cube-idp.dev", Version: "v1alpha1", Kind: "PackList"}
 
-// packSecretRows is the D11 primary path: list Pack records and, for every
+// packSecretRows is the primary path: list Pack records and, for every
 // pack whose spec.authSecretRef is set, follow it to the referenced Secret,
 // merging spec.impliedFields underneath the secret's own keys (the secret's
 // own keys win on conflict — impliedFields only fills in what the secret
@@ -88,7 +88,7 @@ func packSecretRows(ctx context.Context, c client.Client, packFilter string) (ro
 		ns, nsOK, _ := unstructured.NestedString(item.Object, "spec", "authSecretRef", "namespace")
 		secName, nameOK, _ := unstructured.NestedString(item.Object, "spec", "authSecretRef", "name")
 		if !nsOK || !nameOK || ns == "" || secName == "" {
-			continue // D11: nil authSecretRef means the pack exposes no credential
+			continue // nil authSecretRef means the pack exposes no credential
 		}
 		covered[name] = true
 		var sec corev1.Secret
@@ -118,7 +118,8 @@ func packSecretRows(ctx context.Context, c client.Client, packFilter string) (ro
 	return rows, covered, nil
 }
 
-// legacyDeprecationNote is the D11 grace-period message: the phase-1 label
+// legacyDeprecationNote is the grace-period message for the Pack-record
+// migration: the older label
 // convention (cube-idp.dev/cli-secret + cube-idp.dev/pack-name) is honored
 // one more release for packs that haven't declared expose.authSecretRef yet.
 func legacyDeprecationNote(pack string) string {
@@ -126,7 +127,7 @@ func legacyDeprecationNote(pack string) string {
 		pack, cliSecretLabel, packNameLabel)
 }
 
-// secretsForDisplay is the D11 `get secrets` pivot: Pack -> authSecretRef ->
+// secretsForDisplay is the `get secrets` pivot (ADR-0036): Pack -> authSecretRef ->
 // Secret is primary; any pack not resolved that way falls back to the
 // legacy cli-secret label convention, prefixed with a deprecation note per
 // pack found only there.
@@ -204,7 +205,7 @@ func newGetCmd() *cobra.Command {
 			p := ui.NewFor(out)
 			for _, n := range notes {
 				// ModePlain: exactly fmt.Fprintln(out, n), unchanged from
-				// before Task 15.3. ModeStyled: prefixed with the amber
+				// before the one-visual-language sweep. ModeStyled: prefixed with the amber
 				// warning glyph — the same unification doctor/status use.
 				p.Warn("%s", n)
 			}
@@ -218,7 +219,8 @@ func newGetCmd() *cobra.Command {
 	return get
 }
 
-// secretsDoc is the gh-style `get secrets` document (design doc §10): the
+// secretsDoc is the gh-style `get secrets` document: on a request/response
+// command ModeJSON emits one final object rather than an event stream — the
 // secret rows with their flattened fields, plus any legacy-label deprecation
 // notes surfaced as data rather than warning lines.
 type secretsDoc struct {

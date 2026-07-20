@@ -1,5 +1,5 @@
 // Package render holds the three renderers of the cube-idp event stream
-// (design doc 2026-07-14 §5): Plain (the byte-frozen phase-1 projection),
+// see ADR-0025: Plain (the byte-frozen projection of the pre-event-stream
 // JSON (one event per line, {"v":1,...}), and Live (Bubble Tea v2 inline).
 // Renderers project events; they never invent content.
 package render
@@ -18,27 +18,28 @@ import (
 //
 // The one deliberate new projection is Access (§9): previously a styled-only
 // block, now stable plain lines — "what URLs did I just get" is exactly what
-// scripts and CI want to scrape. The epilogue's one-glyph change (ratified
-// R2) and the StepStarted start line (ratified R1) are the other sanctioned
-// deltas (TUI design doc §5).
+// scripts and CI want to scrape. The epilogue's one-glyph change (the ✔
+// moved from content to presentation) and the StepStarted start line are the
+// other sanctioned deltas; those three are the only drifts from the frozen
+// bytes. See docs/adr/0024-plain-output-byte-freeze.md.
 func Plain(w io.Writer) func(event.Event) {
 	return func(ev event.Event) {
 		switch e := ev.(type) {
 		case event.StepStarted:
-			// R1 (ratified, TUI design doc §5): a started step prints a
+			// Sanctioned drift from the frozen bytes: a started step prints a
 			// start line so CI logs distinguish hung from slow (audit P12).
 			fmt.Fprintf(w, "▸ [%s] %s...\n", e.Stage, e.Msg)
 		case event.StepDone:
-			// Printer.Step's ModePlain branch — the phase-1 checkpoint-0.13
+			// Printer.Step's ModePlain branch — the original pre-event-stream
 			// format, byte-for-byte. Dur is NEVER printed in plain mode.
 			fmt.Fprintf(w, "▸ [%s] %s\n", e.Stage, e.Msg)
 		case event.Note:
 			fmt.Fprintln(w, e.Msg)
 		case event.Epilogue:
-			// R2 (ratified, design doc §5): the epilogue is data — plain
+			// Sanctioned drift from the frozen bytes: the epilogue is data — plain
 			// projects it WITHOUT the ✔ glyph (presentation belongs to the
 			// styled/live renderers). These bytes are frozen; Context and
-			// Registry never print here (TE-4.4 keeps plain minimal).
+			// Registry never print here — the rich epilogue rows are styled/live
 			fmt.Fprintf(w, "\ncube %q is up — %s\n  %s\n", e.Cube, e.GatewayURL, e.Hint)
 		case event.Warn:
 			fmt.Fprintln(w, e.Msg)

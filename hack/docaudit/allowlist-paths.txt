@@ -1,0 +1,11 @@
+# hack/docaudit/allowlist-paths.txt — path regexes exempt from pattern scan
+^docs/superpowers/
+^docs/archive/
+^docs/adr/
+^hack/docaudit/
+^hack/truth-index\.json$
+^CHANGELOG\.md$
+/testdata/
+^package-lock\.json$
+\.git/
+node_modules/

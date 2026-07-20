@@ -20,7 +20,8 @@ const (
 )
 
 // EnsureCoreDNSRewrite makes *.<host> resolve to the gateway Service inside
-// the cluster (D6 canonical hostname). Idempotent; replaces its own block on
+// the cluster, so the canonical hostname resolves identically from the host and
+// from inside the cluster (see ADR-0012). Idempotent; replaces its own block on
 // host change; restarts CoreDNS and waits (deadline-bound) for the rollout.
 func EnsureCoreDNSRewrite(ctx context.Context, c client.Client, host, targetFQDN string, timeout time.Duration) error {
 	block := fmt.Sprintf("%s\n    rewrite stop {\n        name regex (.*)\\.%s %s\n        answer auto\n    }\n%s",

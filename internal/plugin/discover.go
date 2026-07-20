@@ -1,4 +1,5 @@
-// Package plugin implements cube-idp's tier-2 extensibility (spec §4.4): any
+// Package plugin implements cube-idp's second extensibility tier — exec
+// plugins, below data-only packs and above in-tree Go interfaces: any
 // cube-idp-<name> binary on $PATH or in InstallDir() is discoverable as
 // `cube-idp <name>` — the krew model. Discovery never executes anything;
 // only Exec does, and only after the trust store (trust.go) approves.
@@ -17,7 +18,7 @@ import (
 // must follow: `cube-idp-<name>` becomes `cube-idp <name>`.
 const pluginPrefix = "cube-idp-"
 
-// InstallDir is Task 9's `plugin install` target and Lookup/List's second
+// InstallDir is `plugin install`'s target and Lookup/List's second
 // search location (after $PATH): $XDG_DATA_HOME/cube-idp/plugins, falling
 // back to ~/.local/share/cube-idp/plugins via os.UserHomeDir when
 // $XDG_DATA_HOME is unset.

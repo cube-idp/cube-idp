@@ -3,13 +3,13 @@ package pack
 // renderHelm is the ONLY file in internal/pack that imports the Helm SDK
 // (plan-header risk rule): a chart.yaml next to pack.cue is a reference to
 // a chart, rendered client-side with `helm template` semantics — no
-// cluster access, no install, no helm-controller in the loop (spec §4:
-// engines receive rendered manifests). It reads chart.yaml, pulls the
+// cluster access, no install, no helm-controller in the loop (engines
+// receive rendered manifests). It reads chart.yaml, pulls the
 // pinned chart, template-renders it with the pack's chart-level default
 // values merged UNDER the caller's (already CUE-validated) values, and
 // returns unstructured objects.
 //
-// Helm SDK version note (Task 13.5, 2026-07-14): ported from helm.sh/helm/v3
+// Helm SDK version note (2026-07-14): ported from helm.sh/helm/v3
 // to helm.sh/helm/v4 (v4.2.3). v4's action.Install replaces the v3
 // DryRun/ClientOnly bools with a single DryRunStrategy enum; the client-only,
 // no-cluster-access rendering path this file needs is action.DryRunClient
@@ -50,7 +50,7 @@ const defaultRenderKubeVersion = "v1.33.1"
 // Field tags are json (not yaml) because sigs.k8s.io/yaml converts the YAML
 // to JSON and then unmarshals with encoding/json, which honors json tags
 // only — yaml tags would work solely via encoding/json's case-insensitive
-// field-name fallback. Exported for the cnoe-compat loader (Task 13), which
+// field-name fallback. Exported for the cnoe-compat loader, which
 // builds a ChartRef straight from an Argo Application's helm source — this
 // file remains the only one importing the Helm SDK.
 type ChartRef struct {
@@ -64,9 +64,10 @@ type ChartRef struct {
 
 // RenderChart renders a chart reference exactly as a pack's chart.yaml would
 // be rendered. Exported for the cnoe-compat loader; helm.go remains the only
-// file importing the Helm SDK. cnoe-compat sources are out of D15's scope
-// (they carry no gw context), so this performs no gateway substitution — the
-// zero config.GatewaySpec{} is a no-op (see substitute in expose.go).
+// file importing the Helm SDK. cnoe-compat sources are out of scope for
+// gateway token substitution (they carry no gw context), so this performs
+// none — the zero config.GatewaySpec{} is a no-op (see substitute in
+// expose.go).
 func RenderChart(ref ChartRef, values map[string]any) ([]*unstructured.Unstructured, error) {
 	return renderChartRef(ref, values, config.GatewaySpec{})
 }
@@ -135,7 +136,7 @@ func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) 
 			"check chart repo/version in chart.yaml; try `helm template` manually")
 	}
 
-	// D15: substitute AFTER merging pack defaults (ref.Values) with the
+	// Substitute AFTER merging pack defaults (ref.Values) with the
 	// caller's values, so ${GATEWAY_HOST}/${GATEWAY_FQDN} tokens are
 	// resolved whichever side they came from before the chart template
 	// engine sees them.
@@ -213,7 +214,7 @@ func renderChartRef(ref ChartRef, values map[string]any, gw config.GatewaySpec) 
 }
 
 // helmSettings pins helm's repo cache/config under the cube-idp cache root
-// (spec §9.3, applies to ALL chart packs): hermetic renders, no
+// (applies to ALL chart packs): hermetic renders, no
 // interference with the operator's own helm state. Best-effort — on a
 // cache-dir failure helm's defaults still work.
 func helmSettings() *cli.EnvSettings {
@@ -386,7 +387,7 @@ func mergeValues(base, override map[string]any) map[string]any {
 	return out
 }
 
-// substituteValues returns a copy of v with the D15 gateway substitution
+// substituteValues returns a copy of v with the gateway token substitution
 // (substitute, in expose.go) applied to every string leaf, recursing
 // through nested maps and slices — the shapes CUE/YAML/JSON decoding
 // produces for chart values. Non-string, non-container leaves (numbers,

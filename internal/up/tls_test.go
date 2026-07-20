@@ -46,10 +46,11 @@ func TestGatewayTLSSecretShape(t *testing.T) {
 	}
 }
 
-// TestRunOrdersCABeforeCluster asserts the D12 ordering requirement ("cert
-// material is generated before cluster creation") without refactoring
+// TestRunOrdersCABeforeCluster asserts the ordering requirement that cert
+// material is generated before cluster creation (see
+// docs/adr/0038-local-ca-and-tls-at-the-gateway.md) without refactoring
 // Run's step sequence into a seam: Run has no test hook for its step order
-// (checkpoint 0.13's structure is a single linear function that writes
+// (Run is a single linear function that writes
 // "▸ [stage] ..." lines to out as it goes), so a full refactor into an
 // ordered []stepFn slice would be the invasive option the brief allows
 // falling back to only if no seam exists.
@@ -63,7 +64,7 @@ func TestGatewayTLSSecretShape(t *testing.T) {
 // error before ever printing the "cluster" step. So observing "▸ [ca]" in
 // the captured output AND the total absence of "▸ [cluster]" proves the CA
 // step executed strictly before the (failed) attempt to ensure the
-// cluster — exactly the ordering D12 requires — using only Run's existing,
+// cluster — exactly the ordering required — using only Run's existing,
 // unmodified public entry point.
 func TestRunOrdersCABeforeCluster(t *testing.T) {
 	// Isolate trust.Dir() (os.UserConfigDir(), which reads $HOME on this
@@ -105,7 +106,8 @@ spec:
 	if !strings.Contains(got, "▸ [ca]") {
 		t.Fatalf("ca step must run before cluster.Ensure is attempted; output:\n%s", got)
 	}
-	// R1 (TUI spec §5): the cluster stage now prints a "▸ [cluster] msg...\n"
+	// Because a started step must be visible in CI logs (so hung and slow are
+	// distinguishable), the cluster stage prints a "▸ [cluster] msg...\n"
 	// start line before Ensure runs, so its presence no longer disproves the
 	// ordering — what must stay absent is a cluster COMPLETION line (one
 	// without the "..." start suffix).

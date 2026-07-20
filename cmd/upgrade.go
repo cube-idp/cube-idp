@@ -27,7 +27,7 @@ func newUpgradeCmd() *cobra.Command {
 				return err
 			}
 			if changed {
-				// WP5: after the plan has reported drift on a real TTY,
+				// After the plan has reported drift on a real TTY,
 				// offer to apply it — the prompt runs BEFORE any pipeline
 				// (spec Decision 5) and never fires on non-TTY/plain runs,
 				// whose drift-exit semantics stay exactly as they were

@@ -1,5 +1,5 @@
 // Package doctor implements cube-idp's preflight and health diagnosis
-// (spec §4.1): runtime present, ports free, disk space, inotify limits,
+// runtime present, ports free, disk space, inotify limits,
 // git-CLI availability for git-sourced packs, plus the providers' Diagnose
 // and the engine's Health — every finding a typed CUBE code with a
 // remediation.
@@ -118,10 +118,11 @@ func CheckGitCLI(refs []string) *diag.Finding {
 
 // Render prints findings and reports whether any is an error. The ✔/✗/⚠
 // glyphs go through ui.Printer.Glyph so doctor, status, and get secrets
-// share one visual language (Task 15.3b) — in ModePlain (every existing
+// share one visual language — in ModePlain (every existing
 // test, since none writes to a real terminal) Glyph returns the same bare
 // character this function printed inline before, so the literal output is
-// byte-frozen (design doc §8 item 4). ModeStyled (a real terminal only)
+// byte-frozen: doctor.Render's plain bytes are a pinned contract
+// (docs/adr/0024-plain-output-byte-freeze.md). ModeStyled (a real terminal only)
 // gets the stage-B severity-grouped render (§10).
 func Render(out io.Writer, findings []diag.Finding) bool {
 	p := ui.NewFor(out)
@@ -153,7 +154,7 @@ func Render(out io.Writer, findings []diag.Finding) bool {
 // would be wrong — and a colorless border duplicates no palette value.
 var doctorPanelStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 
-// renderStyled is the stage-B rich static doctor (design doc §10): findings
+// renderStyled is the rich static doctor for styled terminals: findings
 // grouped by severity into bordered sections, each finding a glyph-led line
 // with its CUBE code and message, remediation kept in copy-paste-safe plain
 // text (only dimmed, never restyled inside the string), and a final one-line
@@ -210,7 +211,8 @@ const ClusterProbeTimeout = 15 * time.Second
 // namespace; Reachable — the spoke API server answered GET /readyz using
 // that secret's own payload, i.e. exactly the URL and credentials the hub
 // engine would use. For kind spokes the payload's server URL is
-// docker-network-internal (GT7), so a probe from outside that network can
+// docker-network-internal (kind spokes register https://<cluster>-control-plane:6443
+// from kind's internal kubeconfig), so a probe from outside that network can
 // truthfully report unreachable while the hub engine still reconciles.
 type SpokeState struct {
 	Name       string
@@ -323,7 +325,8 @@ func spokeReadyz(ctx context.Context, cfg *rest.Config) bool {
 // spoke whose hub registration secret is missing, or whose API server does
 // not answer /readyz from this machine, yields one CUBE-8006 warning naming
 // it. Warnings, never errors: for kind spokes the registered URL is
-// docker-network-internal (GT7), so the hub engine can reconcile a spoke
+// docker-network-internal (kind's internal kubeconfig URL, reachable only on
+// the shared docker network), so the hub engine can reconcile a spoke
 // this machine cannot connect to.
 func CheckSpokeReachability(ctx context.Context, c client.Client, engineType string, spokes []config.SpokeSpec) []diag.Finding {
 	if len(spokes) == 0 {
@@ -349,14 +352,15 @@ func CheckSpokeReachability(ctx context.Context, c client.Client, engineType str
 	return findings
 }
 
-// ——— U5: the tri-state checklist registry (GT18) ———
+// ——— the tri-state checklist registry ———
 
 // diskMinBytes is the free-space floor the disk-space check wants at the
 // cube-idp config/cache dir (kind node images are the dominant consumer) —
 // the same 5 GiB the doctor command passed inline before U5.
 const diskMinBytes = 5 << 30
 
-// Check is one named doctor probe (GT18). Run returns a non-empty one-line
+// Check is one named doctor probe: every registered check renders exactly one
+// checklist row (docs/adr/0029-doctor-check-reporting.md). Run returns a non-empty one-line
 // detail ("what passed looks like") with no findings for a green row, or
 // ("", findings) to color the row — SeverityWarning yellow, SeverityError
 // red. Run returns the detail (rather than mutating a Detail field: a
@@ -377,7 +381,8 @@ type CheckResult struct {
 }
 
 // Status returns the row verdict: "ok" (no findings), "warn", or "fail"
-// (any error finding — the exit-1 driver, GT18). Any finding at all
+// (any error finding — the exit-1 driver: doctor exits 1 iff any row is red).
+// Any finding at all
 // forfeits green; none of today's checks emits SeverityInfo.
 func (r CheckResult) Status() string {
 	s := "ok"
@@ -422,7 +427,7 @@ func one(f *diag.Finding) []diag.Finding {
 	return []diag.Finding{*f}
 }
 
-// All assembles the host-side tri-state checklist for this cube (GT18),
+// All assembles the host-side tri-state checklist for this cube,
 // each entry wrapping its existing Check* func unchanged: container-runtime
 // (kind clusters — the provider gate the doctor command always applied),
 // gateway-port (and http-port when the opt-in spec.gateway.httpPort is

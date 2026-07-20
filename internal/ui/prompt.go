@@ -46,7 +46,7 @@ func Confirm(in io.Reader, out io.Writer, o ConfirmOpts) (bool, error) {
 	return ok, nil
 }
 
-// InputExact is the severe-tier consent (TE-3.2, terraform/gh-repo-delete
+// InputExact is the severe-tier consent (terraform/gh-repo-delete
 // model): returns true only when the user types want exactly.
 func InputExact(in io.Reader, out io.Writer, title, want string) (bool, error) {
 	if !PromptsAllowed(in, out) {

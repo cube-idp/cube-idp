@@ -1,7 +1,7 @@
 // Package ocitest holds test-only OCI fixtures shared across packages that
 // exercise pack push/pull against a real (in-process) registry —
 // internal/oci's own PushPackDir round-trip test and internal/bundle's
-// vendor tests (Task 6). It exists so both call sites share one
+// vendor tests. It exists so both call sites share one
 // go-containerregistry-based in-process registry helper instead of
 // copy-pasting it: go-containerregistry is a TEST-ONLY dependency
 // (production code is pure oras-go v2, Owner Decisions #2), and this

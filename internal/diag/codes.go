@@ -5,12 +5,12 @@ package diag
 const (
 	CodeConfigRead            Code = "CUBE-0001" // cannot read cube.yaml
 	CodeConfigInvalid         Code = "CUBE-0002" // cube.yaml YAML syntax or schema validation error
-	CodeLockCorrupt           Code = "CUBE-0003" // cube.lock unreadable or corrupt (Phase 2)
+	CodeLockCorrupt           Code = "CUBE-0003" // cube.lock unreadable or corrupt
 	CodeProviderMiss          Code = "CUBE-0004" // cluster provider config mismatch (e.g., render-cluster for non-kind)
-	CodeArgoPackRedun         Code = "CUBE-0005" // argocd pack listed while engine.type: argocd (Phase 2)
+	CodeArgoPackRedun         Code = "CUBE-0005" // argocd pack listed while engine.type: argocd
 	CodeInitExists            Code = "CUBE-0006" // cube.yaml already exists; refusing overwrite
 	CodeBadFlagValue          Code = "CUBE-0007" // an enum flag (--progress, --output) got an unrecognized value
-	CodeGatewayPackMismatch   Code = "CUBE-0008" // gateway.ref points at a pack whose pack.cue name != gateway.pack (F11: ref silently wins over pack)
+	CodeGatewayPackMismatch   Code = "CUBE-0008" // gateway.ref points at a pack whose pack.cue name != gateway.pack (ref silently wins over pack, so the mismatch would deliver the wrong gateway)
 	CodeUpgradeGuard          Code = "CUBE-0009" // upgrade refused: see summary (was the last un-coded user-facing error)
 	CodeConfirmRequired       Code = "CUBE-0010" // a destructive command refused to run without confirmation (--yes / --confirm)
 	CodeProviderConfigRemoved Code = "CUBE-0011" // cluster.providerConfig was replaced by providerConfigRef/forProvider (migration required)
@@ -22,7 +22,7 @@ const (
 	CodeConfigRemoteFetch    Code = "CUBE-0015" // remote -f ref fetch failed or did not yield one YAML document
 )
 
-// 01xx: doctor preflight checks (Phase 2)
+// 01xx: doctor preflight checks
 const (
 	CodeDoctorRuntime Code = "CUBE-0101" // container runtime not found
 	CodeDoctorPort    Code = "CUBE-0102" // required host port already in use
@@ -71,7 +71,7 @@ const (
 	CodeApplyClientBuild Code = "CUBE-2002" // cannot build Kubernetes client
 	CodeApplyFailed      Code = "CUBE-2003" // server-side apply failed
 	CodeInventoryFailed  Code = "CUBE-2004" // inventory read/write/parse failed
-	CodeApplyDiffFailed  Code = "CUBE-2005" // server-side diff failed (Phase 2)
+	CodeApplyDiffFailed  Code = "CUBE-2005" // server-side diff failed
 	CodeApplyPruneFailed Code = "CUBE-2006" // prune delete of untracked objects failed
 	CodeApplyParseYAML   Code = "CUBE-2007" // cannot parse manifest YAML
 )
@@ -82,11 +82,13 @@ const (
 	CodeEngineManifestsInv  Code = "CUBE-3003" // embedded engine install manifests invalid (RETIRED 2026-07-19 by engine-as-pack — install left the engine seam)
 	CodeEngineHealthTimeout Code = "CUBE-3004" // engine health check timed out or components not ready
 	CodeEngineUninstallFail Code = "CUBE-3005" // flux prune/uninstall timeout
-	CodeEngineArgocdRegFail Code = "CUBE-3006" // reserved: argocd gitea-fallback capability check (spec §7), unbuilt by design
+	CodeEngineArgocdRegFail Code = "CUBE-3006" // reserved: argocd gitea-fallback capability check, unbuilt by design
 	CodePokeTargetMissing   Code = "CUBE-3007" // Poke found no delivery source (OCIRepository/GitRepository/Application) for the pack
 	CodePokeIOFail          Code = "CUBE-3008" // Poke found the delivery source but could not read/update it (transient engine IO — retry)
 	CodeEngineTuningUnknown Code = "CUBE-3009" // engine.tuning.components names a component the engine's install manifests don't have (or its Deployment cannot be patched) (RETIRED 2026-07-19 by engine-as-pack — never emitted since)
-	// GT16 engine self-management (Phase 5 P8):
+	// Opt-in engine self-management: once installed, the engine reconciles its
+	// own rendered manifests from the in-cluster registry instead of the CLI
+	// re-applying them (see docs/adr/0020-engine-self-management-single-owner.md).
 	CodeEngineSelfManage Code = "CUBE-3010" // engine.selfManage failed: cube-engine artifact push, self-source build/apply, or post-attach health wait — re-run `cube-idp up`
 	CodeEngineDepWait    Code = "CUBE-3011" // a pack's dependency did not become healthy before its wave-gated delivery (argocd)
 )
@@ -98,19 +100,19 @@ const (
 	CodePackCueInvalid   Code = "CUBE-4003" // pack.cue missing, syntax error, or compilation failure
 	CodePackManifestErr  Code = "CUBE-4004" // pack manifests/ directory read or YAML parse error
 	CodePackChartErr     Code = "CUBE-4005" // Helm chart load/parse/render error
-	CodePackFetchFail    Code = "CUBE-4006" // remote pack source fetch/resolution failed (Phase 2)
-	CodePackRefUnpin     Code = "CUBE-4007" // remote pack ref not pinned (missing @<rev> or :tag) (Phase 2)
-	CodePackKustomizeErr Code = "CUBE-4008" // kustomize render failed (Phase 2)
-	CodePackCnoeInvalid  Code = "CUBE-4009" // cnoe-compat document invalid or unsupported (Phase 2)
-	CodePackCnoeUnres    Code = "CUBE-4010" // cnoe:// path unresolvable (Phase 2)
-	CodePackExposeInv    Code = "CUBE-4011" // expose: block in pack.cue invalid (Phase 2)
+	CodePackFetchFail    Code = "CUBE-4006" // remote pack source fetch/resolution failed
+	CodePackRefUnpin     Code = "CUBE-4007" // remote pack ref not pinned (missing @<rev> or :tag)
+	CodePackKustomizeErr Code = "CUBE-4008" // kustomize render failed
+	CodePackCnoeInvalid  Code = "CUBE-4009" // cnoe-compat document invalid or unsupported
+	CodePackCnoeUnres    Code = "CUBE-4010" // cnoe:// path unresolvable
+	CodePackExposeInv    Code = "CUBE-4011" // expose: block in pack.cue invalid
 	CodePackOCIErr       Code = "CUBE-4012" // OCI pack pull/extract error (pullOCI failures)
 	CodePackCacheDirErr  Code = "CUBE-4013" // cache directory access/creation error
-	CodePackGuardTrip    Code = "CUBE-4014" // extraction guard tripped (path traversal/symlink) (Phase 2)
+	CodePackGuardTrip    Code = "CUBE-4014" // extraction guard tripped (path traversal/symlink)
 	CodePackPushFail     Code = "CUBE-4015" // pack push (directory archive, OCI push, or tag) failed
-	// GT15 values stone (Phase 5 U4): values: are helm values only; the
+	// values: are helm values only; the
 	// uniform extras channel for every pack kind is packs[].extraManifests.
-	CodePackValuesChartless Code = "CUBE-4016" // values: set on a pack without chart.yaml (values are helm-only, GT15)
+	CodePackValuesChartless Code = "CUBE-4016" // values: set on a pack without chart.yaml (values are helm-only)
 	CodePackExtraManifests  Code = "CUBE-4017" // packs[].extraManifests is not valid multi-doc YAML
 	// Pack dependencies (p6 DEP1, spec 2026-07-19 §3).
 	CodePackDepUnknown Code = "CUBE-4018" // dependsOn names a pack not in this cube
@@ -125,21 +127,21 @@ const (
 	CodeZotManifestsInv         Code = "CUBE-5001" // embedded zot manifests invalid
 	CodePortForwardFail         Code = "CUBE-5002" // port-forward to registry failed
 	CodeOCIPushFail             Code = "CUBE-5003" // OCI push (artifact staging or push) failed
-	CodeDigestResolveFail       Code = "CUBE-5004" // remote digest resolution failed (upgrade --plan) (Phase 2)
+	CodeDigestResolveFail       Code = "CUBE-5004" // remote digest resolution failed (upgrade --plan)
 	CodeRegistryRouteCRDTimeout Code = "CUBE-5005" // Gateway API HTTPRoute CRD not Established before the registry HTTPRoute apply
 )
 
-// 6xxx: trust/hostname (Phase 2)
+// 6xxx: trust/hostname
 const (
-	CodeTrustCAFail        Code = "CUBE-6001" // local CA creation/load failed (Phase 2)
-	CodeTrustOSStoreFail   Code = "CUBE-6002" // OS trust-store install failed (Phase 2)
-	CodeTrustOSStoreRevert Code = "CUBE-6003" // OS trust-store uninstall/revert failed (Phase 2)
-	CodeTrustCoreDNSFail   Code = "CUBE-6004" // CoreDNS rewrite patch failed or did not roll out (Phase 2)
-	CodeTrustCertIssueFail Code = "CUBE-6005" // server certificate issuance failed (Phase 2)
-	CodeTrustStateFail     Code = "CUBE-6006" // trust state file corrupt (Phase 2)
+	CodeTrustCAFail        Code = "CUBE-6001" // local CA creation/load failed
+	CodeTrustOSStoreFail   Code = "CUBE-6002" // OS trust-store install failed
+	CodeTrustOSStoreRevert Code = "CUBE-6003" // OS trust-store uninstall/revert failed
+	CodeTrustCoreDNSFail   Code = "CUBE-6004" // CoreDNS rewrite patch failed or did not roll out
+	CodeTrustCertIssueFail Code = "CUBE-6005" // server certificate issuance failed
+	CodeTrustStateFail     Code = "CUBE-6006" // trust state file corrupt
 )
 
-// 70xx: vendor / air-gap bundle (spec §4.1, Phase 3)
+// 70xx: vendor / air-gap bundle
 const (
 	CodeVendorLockMissing   Code = "CUBE-7001" // cube.lock missing, unreadable, or corrupt (vendor)
 	CodeVendorPullFail      Code = "CUBE-7002" // vendor: pull of a pinned pack/image, or writing the bundle itself, failed — produce side (vendor); the consume-side load is CUBE-7006 (bundle is complete-or-error, never partial)
@@ -150,7 +152,7 @@ const (
 	CodeBundleRemoteSource  Code = "CUBE-7007" // `up --bundle` with a remote values/tuning/config source — remote refs are not vendored, offline rails would be violated
 )
 
-// 71xx: exec-plugin discovery (spec §4.4 tier 2, Phase 3)
+// 71xx: exec-plugin discovery
 const (
 	CodePluginNotFound    Code = "CUBE-7101" // unknown command and no cube-idp-<name> plugin found on PATH
 	CodePluginTrustIO     Code = "CUBE-7102" // plugin trust store (~/.config/cube-idp/trust.json) read/write/hash error
@@ -160,22 +162,24 @@ const (
 	CodePluginNoPlatform  Code = "CUBE-7106" // the official plugin index has no build for this GOOS/GOARCH (P10)
 )
 
-// 72xx: sync (Task 10, Task 11)
+// 72xx: sync
 const (
 	CodeSyncNoManifests    Code = "CUBE-7201" // sync dir has no pack.cue and no renderable *.yaml manifests
 	CodeSyncWatchSetupFail Code = "CUBE-7202" // `sync --watch` cannot start or attach the filesystem watcher
 )
 
-// 73xx: repo (Task 12; CUBE-7304 Phase 5 P7)
+// 73xx: repo
 const (
 	CodeRepoGiteaUnavailable Code = "CUBE-7301" // gitea admin secret missing or port-forward to the gitea pod failed
 	CodeRepoGiteaAPIFail     Code = "CUBE-7302" // gitea REST API returned an unexpected status (create/fetch repo)
 	CodeRepoDeployFail       Code = "CUBE-7303" // repo created but engine git source registration/apply failed
-	// P7 (the gitea guarantee, decision 13): raised at config load.
+	// The gitea guarantee: gitea stays an ordinary optional pack, so a
+	// repo-delivered pack must declare it. Raised at config load, before any
+	// cluster mutation (see docs/adr/0006-per-pack-delivery-mode.md).
 	CodeRepoDeliveryConfig Code = "CUBE-7304" // delivery: repo needs the gitea pack in spec.packs, and gitea itself cannot be repo-delivered
 )
 
-// 8xxx: spoke (Phase 5)
+// 8xxx: spoke
 const (
 	CodeSpokeProviderUnsupported Code = "CUBE-8001" // spoke cluster.provider invalid for spokes (k3d deferred; existing needs context; duplicate name)
 	CodeSpokeBootstrapFailed     Code = "CUBE-8002" // spoke RBAC bootstrap apply failed

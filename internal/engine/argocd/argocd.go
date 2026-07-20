@@ -1,9 +1,10 @@
-// Package argocd implements the GitOpsEngine over Argo CD (D2). Delivery
+// Package argocd implements the GitOpsEngine over Argo CD (see ADR 0018 —
+// GitOps engine interface seam). Delivery
 // shape: one Application per pack with an OCI repository source pointing at
-// the in-cluster zot registry. ENGINE-SPECIFIC REQUIREMENT (spec §7): this
+// the in-cluster zot registry. ENGINE-SPECIFIC REQUIREMENT: this
 // engine needs an Argo CD version with OCI repository support; if that path
 // proves insufficient the documented fallback is delivery via the gitea
-// pack — see the Phase 2 plan, Task 2.
+// pack.
 //
 // Version pin: argo-cd v3.4.5 (see hack/gen-argocd-manifests.sh) — the
 // latest stable 3.x release at pin time (3.5 was still release-candidate
@@ -11,7 +12,8 @@
 // native OCI application-source support
 // (https://argo-cd.readthedocs.io/en/stable/user-guide/oci/).
 //
-// Resolved concern (was an open Task 2 risk; closed by Task 14): oci.PushRendered
+// Resolved concern (an open risk while this engine was being built, closed
+// once the argocd e2e engine matrix ran green): oci.PushRendered
 // (shared by every engine) pushes packs using fluxcd/pkg/oci's default
 // layer media type (application/vnd.cncf.flux.content.v1.tar+gzip), which
 // is NOT one of argo-cd's default accepted OCI layer media types
@@ -29,7 +31,7 @@
 // install.yaml already wires ARGOCD_REPO_SERVER_OCI_LAYER_MEDIA_TYPES from
 // that key (upstream's own env-from-configmap plumbing), so repo-server
 // picks it up with no further changes. Verified against a real kind cluster
-// via Task 14's e2e engine matrix (`CUBE_IDP_E2E_ENGINE=argocd`). If
+// via the e2e engine matrix (`CUBE_IDP_E2E_ENGINE=argocd`). If
 // hack/gen-argocd-manifests.sh is re-run against a newer ARGOCD_VERSION,
 // that data: block must be reapplied by hand (see the comment above the
 // ConfigMap in manifests/install.yaml).
@@ -78,8 +80,8 @@ var applicationListGVK = schema.GroupVersionKind{
 }
 
 // Health lists this cube's delivered Applications and reports each one's
-// sync/health status. Unlike phase-1 flux Health (a documented gap — see the
-// Phase 2 plan, Task 2, Task 0 finding 0.9), this treats a missing
+// sync/health status. Unlike the original flux Health (which had no
+// missing-CRD handling — since hardened), this treats a missing
 // Application CRD (fresh cluster, engine not yet installed or install still
 // converging) as "nothing delivered yet", not an error: meta.IsNoMatchError
 // on the List call, mirroring flux's listDelivered on the Uninstall path.

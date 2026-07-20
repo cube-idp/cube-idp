@@ -54,7 +54,7 @@ func TestExitCodeForPlainError(t *testing.T) {
 }
 
 // os.Exit inside RunE skips main.go's cleanup and would leave a future
-// live program's terminal raw (audit P8). The sentinel keeps "exit 1,
+// live program's terminal raw. The sentinel keeps "exit 1,
 // print nothing" semantics through the normal return path.
 func TestExitCodeForSentinel(t *testing.T) {
 	code, render := ExitCodeFor(errExitCode(1))

@@ -24,8 +24,8 @@ func newSyncCmd() *cobra.Command {
 	var watch bool
 	c := &cobra.Command{
 		Use:   "sync <dir>",
-		Short: "Render a directory as a pack and deliver it to the running cube (D7)",
-		Long: `Render a directory as a pack and deliver it to the running cube (D7).
+		Short: "Render a directory as a pack and deliver it to the running cube",
+		Long: `Render a directory as a pack and deliver it to the running cube.
 
 Without --watch, sync runs once and exits. With --watch, sync runs once
 immediately and then re-syncs on every debounced filesystem change under
@@ -38,13 +38,12 @@ gitea pack ('cube-idp repo create').`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			if watch {
-				// Watch stays OUTSIDE the event pipeline (Task R3, spec
-				// §5.3 — a ratified deferral): it's the sanctioned
-				// long-running FOREGROUND mode, not a daemon, and its own
-				// loop already routes through the ui seam
-				// (internal/syncer/watch.go). This branch is byte-identical
-				// to the pre-R3 body: its own config.Load/cluster/Deps
-				// setup, never touching RunPipelineStatic.
+				// Watch stays OUTSIDE the event pipeline (a deliberate,
+				// ratified deferral): it's the sanctioned long-running
+				// FOREGROUND mode, not a daemon, and its own loop already
+				// routes through the ui seam (internal/syncer/watch.go).
+				// This branch keeps its own config load/cluster/Deps setup
+				// and never touches RunPipelineStatic.
 				cube, err := cfgload.Load(c.Context(), file)
 				if err != nil {
 					return err
@@ -78,10 +77,10 @@ gitea pack ('cube-idp repo create').`,
 				return syncer.Watch(c.Context(), deps, args[0], syncWatchDebounce)
 			}
 
-			// The one-shot path is fully on the event stream (Task R3):
+			// The one-shot path is fully on the event stream:
 			// RunPipelineStatic owns the whole RunE body so a failed
 			// config.Load returns before con.Start ever fires (the
-			// RunStarted-skip rule, G6) — machine consumers must tolerate a
+			// RunStarted-skip rule) — machine consumers must tolerate a
 			// stream that is only run_done+diagnosis.
 			return ui.RunPipelineStatic(c.Context(), "sync", c.OutOrStdout(),
 				func(ctx context.Context, con *ui.Console) error {

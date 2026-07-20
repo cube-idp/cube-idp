@@ -31,7 +31,7 @@ func newPackCmd() *cobra.Command {
 			"If <oci-ref> carries no :tag, the pack's version from pack.cue is used.\n" +
 			"Auth is the ambient docker credential chain (docker login).",
 		Args: cobra.ExactArgs(2),
-		// RunPipelineStatic owns the whole RunE body (Task R3): pack push is
+		// RunPipelineStatic owns the whole RunE body: pack push is
 		// a short static command, never a live step-tree.
 		RunE: func(c *cobra.Command, args []string) error {
 			return ui.RunPipelineStatic(c.Context(), "pack", c.OutOrStdout(),
@@ -62,18 +62,20 @@ func newPackCmd() *cobra.Command {
 		"additional tags for the same pushed artifact (e.g. latest); repeatable")
 	packCmd.AddCommand(push)
 	packCmd.AddCommand(newPackInstallCmd())
-	// P2 (Phase 5): the packs-repo CI toolchain — publish + index build/push.
+	// The packs-repo CI toolchain — publish + index build/push.
 	packCmd.AddCommand(newPackPublishCmd(), newPackIndexCmd())
-	// P6 (Phase 5): the index-backed remote catalog surfaces.
+	// The index-backed remote catalog surfaces.
 	packCmd.AddCommand(newPackListCmd(), newPackSearchCmd())
 	return packCmd
 }
 
-// packCatalog is the BUILT-IN optional-pack catalog — since P6 the offline
+// packCatalog is the BUILT-IN optional-pack catalog — since the remote index
+// landed it is the offline
 // FALLBACK (never deleted) behind loadPackCatalog: when the published index
 // artifact is unreachable, init's wizard and `pack install`'s menu offer
-// exactly this pre-P6 list. Wording stays in sync with the packs'
-// pack.cue descriptions (P1).
+// exactly this list, unchanged from before the remote index existed. Wording
+// stays in sync with the packs'
+// pack.cue descriptions.
 var packCatalog = []struct {
 	Name, Version, Desc string
 }{
@@ -96,7 +98,7 @@ func packCatalogNames() []string {
 }
 
 // catalogEntry is one resolved pack-catalog row — remote index entry or
-// built-in fallback — the single shape every P6 consumer (menu, wizard,
+// built-in fallback — the single shape every catalog consumer (menu, wizard,
 // list, search) renders from.
 type catalogEntry struct {
 	Name, Version, Desc, Ref string
@@ -128,7 +130,8 @@ const catalogFetchTimeout = 10 * time.Second
 // remote index when reachable (pack.FetchCatalog — 24h cache,
 // CUBE_IDP_PACK_INDEX override), else the built-in fallback announced with
 // a single advisory line. Callers invoke it once per command so that line
-// never repeats; offline behavior is byte-for-byte the pre-P6 catalog.
+// never repeats; offline behavior is byte-for-byte the built-in catalog it
+// was before the remote index existed.
 func loadPackCatalog(ctx context.Context, out io.Writer) []catalogEntry {
 	ctx, cancel := context.WithTimeout(ctx, catalogFetchTimeout)
 	defer cancel()
@@ -144,7 +147,7 @@ func loadPackCatalog(ctx context.Context, out io.Writer) []catalogEntry {
 	return entries
 }
 
-// catalogOptions renders entries as huh options in WP6's
+// catalogOptions renders entries as huh options in the pack menu's
 // "name@version — description" shape. Option values are catalog names, not
 // refs, so init's wizard (which filters config.Default's pack list by name)
 // and `pack install` (which maps names to refs) share one option list.
@@ -246,10 +249,10 @@ func newPackInstallCmd() *cobra.Command {
 			"config file — nothing touches the cluster until the next `cube-idp up`.\n" +
 			"With refs as arguments it never prompts (script/CI safe). Bare on a real\n" +
 			"terminal it offers a filterable multi-select over the pack catalog.\n" +
-			"--via repo (P7) delivers the pack as an editable Gitea repo\n" +
+			"--via repo delivers the pack as an editable Gitea repo\n" +
 			"(cube-pack-<name>) instead of an OCI artifact — requires the gitea pack.",
 		RunE: func(c *cobra.Command, args []string) error {
-			// P7 (decision 4): per-pack delivery flag. Validated up front so
+			// Per-pack delivery flag. Validated up front so
 			// a bogus value refuses before any prompt or file touch.
 			if via != "oci" && via != "repo" {
 				return diag.New(diag.CodeBadFlagValue,
@@ -281,7 +284,7 @@ func newPackInstallCmd() *cobra.Command {
 					fmt.Fprintln(c.OutOrStdout(), "aborted — nothing was changed")
 					return nil
 				}
-				// One summary Confirm (TE-3.2's summary-then-confirm shape).
+				// One summary Confirm: list what will change, then ask once.
 				ok, err := packConfirm(c.InOrStdin(), c.OutOrStdout(), ui.ConfirmOpts{
 					Title:       fmt.Sprintf("Add %d pack(s) to cube.yaml?", len(refs)),
 					Description: strings.Join(refs, "\n"),
@@ -299,7 +302,8 @@ func newPackInstallCmd() *cobra.Command {
 				return err
 			}
 			if len(args) == 0 {
-				// Scriptable-twin hint after an accepted prompt (spec TE-3.2).
+				// After any accepted prompt, print the scriptable twin so the
+				// same result can be re-run non-interactively.
 				fmt.Fprintln(c.OutOrStdout(), "  "+th.Dim.Render("hint: cube-idp pack install "+strings.Join(refs, " ")))
 			}
 			return nil
@@ -310,8 +314,8 @@ func newPackInstallCmd() *cobra.Command {
 	return c
 }
 
-// runPackMenu is the TTY half of `pack install` (spec WP6): a filterable huh
-// MultiSelect over the loaded pack catalog (P6: remote index or built-in
+// runPackMenu is the TTY half of `pack install`: a filterable huh
+// MultiSelect over the loaded pack catalog (remote index or built-in
 // fallback — the caller passes the options so this stays pure UI). Callers
 // gate on ui.PromptsAllowed; this function assumes the terminal is
 // available.
@@ -334,9 +338,10 @@ func runPackMenu(in io.Reader, out io.Writer, opts []huh.Option[string]) ([]stri
 // writes it back through config.SaveValidated (init's writer shape,
 // validate-by-round-trip through config.Load — the exact schema +
 // cross-field checks `up` applies — via a temp file, so a rejected ref
-// leaves cube.yaml untouched). via "repo" (P7) marks each written ref for
+// leaves cube.yaml untouched). via "repo" marks each written ref for
 // Gitea delivery; "oci" writes no delivery key at all — byte-compatible
-// with pre-P7 files. The gitea guarantee (CUBE-7304) rides the round-trip:
+// with files written before the delivery key existed. The gitea guarantee
+// (CUBE-7304) rides the round-trip:
 // --via repo on a gitea-less cube is refused with the file untouched.
 func packInstallRefs(ctx context.Context, out io.Writer, file string, refs []string, via string) error {
 	cube, err := cfgload.Load(ctx, file)

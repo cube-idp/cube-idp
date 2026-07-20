@@ -5,7 +5,7 @@ import (
 )
 
 // NodePort is zot's node-local port: kind nodes pull "registry.<host>/..."
-// images through it via containerd certs.d (Phase 2, D6).
+// images through it via containerd certs.d.
 const NodePort = 30500
 
 // GatewayRoute exposes zot at registry.<host> through the gateway so the
@@ -13,7 +13,7 @@ const NodePort = 30500
 // Applied by `up` after the gateway pack is delivered (the HTTPRoute CRD
 // arrives with the gateway pack's Gateway API CRDs). The parentRef matches
 // the Gateway named "cube-idp"; gwPack is the gateway pack's namespace
-// (gw.Pack, e.g. "traefik" or "envoy-gateway" — F9: hardcoding "traefik"
+// (gw.Pack, e.g. "traefik" or "envoy-gateway" — hardcoding "traefik"
 // left Attached Routes at 0 whenever the gateway lived elsewhere). It
 // crosses namespaces (route lives in cube-idp-system, next to zot), which
 // the Gateway allows via allowedRoutes: {namespaces: {from: All}}.

@@ -14,7 +14,7 @@ import (
 
 // existing targets a pre-existing cluster through a kubeconfig context.
 // It never creates or deletes clusters; Delete is a documented no-op
-// (down removes only cube-idp-managed resources, spec §4.3).
+// (down removes only cube-idp-managed resources).
 type existing struct{}
 
 func (e *existing) load(kctx string) (clientcmd.ClientConfig, error) {

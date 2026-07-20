@@ -1,6 +1,6 @@
 // officialindex.go is P10's official-index resolution path, living BESIDE
 // the sha256-pinned git index in index.go (which keeps working unchanged).
-// The plugins platform (GT17) mirrors the packs platform: a discovery index
+// The plugins platform mirrors the packs platform: a discovery index
 // artifact oci://ghcr.io/cube-idp/plugins/index:latest maps
 // name→version→platform→{ref,digest}; InstallFromIndex resolves the running
 // platform, pulls the per-platform binary BY DIGEST (never by tag), writes
@@ -8,7 +8,7 @@
 // trust-consent flow (EnsureTrusted — CUBE-7104 non-TTY refusal is a frozen
 // security contract, untouched here).
 //
-// The index fetch mirrors P6's pack catalog (internal/pack/catalog.go): 24h
+// The index fetch mirrors the pack catalog (internal/pack/catalog.go): 24h
 // mtime-TTL cache keyed by ref, pulled through the shared single-blob OCI
 // fetch. The cache pattern is COPIED, not imported (plugin must not import
 // pack). There is deliberately NO built-in fallback catalog — plugins have
@@ -32,7 +32,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/oci"
 )
 
-// DefaultPluginIndexRef is the published plugins discovery index (GT17).
+// DefaultPluginIndexRef is the published plugins discovery index.
 const DefaultPluginIndexRef = "oci://ghcr.io/cube-idp/plugins/index:latest"
 
 // EnvPluginIndex overrides the index ref — mirrors and tests point it at
@@ -40,12 +40,13 @@ const DefaultPluginIndexRef = "oci://ghcr.io/cube-idp/plugins/index:latest"
 const EnvPluginIndex = "CUBE_IDP_PLUGIN_INDEX"
 
 // pluginIndexTTL is how long a fetched index answers from disk before the
-// registry is consulted again — P6's 24h, so menu-driven commands
+// registry is consulted again — the same 24h the pack catalog uses, so
+// menu-driven commands
 // (`plugin list --available`, `plugin search`) do not hit the network every
 // invocation.
 const pluginIndexTTL = 24 * time.Hour
 
-// PluginIndex is the parsed GT17 discovery index (schemaVersion 1,
+// PluginIndex is the parsed plugins discovery index (schemaVersion 1,
 // additive-only within the version).
 type PluginIndex struct {
 	SchemaVersion int             `json:"schemaVersion"`
@@ -114,7 +115,7 @@ func FetchPluginIndex(ctx context.Context) (*PluginIndex, error) {
 
 // parsePluginIndex decodes and gate-checks an index payload. schemaVersion
 // must be exactly 1; a zero-plugin index is rejected with the same suspicion
-// P6 applies to an empty pack catalog (it would mean the index was wiped).
+// the pack catalog applies to an empty catalog (it would mean the index was wiped).
 func parsePluginIndex(raw []byte) (*PluginIndex, error) {
 	var idx PluginIndex
 	if err := json.Unmarshal(raw, &idx); err != nil {
@@ -197,7 +198,7 @@ func InstallFromIndex(ctx context.Context, name, version string, autoTrust, inte
 	}
 
 	pullRef := strings.TrimPrefix(plat.Ref, "oci://")
-	// Pull BY DIGEST, never by tag (GT17): rebuild the ref as repo@digest so
+	// Pull BY DIGEST, never by tag: rebuild the ref as repo@digest so
 	// a moved tag can never redirect the install.
 	repo := pullRef
 	if i := strings.LastIndexAny(repo, ":@"); i != -1 && !strings.Contains(repo[i:], "/") {

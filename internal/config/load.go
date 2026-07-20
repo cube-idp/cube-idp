@@ -47,8 +47,8 @@ func LoadBytes(raw []byte, src string) (*Cube, error) {
 	}
 
 	// Spoke cross-checks run BEFORE CUE validation: schema.cue's narrow
-	// spoke provider enum (*"kind" | "existing" — deliberately not widened,
-	// GT6) would otherwise reject a k3d spoke first with a generic
+	// spoke provider enum (*"kind" | "existing" — deliberately not widened)
+	// would otherwise reject a k3d spoke first with a generic
 	// CUBE-0002 "empty disjunction"; the contract is the typed CUBE-8001
 	// with the spoke-specific fix line. The probe decode is best-effort — a
 	// document too malformed to probe skips this pass and gets CUE's
@@ -64,8 +64,8 @@ func LoadBytes(raw []byte, src string) (*Cube, error) {
 		}
 	}
 
-	// Migration guard (decision 3, spec 2026-07-18-cluster-forprovider-design
-	// §3): providerConfig was replaced in this release. Probed pre-CUE like
+	// Migration guard (see ADR-0011, provider config layered merge):
+	// providerConfig was replaced in this release. Probed pre-CUE like
 	// the spoke checks — the closed schema would otherwise reject the key
 	// with a generic CUBE-0002 instead of the migration recipe.
 	var legacy struct {
@@ -92,7 +92,9 @@ func LoadBytes(raw []byte, src string) (*Cube, error) {
 		}
 	}
 
-	// Migration guard (engine-as-pack spec D6): engine.tuning was removed.
+	// Migration guard (see ADR-0019): engine.tuning was removed outright
+	// rather than deprecated, and load rejects it with a typed migration
+	// error pointing at engine.values.
 	// Probed pre-CUE like providerConfig above — the closed schema would
 	// otherwise reject the key with a generic CUBE-0002 instead of the
 	// migration recipe.
@@ -127,9 +129,9 @@ func LoadBytes(raw []byte, src string) (*Cube, error) {
 		return nil, err
 	}
 	// kubernetesVersion has no CUE default (an explicit version with
-	// provider "existing" must be rejected above, D10/spec §4.1), so the
-	// documented default for cluster-creating providers is applied here
-	// instead. k3d shares kind's default (both are local dev clusters).
+	// provider "existing" must be rejected above as a node-creation
+	// field), so the documented default for cluster-creating providers is
+	// applied here instead. k3d shares kind's default (both are local dev clusters).
 	if (c.Spec.Cluster.Provider == "kind" || c.Spec.Cluster.Provider == "k3d") && c.Spec.Cluster.KubernetesVersion == "" {
 		c.Spec.Cluster.KubernetesVersion = "v1.33.1"
 	}
@@ -218,7 +220,7 @@ func crossValidate(c *Cube) error {
 			}
 		}
 	}
-	// P7 (the gitea guarantee, decision 13): a delivery: repo pack needs
+	// The gitea guarantee (ADR-0006): a delivery: repo pack needs
 	// gitea present, and gitea itself can never be repo-delivered — its
 	// repo would have to be served by the very pack being delivered. Gitea
 	// presence is matched by the same ref-substring convention
@@ -243,7 +245,7 @@ func crossValidate(c *Cube) error {
 				"add the gitea pack or use delivery: oci")
 		}
 	}
-	// U2 (decision 3): the opt-in plain-HTTP host port must not collide with
+	// The opt-in plain-HTTP host port must not collide with
 	// the HTTPS gateway port or any typed extraPorts mapping — each host
 	// port can be bound once.
 	if hp := c.Spec.Gateway.HTTPPort; hp != 0 {
@@ -263,7 +265,7 @@ func crossValidate(c *Cube) error {
 	return nil
 }
 
-// validateSpokes enforces the spoke rules (GT6): providers kind|existing
+// validateSpokes enforces the spoke rules (ADR-0013): providers kind|existing
 // only (k3d spokes are deferred), existing requires a context, names are
 // unique. Typed CUBE-8001 with a spoke-specific fix line, not a generic
 // CUBE-0002 schema failure. Called from Load's pre-CUE probe pass — see

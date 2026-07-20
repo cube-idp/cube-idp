@@ -1,4 +1,4 @@
-// Package contracttest is the shared ClusterProvider contract (spec §5).
+// Package contracttest is the shared ClusterProvider contract.
 // Every cluster-creating provider (kindp, k3dp, future Talos/vcluster) calls
 // Run from its own test package. The contract is behavioral: idempotent
 // Ensure, truthful Exists, non-empty Kubeconfig for a live cluster, clean
@@ -116,7 +116,7 @@ func RenderContract(t *testing.T, base, conflict config.ClusterSpec,
 
 	_, warns, err = render(conflict)
 	if err != nil {
-		t.Fatalf("render(conflict) must warn, not error (decision 1): %v", err)
+		t.Fatalf("render(conflict) must warn, not error: %v", err)
 	}
 	if len(warns) == 0 {
 		t.Fatal("render(conflict) produced no warning")

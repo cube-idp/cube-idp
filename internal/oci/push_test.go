@@ -46,8 +46,8 @@ func fetchManifest(t *testing.T, store *memory.Store, desc ocispec.Descriptor) o
 // spec.layerSelector: a config blob of media type
 // application/vnd.cncf.flux.config.v1+json and a single layer of media type
 // application/vnd.cncf.flux.content.v1.tar+gzip. This is the whole risk of
-// Task 3.5's rewrite off fluxcd/pkg/oci onto plain oras-go v2 — get these two
-// constants wrong and Phase 1's flux delivery stops reconciling.
+// the rewrite off fluxcd/pkg/oci onto plain oras-go v2 — get these two
+// constants wrong and flux delivery stops reconciling.
 func TestPushRenderedKeepsFluxMediaTypes(t *testing.T) {
 	r := &pack.Rendered{
 		Name:    "demo",
@@ -85,7 +85,7 @@ func TestPushRenderedKeepsFluxMediaTypes(t *testing.T) {
 // TestPushPackDirIsContentAddressed: pushing the identical rendered pack
 // twice must produce the identical manifest digest. A fixed epoch
 // annotation (not wall-clock time.Now) is what makes a republish of
-// unchanged content a true no-op (Phase 4 R8) — unlike the PushPackDir
+// unchanged content a true no-op — unlike the PushPackDir
 // version of this test, no time.Sleep across a wall-clock second boundary
 // is needed here: the annotation is now a fixed constant, not time-based,
 // so there is nothing for a fast in-process double-push to race against.

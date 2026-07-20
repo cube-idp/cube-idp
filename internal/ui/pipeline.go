@@ -21,7 +21,7 @@ var pipelineActive atomic.Bool
 // eventBuffer is the channel capacity: a full `up` emits well under 100
 // events even with health ticks; renderers consume promptly (one Fprintf or
 // one tea.Program.Send per event), so the producer effectively never blocks
-// on UI (design doc §4.1).
+// on UI.
 const eventBuffer = 256
 
 // RunPipeline owns one command's event pipeline: it builds the renderer for
@@ -56,7 +56,7 @@ func RunPipeline(ctx context.Context, cmdName string, out io.Writer,
 // push, repo create, sync one-shot): identical lifecycle and terminal-event
 // ordering, but a TTY under ModeStyled gets the Styled projection instead of
 // the Live renderer — the live step-tree is reserved for long-running
-// commands (vendor, up, down; UX spec §5.2 + Phase 4 spec §5.3).
+// commands (vendor, up, down).
 // ModeLive (explicit user force) still runs the LiveRenderer; ModeJSON and
 // plain behave exactly as RunPipeline.
 func RunPipelineStatic(ctx context.Context, cmdName string, out io.Writer,

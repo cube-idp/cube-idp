@@ -12,7 +12,7 @@ import (
 )
 
 // RenderError produces the final-error block main.go prints to stderr —
-// the process's single final-error print point (design doc §5.2). In
+// the process's single final-error print point. In
 // ModePlain and ModeJSON it returns diag.Render(err) verbatim
 // (byte-identical to the pre-14b behavior; stderr stays a human-readable
 // belt even when stdout is a machine pipe). In ModeStyled/ModeLive it
@@ -78,7 +78,7 @@ func renderErrorForMode(mode Mode, err error) string {
 		// Remediation stays unstyled: copy-paste safe.
 		fmt.Fprintf(&b, "%s %s\n", th.ErrLabel.Render("fix:  "), de.Remediation)
 	}
-	// TE-2.3 footer: every code the box shows is resolvable offline via
+	// Box footer: every code the box shows is resolvable offline via
 	// `cube-idp explain` (same wave as the command itself — the box never
 	// advertises a command that doesn't run). Rendered as a dim line inside
 	// the panel; the spec's border-embedded footer is approximated here.

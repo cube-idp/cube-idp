@@ -1,6 +1,6 @@
 // Package apply wraps fluxcd/pkg/ssa: server-side apply with field manager
 // "cube-idp", kstatus waits with hard deadlines, and a ConfigMap inventory
-// that powers down/prune (spec §4.1 Applier).
+// that powers down/prune.
 package apply
 
 import (

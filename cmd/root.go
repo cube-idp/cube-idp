@@ -35,7 +35,8 @@ func NewRootCmd() *cobra.Command {
 		// Resolves the output Mode once, before any subcommand's RunE, so
 		// every Printer/renderer built downstream sees the resolved choice
 		// without threading a bool through every orchestrator signature
-		// (Task 13.8, extended by Task 14b's §6 resolve ladder). Stage B
+		// via a resolve ladder. The --progress flag activates rungs 1–3 of that
+		// ladder; --plain
 		// (Task 14c) activates the --progress flag: rungs 1–3 of the ladder go
 		// live, --plain stays a permanent alias (rung 4).
 		PersistentPreRunE: func(*cobra.Command, []string) error {
@@ -98,8 +99,8 @@ func NewRootCmd() *cobra.Command {
 // Execute runs the root command to completion using ctx for cancellation —
 // main.go wires this to a SIGINT-cancelable context so long-running steps
 // like `up` can unwind cleanly on Ctrl-C. Before dispatching to cobra, it
-// intercepts a first argument that isn't a built-in command (spec §4.4 tier
-// 2, exec-plugin fallthrough, krew model): a `cube-idp-<name>` binary on
+// intercepts a first argument that isn't a built-in command (the exec-plugin
+// fallthrough, krew model): a `cube-idp-<name>` binary on
 // PATH or in plugin.InstallDir() runs in place of a "command not found"
 // error. This only ever inspects os.Args[1] — a flag-shaped first argument
 // (leading "-") is left to cobra untouched, and the --plain
@@ -122,7 +123,7 @@ func Execute(ctx context.Context) error {
 	return executeFang(ctx, root)
 }
 
-// executeFang dispatches root through fang v2 (spec WP8): styled help/usage
+// executeFang dispatches root through fang v2: styled help/usage
 // on real terminals (full ANSI strip on pipes via fang's colorprofile
 // writer), --version from the release-stamped Version/Commit vars, hidden
 // manpage + completion generators. The error handler passed is a deliberate
@@ -141,7 +142,8 @@ func executeFang(ctx context.Context, root *cobra.Command) error {
 }
 
 // cubeColorScheme maps fang's help roles onto the internal/ui/theme palette
-// so help shares the CLI's one color language (basic ANSI 16 only, spec §2)
+// so help shares the CLI's one color language (basic ANSI 16 only — the CLI
+// never emits 256-color or truecolor sequences)
 // instead of fang's charmtone defaults.
 func cubeColorScheme(ld lipgloss.LightDarkFunc) fang.ColorScheme {
 	// Recover the light/dark choice ld encodes: lipgloss.LightDark(isDark)
@@ -171,7 +173,7 @@ func cubeColorScheme(ld lipgloss.LightDarkFunc) fang.ColorScheme {
 	}
 }
 
-// pluginEnv assembles the exec-plugin env contract (spec §4.4). It is
+// pluginEnv assembles the env contract handed to an exec-plugin process. It is
 // best-effort BY DESIGN — plugins must run even with no cube.yaml or
 // cluster around, so every step here degrades to an empty field instead of
 // an error; a plugin that requires a field must detect and report its own
@@ -225,7 +227,7 @@ func pluginEnv(ctx context.Context) (plugin.Env, func()) {
 	// The plugin reaches zot through its own port-forward or, on a host
 	// where the gateway hostname resolves, https://registry.<gateway.host>
 	// (internal/registry.GatewayRoute) with CUBE_IDP_CA as the trust
-	// anchor — documented in README's plugin section (Task 13).
+	// anchor — documented in README's plugin section.
 	env.Registry = registry.InClusterURL
 	return env, cleanup
 }

@@ -7,7 +7,8 @@ import (
 )
 
 // Every registered code must be explainable; explain is the lookup half of
-// the stable-code contract (rustc --explain pattern, spec WP8).
+// the stable-code contract (rustc --explain pattern): a code that ships
+// must be explainable by `cube-idp explain`.
 func TestEveryCodeHasDescription(t *testing.T) {
 	for _, c := range AllCodes() {
 		d, ok := Describe(c)

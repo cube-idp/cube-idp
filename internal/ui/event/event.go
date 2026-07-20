@@ -1,8 +1,9 @@
 // Package event defines the renderer-agnostic vocabulary of everything a
 // cube-idp run can tell a user. Renderers project these events; they never
-// invent content (spec D13, BuildKit's SolveStatus precedent).
+// invent content: one typed event stream feeds every renderer, following
+// BuildKit's SolveStatus precedent. See docs/adr/0025-event-pipeline-and-renderer-lifecycle.md.
 //
-// Ordering rules (normative, design doc §3):
+// Ordering rules (normative):
 //
 //  1. RunStarted first, when emitted at all (skipped if config.Load fails).
 //  2. Every StepStarted is resolved by the next StepDone or StepFailed for
@@ -71,7 +72,8 @@ type StepFailed struct {
 }
 
 // StepLog is one line of an in-flight step's captured output — the live
-// renderer's bounded tail (TE-1.4) and failure dump (TE-2.2). Plain,
+// renderer's bounded 5-line tail under an active step, and the full dump
+// flushed to scrollback when a step fails. Plain,
 // styled, and JSON projections emit ZERO bytes for it (live-only richness;
 // a JSON projection may be added later under its own ratification).
 type StepLog struct{ Stage, Line string }
@@ -91,14 +93,14 @@ type HealthTick struct{ Components []ComponentState }
 
 // Note is a neutral passthrough line (e.g. down's trust-revert messages).
 // Msg carries any embedded newlines; renderers add exactly one trailing
-// newline. (up's final success block is event.Epilogue since R2 — Note is
-// for lines that genuinely have no structure.)
+// newline. (up's final success block is event.Epilogue — Note is for lines
+// that genuinely have no structure.)
 type Note struct{ Msg string }
 
-// Epilogue is the post-success "what you actually need" block (TE-4,
+// Epilogue is the post-success "what you actually need" block (the
 // helm-NOTES pattern). Context/Registry may be "" when the producer does
-// not know them; renderers omit empty rows. R2: the ✔ glyph is
-// presentation — renderers add it; this event never carries it.
+// not know them; renderers omit empty rows. The ✔ glyph is presentation —
+// renderers add it; this event never carries it.
 type Epilogue struct{ Cube, GatewayURL, Context, Registry, Hint string }
 
 // Warn is an advisory (e.g. get secrets' legacy-label deprecation note).

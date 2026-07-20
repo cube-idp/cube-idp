@@ -10,9 +10,10 @@ import (
 )
 
 // JSON returns the machine projection: exactly one JSON object per line, one
-// event per object — never batched, never pretty-printed (design doc §5.3;
-// the moby/buildkit #4769 lesson). Every line carries "v":1 (schema version,
-// EXPERIMENTAL until the D5 v1 config freeze) and "ts" (RFC3339Nano).
+// event per object — never batched, never pretty-printed (the
+// moby/buildkit #4769 lesson). Every line carries "v":1 (schema version,
+// EXPERIMENTAL while the config schema is v1alpha1, frozen to v1 later) and
+// "ts" (RFC3339Nano).
 // Stream target is stdout; stderr stays free for the human-readable
 // diagnosis block main.go still prints in JSON mode.
 func JSON(w io.Writer) func(event.Event) {
@@ -83,7 +84,7 @@ func JSONWithClock(w io.Writer, now func() time.Time) func(event.Event) {
 }
 
 // jsonHead is the common prefix of every stream line (field names normative,
-// design doc §5.3).
+// normative).
 type jsonHead struct {
 	V    int    `json:"v"`
 	TS   string `json:"ts"`
@@ -128,7 +129,7 @@ type jsonMsg struct {
 	Msg string `json:"msg"`
 }
 
-// jsonEpilogue is the additive "epilogue" record (R2 / TE-4.4): the up
+// jsonEpilogue is the additive "epilogue" record: the up
 // success block as structured data. Context/Registry are omitted when the
 // producer does not know them.
 type jsonEpilogue struct {
@@ -164,4 +165,16 @@ type jsonDiagnosis struct {
 	Cause       string `json:"cause,omitempty"`
 	Remediation string `json:"remediation,omitempty"`
 	Raw         string `json:"raw"`
+}
+
+// JSONSchemas returns a zero value of every JSON envelope type this
+// package emits under --output json. It exists for hack/truthindex, which
+// reflects over these values to record the machine-output surface;
+// behaviourally it is dead code.
+func JSONSchemas() []any {
+	return []any{
+		jsonHead{}, jsonRunStarted{}, jsonStep{}, jsonStepFailed{},
+		jsonComponent{}, jsonHealthTick{}, jsonMsg{}, jsonEpilogue{},
+		jsonPack{}, jsonAccess{}, jsonRunDone{}, jsonDiagnosis{},
+	}
 }

@@ -1,7 +1,7 @@
 // Package tests holds cross-package smoke tests that don't belong to any
 // single internal package: this file renders every starter pack end-to-end
 // (pack.Fetch -> Render), the same path cube-idp's `up` orchestration
-// exercises for a real cluster. P4: the starter packs live in the
+// exercises for a real cluster. The starter packs live in the
 // cube-idp/packs monorepo — these tests scan a local checkout of it
 // (packsTree) and SKIP when none is present; the authoritative per-pack
 // gate is the packs repo's own conformance harness.
@@ -138,12 +138,12 @@ func TestStarterPacksRender(t *testing.T) {
 				t.Errorf("%s: certgen Job still carries the helm.sh/hook annotation: %v", dir, certgenJob.GetAnnotations())
 			}
 
-			// R7b collision check (spec §7 risk): the name pack.cue's
+			// Gateway-Service name collision check: the name pack.cue's
 			// gatewayService: declares (and the raw EnvoyProxy's
 			// envoyService.name pins) MUST be free in the rendered stream —
 			// no rendered v1 Service already claims it in the
 			// envoy-gateway namespace. If one did, EG's generated
-			// data-plane Service would collide with it exactly like the F9
+			// data-plane Service would collide with it exactly like the
 			// hijack (an existing Service's selector getting overwritten),
 			// just with a different colliding owner. It also pins that the
 			// pack's parsed GatewayService and the manifest's EnvoyProxy
@@ -153,7 +153,7 @@ func TestStarterPacksRender(t *testing.T) {
 			}
 			for _, o := range r.Objects {
 				if o.GetKind() == "Service" && o.GetNamespace() == p.GatewayService.Namespace && o.GetName() == p.GatewayService.Name {
-					t.Errorf("%s: a rendered v1 Service already claims %s/%s — that name must stay free for EG's generated data-plane Service, or the F9 hijack recurs",
+					t.Errorf("%s: a rendered v1 Service already claims %s/%s — that name must stay free for EG's generated data-plane Service, or it gets hijacked",
 						dir, p.GatewayService.Namespace, p.GatewayService.Name)
 				}
 			}
@@ -225,8 +225,9 @@ func marshalObjects(t *testing.T, objs []*unstructured.Unstructured) string {
 	return b.String()
 }
 
-// TestCubeEngineFluxRenderParity fences the flux engine pack (engine-as-pack
-// D2): exactly the two controllers cube-idp uses, in flux-system.
+// TestCubeEngineFluxRenderParity fences the flux engine pack — the GitOps
+// engine ships as an ordinary pack (docs/adr/0007-engine-as-a-pack.md), so its
+// render must be exactly the two controllers cube-idp uses, in flux-system.
 func TestCubeEngineFluxRenderParity(t *testing.T) {
 	if testing.Short() {
 		t.Skip("helm renders hit the network")
@@ -286,7 +287,7 @@ func TestCubeEngineArgocdRenderGuards(t *testing.T) {
 	}
 }
 
-// TestEnvoyGatewayPackProxyService pins the F9-follow-up root cause found
+// TestEnvoyGatewayPackProxyService pins the-follow-up root cause found
 // live on the first envoy leg (2026-07-15, fix-envoy-dbg): the pack's
 // EnvoyProxy set envoyService.name to "envoy-gateway" — the exact name of
 // the Envoy Gateway CONTROLLER's own Service, which every proxy's static

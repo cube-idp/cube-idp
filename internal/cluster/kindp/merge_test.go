@@ -61,7 +61,7 @@ func TestRenderMergesUserProviderConfig(t *testing.T) {
 	}
 }
 
-// TestRenderConflictOnGatewayPort pins decision 1: a providerConfigRef/
+// TestRenderConflictOnGatewayPort pins core-injection warn-and-win: a providerConfigRef/
 // forProvider mapping that collides with the gateway's required hostPort no
 // longer hard-errors — core wins and the override is surfaced as a
 // CUBE-1206 warning.
@@ -100,7 +100,7 @@ func wantDiag(t *testing.T, err error, code diag.Code) *diag.Error {
 	return de
 }
 
-// TestRenderConflictOnNodeImage pins decision 1: a providerConfigRef/
+// TestRenderConflictOnNodeImage pins core-injection warn-and-win: a providerConfigRef/
 // forProvider node image conflicting with spec.cluster.kubernetesVersion no
 // longer hard-errors — core wins and the override is a CUBE-1206 warning.
 func TestRenderConflictOnNodeImage(t *testing.T) {
@@ -271,7 +271,7 @@ func TestRenderNoControlPlaneNode(t *testing.T) {
 // TestRenderConfigMapsHTTPPortWhenSet pins U2's opt-in gateway.httpPort:
 // set → a second extraPortMapping host httpPort -> the plain-HTTP NodePort
 // (config.GatewayHTTPNodePort) both gateway packs pin; absent → absent,
-// byte-identical output to today (decision 3).
+// byte-identical output to today.
 func TestRenderConfigMapsHTTPPortWhenSet(t *testing.T) {
 	gw := config.GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443, HTTPPort: 8080}
 	cfg, _, err := RenderConfig(context.Background(), "dev", config.ClusterSpec{Provider: "kind"}, gw, CertsD{})
@@ -344,7 +344,7 @@ func TestRenderForProviderUnknownFieldStrict(t *testing.T) {
 
 func TestRenderRefPlusForProviderListReplace(t *testing.T) {
 	// providerConfigRef declares 2 nodes; forProvider's nodes list replaces
-	// wholesale (RFC 7386, decision 4) with a single labeled control-plane.
+	// wholesale (RFC 7386) with a single labeled control-plane.
 	dir := t.TempDir()
 	ref := filepath.Join(dir, "base.yaml")
 	os.WriteFile(ref, []byte("nodes:\n- role: control-plane\n- role: worker\n"), 0o644)

@@ -13,7 +13,7 @@ import (
 // same objects `up` would SSA (engine-as-pack §3.3.10). The fixture is a
 // manifests-only cube-engine-flux pack (nil values) pointed at by
 // spec.engine.ref, since the published 0.1.0 default does not resolve until
-// the packs are published (Task 15).
+// the engine packs are published to the public registry.
 func TestRenderEngineRendersPack(t *testing.T) {
 	dir := t.TempDir()
 	pd := filepath.Join(dir, "cube-engine-flux")
@@ -59,7 +59,8 @@ spec:
 // is a pure/file-free rendering (cmd/config.go's comment: "no certs.d
 // staging here"), so it genuinely omits the containerd certs.d bind mount
 // `up` injects into the real cluster config at create-time
-// (internal/cluster/kindp/merge.go, D6 canonical hostname). That gap must
+// (internal/cluster/kindp/merge.go, for the canonical gateway hostname).
+// That gap must
 // be surfaced to the user, not just documented in a code comment — but
 // stdout must stay pure YAML (render-cluster's output is meant to be piped
 // straight into `kind create cluster --config -`), so the note belongs on

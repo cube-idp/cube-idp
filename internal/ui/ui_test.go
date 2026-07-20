@@ -8,7 +8,7 @@ import (
 )
 
 // TestPlainMatchesPhase1Format pins the plain-mode Step output to the exact
-// phase-1 step() format (internal/up/up.go, checkpoint 0.13):
+// original step() format that internal/up/up.go printed inline:
 // "▸ [%s] %s\n". Several existing tests (e.g. internal/up's
 // TestRunOrdersCABeforeCluster) grep this literal format, so it must never
 // drift — this test is the guardrail.
@@ -18,7 +18,7 @@ func TestPlainMatchesPhase1Format(t *testing.T) {
 	p.Step("tls", "gateway certificate ready")
 	const want = "▸ [tls] gateway certificate ready\n"
 	if got := b.String(); got != want {
-		t.Fatalf("plain output drifted from the phase-1 format:\ngot:  %q\nwant: %q", got, want)
+		t.Fatalf("plain output drifted from the frozen step() format:\ngot:  %q\nwant: %q", got, want)
 	}
 	if strings.Contains(b.String(), "\x1b[") {
 		t.Fatal("plain mode must emit zero ANSI escapes")
@@ -95,7 +95,7 @@ func TestResolve(t *testing.T) {
 		{"CUBE_IDP_PROGRESS=auto falls through", func() Request { r := ttyRequest(); r.EnvProgress = "auto"; return r }, ModeStyled},
 		{"CUBE_IDP_PROGRESS unknown falls through", func() Request { r := ttyRequest(); r.EnvProgress = "fancy"; return r }, ModeStyled},
 		// Rung 8: dumb/unset TERM only — NO_COLOR left the mode ladder in
-		// W2.T13 (WP8): a non-empty NO_COLOR keeps the resolved mode and
+		// Per no-color.org, a non-empty NO_COLOR keeps the resolved mode and
 		// strips color at the writer instead (ColorEnabled/NewFor).
 		{"non-empty NO_COLOR keeps ModeStyled on a TTY (strip-only)", func() Request { r := ttyRequest(); r.NoColor = true; return r }, ModeStyled},
 		{"TERM=dumb -> plain", func() Request { r := ttyRequest(); r.Term = "dumb"; return r }, ModePlain},
@@ -220,7 +220,7 @@ func TestWarnPlainExactLiteral(t *testing.T) {
 }
 
 // TestAccessSummaryPlainStableLines pins the ONE owner-ratified plain
-// contract change of Task 14b (design doc §9, replacing the pre-14b
+// contract change for the Access summary (see ADR 0023, replacing the earlier
 // TestAccessSummaryPlainNoOp): Access is data with a stable plain
 // projection — a blank line, the "Access" header, one %-12s-padded line per
 // pack URL, and the hint line — and still zero ANSI escapes.
@@ -260,7 +260,7 @@ func TestAccessSummaryStyledListsURLsAndHint(t *testing.T) {
 // leave behind: --color=auto, no env vars, no explicit plain ask.
 func resetColorPolicy() { SetColorPolicy("auto", false, false, false) }
 
-// TestEnvColorPolicyEmptyMeansUnset pins the no-color.org fix (WP8): an
+// TestEnvColorPolicyEmptyMeansUnset pins the no-color.org fix: an
 // empty NO_COLOR is unset — only a non-empty value counts — and the same
 // non-empty rule applies to CLICOLOR_FORCE (bixense).
 func TestEnvColorPolicyEmptyMeansUnset(t *testing.T) {
@@ -357,15 +357,15 @@ func TestColorForcePipesStyledStatic(t *testing.T) {
 	}
 }
 
-// TestColorEnabledLadder pins the exported WP8 ladder end to end:
+// TestColorEnabledLadder pins the exported color ladder end to end:
 // flag beats env, NO_COLOR beats CLICOLOR_FORCE, terminal detection last.
 func TestColorEnabledLadder(t *testing.T) {
 	defer resetColorPolicy()
 	cases := []struct {
-		name                   string
-		flag                   string
-		noColor, force         bool
-		want                   bool
+		name           string
+		flag           string
+		noColor, force bool
+		want           bool
 	}{
 		{"--color=never", "never", false, false, false},
 		{"--color=never beats CLICOLOR_FORCE", "never", false, true, false},

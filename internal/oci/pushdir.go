@@ -111,8 +111,8 @@ func pushPackDirTo(ctx context.Context, dir string, store oras.Target, tags []st
 
 	annotations := map[string]string{
 		// fixed epoch, NOT wall time: identical content must republish to an
-		// identical digest so the CI pack republish is a true no-op (Phase 4
-		// R8; annotation consumers only need a valid RFC3339 value).
+		// identical digest so the CI pack republish is a true no-op
+		// (annotation consumers only need a valid RFC3339 value).
 		ocispec.AnnotationCreated:  "1970-01-01T00:00:00Z",
 		ocispec.AnnotationSource:   "cube-idp",
 		ocispec.AnnotationRevision: tags[0],

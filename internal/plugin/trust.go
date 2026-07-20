@@ -106,7 +106,8 @@ func canonicalPath(path string) string {
 }
 
 // Trust records path's current sha256 in the trust store unconditionally —
-// used by `cube-idp plugin trust` and Task 9's verified installs.
+// used by `cube-idp plugin trust` and by index installs whose sha256 was
+// verified before the binary landed on disk.
 func Trust(name, path string) error {
 	sum, err := sha256File(path)
 	if err != nil {
@@ -138,7 +139,8 @@ func isTrusted(path string) bool {
 // EnsureTrusted enforces the trust contract for path: a known, matching
 // sha256 passes silently. An unknown or CHANGED hash (an updated binary)
 // re-requires trust — consented through the ui.Confirm seam (default no)
-// when interactive is true AND the WP4 prompt gate allows it, else refused
+// when interactive is true AND the global prompt gate allows it (no prompt
+// may run while a live status pipeline owns the terminal), else refused
 // with CUBE-7104 (the refusal is a security gate — byte-for-byte frozen).
 func EnsureTrusted(name, path string, interactive bool) error {
 	m, err := loadStore()

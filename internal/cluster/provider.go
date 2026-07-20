@@ -1,5 +1,6 @@
-// Package cluster defines the ClusterProvider seam (spec §4.1).
-// Implementations are compiled in — no plugin protocol (D8).
+// Package cluster defines the ClusterProvider seam.
+// Implementations are compiled in — no plugin protocol; new providers arrive
+// as in-tree pull requests.
 package cluster
 
 import (
@@ -41,7 +42,7 @@ var (
 
 // InternalKubeconfiger is implemented by providers whose clusters have a
 // second, container-network-internal API endpoint (kind). Spoke
-// registration prefers it (GT7): hub engine pods reach a kind spoke via
+// registration prefers it: hub engine pods reach a kind spoke via
 // https://<name>-control-plane:6443 on the shared `kind` docker network,
 // never via the host-published 127.0.0.1 port.
 type InternalKubeconfiger interface {
@@ -60,7 +61,7 @@ type Provider interface {
 }
 
 // ImageLoader is an optional capability of cluster-creating providers: load
-// per-image tar archives (Task 6's bundle format — single-image OCI-layout
+// per-image tar archives (the air-gap bundle format — single-image OCI-layout
 // tars) directly into the cluster nodes' container runtime, so pods start
 // from node-local images with no registry pull. `up --bundle` requires it;
 // kindp and k3dp implement it, `existing` does not (CUBE-7005) — up.Run

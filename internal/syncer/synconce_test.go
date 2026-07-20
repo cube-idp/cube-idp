@@ -175,7 +175,7 @@ func TestSyncOnceMergesInventoryWithPreexistingEntries(t *testing.T) {
 		t.Fatalf("preexisting inventory: %v (%d entries)", err, len(before))
 	}
 
-	// Bare manifest dir — exercises the D7 synthesis path end to end too.
+	// Bare manifest dir — exercises the pack-synthesis path end to end too.
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "cm.yaml"),
 		[]byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: synced\n  namespace: default\n"), 0o644); err != nil {

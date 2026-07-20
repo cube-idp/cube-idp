@@ -10,7 +10,9 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// State records host-machine side effects so `down` can revert them (D6).
+// State records host-machine side effects so `down` can revert them: OS
+// trust-store changes are made only by the explicitly consented `trust`
+// command and must be fully undone on teardown, so they have to be tracked.
 type State struct {
 	Installed bool   `yaml:"installed" json:"installed"` // CA present in OS trust stores
 	CACert    string `yaml:"caCert" json:"caCert"`

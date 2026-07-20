@@ -79,7 +79,7 @@ func TestEnsureRepoBadCredentials(t *testing.T) {
 	}
 }
 
-// syncFake is a Gitea fake for the P7 SyncDir/Ping surface: it serves
+// syncFake is a Gitea fake for the SyncDir/Ping surface: it serves
 // /api/v1/version, a contents listing for one directory (existing:
 // path→content, from which it derives git blob shas), and records every
 // batch change-files POST body in *ops.

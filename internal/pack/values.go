@@ -1,12 +1,12 @@
-// Package-file for the valuesRef half of GT15: fetching a remote base
-// values document and merging inline values over it (spec 2026-07-19 §5.1).
+// Package-file for the valuesRef half of the values rule: fetching a remote
+// base values document and merging inline values over it.
 //
-// IMPLEMENTATION NOTE (T5 finding): the plan's sketch had this file import
-// internal/refval, but internal/refval imports internal/pack (for FetchFile),
-// so that is an import cycle — `imports .../internal/pack from refval.go:
-// import cycle not allowed`. The observable contract is unchanged: the shared
-// machinery the design's G5 actually names (ref grammar, cache, auth, guards)
-// is FetchFile, which lives in THIS package, and RFC 7386 is the same
+// IMPLEMENTATION NOTE: this file cannot import internal/refval, because
+// internal/refval imports internal/pack (for FetchFile), so that is an import
+// cycle — `imports .../internal/pack from refval.go: import cycle not
+// allowed`. The observable contract is unchanged: the shared machinery (ref
+// grammar, cache, auth, guards) is FetchFile, which lives in THIS package,
+// and RFC 7386 is the same
 // jsonpatch.MergePatch primitive refval.Merge wraps. Only refval's
 // NormalizeIntegral is mirrored here (as the unexported normalizeIntegral),
 // behaviour-for-behaviour.
@@ -59,14 +59,14 @@ func EffectiveValues(ctx context.Context, valuesRef string, inline map[string]an
 }
 
 // RenderResolved is the shared render entry for up.Run and diff's
-// desiredState: the GT15 chartless guard extended to valuesRef (checked
+// desiredState: the chartless values guard extended to valuesRef (checked
 // BEFORE any fetch — no network on a doomed render), EffectiveValues, then
 // RenderWith. Returns the rendered objects plus the values pin for
 // cube.lock's valuesPin column.
 func RenderResolved(ctx context.Context, pk *Pack, pref config.PackRef, gw config.GatewaySpec, cacheDir string) (*Rendered, string, error) {
 	if pref.ValuesRef != "" && !pk.HasChart() {
 		return nil, "", diag.New(diag.CodePackValuesChartless,
-			fmt.Sprintf("pack %s has no chart.yaml — valuesRef/values are helm values only (GT15)", pk.Name),
+			fmt.Sprintf("pack %s has no chart.yaml — valuesRef/values are helm values only", pk.Name),
 			"use extraManifests to add raw resources, or remove valuesRef")
 	}
 	values, pin, err := EffectiveValues(ctx, pref.ValuesRef, pref.Values, cacheDir)

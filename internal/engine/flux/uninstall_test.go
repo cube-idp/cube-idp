@@ -52,7 +52,7 @@ func TestMain(m *testing.M) {
 // workloads; here it proves the list/delete/poll mechanics, not the
 // finalizer wait itself. The e2e suite currently exercises only the kind
 // down path (cluster deletion), so the live-controller prune wait has no
-// end-to-end proof yet — a down --keep-cluster e2e leg is Phase 2 backlog.
+// end-to-end proof yet — a `down --keep-cluster` e2e leg would supply it.
 func TestUninstallDeletesDeliveredSources(t *testing.T) {
 	if testREST == nil {
 		t.Skip("KUBEBUILDER_ASSETS not set; envtest unavailable")

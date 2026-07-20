@@ -71,7 +71,7 @@ func wantDiag(t *testing.T, err error, code diag.Code) *diag.Error {
 	return de
 }
 
-// TestRenderImageConflictWarnsAndWins pins decision 1, conflict-table row 1:
+// TestRenderImageConflictWarnsAndWins pins the core-injection warn-and-win rule:
 // a providerConfigRef/forProvider image conflicting with
 // spec.cluster.kubernetesVersion no longer hard-errors — core wins and the
 // override is a CUBE-1306 warning.
@@ -273,7 +273,7 @@ func TestRenderConflictOnDualRegistryConfig(t *testing.T) {
 // non-empty on Ensure, so a user providerConfigRef/forProvider carrying
 // registries.config collides with the injected zot mirror even when
 // spec.cluster.registry is completely empty. That is a user-vs-core
-// conflict (decision 1): core wins, registries.config is replaced by
+// conflict: core wins, registries.config is replaced by
 // cube-idp's own registriesYAML output, and the warning names the
 // discarded block.
 func TestRenderRegistriesConfigZotConflictWarnsAndWins(t *testing.T) {
@@ -325,7 +325,7 @@ func TestRenderKeepsUserRegistriesWithoutZotOrSpecRegistry(t *testing.T) {
 	}
 }
 
-// TestRenderConfigInjectsZotMirror covers the D12 zot-mirror wiring: a
+// TestRenderConfigInjectsZotMirror covers the zot-mirror wiring: a
 // non-zero ZotMirror adds a registries.yaml mirror entry for it even when
 // spec.cluster.registry is unset.
 func TestRenderConfigInjectsZotMirror(t *testing.T) {
@@ -358,7 +358,7 @@ func TestRenderConfigOmitsZotMirrorWhenZero(t *testing.T) {
 // TestRenderConfigMapsHTTPPortWhenSet pins U2's opt-in gateway.httpPort for
 // k3d: set → a second ports entry host httpPort -> the plain-HTTP NodePort
 // (config.GatewayHTTPNodePort, same host:node syntax as the gateway's
-// 8443:30443 mapping); absent → absent, byte-identical output (decision 3).
+// 8443:30443 mapping); absent → absent, byte-identical output.
 func TestRenderConfigMapsHTTPPortWhenSet(t *testing.T) {
 	gw := config.GatewaySpec{Pack: "traefik", Host: "cube-idp.localtest.me", Port: 8443, HTTPPort: 8080}
 	cfg, _, err := RenderConfig(context.Background(), "dev", config.ClusterSpec{Provider: "k3d"}, gw, ZotMirror{})

@@ -10,7 +10,9 @@ import (
 
 // WriteCertsD prepares a containerd certs.d host directory that maps image
 // refs on <registryHost> to <endpoint>. The kind provider bind-mounts dir to
-// /etc/containerd/certs.d/<registryHost> on every node (D6).
+// /etc/containerd/certs.d/<registryHost> on every node, so nodes pull from
+// the in-cluster registry over the cube-idp CA without any change to the
+// host's OS trust store.
 //
 // Endpoint choice: kind nodes cannot reach the gateway through localtest.me
 // (it resolves to the node itself), so the default endpoint is the zot

@@ -133,7 +133,8 @@ func TestRenderSeparatesErrorsFromWarnings(t *testing.T) {
 	}
 }
 
-// TestGitSourceWithoutGitCLIWarns covers Task 4 Step 6's binding note: a
+// TestGitSourceWithoutGitCLIWarns covers the git-getter binding: bare git
+// pack refs are fetched by shelling out to the git CLI, so a
 // git-sourced pack ref without the git CLI on PATH must surface a CUBE-0105
 // warning naming the real cause (pack fetch would otherwise fail deep
 // inside go-getter with a much less legible error). A git-sourced gateway
@@ -330,7 +331,7 @@ func checkNames(checks []Check) []string {
 	return names
 }
 
-// TestDoctorAllAssemblesChecklist pins the U5 registry's assembly (GT18)
+// TestDoctorAllAssemblesChecklist pins the check registry's assembly
 // for a minimal (default-profile) cube: at least four uniquely named host
 // checks, the opt-in http-port check present only when
 // spec.gateway.httpPort is set, and the linux-only inotify check
@@ -375,7 +376,8 @@ func TestDoctorAllAssemblesChecklist(t *testing.T) {
 }
 
 // TestDoctorRunChecksAllGreen: a stubbed all-green run yields zero
-// findings and every Detail non-empty — GT18's point: passes are SHOWN,
+// findings and every Detail non-empty — the whole point of the checklist:
+// passes are SHOWN,
 // and the detail is what the green row says.
 func TestDoctorRunChecksAllGreen(t *testing.T) {
 	results := RunChecks([]Check{

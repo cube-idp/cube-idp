@@ -1,4 +1,4 @@
-// Task 11 adds D7's watch half around SyncOnce (see syncer.go's package
+// This file adds the watch half around SyncOnce (see syncer.go's package
 // doc): `sync --watch` re-syncs a directory on every debounced filesystem
 // change instead of once. Watch semantics (all decided, none deferred):
 // recursive watch of dir; 300ms debounce coalesces an editor's write burst
@@ -119,7 +119,7 @@ func Watch(ctx context.Context, deps Deps, dir string, debounce time.Duration) e
 }
 
 // newDefaultSyncFn builds Watch's production syncFn: call the real
-// SyncOnce, then compare the pushed artifact's digest (Task 10's
+// SyncOnce, then compare the pushed artifact's digest (the one-shot sync's
 // ArtifactRef.Digest, threaded through Result) to the last digest this
 // watch loop observed. An unchanged digest means the directory's rendered
 // content didn't actually change — the OCI push was a no-op at the

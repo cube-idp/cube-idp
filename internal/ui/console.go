@@ -9,7 +9,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/ui/event"
 )
 
-// Console is the producer's handle on the event stream (design doc §4.3).
+// Console is the producer's handle on the event stream.
 // Its method set deliberately mirrors ui.Printer so orchestrator call sites
 // migrate mechanically: step(out, ...) -> con.Step(...), p.Progress(...) ->
 // con.Progress(...), raw fmt.Fprintf -> con.Note(...). Console constructs
@@ -75,8 +75,9 @@ func (c *Console) Note(format string, args ...any) {
 	c.ch <- event.Note{Msg: fmt.Sprintf(format, args...)}
 }
 
-// Epilogue emits the post-success "what you actually need" block (TE-4).
-// R2: the event carries no glyph — renderers add it as presentation.
+// Epilogue emits the post-success "what you actually need" block: the
+// headline, gateway/context/registry rows, and the next-step hint.
+// The event carries no glyph — renderers add it as presentation.
 func (c *Console) Epilogue(e event.Epilogue) {
 	c.ch <- e
 }

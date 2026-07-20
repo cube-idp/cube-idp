@@ -90,7 +90,7 @@ func (fakeEngine) DeliverGit(_ context.Context, name string, _ engine.GitSource,
 	}, nil
 }
 
-// DeliverSelf mirrors the flux self-source shape truthfully (P8, GT16):
+// DeliverSelf mirrors the flux engine self-source shape truthfully:
 // the plain cube-engine names (never cube-idp-<pack>) are exactly what
 // diff.desiredState's orphan stubs must reproduce.
 func (fakeEngine) DeliverSelf(context.Context, engine.ArtifactRef) ([]*unstructured.Unstructured, error) {
@@ -150,8 +150,8 @@ func sortedKeys(set map[string]bool) []string {
 // TestDesiredStateMatchesUpAppliedSet is the false-orphan regression net:
 // desiredState's desired+orphanOnly identities must cover EXACTLY what
 // up.Run applies/inventories for the same cube (registry + Pack CRD +
-// engine install + per-pack deliver objects + the D6 gateway route + the D11
-// Pack records + the gateway TLS Namespace/Secret — see up.go and
+// engine install + per-pack deliver objects + the registry's gateway route +
+// the Pack records + the gateway TLS Namespace/Secret — see up.go and
 // up/tls.go's gatewayTLSObjects). Anything up.Run applies that this test
 // doesn't also expect here would show up as a false "orphaned" entry on
 // every converged cube; anything expected here that up.Run doesn't actually
@@ -236,13 +236,13 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 			t.Fatal(err)
 		}
 		wantDeliver = append(wantDeliver, deliverObjs...)
-		// customized/delivery mirror up.Run's GT15/GT19 record-writer
+		// customized/delivery mirror up.Run's record-writer
 		// expressions; only the record's identity is compared below, but
 		// stay truthful.
 		wantPackRecords = append(wantPackRecords, pack.PackObject(p, cube.Spec.Gateway, false,
 			len(pr.Values) > 0 || pr.ExtraManifests != "", pr.Delivery, nil))
 	}
-	// Engine-as-pack (T9): up.Run also writes the engine's own D11 Pack record
+	// Engine-as-pack (T9): up.Run also writes the engine's own Pack record
 	// (delivery "engine"); desiredState mirrors its identity in orphanOnly.
 	wantPackRecords = append(wantPackRecords, pack.PackObject(enginePk, cube.Spec.Gateway, false,
 		len(cube.Spec.Engine.Values) > 0, "engine", nil))
@@ -269,7 +269,7 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 	}
 }
 
-// TestDesiredStateRepoDeliveredPack pins P7's diff mirror (GT19 flow): a
+// TestDesiredStateRepoDeliveredPack pins the diff mirror for repo delivery: a
 // delivery: repo pack contributes NO OCI delivery objects to the dry-run
 // diff set — up applies engine git-source objects instead, whose spec
 // embeds live-derived state (the gitea admin owner in the clone URL), so
@@ -279,7 +279,8 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 // drift. The gateway pack (always OCI) keeps its full-spec diff.
 func TestDesiredStateRepoDeliveredPack(t *testing.T) {
 	// pack.ResolveOrder (p6 DEP1/DEP2) requires a "gitea" pack whenever any
-	// delivery: repo pack is declared (decision 13, CUBE-4018 otherwise) —
+	// delivery: repo pack is declared (gitea stays an optional pack but is
+	// mandatory whenever one is, CUBE-4018 otherwise) —
 	// desiredState now validates the graph, so the test cube must satisfy
 	// that same rule config.Load already enforces in production.
 	cube := &config.Cube{
@@ -323,7 +324,7 @@ func TestDesiredStateRepoDeliveredPack(t *testing.T) {
 	}
 }
 
-// TestDesiredStateSelfManagedEngine pins P8's diff mirror (GT16): with
+// TestDesiredStateSelfManagedEngine pins the diff mirror for engine self-management: with
 // spec.engine.selfManage on, up.Run additionally applies + inventories the
 // engine's cube-engine self-source objects, whose SOURCE carries a fresh
 // reconcile-now annotation per render — so desiredState must track their
@@ -354,7 +355,8 @@ func TestDesiredStateSelfManagedEngine(t *testing.T) {
 		t.Fatalf("self-source objects must never enter the full-spec diff set:\n%v", sortedKeys(desiredSet))
 	}
 
-	// selfManage off: no self identities anywhere (the pre-P8 sets exactly).
+	// selfManage off: no self identities anywhere (the sets a cube without
+	// engine self-management produces, exactly).
 	cube.Spec.Engine.SelfManage = false
 	desired, orphanOnly, _, err = desiredState(context.Background(), cube, fakeEngine{})
 	if err != nil {

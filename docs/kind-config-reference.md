@@ -3,7 +3,7 @@
 Date: 2026-07-18
 Status: REFERENCE (research, no decisions)
 Prior art: `2026-07-13-cube-idp-architecture-design.md` (§4.1 ClusterProvider,
-D10 two-layer merge), `internal/cluster/kindp/merge.go` (the code this
+the two-layer merge), `internal/cluster/kindp/merge.go` (the code this
 reference informs).
 Sources: kind `main` as of 2026-07-18 — `pkg/apis/config/v1alpha4/types.go`,
 `pkg/apis/config/v1alpha4/default.go`, `pkg/internal/apis/config/validate.go`,
@@ -16,7 +16,7 @@ Sources: kind `main` as of 2026-07-18 — `pkg/apis/config/v1alpha4/types.go`,
 Complete field-level reference for `kind: Cluster` /
 `apiVersion: kind.x-k8s.io/v1alpha4` so cube-idp can customize kind cluster
 creation deliberately: what exists, what defaults, what validates, and what
-only fails at bootstrap. §6 maps the surface onto the kindp D10 merge.
+only fails at bootstrap. §6 maps the surface onto the kindp merge.
 
 `v1alpha4` is the only config version kind ships; the schema is stable but
 behavior details (e.g. `nftables` proxy mode, containerd config version)
@@ -42,7 +42,7 @@ shift between kind releases. CLI flags (`--name`, `--image`,
 | Field | Type | Behavior |
 | --- | --- | --- |
 | `role` | string | `control-plane` (default) or `worker`; nothing else validates. Single-node clusters get the control-plane taint removed. |
-| `image` | string | Node image = the Kubernetes version knob, per node (mixed versions allowed, e.g. upgrade tests). Upstream requires the `@sha256:` digest for reproducibility — matches our Phase 5 digest-pinned-e2e decision. |
+| `image` | string | Node image = the Kubernetes version knob, per node (mixed versions allowed, e.g. upgrade tests). Upstream requires the `@sha256:` digest for reproducibility — matches our digest-pinned-e2e decision. |
 | `labels` | `map[string]string` | Applied as K8s node labels (drives `nodeSelector` scenarios). |
 | `extraMounts` | `[]Mount` | Host bind mounts into the node container (§3.1). |
 | `extraPortMappings` | `[]PortMapping` | Host→node port forwards (§3.2). |
@@ -98,7 +98,7 @@ as config errors. Anything cube-idp injects into patches should be
 pre-validated on our side (or covered by e2e) because kind will not catch it
 early.
 
-## 6. Mapping to cube-idp (kindp D10 merge)
+## 6. Mapping to cube-idp (kindp merge)
 
 Layer 1 (`providerConfigRef`, fetched) → layer 2 (`forProvider`, RFC 7386) →
 layer 3 typed sugar (hard error on conflict) → layer 4 core injections
@@ -109,8 +109,8 @@ Composed and strict-decoded in `internal/cluster/kindp/merge.go`
 | kind field | cube-idp writer | Notes |
 | --- | --- | --- |
 | `nodes[control-plane].extraPortMappings` | gateway `hostPort` → containerPort 30443 (`config.GatewayNodePort`); typed `extraPorts` | CUBE-1206 warning, core wins if providerConfigRef/forProvider maps gw.Port to a different containerPort. NodePort-equality rule (§3.2) is the constraint. Typed `extraPorts` collisions stay CUBE-1201 (layer 3, hard error). |
-| `containerdConfigPatches` | registry mirrors/insecure; certs.d bind via `CertsD` (hosts.toml/ca.crt, D6) | Version-aware skip (§2) matters if we ever emit `version`-tagged TOML. |
-| `nodes[*].image` | derived from `kubernetesVersion` (`kindest/node:<version>`) | CUBE-1206 warning, core wins if providerConfigRef/forProvider sets a different image. Digest pinning (Phase 5) belongs here. |
+| `containerdConfigPatches` | registry mirrors/insecure; certs.d bind via `CertsD` (hosts.toml/ca.crt) | Version-aware skip (§2) matters if we ever emit `version`-tagged TOML. |
+| `nodes[*].image` | derived from `kubernetesVersion` (`kindest/node:<version>`) | CUBE-1206 warning, core wins if providerConfigRef/forProvider sets a different image. Digest pinning belongs here. |
 | `nodes[control-plane].extraMounts` | typed mounts | — |
 | `kind`/`apiVersion` | forced `Cluster` / `kind.x-k8s.io/v1alpha4` | — |
 

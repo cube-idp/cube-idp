@@ -17,13 +17,14 @@ var (
 // TestReposPacksSatisfyContractV1 walks the repo's packs/ tree and
 // enforces docs/pack-contract-v1.md mechanically: every pack loads, has
 // name==dir matching the contract pattern, semver version, and (v1) a
-// non-empty description. This test moves to $PACKS with the packs in P4 —
-// P3's harness runs it there.
+// non-empty description. The packs themselves live in the separate
+// github.com/cube-idp/packs repo, whose conformance harness runs this same
+// check against them there.
 func TestReposPacksSatisfyContractV1(t *testing.T) {
 	root := filepath.Join("..", "..", "packs")
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		t.Skipf("no packs/ tree at %s (post-P4 layout): %v", root, err)
+		t.Skipf("no packs/ tree at %s (packs live in the separate packs repo): %v", root, err)
 	}
 	for _, e := range entries {
 		if !e.IsDir() {

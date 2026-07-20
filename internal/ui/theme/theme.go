@@ -12,8 +12,8 @@ import (
 	"golang.org/x/term"
 )
 
-// Glyphs — the single normative set (spec §2). Renderers own glyphs; event
-// content never carries them (spec R2).
+// Glyphs — the single normative set. Renderers own glyphs; event
+// content never carries them.
 const (
 	GlyphStep = "▸"
 	GlyphOK   = "✔"
@@ -85,7 +85,8 @@ var Stages = map[string]StageMeta{
 	"trust": {Group: "teardown"},
 }
 
-// BadgeWidth is the fixed "[stage]" column width (TE-1.2 alignment).
+// BadgeWidth is the fixed "[stage]" column width: badges are sized to the
+// longest known stage name so every message starts at one x-position.
 func BadgeWidth() int {
 	w := 0
 	for name := range Stages {

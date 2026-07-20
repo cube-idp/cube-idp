@@ -1,12 +1,12 @@
 # cube-idp pack contract — v1
 
-Status: **FROZEN** (Phase 5 P1, 2026-07-18). This document is the public
+Status: **FROZEN** (2026-07-18). This document is the public
 API of the cube-idp pack format. The copy at `docs/pack-contract-v1.md` in
 the cube-idp main repo is normative; `CONTRACT.md` in the
-`github.com/cube-idp/packs` monorepo is a verbatim copy of it (GT12).
+`github.com/cube-idp/packs` monorepo is a verbatim copy of it.
 `internal/pack/contract_conformance_test.go`
 (`TestReposPacksSatisfyContractV1`) enforces the mechanical clauses against
-every pack in the tree; the packs-repo conformance harness (W0.T3) runs the
+every pack in the tree; the packs-repo conformance harness runs the
 same gate per pack.
 
 Within v1 this contract only ever changes additively (§6). **v1.1
@@ -92,10 +92,10 @@ typed CUBE-4003 (CUBE-4011 for `expose:`). Fields:
 | `version` | yes | Pack version. MUST be semver (`X.Y.Z`, optional pre-release/build suffix) and MUST equal the publish tag (§5). |
 | `description` | v1 packs: yes (loader: optional) | One-line human description, NEW in v1. Surfaced by the catalog index artifact and `cube-idp pack list --available`. The loader accepts its absence (packs predating v1 still load); the conformance gate requires it for every pack published from the packs monorepo. |
 | `#Values` | no | CUE schema for user `values:`. When declared, user values are unified with it — defaults (`*`) are filled in, violations are typed CUBE-4002. Without it, values pass through unvalidated. |
-| `expose` | no | D11 discoverability block: `urls?: [...string]` (may carry `${GATEWAY_*}` tokens, §3), `authSecretRef?: {namespace, name}` (both required when the ref is present), `impliedFields?: {<k>: <v>}` (e.g. an implicit `username: "admin"`). Malformed → CUBE-4011. |
+| `expose` | no | discoverability block: `urls?: [...string]` (may carry `${GATEWAY_*}` tokens, §3), `authSecretRef?: {namespace, name}` (both required when the ref is present), `impliedFields?: {<k>: <v>}` (e.g. an implicit `username: "admin"`). Malformed → CUBE-4011. |
 | `images` | no | `[...string]` — runtime images the pack pulls that never appear in its rendered manifests (e.g. a controller's dynamically-provisioned proxy image). Consumed by lockfile assembly and `cube-idp vendor` for air-gapped bundles. |
 | `gatewayService` | no | `{name, namespace}` (both required if the block is present) — the pack's data-plane Service, used by `up` to point DNS at the data plane instead of the controller Service. Gateway packs only. |
-| `dependsOn` | no | `[...string]` — pack **names** (not refs) this pack requires delivered/healthy before it. NEW (additive, §6) — pre-p6 binaries ignore the field entirely and simply don't order the delivery. Unioned with the cube.yaml-level `packs[].dependsOn` at graph time (`up`/`diff`); an unknown name is CUBE-4018, a cycle is CUBE-4019. |
+| `dependsOn` | no | `[...string]` — pack **names** (not refs) this pack requires delivered/healthy before it. NEW (additive, §6) — binaries that predate the field ignore it entirely and simply don't order the delivery. Unioned with the cube.yaml-level `packs[].dependsOn` at graph time (`up`/`diff`); an unknown name is CUBE-4018, a cycle is CUBE-4019. |
 
 Unknown top-level fields are permitted (CUE compiles them; the loader
 ignores them) — but new *meaningful* fields are added to this contract
@@ -119,14 +119,14 @@ Where substitution applies:
 - Kustomize output — on the built YAML bytes, before parsing.
 - Helm values — on every **string leaf** of the merged values map
   (recursing through nested maps and lists), applied **AFTER** the
-  defaults-merge (§4, D15) so tokens resolve whichever side they came
+  defaults-merge (§4) so tokens resolve whichever side they came
   from. Non-string leaves pass through unchanged.
 - `expose.urls` — when URLs are displayed or recorded.
 
 Rendering without a gateway (empty host) performs **no** substitution: the
 literal tokens pass through untouched.
 
-## 4. Values — the stone (GT15)
+## 4. Values — the stone
 
 > **`values:` are helm values, only, always — consumed exclusively by the
 > pack's `chart.yaml` render.**
@@ -203,11 +203,11 @@ input side — not rendered manifests):
   immutable; consumers pin by digest (index digests, `packs.lock`).
   Republishing different content under an existing version tag is a
   contract violation.
-- **Naming (GT9):** artifacts live at
+- **Naming:** artifacts live at
   `oci://ghcr.io/cube-idp/packs/<name>:X.Y.Z`; the packs monorepo tags
   releases `<name>/vX.Y.Z`; the catalog index artifact is
   `oci://ghcr.io/cube-idp/packs/index`.
-- **Provenance (GT10):** CI attests every published pack digest with
+- **Provenance:** CI attests every published pack digest with
   GitHub-native artifact attestations (keyless OIDC). Verification is
   `gh attestation verify oci://ghcr.io/cube-idp/packs/<name>:<ver> --owner cube-idp`.
   In-binary signature verification is a deliberate non-goal; the binary's
@@ -225,12 +225,10 @@ input side — not rendered manifests):
 - Loader compatibility promise: every pack valid under this document
   loads and renders identically under every cube-idp release that
   declares contract v1.
-- **p6 conformance note (`dependsOn`):** the conformance harness delivers
-  a pack's declared dependency closure **from the monorepo, by name** —
-  superseding the pre-p6 `EXTRA_PACK` workaround the harness used to
-  reach for in-repo dependencies (packs-repo DEP5 implements the harness
-  side of this; the field itself is additive and optional per the rule
-  above, so it changes nothing for packs that declare no `dependsOn`).
+- **Conformance note (`dependsOn`):** the conformance harness delivers
+  a pack's declared dependency closure **from the monorepo, by name**. The
+  field itself is additive and optional per the rule above, so it changes
+  nothing for packs that declare no `dependsOn`.
 
 ## Verifying pack provenance
 
