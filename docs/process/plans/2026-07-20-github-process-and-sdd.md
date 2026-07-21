@@ -58,7 +58,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T2 | Label taxonomy across org repos + relabel open issues + `labels.yml` | — | **yes** | UNCLAIMED |
 | T3 | Milestone `v0.2.0` + assignments | T2 | **yes** | UNCLAIMED |
 | T4 | Issue forms | T2 | no | UNCLAIMED |
-| T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | UNCLAIMED |
+| T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | IN_PROGRESS(sess-g9ryuv, 2026-07-21T20:59:42Z) |
 | T6 | SDD dispatch prompt template | — | no | UNCLAIMED |
 | T7 | SDD status heartbeat template | — | no | UNCLAIMED |
 | T8 | SDD plan-ledger template | — | no | UNCLAIMED |
