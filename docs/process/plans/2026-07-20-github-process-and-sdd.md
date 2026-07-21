@@ -55,7 +55,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | ID | Task | Depends | Outward? | STATUS |
 | --- | --- | --- | --- | --- |
 | T1 | ~~Land `docs/adr/` 0001–0039 on main~~ | — | no | **OBSOLETE** (audit merged via #31/#32) |
-| T2 | Label taxonomy across org repos + relabel open issues + `labels.yml` | — | **yes** | UNCLAIMED |
+| T2 | Label taxonomy across org repos + relabel open issues + `labels.yml` | — | **yes** | IN_PROGRESS(sess-g9ryuv, 2026-07-21T21:09:10Z) |
 | T3 | Milestone `v0.2.0` + assignments | T2 | **yes** | UNCLAIMED |
 | T4 | Issue forms | T2 | no | UNCLAIMED |
 | T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | DONE |
