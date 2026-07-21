@@ -55,7 +55,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | ID | Task | Depends | Outward? | STATUS |
 | --- | --- | --- | --- | --- |
 | T1 | ~~Land `docs/adr/` 0001–0039 on main~~ | — | no | **OBSOLETE** (audit merged via #31/#32) |
-| T2 | Label taxonomy across org repos + relabel open issues + `labels.yml` | — | **yes** | IN_PROGRESS(sess-g9ryuv, 2026-07-21T21:09:10Z) |
+| T2 | Label taxonomy across org repos + relabel open issues + `labels.yml` | — | **yes** | DONE |
 | T3 | Milestone `v0.2.0` + assignments | T2 | **yes** | UNCLAIMED |
 | T4 | Issue forms | T2 | no | UNCLAIMED |
 | T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | DONE |
@@ -133,7 +133,7 @@ Replace GitHub default labels with a namespaced taxonomy (`type:`, `area:`, `sta
 **Interfaces:**
 - Produces: label names used verbatim by T4 (issue forms `labels:` keys), T9 (CLAUDE.md rules), T11 (pilot commands).
 
-- [ ] **Step 1: Create the taxonomy in all five repos**
+- [x] **Step 1: Create the taxonomy in all five repos**
 
 ```bash
 set -e
@@ -166,7 +166,7 @@ gh label create "area:ci"          -R $R --color 1d76db --description "GitHub Ac
 ```
 Expected: each line prints `✓ Label "…" created` (or updated, with `--force`).
 
-- [ ] **Step 2: Relabel the 16 open issues (mapping table is normative)**
+- [x] **Step 2: Relabel the 16 open issues (mapping table is normative)**
 
 | Issue | Add | Remove |
 | --- | --- | --- |
@@ -208,7 +208,7 @@ gh issue edit 19 -R $R --add-label "type:question,area:packs"
 gh issue edit 20 -R $R --add-label "type:question"
 ```
 
-- [ ] **Step 3: Retire replaced defaults in the main repo** (`duplicate`/`wontfix`/`invalid` go too — GitHub close-reasons replaced them; keep `good first issue` and `help wanted`, GitHub UI understands those)
+- [x] **Step 3: Retire replaced defaults in the main repo** (`duplicate`/`wontfix`/`invalid` go too — GitHub close-reasons replaced them; keep `good first issue` and `help wanted`, GitHub UI understands those)
 
 ```bash
 for L in bug enhancement documentation question triage duplicate wontfix invalid; do
@@ -216,7 +216,7 @@ for L in bug enhancement documentation question triage duplicate wontfix invalid
 done
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 gh label list -R cube-idp/cube-idp --limit 50 --json name -q '.[].name' | sort
@@ -224,7 +224,7 @@ gh issue list -R cube-idp/cube-idp --limit 30 --json number,labels -q '.[] | sel
 ```
 Expected: only `type:*` (7), `area:*` (9), `status:blocked` (the single status label), `good first issue`, `help wanted`; second command prints nothing (no unlabeled open issues).
 
-- [ ] **Step 5: Commit the taxonomy as `.github/labels.yml`** — single source of truth for label names (amendment / issue #33 G3-B). T4 forms, T9 CLAUDE.md, T10's doc-consistency job, and T13's board-sync all reference label names; this file is what they are checked against.
+- [x] **Step 5: Commit the taxonomy as `.github/labels.yml`** — single source of truth for label names (amendment / issue #33 G3-B). T4 forms, T9 CLAUDE.md, T10's doc-consistency job, and T13's board-sync all reference label names; this file is what they are checked against.
 
 ```yaml
 # .github/labels.yml — normative label taxonomy (ADR-0042).
@@ -1608,7 +1608,26 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - STATUS: OBSOLETE · BRANCH: n/a · COMMITS: n/a · FINDINGS: audit phases 2+3 merged to main (#31/#32) before execution started; ADRs 0001–0041 present on this branch via merge `ced665a` · REVIEW: n/a · BLOCKERS: none · HANDOFF: next free ADR numbers are 0042/0043
 
 #### T2 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd (merged: no) in cube-idp/cube-idp
+- COMMITS:
+  - d7fe659 docs: github-process-and-sdd — claim T2
+  - ad94414 chore: labels.yml — normative label taxonomy (ADR-0042)
+  (Steps 1–4 are outward GitHub mutations, no repo commits; evidence below.)
+- FINDINGS:
+  - **Issue-set drift (owner-authorized extension).** The plan's Step 2 table maps 16 open issues (#5–#21), but the repo had **27 open issues** at execution time — #23–#31 and #33 were opened after the plan was written. Owner authorized (this session) extending the mapping so Step 4's "zero unlabeled open issues" gate could hold after Step 3 deletes the default labels. Added labels (each by title/body against the Step 1 area definitions):
+    - #23 `type:bug,area:tui-output` (−bug) · #24 `type:feature,area:cluster` (−enhancement) · #25 `type:feature,area:gateway` (−enhancement) · #26 `type:feature,area:diagnostics` (−enhancement) · #27 `type:bug,area:cluster` (−bug) · #28 `type:feature,area:cluster` (−enhancement) · #29 `type:feature,area:engine` (−enhancement) · #30 `type:docs` (−documentation) · #31 `type:docs,area:ci` (−documentation) · #33 `area:ci` added (already `type:question`).
+  - **#21 added to the run.** The plan's Step 2 table lists #21 (`type:adr,area:ci`) but its command block omits the `gh issue edit 21` line; applied #21 per the normative table. #21 was unlabeled before.
+  - **#7 dual-label transient.** Per the plan, #7's mapping adds `type:adr,area:cluster` without removing `enhancement`; Step 3's deletion of `enhancement` cleaned it. Final state verified `type:adr,area:cluster`. No deviation — followed the plan verbatim.
+  - **YAML gate tooling.** The plan's/Global-Constraints' validator `python3 -c "import yaml…"` fails on this machine (no PyYAML in any python3: system, homebrew). Validated `.github/labels.yml` with two independent parsers instead — `ruby -ryaml` → `ruby YAML OK`, and `yq '.'` → parsed keys `type/area/status/community` correctly. CI runs the committed gate on `ubuntu-latest` where python3 ships PyYAML, so the process-gate job (T10) will validate as written. No file defect.
+- REVIEW: pending final review (whole-branch review at T12)
+- BLOCKERS: none
+- HANDOFF:
+  - **Label taxonomy is live** in all 5 org repos (`type:*`×7 + `status:blocked` everywhere; `area:*`×9 in `cube-idp/cube-idp` only). `.github/labels.yml` committed as the normative source (consumed by T4 forms `labels:` keys, T9 CLAUDE.md, T10 doc-consistency job, T13 board-sync).
+  - **Label names for downstream tasks (verbatim):** type = bug/feature/chore/docs/adr/spike/question; area = cluster/packs/engine/registry/gateway/tui-output/diagnostics/trust/ci; status = blocked; community = "good first issue"/"help wanted".
+  - **#7 is `type:adr,area:cluster`** — ready for T11 (retitle to `[ADR-0043] …`, add milestone).
+  - **T3 milestone-assignment set (5 6 15 11 14 16)** all exist and are open — no collision with new issues.
+  - **New unmapped-by-plan issues now labeled:** #23–#31, #33 (see FINDINGS). Owner may wish to review the area assignments for #26 (diagnostics) and #31 (docs+ci) as judgment calls.
 
 #### T3 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
