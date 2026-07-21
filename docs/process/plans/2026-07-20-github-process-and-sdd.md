@@ -59,7 +59,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T3 | Milestone `v0.2.0` + assignments | T2 | **yes** | UNCLAIMED |
 | T4 | Issue forms | T2 | no | UNCLAIMED |
 | T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | DONE |
-| T6 | SDD dispatch prompt template | — | no | UNCLAIMED |
+| T6 | SDD dispatch prompt template | — | no | IN_PROGRESS(sess-g9ryuv, 2026-07-21T21:03:40Z) |
 | T7 | SDD status heartbeat template | — | no | UNCLAIMED |
 | T8 | SDD plan-ledger template | — | no | UNCLAIMED |
 | T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | UNCLAIMED |
