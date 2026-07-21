@@ -7,6 +7,8 @@
 > 2. **T1 is OBSOLETE:** audit phases 2+3 are merged to main and merged into this branch — ADRs 0001–0041 are present. Skip T1.
 > 3. **Plan relocated** from `docs/superpowers/plans/` to `docs/process/plans/` — the audit archived `docs/superpowers/` and T9's own rules freeze it.
 > 4. **Projects v2 delivery board adopted** (issue #33 decision): board Status field owns pipeline state; `status:triage`/`status:needs-adr` labels are dropped (only `status:blocked` survives, as an orthogonal flag); board writes are automation-only. New tasks **T13** (board-sync workflow) and **T14** (board instantiation, owner-gated). T2/T4/T5/T9/T10 amended accordingly.
+> 5. **Docs layout closed** (owner follow-up to #33): `docs/` top level becomes a CLOSED set (`adr/ architecture/ reference/ process/ archive/ vhs/`) declared in ADR-0042 §Documentation layout and enforced by the doc-consistency CI job. New task **T15** creates `docs/reference/` (moves the four contract docs) and a `docs/architecture/` skeleton — one file per `area:*` label, each carrying a machine-readable `<!-- cube:doc area=… code=… adrs=… -->` header so agents can grep their way to the right section and code entry points. Deliberately NO `docs/features/`.
+> 6. **Isolated kubeconfig doctrine:** T9's CLAUDE.md §8 gains item (h) — every cluster-touching command carries an explicit per-command `KUBECONFIG=<worktree>/.kube/config`; never the user's default `~/.kube/config`.
 
 **Goal:** Install a binding, GitHub-native delivery process for the cube-idp org — ADR-first two-track intake, namespaced labels, milestones, issue forms, a CI process gate — plus committed rules and templates for subagent-driven development (SDD): a reusable dispatch prompt, a plan-ledger format, and a mandatory 10-minute visual status heartbeat.
 
@@ -42,7 +44,7 @@ Tracking issue: [#21](https://github.com/cube-idp/cube-idp/issues/21) · PR: [#2
 | --- | --- | --- |
 | 1 — Foundations | T2–T4 (T1 obsolete) | Labels, milestone, issue forms |
 | 2 — Decision & Rules | T5–T9 | ADR-0042 (incl. board spec), three SDD templates, CLAUDE.md |
-| 3 — Enforcement | T10, T13 | CI process gate + board-sync workflow |
+| 3 — Enforcement | T10, T13, T15 | CI gates, board-sync workflow, docs layout |
 | 4 — Pilot & Closeout | T11–T12 | Issue #7 through Track A, PR, owner checklist |
 | 5 — Board (owner) | T14 | Projects v2 board instantiated per ADR-0042 §Board |
 
@@ -66,6 +68,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
 | T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | UNCLAIMED |
 | T14 | Instantiate the Projects v2 board per ADR-0042 §Board | T5,T13 | **yes** | UNCLAIMED · **OWNER-GATED** |
+| T15 | Docs layout: `reference/` move + `architecture/` skeleton (ADR-0042 §Docs) | T2,T5 | no | UNCLAIMED |
 
 Per-task Outcome blocks live at the bottom of this file under "Ledger Outcomes".
 
@@ -564,6 +567,40 @@ UI checklist for built-in workflows, which have no write API).
 SDD status heartbeat stays the intra-run truth; decisions stay in ADRs —
 the board tracks delivery, never decisions.
 
+## Documentation layout
+
+`docs/` top level is a CLOSED set. Adding a top-level directory or loose
+file is an architectural act: it requires updating this ADR (Track A);
+CI (`process-gate` doc-consistency) rejects unknown entries.
+
+| Directory | Contents | Nature |
+| --- | --- | --- |
+| `docs/adr/` | numbered decision records | WHY — append-only |
+| `docs/architecture/` | living system map, one file per `area:*` label | HOW it works NOW — updated in the same PR as the behavior change |
+| `docs/reference/` | user-facing contracts: cube.yaml, kind config, machine-readable output, pack contract | WHAT users rely on |
+| `docs/process/` | delivery machinery: SDD templates, `plans/`, model map | HOW we work |
+| `docs/archive/` | frozen history | read-only — never added to |
+| `docs/vhs/` | demo tapes | assets |
+
+There is deliberately NO `docs/features/` and no per-feature design docs:
+feature *decisions* are ADRs, feature *delivery* is issues + the board,
+feature *current behavior* is `architecture/` + `reference/`. A features
+folder is exactly the artifact class whose divergence the 2026-07-20 audit
+measured (113 fully-specified never-built decisions).
+
+**Area markers.** Every `docs/architecture/<area>.md` begins with a
+machine-readable header comment; subsections may carry section markers:
+
+    <!-- cube:doc area=packs code=internal/pack,internal/catalog adrs=0002,0003,0004,0005,0008 -->
+    <!-- cube:section area=packs topic=fetching code=internal/pack/fetch adrs=0003 -->
+
+Grammar: HTML comment · `cube:doc` | `cube:section` · space-separated
+`key=value` pairs · comma-separated lists · `area` values must exist in
+`.github/labels.yml`. Agents locate work by
+`grep -rn 'cube:\(doc\|section\).*area=<area>' docs/architecture/`, then
+follow `code=` to entry points and `adrs=` to the governing decisions.
+CI validates header presence and area values; deep content stays human-owned.
+
 **WIP rule:** before opening a new Track-A epic, list open epics in the
 current milestone; an unfinished one must be justified as non-blocking in
 the new epic's Scope field.
@@ -992,7 +1029,16 @@ instruction in the work's FINDINGS/PR body. Process authority: ADR-0042
   script board mutations — `board-sync` and built-in workflows are the only
   writers.** `status:*` labels other than `status:blocked` do not exist.
 - New design/planning documents go ONLY into `docs/adr/` (via Track A).
-  `docs/superpowers/` is a frozen archive — never add to it.
+  `docs/archive/` is frozen — never add to it.
+- **`docs/` top level is a closed set (ADR-0042 §Documentation layout):**
+  `adr/ architecture/ reference/ process/ archive/ vhs/`. Never create a
+  new top-level docs directory or loose file — that requires updating
+  ADR-0042 first; CI rejects unknown entries.
+- **Changing behavior in a governed area updates
+  `docs/architecture/<area>.md` in the SAME PR.** Find the section via its
+  `cube:doc` / `cube:section` markers; keep the markers' `code=`/`adrs=`
+  lists current. When designing new functionality, read that area file
+  FIRST — it is the map of what exists.
 
 ## 4. Branches, worktrees, commits
 
@@ -1068,12 +1114,25 @@ f. **ghcr:** only tag-triggered CI can write packages (local token
    `gh api "orgs/cube-idp/packages/container/<name>"`, record for the
    owner, do NOT flip it, do NOT treat as failure.
 g. **go.mod** gains no new module unless the plan's task explicitly says so.
+h. **Isolated kubeconfig, always.** Never read or write the user's default
+   kubeconfig (`~/.kube/config`). Every cluster-touching command — kind,
+   kubectl, helm, flux, `cube-idp` itself, e2e legs — carries an explicit
+   per-command inline env var, one file per worktree/leg:
+   `KUBECONFIG=<worktree>/.kube/config kind create cluster …`
+   `KUBECONFIG=<worktree>/.kube/config go test ./tests/e2e/…`
+   Inline on the command, never a session-wide export, never a shell-profile
+   edit. kind/k3d honor `KUBECONFIG` for context writes, so contexts land in
+   the isolated file; delete the file when the leg's cluster is deleted.
+   (`kind get clusters` talks to docker and needs no kubeconfig.)
 
 ## 9. Repo map
 
-- `docs/adr/` — decisions (source of truth) · `docs/process/` — SDD
-  templates · `docs/archive/` — frozen history · `.github/ISSUE_TEMPLATE/`
-  — intake forms · `internal/`, `cmd/` — Go code · `tests/` — suites.
+- `docs/adr/` — decisions (why) · `docs/architecture/` — living system map,
+  one file per `area:*`, `cube:doc` markers (how it works now) ·
+  `docs/reference/` — user-facing contracts · `docs/process/` — SDD
+  templates, plans · `docs/archive/` — frozen history ·
+  `.github/ISSUE_TEMPLATE/` — intake forms · `internal/`, `cmd/` — Go code
+  · `tests/` — suites.
 ````
 
 - [ ] **Step 2: Write `AGENTS.md`**
@@ -1154,6 +1213,33 @@ jobs:
           missing = referenced - known
           if missing: sys.exit(f"labels referenced but not in labels.yml: {sorted(missing)}")
           print("OK", len(referenced), "label refs checked")
+          EOF
+      - name: docs/ top level is the closed set (ADR-0042 §Documentation layout)
+        run: |
+          # outstanding-todos.md is temporarily allowed until the owner retires
+          # it into issues (T15 FINDINGS records the disposition) — remove it
+          # from this list when that happens.
+          ALLOWED="adr architecture reference process archive vhs outstanding-todos.md"
+          rc=0
+          for e in $(ls docs/); do
+            case " $ALLOWED " in
+              *" $e "*) ;;
+              *) echo "::error::docs/$e is not in the ADR-0042 closed set — update the ADR first"; rc=1 ;;
+            esac
+          done
+          exit $rc
+      - name: architecture docs carry valid cube:doc area headers
+        run: |
+          python3 - <<'EOF'
+          import re, glob, sys, yaml
+          areas = set(yaml.safe_load(open('.github/labels.yml')).get('area', []))
+          bad = []
+          for f in sorted(glob.glob('docs/architecture/*.md')):
+              if f.endswith('README.md'): continue
+              m = re.match(r'<!-- cube:doc area=([a-z-]+)[ >]', open(f).readline())
+              if not m or m.group(1) not in areas: bad.append(f)
+          if bad: sys.exit(f"missing/invalid cube:doc header: {bad}")
+          print("OK", "architecture headers valid")
           EOF
 ```
 
@@ -1268,7 +1354,7 @@ git diff main..process/0040-adr-first-sdd --stat
 for F in .github/ISSUE_TEMPLATE/*.yml .github/workflows/process-gate.yaml; do
   python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1])); print('OK', sys.argv[1])" "$F"; done
 ```
-Expected: commits from T2(labels.yml),T4,T5,T6,T7,T8,T9,T10,T11,T13; all YAML `OK`.
+Expected: commits from T2(labels.yml),T4,T5,T6,T7,T8,T9,T10,T11,T13,T15; all YAML `OK`.
 
 - [ ] **Step 2: Confirm the ledger** — Task Index shows T2–T11 DONE/DONE_WITH_CONCERNS (T1 DONE or BLOCKED(owner-gate) with the fallback noted); every Outcome block filled with evidence.
 
@@ -1457,6 +1543,65 @@ Expected: every transition happened without a human or agent touching Status.
 
 ---
 
+### Task T15: Docs layout normalization — `reference/` move + `architecture/` skeleton
+
+Implements ADR-0042 §Documentation layout. Mechanical moves plus navigable stubs — NO reference content is rewritten in this task; architecture files start as maps (markers + ADR index + code entry points) and get their prose filled by the first behavior-changing PR per area (CLAUDE.md §3 same-PR rule).
+
+**Files:**
+- Create `docs/reference/`; `git mv` into it: `cube-yaml-reference.md`, `kind-config-reference.md`, `machine-readable-output.md`, `pack-contract-v1.md`
+- Create `docs/architecture/README.md` (marker grammar, navigation how-to) and one stub per `area:*` label: `cluster.md`, `packs.md`, `engine.md`, `registry.md`, `gateway.md`, `tui-output.md`, `diagnostics.md`, `trust.md`, `ci.md`
+- Leave `docs/outstanding-todos.md` in place (temporarily allowed by doc-consistency) — its items belong in issues under the new process; record in FINDINGS that the owner must convert-then-archive it.
+
+- [ ] **Step 1: Move the reference docs and fix every inbound link**
+
+```bash
+mkdir -p docs/reference
+git mv docs/cube-yaml-reference.md docs/kind-config-reference.md docs/machine-readable-output.md docs/pack-contract-v1.md docs/reference/
+for F in cube-yaml-reference kind-config-reference machine-readable-output pack-contract-v1; do
+  grep -rln "docs/$F.md" README.md CHANGELOG.md docs/ internal/ cmd/ tests/ .github/ 2>/dev/null
+done
+# update every hit to docs/reference/<name>.md, then verify zero stale links:
+grep -rn 'docs/\(cube-yaml-reference\|kind-config-reference\|machine-readable-output\|pack-contract-v1\)\.md' . --include='*.md' --include='*.go' | grep -v docs/reference && echo "STALE LINKS" || echo "OK links"
+```
+
+- [ ] **Step 2: Write the architecture skeleton** — each stub is a MAP, not prose. Shape (example `packs.md`; derive `adrs=` from `docs/adr/README.md`, `code=` from the package layout):
+
+```markdown
+<!-- cube:doc area=packs code=internal/pack,internal/catalog adrs=0002,0003,0004,0005,0008,0009 -->
+# Architecture — packs
+
+Governing decisions: ADR-0002 (format), ADR-0003 (refs/pinning),
+ADR-0004 (values/extra manifests), ADR-0005 (deps/ordering),
+ADR-0008 (distribution), ADR-0009 (air-gap/integrity).
+User contract: ../reference/pack-contract-v1.md
+
+<!-- cube:section area=packs topic=format code=internal/pack -->
+## Format
+_To be filled by the first behavior-changing PR in this area (CLAUDE.md §3)._
+```
+
+`docs/architecture/README.md` documents the grammar verbatim from ADR-0042 §Documentation layout and the navigation recipe (`grep -rn 'cube:section.*area=<area>' docs/architecture/`).
+
+- [ ] **Step 3: Validate and commit**
+
+```bash
+python3 - <<'EOF'
+import re, glob, yaml
+areas = set(yaml.safe_load(open('.github/labels.yml'))['area'])
+for f in sorted(glob.glob('docs/architecture/*.md')):
+    if f.endswith('README.md'): continue
+    m = re.match(r'<!-- cube:doc area=([a-z-]+)[ >]', open(f).readline())
+    assert m and m.group(1) in areas, f
+print('OK', 'headers valid')
+EOF
+git add docs/reference/ docs/architecture/ README.md
+git commit -m "docs: closed layout — reference/ move + architecture/ area skeleton (ADR-0042)
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+```
+
+---
+
 ## Ledger Outcomes
 
 #### T1 Outcome
@@ -1499,4 +1644,7 @@ Expected: every transition happened without a human or agent touching Status.
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
 
 #### T14 Outcome
+- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+
+#### T15 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
