@@ -59,7 +59,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T3 | Milestone `v0.2.0` + assignments | T2 | **yes** | UNCLAIMED |
 | T4 | Issue forms | T2 | no | UNCLAIMED |
 | T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | DONE |
-| T6 | SDD dispatch prompt template | — | no | IN_PROGRESS(sess-g9ryuv, 2026-07-21T21:03:40Z) |
+| T6 | SDD dispatch prompt template | — | no | DONE |
 | T7 | SDD status heartbeat template | — | no | UNCLAIMED |
 | T8 | SDD plan-ledger template | — | no | UNCLAIMED |
 | T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | UNCLAIMED |
@@ -675,7 +675,7 @@ Generalizes the battle-tested `2026-07-19-engine-as-pack-agent-prompt.md` / `pha
 **Files:**
 - Create: `docs/process/sdd-dispatch-template.md`
 
-- [ ] **Step 1: Write the template**
+- [x] **Step 1: Write the template**
 
 ````markdown
 # SDD dispatch prompt — {{PLAN_NAME}}
@@ -768,7 +768,7 @@ Outward actions authorized: no ({{OUTWARD_SCOPE when yes}})
 Owner gates authorized: no ({{OWNER_GATE_SCOPE when yes}})
 ````
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/process/sdd-dispatch-template.md
@@ -1628,7 +1628,15 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - HANDOFF: ADR path for downstream tasks = `docs/adr/0042-adr-first-two-track-delivery-process.md` (consumed by T9 CLAUDE.md, T11 pilot as `[ADR-0042]` process authority, T13 board-sync §Board spec, T15 §Documentation-layout). ADR status is `proposed`; T12 flips it to `accepted`. §Board field names (byte-exact for T13/T14): Status options `Backlog · Proposed · Accepted · In progress · In review · Done`; org config keys `BOARD_APP_ID` (var), `BOARD_APP_PRIVATE_KEY` (secret), `BOARD_PROJECT_NUMBER` (var). §Documentation-layout closed set (for T15/T10): `adr architecture reference process archive vhs`. Area-marker grammar defined in §Documentation-layout: `<!-- cube:doc area=… code=… adrs=… -->`.
 
 #### T6 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd (merged: no) in cube-idp/cube-idp
+- COMMITS:
+  - ededc3f docs: github-process-and-sdd — claim T6
+  - 5eb5ad1 docs(process): SDD dispatch prompt template (from p5/p7 prompts)
+- FINDINGS: none. `docs/process/sdd-dispatch-template.md` created verbatim from the plan's Step 1 fenced content (the file body is everything inside the outer 4-backtick `````markdown````` fence, from the `# SDD dispatch prompt — {{PLAN_NAME}}` heading through the trailing authorization lines; 88 lines, 18 `{{PLACEHOLDER}}` tokens preserved). No repo-invariant doctrine was inlined — the template carries only per-plan `{{...}}` fields and references `$ROOT/CLAUDE.md` §SDD / §Operational-doctrine (delivered by T9). Commit message used exactly as specified.
+- REVIEW: pending final review (whole-branch review at T12)
+- BLOCKERS: none
+- HANDOFF: template path = `docs/process/sdd-dispatch-template.md`. Referenced by T9 CLAUDE.md §5 ("Plans are executed one-task-per-fresh-agent, per `docs/process/sdd-dispatch-template.md`") — that path string must match. The template's §6 points at `docs/process/sdd-status-template.md` (created by T7) and its close protocol mirrors `docs/process/sdd-ledger-template.md` (created by T8); T9 depends on T6+T7+T8 all present so all three `docs/process/*-template.md` paths resolve.
 
 #### T7 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
