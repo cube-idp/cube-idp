@@ -58,7 +58,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T2 | Label taxonomy across org repos + relabel open issues + `labels.yml` | — | **yes** | UNCLAIMED |
 | T3 | Milestone `v0.2.0` + assignments | T2 | **yes** | UNCLAIMED |
 | T4 | Issue forms | T2 | no | UNCLAIMED |
-| T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | IN_PROGRESS(sess-g9ryuv, 2026-07-21T20:59:42Z) |
+| T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | DONE |
 | T6 | SDD dispatch prompt template | — | no | UNCLAIMED |
 | T7 | SDD status heartbeat template | — | no | UNCLAIMED |
 | T8 | SDD plan-ledger template | — | no | UNCLAIMED |
@@ -470,7 +470,7 @@ The process itself is the first exercise of the process: recorded as an ADR, acc
 - Create: `docs/adr/0042-adr-first-two-track-delivery-process.md`
 - Modify: `docs/adr/README.md` (append index row)
 
-- [ ] **Step 1: Write the ADR** (full text; status `proposed` — flipped to `accepted` in T12 when the PR merges)
+- [x] **Step 1: Write the ADR** (full text; status `proposed` — flipped to `accepted` in T12 when the PR merges)
 
 ```markdown
 # 0042 — ADR-First Two-Track Delivery Process on GitHub
@@ -651,13 +651,13 @@ templates.
       Proposed/Accepted (T14 verification)
 ```
 
-- [ ] **Step 2: Append the index row to `docs/adr/README.md`**
+- [x] **Step 2: Append the index row to `docs/adr/README.md`**
 
 ```markdown
 | 0042 | [ADR-First Two-Track Delivery Process on GitHub](0042-adr-first-two-track-delivery-process.md) | — |
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/adr/0042-adr-first-two-track-delivery-process.md docs/adr/README.md
@@ -1617,7 +1617,15 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
 
 #### T5 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd (merged: no) in cube-idp/cube-idp
+- COMMITS:
+  - adb6c4b docs: github-process-and-sdd — claim T5
+  - 61231b1 docs(adr): 0042 — ADR-first two-track delivery process + delivery board (proposed)
+- FINDINGS: none. ADR-0042 written verbatim from the plan's Step 1 text (status `proposed`, to be flipped to `accepted` in T12). Index row appended to `docs/adr/README.md` verbatim after the 0041 row. Next free ADR numbers 0042/0043 confirmed against the on-branch `docs/adr/` (0001–0041 present via merge ced665a; no collision). Pre-existing markdown-lint warnings in the plan file (MD028/MD031/MD032) are unrelated to this task and were left untouched.
+- REVIEW: pending final review (whole-branch review at T12)
+- BLOCKERS: none
+- HANDOFF: ADR path for downstream tasks = `docs/adr/0042-adr-first-two-track-delivery-process.md` (consumed by T9 CLAUDE.md, T11 pilot as `[ADR-0042]` process authority, T13 board-sync §Board spec, T15 §Documentation-layout). ADR status is `proposed`; T12 flips it to `accepted`. §Board field names (byte-exact for T13/T14): Status options `Backlog · Proposed · Accepted · In progress · In review · Done`; org config keys `BOARD_APP_ID` (var), `BOARD_APP_PRIVATE_KEY` (secret), `BOARD_PROJECT_NUMBER` (var). §Documentation-layout closed set (for T15/T10): `adr architecture reference process archive vhs`. Area-marker grammar defined in §Documentation-layout: `<!-- cube:doc area=… code=… adrs=… -->`.
 
 #### T6 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
