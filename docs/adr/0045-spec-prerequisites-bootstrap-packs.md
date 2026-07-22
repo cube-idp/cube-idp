@@ -1,7 +1,8 @@
 # 0045 — `spec.prerequisites`: User-Declarable Bootstrap Packs Applied Before the Engine
 
-Status: proposed
+Status: accepted
 Date: 2026-07-22
+Accepted: 2026-07-22
 Epic: cube-idp/cube-idp#18
 
 ## Context
@@ -58,10 +59,7 @@ the authority.
 
 ## Decision
 
-_Pending PR review — the merge of this PR is the acceptance. The recommendations
-above are the proposed decision; the reviewer adjudicates each option group here._
-
-Proposed, adopting the recommended options:
+Accepted 2026-07-22 (PR #40 merged), adopting the recommended options:
 
 - **`spec.prerequisites`** is a new top-level list in the `Cube` resource (not
   nested under `spec.cluster` — that owns provider provisioning; prerequisites are
