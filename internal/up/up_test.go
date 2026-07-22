@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -1093,5 +1096,93 @@ func TestBundleRailsCheckRejectsRemoteOrigin(t *testing.T) {
 	// A local-origin cube with no remote sources still passes.
 	if err := bundleRailsCheck(&config.Cube{}); err != nil {
 		t.Fatalf("local cube rejected: %v", err)
+	}
+}
+
+// writePrereqPack writes a minimal local pack dir (pack.cue + one manifest)
+// that pack.Fetch can read as a prerequisite ref — the same shape
+// internal/pack's expose_test.writePack uses, kept local to up_test so the
+// prerequisite loop tests own their fixtures. The manifest is a namespace so
+// each fixture applies a distinct, named object.
+func writePrereqPack(t *testing.T, name string) string {
+	t.Helper()
+	dir := t.TempDir()
+	cue := fmt.Sprintf("name: %q\nversion: \"0.1.0\"\n", name)
+	if err := os.WriteFile(filepath.Join(dir, "pack.cue"), []byte(cue), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "manifests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	man := fmt.Sprintf("apiVersion: v1\nkind: Namespace\nmetadata: {name: %s}\n", name)
+	if err := os.WriteFile(filepath.Join(dir, "manifests", "ns.yaml"), []byte(man), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestDeliverPrerequisiteAppliesAndRecords pins the pre-engine delivery
+// contract (ADR-0045): a prerequisite is SSA'd by the CLI itself AND recorded
+// in inventory (the same objects — so the `down` cascade removes it), and the
+// returned entry carries the pack's name/version for cube.lock. No engine
+// Deliver, no OCI push: the CLI applies the manifests directly.
+func TestDeliverPrerequisiteAppliesAndRecords(t *testing.T) {
+	dir := writePrereqPack(t, "gateway-api-crds")
+	ap := &fakePackApplier{}
+	con := ui.NewConsole(make(chan event.Event, 256))
+	dp, err := deliverPrerequisite(context.Background(), con, ap,
+		config.PackRef{Ref: dir}, config.GatewaySpec{}, t.TempDir(), 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// SSA'd and inventoried the SAME object (the fixture's namespace).
+	if !reflect.DeepEqual(ap.applied, []string{"gateway-api-crds"}) {
+		t.Fatalf("applied = %v, want [gateway-api-crds]", ap.applied)
+	}
+	if !reflect.DeepEqual(ap.recorded, []string{"gateway-api-crds"}) {
+		t.Fatalf("recorded = %v, want [gateway-api-crds] (down cascade needs it in inventory)", ap.recorded)
+	}
+	if dp.entry.Name != "gateway-api-crds" || dp.entry.Version != "0.1.0" || dp.entry.Ref != dir {
+		t.Fatalf("lock entry = %+v, want name gateway-api-crds v0.1.0 ref %s", dp.entry, dir)
+	}
+	if dp.pk == nil || dp.pk.Name != "gateway-api-crds" {
+		t.Fatalf("returned pack = %+v, want name gateway-api-crds", dp.pk)
+	}
+}
+
+// TestPrerequisitesAppliedInListOrder pins the sequencing contract: the loop
+// applies prerequisites in DECLARED order (the ADR's "list order is the
+// contract"). A later prerequisite must be able to rely on an earlier one's
+// objects already applied — the fakePackApplier records applies in call
+// order, so the recorded order IS the delivery order.
+func TestPrerequisitesAppliedInListOrder(t *testing.T) {
+	dirs := []string{
+		writePrereqPack(t, "first"),
+		writePrereqPack(t, "second"),
+		writePrereqPack(t, "third"),
+	}
+	ap := &fakePackApplier{}
+	con := ui.NewConsole(make(chan event.Event, 256))
+	refs := []config.PackRef{{Ref: dirs[0]}, {Ref: dirs[1]}, {Ref: dirs[2]}}
+	var got []*deliveredPrereq
+	for i, pref := range refs {
+		dp, err := deliverPrerequisite(context.Background(), con, ap,
+			pref, config.GatewaySpec{}, t.TempDir(), i+1, len(refs))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, dp)
+	}
+	want := []string{"first", "second", "third"}
+	if !reflect.DeepEqual(ap.applied, want) {
+		t.Fatalf("apply order = %v, want %v (list order is the contract)", ap.applied, want)
+	}
+	// Entries come back in the same order, ready to prepend to cube.lock.
+	var entryNames []string
+	for _, dp := range got {
+		entryNames = append(entryNames, dp.entry.Name)
+	}
+	if !reflect.DeepEqual(entryNames, want) {
+		t.Fatalf("entry order = %v, want %v", entryNames, want)
 	}
 }
