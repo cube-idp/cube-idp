@@ -18,7 +18,7 @@
 
 ## Global Constraints
 
-- `$ROOT` = `/Users/rafal.pieniazek/Library/CloudStorage/Dropbox/github.com/cube-idp/cube-idp` (primary checkout; main is clean except untracked `spokes-up.txt` — never add or commit it).
+- `$ROOT` = `<REPO_ROOT>` — the absolute path to the primary `cube-idp/cube-idp` checkout on the operator's machine (main is clean except untracked `spokes-up.txt` — never add or commit it).
 - **NEVER work in the main checkout.** All file changes happen in the isolated worktree `$ROOT/.claude/worktrees/process-0040-adr-first-sdd` on branch `process/0040-adr-first-sdd` (created at bootstrap — check for existence, reuse). Never commit to `main`. Pushing is limited to updating `process/0040-adr-first-sdd` to keep the tracking PR current; never push `main`, never push tags.
 - **OUTWARD actions** (anything hitting github.com: label create/delete, milestone create, issue edit/create, PR open) are marked `[OUTWARD]` per task and require the dispatch to say `Outward actions authorized: yes`. Without it → report `NEEDS_CONTEXT`, do not improvise.
 - Every commit message is the step's exact message and ends with the trailer:
@@ -30,7 +30,7 @@
 
 ## Plan lifecycle (bootstrap → merge)
 
-This plan is itself Track-A-shaped work and follows the process it installs:
+This plan is itself ADR-track-shaped work and follows the process it installs:
 
 1. **Bootstrap (done at plan creation):** worktree + branch `process/0040-adr-first-sdd`; this plan file committed there; tracking issue opened; PR opened referencing the issue (`Closes #<tracking>`). The PR stays open for the whole run — every task's commits update it.
 2. **Execution:** tasks T2–T11 and T13 land as commits on the branch (worktree only), pushed to keep the PR current. T14 (board instantiation) is owner-gated and may land after merge.
@@ -45,7 +45,7 @@ Tracking issue: [#21](https://github.com/cube-idp/cube-idp/issues/21) · PR: [#2
 | 1 — Foundations | T2–T4 (T1 obsolete) | Labels, milestone, issue forms |
 | 2 — Decision & Rules | T5–T9 | ADR-0042 (incl. board spec), three SDD templates, CLAUDE.md |
 | 3 — Enforcement | T10, T13, T15 | CI gates, board-sync workflow, docs layout |
-| 4 — Pilot & Closeout | T11–T12 | Issue #7 through Track A, PR, owner checklist |
+| 4 — Pilot & Closeout | T11–T12 | Issue #7 through the ADR track, PR, owner checklist |
 | 5 — Board (owner) | T14 | Projects v2 board instantiated per ADR-0042 §Board |
 
 ## Task Index & Ledger
@@ -64,10 +64,10 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T8 | SDD plan-ledger template | — | no | DONE |
 | T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | DONE |
 | T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | DONE |
-| T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | DONE |
+| T11 | Pilot: issue #7 → ADR-0043 (ADR track) | T2,T5,T9 | **yes** | DONE |
 | T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | IN_PROGRESS(fable-t12, 2026-07-22T06:45:06Z) · **OWNER-GATED** (push) |
 | T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | DONE |
-| T14 | Instantiate the Projects v2 board per ADR-0042 §Board | T5,T13 | **yes** | UNCLAIMED · **OWNER-GATED** |
+| T14 | Instantiate the Projects v2 board per ADR-0042 §Board | T5,T13 | **yes** | DONE (owner, 2026-07-22) |
 | T15 | Docs layout: `reference/` move + `architecture/` skeleton (ADR-0042 §Docs) | T2,T5 | no | DONE |
 
 Per-task Outcome blocks live at the bottom of this file under "Ledger Outcomes".
@@ -342,7 +342,7 @@ body:
 
 ```yaml
 name: Feature request
-description: New capability or enhancement (Track B — or flags itself into Track A)
+description: New capability or enhancement (Direct track — or flags itself into the ADR track)
 title: "feat: "
 labels: ["type:feature"]
 body:
@@ -364,7 +364,7 @@ body:
     id: needs-adr
     attributes:
       label: Does this need an ADR?
-      description: New dependency, new architectural pattern, hard to reverse, or real competing alternatives → yes (Track A).
+      description: New dependency, new architectural pattern, hard to reverse, or real competing alternatives → yes (ADR track).
       options: ["no — routine work within existing decisions", "yes — architectural (an epic + ADR PR must precede code)", "unsure — triage decides"]
     validations:
       required: true
@@ -377,11 +377,11 @@ body:
       required: true
 ```
 
-- [x] **Step 4: Write `epic.yml`** (Track A tracker)
+- [x] **Step 4: Write `epic.yml`** (ADR-track tracker)
 
 ```yaml
 name: "Epic: ADR-tracked feature"
-description: Track A — a decision plus its delivery, as one epic with sub-issues
+description: ADR track — a decision plus its delivery, as one epic with sub-issues
 title: "[ADR-NNNN] "
 labels: ["type:adr"]
 body:
@@ -444,7 +444,7 @@ body:
     attributes:
       label: Committed exit
       description: A spike may not end "open". Pick the exit now.
-      options: ["ADR PR (Track A) or close-with-reason", "close-with-reason only (no decision expected)"]
+      options: ["ADR PR (ADR track) or close-with-reason", "close-with-reason only (no decision expected)"]
     validations:
       required: true
 ```
@@ -490,7 +490,7 @@ abandoned. The org stays on GitHub only — process, not new software.
 
 ## Decision
 
-**Track A — decision-first** (features, architecture, anything hard to reverse):
+**ADR track — decision-first** (features, architecture, anything hard to reverse):
 1. Open an **epic issue** via the Epic form, titled `[ADR-NNNN] <name>`,
    labeled `type:adr`.
 2. Open a **small PR adding `docs/adr/NNNN-<slug>.md`** (status `proposed`)
@@ -504,9 +504,9 @@ abandoned. The org stays on GitHub only — process, not new software.
 4. The epic closes when all sub-issues close and the ADR's verification
    checkboxes pass.
 
-**Track B — routine** (bug/chore/docs): plain issue → PR with `Closes #N`.
+**Direct track — routine** (bug/chore/docs): plain issue → PR with `Closes #N`.
 Escalation guard: hitting a real architectural choice mid-implementation
-stops the work and proposes an ADR (Track B → Track A).
+stops the work and proposes an ADR (Direct track → ADR track).
 
 **Spikes** are timeboxed and terminate in exactly one of: an ADR PR, or
 closed-as-not-planned *with the reason in the closing comment*. Silent
@@ -570,7 +570,7 @@ the board tracks delivery, never decisions.
 ## Documentation layout
 
 `docs/` top level is a CLOSED set. Adding a top-level directory or loose
-file is an architectural act: it requires updating this ADR (Track A);
+file is an architectural act: it requires updating this ADR (ADR track);
 CI (`process-gate` doc-consistency) rejects unknown entries.
 
 | Directory | Contents | Nature |
@@ -601,7 +601,7 @@ Grammar: HTML comment · `cube:doc` | `cube:section` · space-separated
 follow `code=` to entry points and `adrs=` to the governing decisions.
 CI validates header presence and area values; deep content stays human-owned.
 
-**WIP rule:** before opening a new Track-A epic, list open epics in the
+**WIP rule:** before opening a new ADR-track epic, list open epics in the
 current milestone; an unfinished one must be justified as non-blocking in
 the new epic's Scope field.
 
@@ -624,9 +624,9 @@ templates.
 ## Consequences
 
 - Every feature has a falsifiable paper trail: ADR → epic → sub-issues → PRs.
-- Ceremony is bounded: Track B stays one-issue-one-PR light.
+- Ceremony is bounded: the Direct track stays one-issue-one-PR light.
 - `docs/superpowers/` is frozen as an archive; new plans attach to ADRs/epics.
-- Follow-ups: #17–#20 must each get a Track-A revive or a reasoned close.
+- Follow-ups: #17–#20 must each get a ADR-track revive or a reasoned close.
 
 ## Implementation Plan
 
@@ -636,7 +636,7 @@ templates.
 - **Installed by:** `docs/process/plans/2026-07-20-github-process-and-sdd.md`
   (tasks T2–T13; board instantiation T14), the first SDD run using the new
   templates.
-- **Pattern for future Track-A work:** pilot ADR-0043 (issue #7).
+- **Pattern for future ADR-track work:** pilot ADR-0043 (issue #7).
 
 ## Verification
 
@@ -1003,15 +1003,15 @@ instruction in the work's FINDINGS/PR body. Process authority: ADR-0042
 
 ## 2. Two-track intake (ADR-0042)
 
-- **Track A** (features, architecture, hard-to-reverse): epic issue
+- **ADR track** (features, architecture, hard-to-reverse): epic issue
   `[ADR-NNNN] <name>` (`type:adr`) → PR adding the ADR (status `proposed`,
   with Implementation Plan) → merge = accepted → sub-issues per
   deliverable → PRs close sub-issues.
-- **Track B** (bug/chore/docs): plain issue → PR with `Closes #N`.
-  Hitting an architectural choice mid-task escalates to Track A.
+- **Direct track** (bug/chore/docs): plain issue → PR with `Closes #N`.
+  Hitting an architectural choice mid-task escalates to the ADR track.
 - **Spikes** are timeboxed and end in an ADR PR or close-with-reason.
   Closing "not doing X because Y" is a valid, valuable outcome.
-- **WIP rule:** before opening a new Track-A epic, check open `type:adr`
+- **WIP rule:** before opening a new ADR-track epic, check open `type:adr`
   issues in the current milestone; justify non-blocking in the new Scope.
 
 ## 3. Issues & PRs
@@ -1028,7 +1028,7 @@ instruction in the work's FINDINGS/PR body. Process authority: ADR-0042
   board is automation-owned. NEVER set board Status manually and NEVER
   script board mutations — `board-sync` and built-in workflows are the only
   writers.** `status:*` labels other than `status:blocked` do not exist.
-- New design/planning documents go ONLY into `docs/adr/` (via Track A).
+- New design/planning documents go ONLY into `docs/adr/` (via the ADR track).
   `docs/archive/` is frozen — never add to it.
 - **`docs/` top level is a closed set (ADR-0042 §Documentation layout):**
   `adr/ architecture/ reference/ process/ archive/ vhs/`. Never create a
@@ -1042,7 +1042,7 @@ instruction in the work's FINDINGS/PR body. Process authority: ADR-0042
 
 ## 4. Branches, worktrees, commits
 
-- Branch names: `adr-NNNN-<slug>` (Track A), `issue-N-<slug>` (Track B),
+- Branch names: `adr-NNNN-<slug>` (ADR track), `issue-N-<slug>` (Direct track),
   `process/<slug>` (meta). Never work on `main`.
 - **Never work in a main checkout.** All work — code, docs, plan ledgers —
   happens in an isolated worktree under `.claude/worktrees/` on the task's
@@ -1256,9 +1256,9 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ---
 
-### Task T11: Pilot — issue #7 through Track A as ADR-0043 `[OUTWARD]`
+### Task T11: Pilot — issue #7 through the ADR track as ADR-0043 `[OUTWARD]`
 
-#7 ("cluster mounts and extraPorts semantics for multi-node") already says "deliverable: a short design doc deciding the semantics, then implementation" — it is the perfect first Track-A exercise. The agent scaffolds; the OWNER decides in PR review.
+#7 ("cluster mounts and extraPorts semantics for multi-node") already says "deliverable: a short design doc deciding the semantics, then implementation" — it is the perfect first ADR-track exercise. The agent scaffolds; the OWNER decides in PR review.
 
 **Files:**
 - Create: `docs/adr/0043-multinode-mounts-and-extraports.md`
@@ -1377,7 +1377,7 @@ git -C $ROOT worktree remove $ROOT/.claude/worktrees/process-0040-adr-first-sdd
 
 - [ ] **Step 5: Owner checklist (recorded here; not agent work)**
 
-- [ ] Decide #17–#20: revive (→ Track A epic) or close-with-reason each
+- [ ] Decide #17–#20: revive (→ ADR-track epic) or close-with-reason each
 - [ ] Approve/adjust ADR-0043's recommendations in its PR review
 - [ ] Execute T14 (board instantiation) — the only piece that cannot land by merging this PR
 - [ ] Optional: org-level Issue Types (Bug/Feature/Task/Epic) via org settings — labels already cover this; adopt only if the web UI view matters
@@ -1661,7 +1661,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - REVIEW: pending final review (whole-branch review at T12)
 - BLOCKERS: none
 - HANDOFF:
-  - **Five issue-template files live on the branch** under `.github/ISSUE_TEMPLATE/`: `config.yml` (blank_issues_enabled: false), `bug.yml` (labels type:bug), `feature.yml` (type:feature, with needs-adr Track-A/B dropdown), `epic.yml` (type:adr, title prefix `[ADR-NNNN] ` — the machine-parseable join key T5 §Board and T13 board-sync depend on), `spike.yml` (type:spike, committed-exit dropdown).
+  - **Five issue-template files live on the branch** under `.github/ISSUE_TEMPLATE/`: `config.yml` (blank_issues_enabled: false), `bug.yml` (labels type:bug), `feature.yml` (type:feature, with needs-adr ADR-track/Direct-track dropdown), `epic.yml` (type:adr, title prefix `[ADR-NNNN] ` — the machine-parseable join key T5 §Board and T13 board-sync depend on), `spike.yml` (type:spike, committed-exit dropdown).
   - **Forms gate the web UI only.** `gh issue create` bypasses them — T9's CLAUDE.md §3 must make the same fields (repro/version/area for bugs; problem/proposal/needs-adr/area for features; adr/scope/subissues/milestone for epics) mandatory for agents. T11's pilot (issue #7 → `[ADR-0043] …`) should mirror the epic form's shape.
   - **Label keys consumed (verbatim):** `type:bug`, `type:feature`, `type:adr`, `type:spike` — all present in `.github/labels.yml`; the epic title prefix `[ADR-NNNN] ` matches T5 §Board's stated join-key format byte-for-byte.
 
@@ -1781,7 +1781,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - REVIEW: pending final review (whole-branch review at T12)
 - BLOCKERS: none
 - HANDOFF:
-  - **ADR-0043 scaffolded on the branch** at `docs/adr/0043-multinode-mounts-and-extraports.md` (status `proposed`), README index row present. The pilot Track-A exercise is staged: the ADR PR (this branch's PR #22) is the decision gate; **its merge = acceptance** (owner adjudicates the RECOMMENDED options in PR review). T12 flips 0043's status to `accepted` alongside 0042 at merge time — verify BOTH ADRs' status lines before the owner merges.
+  - **ADR-0043 scaffolded on the branch** at `docs/adr/0043-multinode-mounts-and-extraports.md` (status `proposed`), README index row present. The pilot ADR-track exercise is staged: the ADR PR (this branch's PR #22) is the decision gate; **its merge = acceptance** (owner adjudicates the RECOMMENDED options in PR review). T12 flips 0043's status to `accepted` alongside 0042 at merge time — verify BOTH ADRs' status lines before the owner merges.
   - **Issue #7 is now the epic:** title `[ADR-0043] Cluster mounts and extraPorts semantics for multi-node clusters`, milestone `v0.2.0`, labels `type:adr,area:cluster`. `[ADR-0043]` prefix is the load-bearing join key (ADR-0042 §Board).
   - **Step 4 sub-issue recipe is DEFERRED — do NOT run it now.** After the ADR PR merges (0043 accepted), the owner or a later dispatch creates one sub-issue per Implementation-Plan deliverable (option groups + multi-node e2e coverage), each `type:feature,area:cluster`, milestone `v0.2.0`, body `Sub-issue of #7. Implements ADR-0043.`, then links it under #7 via `repos/cube-idp/cube-idp/issues/7/sub_issues` (POST `sub_issue_id`). Recipe verbatim in T11 Step 4 of this plan.
   - **T12 verify note:** T12 Step 1 Expected lists a T11 commit — it is `889a789` (the 0043 scaffold). #7's outward retitle/milestone leave no repo commit; the branch carries only the scaffold + claim/close ledger edits for T11.
@@ -1825,7 +1825,18 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
   (T14 must create them verbatim — the workflow matches options by name).
 
 #### T14 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE (owner-executed 2026-07-22, after PR #22 merged)
+- BRANCH: n/a — board instantiation is outward GitHub/UI config, not repo commits. Ledger recorded via PR `process/retire-track-letters`.
+- COMMITS: n/a (no repo artifacts; board + org config only)
+- FINDINGS:
+  - Board created: **cube-idp delivery**, org project **#2**, https://github.com/orgs/cube-idp/projects/2.
+  - Status single-select set byte-exact to `Backlog · Proposed · Accepted · In progress · In review · Done` via `updateProjectV2Field` GraphQL (the plan's UI-or-GraphQL alternative — used GraphQL, no UI needed for options). `Estimate` NUMBER field created via `gh project field-create`. `Iteration` field NOT created (no CLI/GraphQL create path; optional, `board-sync` never reads it) — left for optional UI.
+  - Built-in workflows (UI, no write API): Auto-add `cube-idp/cube-idp` `is:issue is:open` = enabled; Item added → Backlog; Item closed → Done; Item reopened → In progress; PR-related built-ins disabled. Verified enabled-state via `projectV2.workflows` GraphQL.
+  - Credential: org GitHub App `cube-idp-board-bot` (Projects: read&write, Issues: read) installed. Org config set (owner, UI): variable `BOARD_APP_ID=4363187`, variable `BOARD_PROJECT_NUMBER=2`, secret `BOARD_APP_PRIVATE_KEY`. Confirmed via `gh variable list --org` / `gh secret list --org`.
+  - **Auto-add cold-start lag:** the first scratch issue (#34) did NOT auto-add within 60s (workflow was freshly enabled); a second issue (#35) auto-added in ~10s once warm. Not a defect — GitHub auto-add is async and slow immediately after enabling. Auto-add is also non-retroactive: pre-existing open issues are not swept onto the board; only issues opened/modified after enablement.
+- REVIEW: end-to-end smoke test PASSED — #35 auto-added → Backlog; #34 manual-add → Backlog; both closed → Done; all Status transitions occurred with zero manual edits. Scratch issues #34/#35 closed (sit in Done).
+- BLOCKERS: none.
+- HANDOFF: `board-sync.yaml`'s four middle transitions (Proposed/Accepted/In progress/In review) are wired and credentialed but **not yet exercised live** — they fire on the first real ADR PR (join key `[ADR-NNNN]`) or delivery PR (`Closes #N`). The ADR-0043 PR (owner follow-up) will be their first live run. `BOARD_PROJECT_NUMBER=2` is the join value; Status option names must stay byte-exact or `board-sync` no-ops the match.
 
 #### T15 Outcome
 - STATUS: DONE
@@ -1840,7 +1851,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
   - **PyYAML substitution for the Step-3 validator (per dispatch).** This machine's `python3` has no PyYAML — the plan's Step-3 inline `python3 - <<EOF ... import yaml` aborts at `import yaml` with `ModuleNotFoundError: No module named 'yaml'` (confirmed live). Re-implemented the SAME check with `yq` reading the area list from `.github/labels.yml` + a per-file grep of the first line for `<!-- cube:doc area=X -->` with X in that list. Real output (all 9 area files OK): `areas: cluster packs engine registry gateway tui-output diagnostics trust ci` → `OK ci.md/cluster.md/diagnostics.md/engine.md/gateway.md/packs.md/registry.md/trust.md/tui-output.md (area in labels.yml)` → `OK headers valid`. Also emulated T10's exact CI regex `<!-- cube:doc area=([a-z-]+)[ >]` (excluding README.md) via `ruby -ryaml -rset` → `OK architecture headers valid (T10 regex, 9 area files)`. CI's own gate runs unchanged on ubuntu-latest (PyYAML present); no plan/file edit.
   - **Go build sanity.** The three Go edits are comment/error-message strings only (no file-open of the doc path — verified `contract_conformance_test.go` references are `//` comments). `go build ./internal/cluster/kindp/ ./internal/pack/` → `BUILD OK`.
   - **Two moving files carried self-references that were rewritten in-place.** `docs/reference/cube-yaml-reference.md` (→ `docs/reference/pack-contract-v1.md`) and `docs/reference/pack-contract-v1.md` (its own path string → `docs/reference/pack-contract-v1.md`); both moved AND content-modified (git shows R+M, 99% similarity).
-  - **`docs/outstanding-todos.md` deliberately left in place** (temporarily allowed by the doc-consistency closed-set: `ALLOWED="adr architecture reference process archive vhs outstanding-todos.md"`). **OWNER ACTION REQUIRED:** its items must be converted to issues under the new process (ADR-0042 Track A/B), then the file archived/removed and dropped from the CI ALLOWED list. Until then the closed-set check passes with it present.
+  - **`docs/outstanding-todos.md` deliberately left in place** (temporarily allowed by the doc-consistency closed-set: `ALLOWED="adr architecture reference process archive vhs outstanding-todos.md"`). **OWNER ACTION REQUIRED:** its items must be converted to issues under the new process (ADR-0042 ADR track/Direct track), then the file archived/removed and dropped from the CI ALLOWED list. Until then the closed-set check passes with it present.
 - REVIEW: pending final review (whole-branch review at T12). Self-checks green: plan Step-1 grep shows zero in-scope stale links; yq + ruby(T10-regex) header checks both OK; docs/ top level == closed set; `go build` OK; worktree clean post-commit.
 - BLOCKERS: none
 - HANDOFF:

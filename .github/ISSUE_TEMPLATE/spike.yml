@@ -21,6 +21,6 @@ body:
     attributes:
       label: Committed exit
       description: A spike may not end "open". Pick the exit now.
-      options: ["ADR PR (Track A) or close-with-reason", "close-with-reason only (no decision expected)"]
+      options: ["ADR PR (ADR track) or close-with-reason", "close-with-reason only (no decision expected)"]
     validations:
       required: true

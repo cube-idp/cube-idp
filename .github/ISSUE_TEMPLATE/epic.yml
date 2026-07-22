@@ -1,5 +1,5 @@
 name: "Epic: ADR-tracked feature"
-description: Track A — a decision plus its delivery, as one epic with sub-issues
+description: ADR track — a decision plus its delivery, as one epic with sub-issues
 title: "[ADR-NNNN] "
 labels: ["type:adr"]
 body:

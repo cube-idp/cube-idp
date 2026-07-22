@@ -19,12 +19,12 @@ instruction in the work's FINDINGS/PR body. Process authority: ADR-0042
 
 ## 2. Two-track intake (ADR-0042)
 
-- **Track A** (features, architecture, hard-to-reverse): epic issue
+- **ADR track** (features, architecture, hard-to-reverse): epic issue
   `[ADR-NNNN] <name>` (`type:adr`) → PR adding the ADR (status `proposed`,
   with Implementation Plan) → merge = accepted → sub-issues per
   deliverable → PRs close sub-issues.
-- **Track B** (bug/chore/docs): plain issue → PR with `Closes #N`.
-  Hitting an architectural choice mid-task escalates to Track A.
+- **Direct track** (bug/chore/docs): plain issue → PR with `Closes #N`.
+  Hitting an architectural choice mid-task escalates to the ADR track.
 - **Spikes** are timeboxed and end in an ADR PR or close-with-reason.
   Closing "not doing X because Y" is a valid, valuable outcome.
 - **WIP rule:** before opening a new Track-A epic, check open `type:adr`
@@ -44,7 +44,7 @@ instruction in the work's FINDINGS/PR body. Process authority: ADR-0042
   board is automation-owned. NEVER set board Status manually and NEVER
   script board mutations — `board-sync` and built-in workflows are the only
   writers.** `status:*` labels other than `status:blocked` do not exist.
-- New design/planning documents go ONLY into `docs/adr/` (via Track A).
+- New design/planning documents go ONLY into `docs/adr/` (via the ADR track).
   `docs/archive/` is frozen — never add to it.
 - **`docs/` top level is a closed set (ADR-0042 §Documentation layout):**
   `adr/ architecture/ reference/ process/ archive/ vhs/`. Never create a
@@ -58,7 +58,7 @@ instruction in the work's FINDINGS/PR body. Process authority: ADR-0042
 
 ## 4. Branches, worktrees, commits
 
-- Branch names: `adr-NNNN-<slug>` (Track A), `issue-N-<slug>` (Track B),
+- Branch names: `adr-NNNN-<slug>` (ADR track), `issue-N-<slug>` (Direct track),
   `process/<slug>` (meta). Never work on `main`.
 - **Never work in a main checkout.** All work — code, docs, plan ledgers —
   happens in an isolated worktree under `.claude/worktrees/` on the task's
