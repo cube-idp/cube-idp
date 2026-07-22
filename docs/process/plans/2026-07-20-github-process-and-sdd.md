@@ -62,7 +62,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T6 | SDD dispatch prompt template | — | no | DONE |
 | T7 | SDD status heartbeat template | — | no | DONE |
 | T8 | SDD plan-ledger template | — | no | DONE |
-| T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | IN_PROGRESS(fable-t9, 2026-07-22T06:20:52Z) |
+| T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | DONE |
 | T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | UNCLAIMED |
 | T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | UNCLAIMED |
 | T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
@@ -979,7 +979,7 @@ The constitution. Absorbs the operational doctrine currently re-pasted into ever
 **Interfaces:**
 - Consumes: T5 ADR path, T6/T7/T8 template paths, T2 label names.
 
-- [ ] **Step 1: Write `CLAUDE.md`**
+- [x] **Step 1: Write `CLAUDE.md`**
 
 ````markdown
 # cube-idp — Agent Rules (binding)
@@ -1135,7 +1135,7 @@ h. **Isolated kubeconfig, always.** Never read or write the user's default
   · `tests/` — suites.
 ````
 
-- [ ] **Step 2: Write `AGENTS.md`**
+- [x] **Step 2: Write `AGENTS.md`**
 
 ```markdown
 # Agent rules
@@ -1144,7 +1144,7 @@ All agent rules for this repository live in [CLAUDE.md](CLAUDE.md). They
 bind every AI agent session regardless of harness.
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add CLAUDE.md AGENTS.md
@@ -1710,7 +1710,46 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - HANDOFF: template path = `docs/process/sdd-ledger-template.md`. This completes the trio of `docs/process/*-template.md` files (T6 sdd-dispatch-template.md, T7 sdd-status-template.md, T8 sdd-ledger-template.md). T9's CLAUDE.md close protocol "mirrors `docs/process/sdd-ledger-template.md`" (per T6 §9 and the T6 Outcome HANDOFF) — that exact path string must match. With T8 DONE, all three template paths resolve, so T9 (Depends T5,T6,T7,T8) is now unblocked — every dependency of T9 is DONE.
 
 #### T9 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd (merged: no) in cube-idp/cube-idp
+- COMMITS:
+  - 5d33855 docs: github-process-and-sdd — claim T9
+  - 7ecccf2 docs: CLAUDE.md — binding agent rules (process, SDD, doctrine)
+  - (this commit) docs: github-process-and-sdd — T9 complete (ledger edit; hash not self-embedded, see `git log`)
+- FINDINGS: none. `CLAUDE.md` (151 lines) created byte-exact from the plan's
+  Step 1 fenced content — the file body is everything INSIDE the outer
+  4-backtick `````markdown````` fence (plan lines 985–1135: from the
+  `# cube-idp — Agent Rules (binding)` heading through §9 "Repo map" and its
+  final `· `tests/` — suites.` line), excluding the two outer fence lines
+  (984 `````markdown````` and 1136 the closing 4-backtick fence). Verified byte-exact:
+  `diff <(sed -n '985,1136p' <plan>) CLAUDE.md` → the ONLY difference is the
+  closing fence line 1136 (correctly excluded from the body). All nine
+  sections present and confirmed by `grep -nE '^## [1-9]\.' CLAUDE.md` →
+  §1 Decisions · §2 Two-track intake · §3 Issues & PRs · §4 Branches/
+  worktrees/commits · §5 SDD · §6 Status heartbeat · §7 Outward/owner gates ·
+  §8 Operational doctrine (items a–h, item **(h) Isolated kubeconfig** at
+  file line 133, confirmed by `grep -n 'Isolated kubeconfig' CLAUDE.md`) ·
+  §9 Repo map (closing intact). `AGENTS.md` (4 lines) created byte-exact from
+  the plan's Step 2 3-backtick fence (plan lines 1141–1144); `diff` →
+  EXACT MATCH. The page-boundary hazard flagged in the dispatch (CLAUDE.md
+  body spans the Read pagination boundary at ~line 925) was handled — the
+  second Read (offset 926) captured §1–§9 in full; nothing truncated.
+- REVIEW: pending final review (whole-branch review at T12)
+- BLOCKERS: none
+- HANDOFF: `CLAUDE.md` present at repo root on the branch (the constitution;
+  ADR-0042 §Enforcement's "CLAUDE.md binds agent sessions" is now satisfied)
+  and `AGENTS.md` pointer alongside it. Both are inputs to T10's
+  `process-gate` doc-consistency job: (1) `test -f CLAUDE.md` + AGENTS.md
+  contains `CLAUDE.md` — both pass (verified this session); (2) no
+  machine-specific `/Users/[a-z]` absolute paths — `grep -nE '/Users/[a-z]'
+  CLAUDE.md AGENTS.md` → none (verified); (3) label refs in backticks that
+  the doc-consistency label check asserts against `.github/labels.yml` are
+  only `` `status:blocked` `` and `` `type:adr` `` (`grep -oE
+  '`(type|area|status):[a-z-]+`' CLAUDE.md | sort -u`) — both already in
+  `labels.yml` per T2. §5/§6 reference the three `docs/process/*-template.md`
+  paths (all present: T6/T7/T8); §Board rules in §3 match ADR-0042 §Board.
+  No `docs/architecture/*.md` files exist yet (T15) — the doc-consistency
+  architecture-header check iterates an empty glob until then (no-op).
 
 #### T10 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
