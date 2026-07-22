@@ -60,7 +60,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T4 | Issue forms | T2 | no | DONE |
 | T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | DONE |
 | T6 | SDD dispatch prompt template | — | no | DONE |
-| T7 | SDD status heartbeat template | — | no | IN_PROGRESS(opus-t7, 2026-07-22T06:14:40Z) |
+| T7 | SDD status heartbeat template | — | no | DONE |
 | T8 | SDD plan-ledger template | — | no | UNCLAIMED |
 | T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | UNCLAIMED |
 | T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | UNCLAIMED |
@@ -786,7 +786,7 @@ Formalizes the 10-minute visual update. Format spec + a filled example, so agent
 **Files:**
 - Create: `docs/process/sdd-status-template.md`
 
-- [ ] **Step 1: Write the template**
+- [x] **Step 1: Write the template**
 
 ````markdown
 # SDD status heartbeat
@@ -873,7 +873,7 @@ Integrity: main untouched · nothing pushed · 25 commits · README.md currently
 ```
 ````
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/process/sdd-status-template.md
@@ -1688,7 +1688,15 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - HANDOFF: template path = `docs/process/sdd-dispatch-template.md`. Referenced by T9 CLAUDE.md §5 ("Plans are executed one-task-per-fresh-agent, per `docs/process/sdd-dispatch-template.md`") — that path string must match. The template's §6 points at `docs/process/sdd-status-template.md` (created by T7) and its close protocol mirrors `docs/process/sdd-ledger-template.md` (created by T8); T9 depends on T6+T7+T8 all present so all three `docs/process/*-template.md` paths resolve.
 
 #### T7 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd (merged: no) in cube-idp/cube-idp
+- COMMITS:
+  - f7332d6 docs: github-process-and-sdd — claim T7
+  - b6724d4 docs(process): SDD status heartbeat — 10-minute visual update format
+- FINDINGS: none. `docs/process/sdd-status-template.md` created verbatim from the plan's Step 1 fenced content — the file body is everything INSIDE the outer 4-backtick `````markdown````` fence (from the `# SDD status heartbeat` heading through the final example's closing ```` ``` ````), excluding the outer fence lines themselves; 82 lines. Verified byte-exact against the plan: `sed -n '792,873p' <plan> | diff - docs/process/sdd-status-template.md` → no differences ("EXACT MATCH"). Commit message used exactly as specified. (Note: the plan file itself carries pre-existing markdown-lint warnings — MD028/MD031/MD032 on its blockquote/list/fence layout — unrelated to this task and left untouched.)
+- REVIEW: pending final review (whole-branch review at T12)
+- BLOCKERS: none
+- HANDOFF: template path = `docs/process/sdd-status-template.md`. Referenced by T6's dispatch template §6 ("emit the docs/process/sdd-status-template.md block …") and by T9's CLAUDE.md §SDD (10-minute heartbeat rule) — both must use this exact path string. T9 depends on T6+T7+T8 all present so all three `docs/process/*-template.md` paths resolve; with T7 done, `sdd-dispatch-template.md` (T6) and `sdd-status-template.md` (T7) both exist — only `sdd-ledger-template.md` (T8) remains before T9 is unblocked.
 
 #### T8 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
