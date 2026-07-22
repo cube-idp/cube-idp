@@ -43,7 +43,7 @@ codes: `CUBE-0016+`.
 
 | ID | Task | Sub-issue | Depends | STATUS |
 | --- | --- | --- | --- | --- |
-| T1 | Config surface: `spec.prerequisites` in schema + dual-owner validation + `CUBE-0016` | #43 | — | IN_PROGRESS(sess-g9ryuv, 2026-07-22T13:00:08Z) |
+| T1 | Config surface: `spec.prerequisites` in schema + dual-owner validation + `CUBE-0016` | #43 | — | DONE |
 | T2 | Pre-engine loop: `[prerequisites…, engine]` one code path; inventory + lock + Pack rows | (create) | T1 | UNCLAIMED |
 | T3 | `diff` dry-run + capability-inference satisfaction for prerequisite GVKs | (create) | T2 | UNCLAIMED |
 | T4 | Gateway API CRDs as a prerequisite (the first real consumer) | #25 | T2 | UNCLAIMED |
@@ -56,16 +56,16 @@ codes: `CUBE-0016+`.
 **Files:** `internal/config/schema.cue`, `internal/config/load.go`,
 `internal/diag/codes.go`, `internal/diag/registry.go`, tests.
 
-- [ ] **Step 1:** Add `prerequisites?: [...PackRef]` to the top-level spec in
+- [x] **Step 1:** Add `prerequisites?: [...PackRef]` to the top-level spec in
   `schema.cue` (mirror the `packs?` entry shape at line 41 — `ref` required,
   optional `values`/`valuesRef`). A `PackRef` def may already be factorable; if not,
   inline to match `packs`.
-- [ ] **Step 2:** In `crossValidate` (`load.go:203`), reject any `ref` appearing in
+- [x] **Step 2:** In `crossValidate` (`load.go:203`), reject any `ref` appearing in
   both `prerequisites` and `packs` — new typed code `CUBE-0016`
   (`CodePackDualOwner`), constant + registry `Desc`.
-- [ ] **Step 3:** Table tests: a valid `prerequisites` entry loads; a dual-owner ref
+- [x] **Step 3:** Table tests: a valid `prerequisites` entry loads; a dual-owner ref
   fails with `CUBE-0016`; an empty/absent key is unchanged (byte-compat).
-- [ ] **Step 4:** Gate green; commit `feat(config): spec.prerequisites schema + dual-owner guard (CUBE-0016)`.
+- [x] **Step 4:** Gate green; commit `feat(config): spec.prerequisites schema + dual-owner guard (CUBE-0016)`.
 
 ### Task T2: Pre-engine delivery loop
 
@@ -125,7 +125,21 @@ codes: `CUBE-0016+`.
 ## Ledger Outcomes
 
 #### T1 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: adr-0045-prerequisites (feature branch; not yet PR'd to main — lands as one PR at feature completion per CLAUDE.md §4 merge model)
+- COMMITS:
+  - 660d07d docs: prerequisites plan — claim T1
+  - 28301f9 feat(config): spec.prerequisites schema + dual-owner guard (CUBE-0016)
+- FINDINGS:
+  - `spec.prerequisites` scoped narrower than `packs`: entries take `{ref, valuesRef?, values?, extraManifests?}` but NOT `delivery`/`dependsOn` — per ADR-0045 prerequisites are never engine-delivered and take no part in the dependency graph. The schema (`schema.cue`) enforces this; the Go type reuses `PackRef` (whose `Delivery`/`DependsOn` fields stay empty for prerequisites — the schema is the gate, matching how the ADR says "an ordinary config.PackRef").
+  - `PackRef` was NOT factored into a shared CUE `#PackRef` def (the plan allowed either) — `packs?` is inlined in `schema.cue`, so `prerequisites?` is inlined to match rather than introducing a refactor the plan didn't call for.
+  - Placed the dual-owner guard early in `crossValidate` (before the argocd/gitea pack checks) so a mis-owned pack is caught before delivery-specific rules.
+- BLOCKERS: none
+- HANDOFF for T2:
+  - Config field is `Cube.Spec.Prerequisites []config.PackRef`; iterate it in list order in the pre-engine loop.
+  - New diag code available: `diag.CodePackDualOwner` = `CUBE-0016`.
+  - The engine pack render/apply pipeline to generalize is `internal/pack/enginepack.go:FetchRenderEngine` (→ `RenderWith(values, "", gw)`); the pre-engine insertion point in `up.go` is right after the Pack CRD step (search `packs-crd`, ~:230 region).
+  - `go build/vet/test ./...` all green on the branch; `TestRegistryCoversEveryDeclaredCode` PASS (confirms CUBE-0016 has constant + Desc). New tests: `TestLoadAcceptsPrerequisites`, `TestLoadRejectsDualOwnerPack`, `TestLoadAbsentPrerequisitesIsNil` in `internal/config/load_test.go`; testdata `prerequisites.yaml` + `prerequisites-dual-owner.yaml`.
 
 #### T2 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · BLOCKERS: · HANDOFF:
