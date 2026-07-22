@@ -44,10 +44,10 @@ codes: `CUBE-0016+`.
 | ID | Task | Sub-issue | Depends | STATUS |
 | --- | --- | --- | --- | --- |
 | T1 | Config surface: `spec.prerequisites` in schema + dual-owner validation + `CUBE-0016` | #43 | — | DONE |
-| T2 | Pre-engine loop: `[prerequisites…, engine]` one code path; inventory + lock + Pack rows | (create) | T1 | DONE |
-| T3 | `diff` dry-run + capability-inference satisfaction for prerequisite GVKs | (create) | T2 | DONE |
+| T2 | Pre-engine loop: `[prerequisites…, engine]` one code path; inventory + lock + Pack rows | #44 | T1 | DONE |
+| T3 | `diff` dry-run + capability-inference satisfaction for prerequisite GVKs | #45 | T2 | DONE |
 | T4 | Gateway API CRDs as a prerequisite (the first real consumer) | #25 | T2 | DONE |
-| T5 | e2e (fresh + existing cluster; `down` cascade) + reference/architecture docs | (create) | T2,T3,T4 | CLAIMED |
+| T5 | e2e (fresh + existing cluster; `down` cascade) + reference/architecture docs | #46 | T2,T3,T4 | DONE |
 
 ---
 
@@ -118,14 +118,17 @@ codes: `CUBE-0016+`.
 `docs/architecture/packs.md`, `docs/architecture/cluster.md`,
 `docs/adr/0005-pack-dependency-graph-and-ordering.md`.
 
-- [ ] **Step 1:** e2e leg: a prerequisite pack lands before the engine on a fresh
-  cluster AND an existing cluster; appears in `kubectl get packs`; `down` removes it
-  via the inventory cascade. (Isolated `KUBECONFIG`, foreground, one live leg —
-  CLAUDE.md §8.)
-- [ ] **Step 2:** Document `spec.prerequisites` in `cube-yaml-reference.md`; update the
-  `docs/architecture/packs.md` + `cluster.md` `cube:doc`/`cube:section` markers, add
-  `adrs=…,0045`.
-- [ ] **Step 2b (ADR-0005 reconciliation — added per owner instruction, session
+- [x] **Step 1:** e2e leg (`TestPrerequisiteBeforeEngine`, `CUBE_IDP_E2E=1`):
+  prerequisite lands before the engine on a FRESH cluster; appears in
+  `kubectl get packs` (delivery prerequisite); `down` removes it via the
+  inventory cascade. Verified LIVE on kind (flux), 150s, PASS. *(Partial vs
+  plan: the EXISTING-cluster path is not separately e2e'd — see Outcome
+  FINDINGS for why the code covers it and the reviewer's call on the gap.)*
+- [x] **Step 2:** Documented `spec.prerequisites` in `cube-yaml-reference.md`;
+  filled `docs/architecture/packs.md` "Dependencies and ordering" + marker
+  (`adrs=…,0045`, `+internal/up`). *(`cluster.md` deliberately NOT touched —
+  see Outcome FINDINGS.)*
+- [x] **Step 2b (ADR-0005 reconciliation — added per owner instruction, session
   2026-07-22):** T3 made the implicit gateway edge CONDITIONAL (suppressed when a
   prerequisite provides `gateway.networking.k8s.io`), which amends a rule ADR-0005
   owns (ADR-0005:97 states the edge unconditionally; ADR-0005:65-66 says that ADR is
@@ -133,8 +136,9 @@ codes: `CUBE-0016+`.
   relevant ADR-0005 row/consequence: the edge is now suppressed when a
   spec.prerequisites pack provides that group's CRDs (ADR-0045). Doc-only; keeps
   ADR-0005 consistent with the code. Update the `packs.md` "Dependencies and
-  ordering" section's `adrs=` marker to include 0045 too.
-- [ ] **Step 3:** Gate green; commit `test+docs: spec.prerequisites e2e + reference/architecture (ADR-0045)`.
+  ordering" section's `adrs=` marker to include 0045 too. *(DONE — ADR-0005
+  rows 96-97 amended with the ADR-0045 cross-reference; packs.md marker +0045.)*
+- [x] **Step 3:** Gate green; committed `test+docs: spec.prerequisites e2e + reference/architecture (ADR-0045)`.
 
 ---
 
@@ -225,4 +229,21 @@ codes: `CUBE-0016+`.
     - `go build/vet/test ./...` all green on the branch.
 
 #### T5 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: adr-0045-prerequisites (feature branch; lands as one PR to main closing #43/#44/#45/#25/#46 per CLAUDE.md §4 merge model)
+- COMMITS:
+  - 2d3d1a1 docs: prerequisites plan — claim T5
+  - c378fce test+docs: spec.prerequisites e2e + reference/architecture (ADR-0045)
+  - 9eb03c4 test(e2e): fixture CRD needs api-approved.kubernetes.io annotation
+- FINDINGS:
+  - LIVE E2E: `TestPrerequisiteBeforeEngine` PASSED on kind (flux), 150s. The trace is a full-feature proof: `[prereq] gateway-api-crds@1.6.1 applied` → `[prereqs] 1 prerequisite(s) applied before the engine` (BEFORE `[engine] installing flux`), then `[gateway-crd] Gateway API CRDs provided by a prerequisite (established before the engine)` (T4's skip path fired), then `5 pack records written` and clean `down` teardown. All 4 assertions green: CRD Established, packs/gateway-api-crds delivery=prerequisite, cube.lock entry, CRD gone after down.
+  - E2E FIXTURE BUG (first run failed, fixed): the minimal fixture CRD lacked `metadata.annotations[api-approved.kubernetes.io]`, which the API server REQUIRES for CRDs in protected (`*.k8s.io`) groups — SSA rejected it with CUBE-2003. This was a TEST bug, not a feature bug: the failure occurred at the prerequisite's SSA, BEFORE the engine, exactly where the pre-engine loop runs — confirming the ordering even in failure. Fixed by adding the real Gateway API approval annotation (`.../gateway-api/pull/4530`, the value the published v1.6.1 CRDs carry). Commit 9eb03c4.
+  - PARTIAL vs plan (existing-cluster e2e): the plan's Step 1 says "fresh cluster AND an existing cluster." I e2e'd the FRESH path live. The EXISTING-cluster path is NOT separately e2e'd. Rationale: the prerequisite loop in up.Run is UNCONDITIONAL — it runs identically regardless of `cluster.provider` (there is no fresh-vs-existing branch around `deliverPrerequisite`; verified by reading up.go), so the code path is the same one the fresh leg exercised. A separate existing-cluster leg would need a pre-created cluster and would exercise cluster.Ensure's existing-provider branch, not any prerequisite-specific code. FLAGGED for the reviewer: accept the fresh leg as sufficient coverage of the prerequisite mechanism, OR request an existing-cluster leg as a follow-up (recommend: accept — no prerequisite code branches on provider).
+  - `cluster.md` deliberately NOT touched (plan listed it): prerequisites ride the EXISTING inventory cascade unchanged — no cluster-area behavior change to document. Its teardown section is a stub; adding `adrs=0045` there would misattribute a cluster decision. The behavior change is entirely in the packs/up area, documented in packs.md.
+  - SUB-ISSUE NUMBERS corrected in the Task Index: the ledger drafted T2/T3/T5 as "(create)", but the sub-issues already existed from ADR acceptance — verified via `gh api .../issues/18/sub_issues`: #43 (T1), #44 (T2), #45 (T3), #25 (T4), #46 (T5), all open. So T2/T3's earlier Outcome notes about "creating the sub-issue is an outward action" were moot — no creation was ever needed. The final PR closes all five.
+  - ADR-0005 reconciliation (Step 2b, owner instruction): rows 96-97 amended in place with an `_(Amended by ADR-0045…)_` cross-reference — the accepted ADR's original text is preserved, the conditional-edge change is annotated, not silently rewritten.
+- BLOCKERS: none.
+- HANDOFF — feature complete; remaining is the merge + a $PACKS follow-up (NOT this repo):
+  - FINAL PR: from `adr-0045-prerequisites` to `main`, body `Closes #43`, `Closes #44`, `Closes #45`, `Closes #25`, `Closes #46` + `Implements ADR-0045`. One PR, one working increment (merge model). Epic #18 closes after merge. Draft body prepared this session.
+  - $PACKS breaking change (traefik CRD ownership) — see T4 Outcome HANDOFF. The published `gateway-api-crds:1.6.1` pack now exists (owner published it this session); the traefik-drops-CRDs migration + version bump remains for the packs-repo owner. NOT blocking this PR.
+  - `go build/vet/test ./...` all green; live e2e green. Broad whole-branch review is the last SDD step before the PR (CLAUDE.md §5).
