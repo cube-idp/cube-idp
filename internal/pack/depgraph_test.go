@@ -70,7 +70,7 @@ func codeOf(t *testing.T, err error) diag.Code {
 }
 
 // gatewayHTTPRoute is the implicit-edge-(a) trigger GVK from the brief.
-var gatewayHTTPRoute = schema.GroupVersionKind{Group: gatewayAPIGroup, Version: "v1", Kind: "HTTPRoute"}
+var gatewayHTTPRoute = schema.GroupVersionKind{Group: GatewayAPIGroup, Version: "v1", Kind: "HTTPRoute"}
 
 func TestResolveOrderNoDepsDeclaredOrder(t *testing.T) {
 	gwP, gwR, gwD := mk("traefik", nil)
@@ -376,14 +376,28 @@ func crdRendered(name, group string) *Rendered {
 	return &Rendered{Name: name, Objects: []*unstructured.Unstructured{crd}}
 }
 
+// TestGatewayAPICRDPrerequisiteProvidesGatewayGroup is the T4 seam contract
+// (#25): a prerequisite that ships the Gateway API HTTPRoute CRD surfaces
+// EXACTLY pack.GatewayAPIGroup in ProvidedGroups — the same constant up.Run
+// tests to skip its late waitCRDEstablished gate. Pinning it here fences the
+// up.Run branch (which needs a live cluster to exercise directly) against a
+// silent key/constant divergence: if the CRD's group or the exported constant
+// drifts apart, this fails, not a mysterious still-waiting `up`.
+func TestGatewayAPICRDPrerequisiteProvidesGatewayGroup(t *testing.T) {
+	provided := ProvidedGroups([]*Rendered{crdRendered("gateway-api-crds", GatewayAPIGroup)})
+	if !provided[GatewayAPIGroup] {
+		t.Fatalf("a Gateway API CRD prerequisite must satisfy %q so up.Run skips the late CRD wait; got %v", GatewayAPIGroup, provided)
+	}
+}
+
 // TestProvidedGroupsReadsCRDGroup pins the capability-inference extractor
 // (ADR-0045): ProvidedGroups returns exactly the groups a render establishes
 // by shipping their CRDs, read from spec.group. A render with no CRD provides
 // nothing (nil), so the graph is unaffected when no prerequisite carries CRDs.
 func TestProvidedGroupsReadsCRDGroup(t *testing.T) {
-	got := ProvidedGroups([]*Rendered{crdRendered("gateway-api-crds", gatewayAPIGroup)})
-	if !got[gatewayAPIGroup] || len(got) != 1 {
-		t.Fatalf("want {%s:true}, got %v", gatewayAPIGroup, got)
+	got := ProvidedGroups([]*Rendered{crdRendered("gateway-api-crds", GatewayAPIGroup)})
+	if !got[GatewayAPIGroup] || len(got) != 1 {
+		t.Fatalf("want {%s:true}, got %v", GatewayAPIGroup, got)
 	}
 	// A prerequisite rendering only non-CRD objects (or none) provides nothing.
 	if g := ProvidedGroups([]*Rendered{{Name: "kyverno", Objects: nil}}); g != nil {
@@ -406,7 +420,7 @@ func TestResolveOrderPrerequisiteSatisfiesGatewayGroup(t *testing.T) {
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(aP, aR, aD))
 
 	// The Gateway API CRDs arrive as a prerequisite, satisfying the group.
-	provided := ProvidedGroups([]*Rendered{crdRendered("gateway-api-crds", gatewayAPIGroup)})
+	provided := ProvidedGroups([]*Rendered{crdRendered("gateway-api-crds", GatewayAPIGroup)})
 	_, deps, err := ResolveOrder(packs, refs, rendered, provided)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

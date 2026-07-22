@@ -531,7 +531,17 @@ func Run(ctx context.Context, opts Options) error {
 	// races ahead and dry-run fails with "no matches for kind HTTPRoute"
 	// (CUBE-2003). Provider-agnostically block until the CRD is Established
 	// first — a no-op wait when it already is (the traefik path).
-	if err := waitCRDEstablished(ctx, a, con, httpRouteCRD, gatewayCRDTimeout); err != nil {
+	//
+	// ADR-0045 (#25): when a prerequisite provides the Gateway API group, the
+	// CRDs were SSA-applied AND kstatus-waited (deliverPrerequisite, wait=true)
+	// before the engine and every pack — so httproutes is already Established
+	// here and the async race this wait guards against cannot occur. Skip the
+	// wait entirely: the "up-front CRD check" #25 asks for IS the prerequisite,
+	// validated before delivery instead of failing late in HTTPRoute apply.
+	// No prerequisite provides it → the legacy gateway-pack wait is unchanged.
+	if providedGroups[pack.GatewayAPIGroup] {
+		con.Step("gateway-crd", "Gateway API CRDs provided by a prerequisite (established before the engine)")
+	} else if err := waitCRDEstablished(ctx, a, con, httpRouteCRD, gatewayCRDTimeout); err != nil {
 		return err
 	}
 

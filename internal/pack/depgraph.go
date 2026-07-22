@@ -21,8 +21,12 @@ import (
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// gatewayAPIGroup is the object group that triggers implicit edge (a).
-const gatewayAPIGroup = "gateway.networking.k8s.io"
+// GatewayAPIGroup is the object group that triggers implicit edge (a): a pack
+// rendering an object in this group needs the Gateway API CRDs. Exported so
+// up.Run can ask "does a prerequisite provide this group?" against a
+// ProvidedGroups map keyed by it (ADR-0045 #25) using the same constant that
+// keys the map — no magic-string divergence between producer and consumer.
+const GatewayAPIGroup = "gateway.networking.k8s.io"
 
 // ResolveOrder validates the dependency graph over the fetched packs and
 // returns the delivery order (indices into the index-aligned inputs;
@@ -80,7 +84,7 @@ func ResolveOrder(packs []*Pack, refs []config.PackRef, rendered []*Rendered, pr
 			// before every pack, so the CRD is Established by then; the edge to
 			// the gateway pack would be a phantom, and worse, would force
 			// ordering the pack after the gateway pack for no reason.
-			if o.GroupVersionKind().Group == gatewayAPIGroup && !providedGroups[gatewayAPIGroup] {
+			if o.GroupVersionKind().Group == GatewayAPIGroup && !providedGroups[GatewayAPIGroup] {
 				edges[i][0] = true
 				break
 			}
