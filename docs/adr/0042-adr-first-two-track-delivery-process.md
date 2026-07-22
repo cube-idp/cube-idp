@@ -1,6 +1,6 @@
 # 0042 — ADR-First Two-Track Delivery Process on GitHub
 
-Status: proposed
+Status: accepted
 Date: 2026-07-20
 
 ## Context
