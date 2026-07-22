@@ -68,7 +68,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
 | T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | DONE |
 | T14 | Instantiate the Projects v2 board per ADR-0042 §Board | T5,T13 | **yes** | UNCLAIMED · **OWNER-GATED** |
-| T15 | Docs layout: `reference/` move + `architecture/` skeleton (ADR-0042 §Docs) | T2,T5 | no | IN_PROGRESS(36f03cb9, 2026-07-22T06:36:01Z) |
+| T15 | Docs layout: `reference/` move + `architecture/` skeleton (ADR-0042 §Docs) | T2,T5 | no | DONE |
 
 Per-task Outcome blocks live at the bottom of this file under "Ledger Outcomes".
 
@@ -1552,7 +1552,7 @@ Implements ADR-0042 §Documentation layout. Mechanical moves plus navigable stub
 - Create `docs/architecture/README.md` (marker grammar, navigation how-to) and one stub per `area:*` label: `cluster.md`, `packs.md`, `engine.md`, `registry.md`, `gateway.md`, `tui-output.md`, `diagnostics.md`, `trust.md`, `ci.md`
 - Leave `docs/outstanding-todos.md` in place (temporarily allowed by doc-consistency) — its items belong in issues under the new process; record in FINDINGS that the owner must convert-then-archive it.
 
-- [ ] **Step 1: Move the reference docs and fix every inbound link**
+- [x] **Step 1: Move the reference docs and fix every inbound link**
 
 ```bash
 mkdir -p docs/reference
@@ -1564,7 +1564,7 @@ done
 grep -rn 'docs/\(cube-yaml-reference\|kind-config-reference\|machine-readable-output\|pack-contract-v1\)\.md' . --include='*.md' --include='*.go' | grep -v docs/reference && echo "STALE LINKS" || echo "OK links"
 ```
 
-- [ ] **Step 2: Write the architecture skeleton** — each stub is a MAP, not prose. Shape (example `packs.md`; derive `adrs=` from `docs/adr/README.md`, `code=` from the package layout):
+- [x] **Step 2: Write the architecture skeleton** — each stub is a MAP, not prose. Shape (example `packs.md`; derive `adrs=` from `docs/adr/README.md`, `code=` from the package layout):
 
 ```markdown
 <!-- cube:doc area=packs code=internal/pack,internal/catalog adrs=0002,0003,0004,0005,0008,0009 -->
@@ -1582,7 +1582,7 @@ _To be filled by the first behavior-changing PR in this area (CLAUDE.md §3)._
 
 `docs/architecture/README.md` documents the grammar verbatim from ADR-0042 §Documentation layout and the navigation recipe (`grep -rn 'cube:section.*area=<area>' docs/architecture/`).
 
-- [ ] **Step 3: Validate and commit**
+- [x] **Step 3: Validate and commit**
 
 ```bash
 python3 - <<'EOF'
@@ -1828,4 +1828,24 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
 
 #### T15 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd (merged: no) in cube-idp/cube-idp
+- COMMITS:
+  - `f574f64` docs: github-process-and-sdd — claim T15
+  - `073ce97` docs: closed layout — reference/ move + architecture/ area skeleton (ADR-0042)
+  - (this commit) docs: github-process-and-sdd — T15 complete (ledger edit; hash not self-embedded, see `git log`)
+- FINDINGS:
+  - **Step 3 commit pathspec under-specified (extended, no plan edit).** The plan's Step 3 `git add` lists only `docs/reference/ docs/architecture/ README.md`, but Step 1 directs fixing inbound links across `README.md CHANGELOG.md docs/ internal/ cmd/ tests/ .github/`. The real inbound-link fixes also touched 5 ADR files (`docs/adr/0002,0011,0023,0033,0034`) and 3 Go files (`internal/cluster/kindp/merge.go`, `internal/pack/pack.go`, `internal/pack/contract_conformance_test.go`). Staged all of them with explicit pathspecs (never `git add -A`) into the single Step-3 commit so no link fix is orphaned. 23 files total; `spokes-up.txt` never present. Minimal correction; the commit message is the plan's exact Step-3 string.
+  - **"Zero stale links" holds only for in-scope files; two out-of-scope classes retain the old paths by design.** The plan's Step-1 verify grep (`grep -rn 'docs/(cube-yaml-reference|kind-config-reference|machine-readable-output|pack-contract-v1)\.md' . --include='*.md' --include='*.go' | grep -v docs/reference`) still prints hits, but ALL residual hits are in (a) `docs/archive/superpowers/**` — frozen history, CLAUDE.md §3 / ADR-0042 forbid editing it — and (b) this plan file itself (`docs/process/plans/2026-07-20-github-process-and-sdd.md`), which names the four filenames in its own prose/commands. Verified: `grep -rln ... README.md CHANGELOG.md docs/ internal/ cmd/ tests/ .github/ | grep -v docs/reference | grep -v docs/archive/ | grep -v <this-plan>` → EMPTY (`>>> OK — no in-scope stale links`). Every link a reader/agent/CI would follow now resolves to `docs/reference/`. CHANGELOG.md had zero references (no edit needed); `tests/` and `cmd/` had zero.
+  - **PyYAML substitution for the Step-3 validator (per dispatch).** This machine's `python3` has no PyYAML — the plan's Step-3 inline `python3 - <<EOF ... import yaml` aborts at `import yaml` with `ModuleNotFoundError: No module named 'yaml'` (confirmed live). Re-implemented the SAME check with `yq` reading the area list from `.github/labels.yml` + a per-file grep of the first line for `<!-- cube:doc area=X -->` with X in that list. Real output (all 9 area files OK): `areas: cluster packs engine registry gateway tui-output diagnostics trust ci` → `OK ci.md/cluster.md/diagnostics.md/engine.md/gateway.md/packs.md/registry.md/trust.md/tui-output.md (area in labels.yml)` → `OK headers valid`. Also emulated T10's exact CI regex `<!-- cube:doc area=([a-z-]+)[ >]` (excluding README.md) via `ruby -ryaml -rset` → `OK architecture headers valid (T10 regex, 9 area files)`. CI's own gate runs unchanged on ubuntu-latest (PyYAML present); no plan/file edit.
+  - **Go build sanity.** The three Go edits are comment/error-message strings only (no file-open of the doc path — verified `contract_conformance_test.go` references are `//` comments). `go build ./internal/cluster/kindp/ ./internal/pack/` → `BUILD OK`.
+  - **Two moving files carried self-references that were rewritten in-place.** `docs/reference/cube-yaml-reference.md` (→ `docs/reference/pack-contract-v1.md`) and `docs/reference/pack-contract-v1.md` (its own path string → `docs/reference/pack-contract-v1.md`); both moved AND content-modified (git shows R+M, 99% similarity).
+  - **`docs/outstanding-todos.md` deliberately left in place** (temporarily allowed by the doc-consistency closed-set: `ALLOWED="adr architecture reference process archive vhs outstanding-todos.md"`). **OWNER ACTION REQUIRED:** its items must be converted to issues under the new process (ADR-0042 Track A/B), then the file archived/removed and dropped from the CI ALLOWED list. Until then the closed-set check passes with it present.
+- REVIEW: pending final review (whole-branch review at T12). Self-checks green: plan Step-1 grep shows zero in-scope stale links; yq + ruby(T10-regex) header checks both OK; docs/ top level == closed set; `go build` OK; worktree clean post-commit.
+- BLOCKERS: none
+- HANDOFF:
+  - **`docs/reference/` now holds the four contracts** (`cube-yaml-reference.md`, `kind-config-reference.md`, `machine-readable-output.md`, `pack-contract-v1.md`); all in-scope inbound links updated to `docs/reference/<name>.md`. Area files' `User contract:` lines point at `../reference/<name>.md`.
+  - **`docs/architecture/` skeleton live:** `README.md` (marker grammar verbatim from ADR-0042 §Documentation layout + navigation recipe) plus 9 area maps (`cluster engine packs registry gateway tui-output diagnostics trust ci`), each with a valid `<!-- cube:doc area=… code=… adrs=… -->` first line and `cube:section` sub-markers; bodies are the MAP placeholder `_To be filled by the first behavior-changing PR in this area (CLAUDE.md §3)._`. First behavior-changing PR per area fills prose in the SAME PR (CLAUDE.md §3).
+  - **`code=`/`adrs=` provenance (for future filling):** `adrs=` derived from `docs/adr/README.md`; `code=` from the actual `internal/`+`.github/workflows`+`tests/e2e` layout. Notable multi-area ADRs: 0012 appears under both cluster (host/port) and gateway; 0009 under both packs (distribution) and trust (air-gap) — intentional, area files may cite a shared ADR.
+  - **T10 doc-consistency job is now LIVE-exercised, not inert:** `docs/` top level = `{adr architecture reference process archive vhs outstanding-todos.md}` ⊆ ALLOWED; all `docs/architecture/*.md` (except README.md) pass the `cube:doc area=…` header regex against `labels.yml`. Both T10 assertions satisfied.
+  - **Owner follow-up:** convert-then-archive `docs/outstanding-todos.md` and remove it from the process-gate ALLOWED list once emptied.
