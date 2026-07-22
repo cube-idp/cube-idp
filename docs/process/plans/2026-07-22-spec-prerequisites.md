@@ -45,7 +45,7 @@ codes: `CUBE-0016+`.
 | --- | --- | --- | --- | --- |
 | T1 | Config surface: `spec.prerequisites` in schema + dual-owner validation + `CUBE-0016` | #43 | — | DONE |
 | T2 | Pre-engine loop: `[prerequisites…, engine]` one code path; inventory + lock + Pack rows | (create) | T1 | DONE |
-| T3 | `diff` dry-run + capability-inference satisfaction for prerequisite GVKs | (create) | T2 | CLAIMED |
+| T3 | `diff` dry-run + capability-inference satisfaction for prerequisite GVKs | (create) | T2 | DONE |
 | T4 | Gateway API CRDs as a prerequisite (the first real consumer) | #25 | T2 | UNCLAIMED |
 | T5 | e2e (fresh + existing cluster; `down` cascade) + reference/architecture docs | (create) | T2,T3,T4 | UNCLAIMED |
 
@@ -89,11 +89,11 @@ codes: `CUBE-0016+`.
 
 **Files:** `internal/diff/diff.go`, `internal/pack/depgraph.go`, tests.
 
-- [ ] **Step 1:** Render prerequisites into the desired kernel set
+- [x] **Step 1:** Render prerequisites into the desired kernel set
   (`diff.go:91`) from the warm cache, mirroring the engine pack.
-- [ ] **Step 2:** In capability inference, treat GVKs provided by prerequisites as
+- [x] **Step 2:** In capability inference, treat GVKs provided by prerequisites as
   satisfied (so HTTPRoute-bearing packs don't acquire phantom unresolved deps).
-- [ ] **Step 3:** Tests: `diff` surfaces a prerequisite change; a pack needing a GVK a
+- [x] **Step 3:** Tests: `diff` surfaces a prerequisite change; a pack needing a GVK a
   prerequisite provides resolves clean. Gate green; commit
   `feat(diff): render prerequisites into dry-run set; satisfy their GVKs in depgraph`.
 
@@ -165,7 +165,23 @@ codes: `CUBE-0016+`.
   - Tests to mirror: `TestDeliverPrerequisiteAppliesAndRecords`, `TestPrerequisitesAppliedInListOrder` in `internal/up/up_test.go`; fixture helper `writePrereqPack` (local pack dir Fetch can read). `go build/vet/test ./...` all green on the branch.
 
 #### T3 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: adr-0045-prerequisites (feature branch; not yet PR'd to main — lands as one PR at feature completion per CLAUDE.md §4 merge model)
+- COMMITS:
+  - 0f4c176 docs: prerequisites plan — claim T3
+  - 9a7b095 feat(diff): render prerequisites into dry-run set; satisfy their GVKs in depgraph
+- FINDINGS:
+  - CAPABILITY INFERENCE mechanism: the plan's "treat GVKs provided by prerequisites as satisfied" maps onto depgraph's implicit edge (a) — a pack rendering a `gateway.networking.k8s.io` object gets an edge to the gateway pack (for its CRDs). I made that edge conditional: `ResolveOrder` gained a `providedGroups map[string]bool` param, and edge (a) is suppressed when `providedGroups[gatewayAPIGroup]`. New helper `pack.ProvidedGroups([]*Rendered)` reads `spec.group` from each render's `CustomResourceDefinition` objects — so once T4 ships the Gateway API CRDs AS a prerequisite, HTTPRoute-bearing packs stop acquiring the phantom gateway edge. Until T4, no prerequisite carries those CRDs, so `providedGroups` is empty and the graph is byte-identical to pre-ADR-0045 (regression-fenced by `TestResolveOrderPrerequisiteSatisfiesGatewayGroup`'s second half + all 13 existing depgraph tests, updated to pass `nil`).
+  - SIGNATURE CHANGE (public seam): `pack.ResolveOrder` gained a 4th param `providedGroups`. Three production callers (`up.resolveAndDeliverPacks`, `diff.desiredState`) + 13 test call sites updated. Callers with no prerequisites pass `nil`. This is a mechanical, plan-driven change (capability inference is explicitly in ADR-0045's Implementation Plan step 3), not a new architectural decision — no ADR needed.
+  - DIFF now mirrors up.Run for prerequisites: renders each `cube.Spec.Prerequisites` entry and adds its objects to `desired` (real SSA dry-run diff — a changed prerequisite render surfaces as drift), a `lock.Entry` to the content-drift `entries`, and its Pack-record identity to `orphanOnly` (up.Run writes a Pack row per prerequisite, so without this a converged cube would show a false orphan). Placed BEFORE the engine block, mirroring up's apply order.
+  - `deliveredPrereq` gained a `rendered *pack.Rendered` field (T2 stored only pk+entry) so up.Run can compute `ProvidedGroups(prereqRenders)`. No behavior change to T2's paths.
+  - `ProvidedGroups` treats a malformed/absent `spec.group` as "provides nothing" (not a hard error) — a broken CRD is the pack author's problem, surfaced by the render/apply path, not the graph resolver's job to reject.
+- BLOCKERS: none
+- HANDOFF for T4 (Gateway API CRDs as a prerequisite, #25):
+  - The capability-inference machinery is READY: once a prerequisite pack renders the Gateway API `CustomResourceDefinition`s (spec.group = `gateway.networking.k8s.io`), `pack.ProvidedGroups` will pick it up automatically and `ResolveOrder` will suppress the implicit gateway edge for HTTPRoute-bearing packs — no further depgraph/diff changes needed in T4. T4's job is to PROVIDE the CRD-bearing prerequisite pack and move the up-front CRD check to rely on it.
+  - up.go still has the `waitCRDEstablished(ctx, a, con, httpRouteCRD, gatewayCRDTimeout)` gate (up.go ~:477 region) before the registry HTTPRoute apply, and the `gatewayCRDTimeout`/`httpRouteCRD` consts. With the CRDs coming from a prerequisite (applied + SSA-waited BEFORE the engine and all packs), that wait becomes a no-op (CRD already Established) — T4 should decide whether to keep it as a cheap belt-and-suspenders or remove it. It is currently justified by the traefik-ships-CRDs-as-manifests vs envoy-lags race; ADR-0045 flags that the traefik pack must DROP the CRDs (one field-manager owns them) — record that `$PACKS` breaking change as a HANDOFF, do NOT edit `$PACKS` from here (T4 Step 2).
+  - Prerequisite Pack rows use `delivery="prerequisite"`; the Gateway API CRDs prerequisite will appear in `kubectl get packs` with that delivery and READY=yes.
+  - Tests to mirror/extend: `TestResolveOrderPrerequisiteSatisfiesGatewayGroup`, `TestProvidedGroupsReadsCRDGroup` (internal/pack/depgraph_test.go), `TestDesiredStatePrerequisites` (internal/diff/diff_test.go). `go build/vet/test ./...` all green on the branch.
 
 #### T4 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · BLOCKERS: · HANDOFF:
