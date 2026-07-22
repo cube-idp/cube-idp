@@ -64,7 +64,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T8 | SDD plan-ledger template | — | no | DONE |
 | T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | DONE |
 | T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | DONE |
-| T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | IN_PROGRESS(fable-t11, 2026-07-22T06:28:50Z) |
+| T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | DONE |
 | T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
 | T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | UNCLAIMED |
 | T14 | Instantiate the Projects v2 board per ADR-0042 §Board | T5,T13 | **yes** | UNCLAIMED · **OWNER-GATED** |
@@ -1264,7 +1264,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create: `docs/adr/0043-multinode-mounts-and-extraports.md`
 - Modify: `docs/adr/README.md` (index row)
 
-- [ ] **Step 1: Convert #7 into the epic**
+- [x] **Step 1: Convert #7 into the epic**
 
 ```bash
 R=cube-idp/cube-idp
@@ -1272,7 +1272,7 @@ gh issue edit 7 -R $R --title "[ADR-0043] Cluster mounts and extraPorts semantic
 gh issue edit 7 -R $R --milestone "v0.2.0"
 ```
 
-- [ ] **Step 2: Scaffold the ADR** — status `proposed`, options taken verbatim from #7's four questions, one recommendation per question marked `RECOMMENDED (agent) — owner adjudicates in PR review`:
+- [x] **Step 2: Scaffold the ADR** — status `proposed`, options taken verbatim from #7's four questions, one recommendation per question marked `RECOMMENDED (agent) — owner adjudicates in PR review`:
 
 ```markdown
 # 0043 — Cluster mounts and extraPorts Semantics for Multi-Node Clusters
@@ -1320,7 +1320,7 @@ _Pending PR review — the merge of this PR is the acceptance._
 - [ ] `spec.cluster.*` docs updated
 ```
 
-- [ ] **Step 3: Index row + commit**
+- [x] **Step 3: Index row + commit**
 
 ```bash
 git add docs/adr/0043-multinode-mounts-and-extraports.md docs/adr/README.md
@@ -1766,7 +1766,25 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - HANDOFF: `.github/workflows/process-gate.yaml` present on the branch and pushed. The `doc-consistency` job's `labels.yml`/`CLAUDE.md`/`AGENTS.md` gates and the `docs/` closed-set + `cube:doc` header checks will run live once T15 lands `docs/architecture/` and the closed-set layout; they are inert-safe until then (checkout + greps only, no external calls).
 
 #### T11 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd (merged: no) in cube-idp/cube-idp
+- COMMITS:
+  - 6e102a7 docs: github-process-and-sdd — claim T11
+  - 889a789 docs(adr): 0043 scaffold — multi-node mounts/extraPorts (proposed, decision pending review)
+  - (this commit) docs: github-process-and-sdd — T11 complete (ledger edit; hash not self-embedded, see `git log`)
+  (Step 1 is outward GitHub mutation of issue #7 — retitle + milestone — no repo commit; evidence below. Step 4 is a HANDOFF recipe only, deliberately NOT executed this run — no sub-issues created; its checkbox is intentionally left unticked.)
+- FINDINGS:
+  - **README index row not given verbatim by the plan.** T11 Step 3 ("Index row + commit") supplies only the git commands, not the row text (unlike T5 Step 2 which quoted the 0042 row). Per the dispatch instruction ("match the existing table format — see the 0042 row added by T5"), constructed the row in the repo's `| NNNN | [Title](file.md) | <ref> |` format: `| 0043 | [Cluster mounts and extraPorts Semantics for Multi-Node Clusters](0043-multinode-mounts-and-extraports.md) | 7 |`. Title taken byte-exact from the ADR's H1 heading (`Cluster mounts and extraPorts Semantics for Multi-Node Clusters` — note capital `S` in `Semantics`, capital-`M` `Multi-Node`, as the scaffold text has it); ref column = the epic issue number `7` (matching the ADR's `Epic: cube-idp/cube-idp#7` and the convention that the ref column carries the governing/related issue). No file defect; minimal construction from the format the plan itself established.
+  - **ADR scaffold byte-exact.** `docs/adr/0043-multinode-mounts-and-extraports.md` created verbatim from the plan's Step 2 fenced content (plan lines 1278–1320). Verified: `diff <(sed -n '1278,1320p' <plan>) docs/adr/0043-multinode-mounts-and-extraports.md` → no differences ("EXACT MATCH"). Status `proposed`, `Epic: cube-idp/cube-idp#7`, four Options with the (agent) RECOMMENDED annotations, Decision "_Pending PR review_", all preserved. T12 flips status to `accepted` at PR merge.
+  - **#7 pre-state / retitle.** Before Step 1, #7 was titled "Design: cluster mounts and extraPorts semantics for multi-node clusters", labels `type:adr,area:cluster` (from T2), milestone unset. After: title `[ADR-0043] Cluster mounts and extraPorts semantics for multi-node clusters`, milestone `v0.2.0`, labels unchanged (`type:adr,area:cluster`) — the epic-form shape (`[ADR-NNNN] <name>`, `type:adr`) is now satisfied, the machine-parseable `[ADR-0043]` join key is live for T13 board-sync / T14 board.
+  - **YAML gate:** not applicable to T11 (no YAML files touched — only two Markdown files and one outward issue edit).
+- REVIEW: pending final review (whole-branch review at T12)
+- BLOCKERS: none
+- HANDOFF:
+  - **ADR-0043 scaffolded on the branch** at `docs/adr/0043-multinode-mounts-and-extraports.md` (status `proposed`), README index row present. The pilot Track-A exercise is staged: the ADR PR (this branch's PR #22) is the decision gate; **its merge = acceptance** (owner adjudicates the RECOMMENDED options in PR review). T12 flips 0043's status to `accepted` alongside 0042 at merge time — verify BOTH ADRs' status lines before the owner merges.
+  - **Issue #7 is now the epic:** title `[ADR-0043] Cluster mounts and extraPorts semantics for multi-node clusters`, milestone `v0.2.0`, labels `type:adr,area:cluster`. `[ADR-0043]` prefix is the load-bearing join key (ADR-0042 §Board).
+  - **Step 4 sub-issue recipe is DEFERRED — do NOT run it now.** After the ADR PR merges (0043 accepted), the owner or a later dispatch creates one sub-issue per Implementation-Plan deliverable (option groups + multi-node e2e coverage), each `type:feature,area:cluster`, milestone `v0.2.0`, body `Sub-issue of #7. Implements ADR-0043.`, then links it under #7 via `repos/cube-idp/cube-idp/issues/7/sub_issues` (POST `sub_issue_id`). Recipe verbatim in T11 Step 4 of this plan.
+  - **T12 verify note:** T12 Step 1 Expected lists a T11 commit — it is `889a789` (the 0043 scaffold). #7's outward retitle/milestone leave no repo commit; the branch carries only the scaffold + claim/close ledger edits for T11.
 
 #### T12 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
