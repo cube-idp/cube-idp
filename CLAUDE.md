@@ -68,6 +68,23 @@ instruction in the work's FINDINGS/PR body. Process authority: ADR-0042
   untracked drafts.
 - Every commit ends with:
   `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
+- **Merge model — `main` only ever receives complete, green, coherent work.**
+  Never merge a half-feature to `main` (a schema field nothing consumes, a
+  loop with no caller). Choose by whether each unit stands alone:
+  - **Coupled multi-task feature** (the usual ADR-track case — T1 enables T2
+    enables T3): use ONE **feature branch** (`adr-NNNN-<slug>`). Execute the
+    plan's tasks as commits on it (one task ≈ one or a few commits, per the
+    ledger). Land the whole feature as a **single PR to `main`** whose body
+    lists every sub-issue it closes (`Closes #a`, `Closes #b`, …). `main`
+    sees one working increment; the epic closes after that merge. This is how
+    valuesRef (#4) and engine-as-pack (#3) shipped.
+  - **Genuinely independent task** (a standalone bug/chore/docs, or an
+    ADR-track deliverable that is complete and safe on its own): its own
+    small PR straight to `main` with `Closes #N`.
+  - Optional within a feature branch: a sub-PR per task merging *into the
+    feature branch* (never `main`) when you want per-task review checkpoints.
+    The board then tracks at the epic grain (the epic card in `Accepted`
+    signals active work); task cards move to Done at the final merge.
 
 ## 5. Subagent-driven development (SDD)
 
