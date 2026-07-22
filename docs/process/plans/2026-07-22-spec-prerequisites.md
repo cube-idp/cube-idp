@@ -44,7 +44,7 @@ codes: `CUBE-0016+`.
 | ID | Task | Sub-issue | Depends | STATUS |
 | --- | --- | --- | --- | --- |
 | T1 | Config surface: `spec.prerequisites` in schema + dual-owner validation + `CUBE-0016` | #43 | — | DONE |
-| T2 | Pre-engine loop: `[prerequisites…, engine]` one code path; inventory + lock + Pack rows | (create) | T1 | CLAIMED |
+| T2 | Pre-engine loop: `[prerequisites…, engine]` one code path; inventory + lock + Pack rows | (create) | T1 | DONE |
 | T3 | `diff` dry-run + capability-inference satisfaction for prerequisite GVKs | (create) | T2 | UNCLAIMED |
 | T4 | Gateway API CRDs as a prerequisite (the first real consumer) | #25 | T2 | UNCLAIMED |
 | T5 | e2e (fresh + existing cluster; `down` cascade) + reference/architecture docs | (create) | T2,T3,T4 | UNCLAIMED |
@@ -72,15 +72,17 @@ codes: `CUBE-0016+`.
 **Files:** `internal/up/up.go`, `internal/pack/enginepack.go` (or a shared helper),
 `internal/lock`, tests.
 
-- [ ] **Step 1:** Factor the engine pack's `Fetch → RenderWith → SSA-wait →
+- [x] **Step 1:** Factor the engine pack's `Fetch → RenderWith → SSA-wait →
   RecordInventory → cube.lock → Pack row` into a reusable per-pack pre-engine
-  delivery func (the engine pack becomes its last caller).
-- [ ] **Step 2:** In `up.go` after the Pack CRD step (~`:230`), loop
+  delivery func (the engine pack becomes its last caller). *(Deviation — see
+  Outcome FINDINGS: factored `deliverPrerequisite`, not a func the engine also
+  calls; the engine keeps its self-management-specific SSA path.)*
+- [x] **Step 2:** In `up.go` after the Pack CRD step (~`:230`), loop
   `[prerequisites…, engine pack]` through that func in list order — prerequisites
   first. Same for new AND existing clusters.
-- [ ] **Step 3:** Prerequisites record inventory + `cube.lock` entries + Pack rows
+- [x] **Step 3:** Prerequisites record inventory + `cube.lock` entries + Pack rows
   identically to any pack; CLI-owned (no engine self-management for them).
-- [ ] **Step 4:** Unit/integration coverage of the loop ordering + lock entries; gate
+- [x] **Step 4:** Unit/integration coverage of the loop ordering + lock entries; gate
   green; commit `feat(up): apply spec.prerequisites before the engine, one code path`.
 
 ### Task T3: diff + capability inference
@@ -142,7 +144,25 @@ codes: `CUBE-0016+`.
   - `go build/vet/test ./...` all green on the branch; `TestRegistryCoversEveryDeclaredCode` PASS (confirms CUBE-0016 has constant + Desc). New tests: `TestLoadAcceptsPrerequisites`, `TestLoadRejectsDualOwnerPack`, `TestLoadAbsentPrerequisitesIsNil` in `internal/config/load_test.go`; testdata `prerequisites.yaml` + `prerequisites-dual-owner.yaml`.
 
 #### T2 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: adr-0045-prerequisites (feature branch; not yet PR'd to main — lands as one PR at feature completion per CLAUDE.md §4 merge model)
+- COMMITS:
+  - b926ffd docs: prerequisites plan — claim T2
+  - b7cf64b feat(up): apply spec.prerequisites before the engine, one code path
+- FINDINGS:
+  - DEVIATION (Step 1, minimal correction per CLAUDE.md §5): the plan said "factor the engine pack's pipeline into a reusable func the engine pack becomes the last caller of." I factored a dedicated `deliverPrerequisite` (Fetch → RenderResolved → SSA(wait) → RecordInventory → returns pack+lock.Entry) rather than folding the engine into the same func. Reason: the engine install carries self-management-specific SSA logic (`installNeedsSSA`/`engineHealthyAtStart`, the selfManage rules 1–3) and its lock/Pack-row handling is threaded through the rest of Run in a bespoke way; a shared func would have had to absorb all of that, a large refactor touching self-management that the "no scope-adding" rule cautions against. `deliverPrerequisite` is the same PIPELINE SHAPE as the engine install, minus self-management — the ADR's "one pre-engine code path" is honored as a shape, and prerequisites never self-manage anyway. The engine remains its own inline caller.
+  - Prerequisites use `pack.RenderResolved` (not the engine's `RenderWith`) so valuesRef/values/extraManifests work on a prerequisite exactly as on any pack — the ADR scopes prerequisite entries to `{ref, valuesRef?, values?, extraManifests?}`, all of which RenderResolved handles.
+  - Index-alignment invariant preserved: `entries`/`packs`/`renders` stay index-aligned with `refs` (the engine-delivered pack loop's contract — the Pack-row loop reads `refs[i]`↔`packs[i]`). Prerequisites are kept in a SEPARATE `prereqs []*deliveredPrereq` slice and merged only at the two consumption points (lock `Packs` list, prepended in list order; Pack rows, emitted first) — never mixed into those three slices.
+  - `down` needs NO change: the cascade prunes by inventory label selector, and prerequisites are `RecordInventory`'d exactly like every other artifact, so they are removed by `down` for free (verified by reading cmd/down.go's inventory-driven prune; the T5 e2e will confirm live).
+  - `deliverPrerequisite`'s applier param is the existing `packApplier` interface (not concrete `*apply.Applier`) so the `fakePackApplier` seam covers it in unit tests — the same seam `deliverPack` already uses. `*apply.Applier` satisfies it, so the production call in Run is unchanged.
+  - Pack row for a prerequisite: `delivery="prerequisite"` (a free-string column — PackObject only special-cases empty→"oci"), `ready=true` by construction (SSA'd with wait=true, CLI-owned so no `cube-idp-<name>` engine component to poll), `dependsOn=nil` (no dep graph). CUSTOMIZED follows the same values/valuesRef/extraManifests rule as any pack.
+- BLOCKERS: none
+- HANDOFF for T3 (diff + capability inference):
+  - The list of prerequisite refs to render into the diff's desired kernel set is `cube.Spec.Prerequisites` (`[]config.PackRef`); render each with `pack.RenderResolved(ctx, pk, pref, gw, cacheDir)` from the warm cache, mirroring how the engine pack is added to the desired set. Prerequisites are applied FIRST (before the engine) — reflect that ordering if diff surfaces order.
+  - For capability inference (`internal/pack/depgraph.go`): treat GVKs provided by a prerequisite's rendered objects as SATISFIED, so a pack needing e.g. HTTPRoute doesn't acquire a phantom unresolved dep when a prerequisite (Gateway API CRDs) provides that GVK. The prerequisite objects to scan are the same `RenderResolved` output.
+  - diff entry point is `internal/diff/diff.go:91` (the desired kernel set assembly, per the T3 task Files). The engine pack is already added there — prerequisites go in the same set, ahead of it.
+  - No new diag codes were needed for T2. Next free config code remains `CUBE-0016`-consumed → `CUBE-0017+` if T3 needs one (it likely does not).
+  - Tests to mirror: `TestDeliverPrerequisiteAppliesAndRecords`, `TestPrerequisitesAppliedInListOrder` in `internal/up/up_test.go`; fixture helper `writePrereqPack` (local pack dir Fetch can read). `go build/vet/test ./...` all green on the branch.
 
 #### T3 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · BLOCKERS: · HANDOFF:
