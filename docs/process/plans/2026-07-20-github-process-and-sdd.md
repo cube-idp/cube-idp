@@ -68,7 +68,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
 | T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | DONE |
 | T14 | Instantiate the Projects v2 board per ADR-0042 §Board | T5,T13 | **yes** | UNCLAIMED · **OWNER-GATED** |
-| T15 | Docs layout: `reference/` move + `architecture/` skeleton (ADR-0042 §Docs) | T2,T5 | no | UNCLAIMED |
+| T15 | Docs layout: `reference/` move + `architecture/` skeleton (ADR-0042 §Docs) | T2,T5 | no | IN_PROGRESS(36f03cb9, 2026-07-22T06:36:01Z) |
 
 Per-task Outcome blocks live at the bottom of this file under "Ledger Outcomes".
 
