@@ -63,7 +63,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T7 | SDD status heartbeat template | — | no | DONE |
 | T8 | SDD plan-ledger template | — | no | DONE |
 | T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | DONE |
-| T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | IN_PROGRESS(fable-t10, 2026-07-22T06:25:18Z) |
+| T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | DONE |
 | T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | UNCLAIMED |
 | T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
 | T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | UNCLAIMED |
@@ -1160,7 +1160,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `.github/workflows/process-gate.yaml`
 
-- [ ] **Step 1: Write the workflow** (PR body via env var — never interpolate untrusted body into the script)
+- [x] **Step 1: Write the workflow** (PR body via env var — never interpolate untrusted body into the script)
 
 ```yaml
 name: process-gate
@@ -1243,7 +1243,7 @@ jobs:
           EOF
 ```
 
-- [ ] **Step 2: Validate and commit**
+- [x] **Step 2: Validate and commit**
 
 ```bash
 python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/process-gate.yaml')); print('OK')"
@@ -1752,7 +1752,18 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
   architecture-header check iterates an empty glob until then (no-op).
 
 #### T10 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd
+- COMMITS:
+  - `3a4ee36` docs: github-process-and-sdd — claim T10
+  - `3dee4d7` ci: process-gate — work-item reference + process-doc consistency
+- FINDINGS:
+  - Local validity-gate substitution (per dispatch): this machine's `python3` has NO PyYAML, so the plan's Step 2 `python3 -c "import yaml,sys; yaml.safe_load(...)"` fails locally. Validated the workflow instead with `ruby -ryaml -e 'YAML.load_file(...); puts "OK"'` (→ `OK`) AND `yq '.' <f>` (→ `yq: OK`). The workflow's own in-file `python3 - <<'EOF'` heredocs are untouched and correct — they run on CI's ubuntu-latest, which has PyYAML.
+  - `actionlint` IS installed here (`~/.goenv/shims/actionlint`); ran it on the file → clean (no fallback echo needed). No new tools installed.
+  - Workflow transcribed verbatim from Step 1. Security-guidance hook flagged Actions-injection risk; already mitigated by the plan's design — PR body flows via `env: BODY:` and is consumed as `"$BODY"`, never interpolated into the shell script. No deviation.
+- REVIEW: self — three independent parsers agree (ruby YAML, yq, actionlint all OK); committed content == plan Step 1 verbatim; clean worktree post-commit.
+- BLOCKERS: none
+- HANDOFF: `.github/workflows/process-gate.yaml` present on the branch and pushed. The `doc-consistency` job's `labels.yml`/`CLAUDE.md`/`AGENTS.md` gates and the `docs/` closed-set + `cube:doc` header checks will run live once T15 lands `docs/architecture/` and the closed-set layout; they are inert-safe until then (checkout + greps only, no external calls).
 
 #### T11 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
