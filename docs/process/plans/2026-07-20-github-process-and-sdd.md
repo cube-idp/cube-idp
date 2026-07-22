@@ -18,7 +18,7 @@
 
 ## Global Constraints
 
-- `$ROOT` = `/Users/rafal.pieniazek/Library/CloudStorage/Dropbox/github.com/cube-idp/cube-idp` (primary checkout; main is clean except untracked `spokes-up.txt` — never add or commit it).
+- `$ROOT` = `<REPO_ROOT>` — the absolute path to the primary `cube-idp/cube-idp` checkout on the operator's machine (main is clean except untracked `spokes-up.txt` — never add or commit it).
 - **NEVER work in the main checkout.** All file changes happen in the isolated worktree `$ROOT/.claude/worktrees/process-0040-adr-first-sdd` on branch `process/0040-adr-first-sdd` (created at bootstrap — check for existence, reuse). Never commit to `main`. Pushing is limited to updating `process/0040-adr-first-sdd` to keep the tracking PR current; never push `main`, never push tags.
 - **OUTWARD actions** (anything hitting github.com: label create/delete, milestone create, issue edit/create, PR open) are marked `[OUTWARD]` per task and require the dispatch to say `Outward actions authorized: yes`. Without it → report `NEEDS_CONTEXT`, do not improvise.
 - Every commit message is the step's exact message and ends with the trailer:
