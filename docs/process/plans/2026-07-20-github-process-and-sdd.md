@@ -66,7 +66,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | DONE |
 | T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | DONE |
 | T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
-| T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | IN_PROGRESS(sdd-t13, 2026-07-22T06:32:15Z) |
+| T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | DONE |
 | T14 | Instantiate the Projects v2 board per ADR-0042 §Board | T5,T13 | **yes** | UNCLAIMED · **OWNER-GATED** |
 | T15 | Docs layout: `reference/` move + `architecture/` skeleton (ADR-0042 §Docs) | T2,T5 | no | UNCLAIMED |
 
@@ -1399,7 +1399,7 @@ Deterministic join keys, both guaranteed present by `process-gate`: `ADR-NNNN` i
 **Interfaces:**
 - Consumes: org variable `BOARD_APP_ID`, org secret `BOARD_APP_PRIVATE_KEY`, org variable `BOARD_PROJECT_NUMBER` (all created in T14 — until T14 runs, the workflow exits cleanly when they are unset).
 
-- [ ] **Step 1: Write the workflow**
+- [x] **Step 1: Write the workflow**
 
 ```yaml
 name: board-sync
@@ -1487,7 +1487,7 @@ jobs:
             -f p="$PID" -f i="$ITEM" -f f="$FID" -f o="$OID" --jq '.data.updateProjectV2ItemFieldValue.projectV2Item.id'
 ```
 
-- [ ] **Step 2: Validate and commit**
+- [x] **Step 2: Validate and commit**
 
 ```bash
 python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/board-sync.yaml')); print('OK')"
@@ -1790,7 +1790,39 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
 
 #### T13 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd
+- COMMITS:
+  - `05db9ab` docs: github-process-and-sdd — claim T13
+  - `1347af8` ci: board-sync — automated delivery-board status lifecycle (ADR-0042 §Board)
+- FINDINGS:
+  - Tooling substitution (per dispatch): python3 on this machine has NO PyYAML
+    (`import yaml` → ModuleNotFoundError), so the plan's Step-2 python YAML gate
+    could not run locally. Validated instead with `ruby -ryaml -e
+    'YAML.load_file(...)'` → `OK` and `yq '.' <f>` → `yq OK`. The plan's Step-2
+    python line is kept verbatim in the file (it runs in CI where PyYAML is
+    present); no plan edit needed.
+  - `actionlint` IS installed here (`~/.goenv/shims/actionlint`), so the plan's
+    fallback echo was not exercised — `actionlint .github/workflows/board-sync.yaml`
+    ran clean (`actionlint OK`, exit 0).
+  - Workflow transcribed VERBATIM from Step 1 (plan lines 1405–1488):
+    `diff` of the plan block vs the committed file shows only the plan's closing
+    ``` fence as the sole difference — content byte-for-byte identical. No
+    reformatting/re-indenting of the GraphQL query strings or shell quoting.
+  - PostToolUse security hook flagged Actions-injection risk; workflow already
+    uses the safe pattern (PR title/body via `env:` TITLE/BODY, referenced as
+    `"$TITLE"`/`"$BODY"`, never inline `${{ }}` in run:) — no change required.
+  - Expected: workflow references org vars/secrets BOARD_APP_ID /
+    BOARD_APP_PRIVATE_KEY / BOARD_PROJECT_NUMBER created later in T14; the gate
+    step exits cleanly (skip=true) when BOARD_PROJECT_NUMBER is unset. As designed.
+- REVIEW: not dispatched (single-file verbatim transcription); local gates green.
+- BLOCKERS: none
+- HANDOFF: `.github/workflows/board-sync.yaml` present on the branch. T14 must
+  create org var `BOARD_PROJECT_NUMBER` (ungates the workflow), org var
+  `BOARD_APP_ID`, and org secret `BOARD_APP_PRIVATE_KEY` for the App token step;
+  the workflow's four custom transitions (Proposed/Accepted/In progress/In review)
+  assume the board's Status single-select options are named exactly those strings
+  (T14 must create them verbatim — the workflow matches options by name).
 
 #### T14 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
