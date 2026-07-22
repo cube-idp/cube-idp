@@ -1,7 +1,7 @@
 # cube-idp pack contract — v1
 
 Status: **FROZEN** (2026-07-18). This document is the public
-API of the cube-idp pack format. The copy at `docs/pack-contract-v1.md` in
+API of the cube-idp pack format. The copy at `docs/reference/pack-contract-v1.md` in
 the cube-idp main repo is normative; `CONTRACT.md` in the
 `github.com/cube-idp/packs` monorepo is a verbatim copy of it.
 `internal/pack/contract_conformance_test.go`

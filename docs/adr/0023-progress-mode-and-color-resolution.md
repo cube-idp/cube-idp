@@ -51,11 +51,11 @@ Machine-readable output is split by command shape: commands that route through
 `ui.RunPipeline` (`up`, `down`, `vendor`, `sync`, `repo create`, `plugin`,
 `pack push`) emit a streaming event stream under `--progress=json`, while
 request/response commands (`status`, `doctor`, `get secrets`) emit a single final
-JSON document under `--output json`; `docs/machine-readable-output.md` carries the
+JSON document under `--output json`; `docs/reference/machine-readable-output.md` carries the
 authoritative command list. The event stream is written to stdout as JSON
 Lines with exactly one event object per line, each carrying a `"v":1` version field
 and an RFC3339Nano `"ts"` field, never batched and never pretty-printed, documented
-in `docs/machine-readable-output.md`.
+in `docs/reference/machine-readable-output.md`.
 
 That schema is labeled v1-EXPERIMENTAL until the v1 config freeze. Within that
 window changes must be additive, new fields are emitted with `omitempty`, and each
@@ -114,7 +114,7 @@ requires a changelog entry before the freeze.
 - [ ] `internal/ui/render/json.go` tags `dur_ms`, `idx`, `of` and `step_failed`'s `msg`/`dur_ms` with `omitempty`.
 - [ ] `cmd/output.go` pins `docSchemaVersion = 1` and registers `-o/--output` whose only recognized value is `json` on request/response commands.
 - [ ] `internal/ui/pipeline.go` routes `ModeJSON` to `render.JSON`, `ModeLive`/TTY-`ModeStyled` to the live renderer, and everything else to `render.Plain`.
-- [ ] `docs/machine-readable-output.md` labels both schemas EXPERIMENTAL until the v1 `cube.yaml` freeze.
+- [ ] `docs/reference/machine-readable-output.md` labels both schemas EXPERIMENTAL until the v1 `cube.yaml` freeze.
 
 ## History
 
@@ -144,4 +144,4 @@ Member origins:
 - `docs/archive/superpowers/specs/2026-07-15-cube-idp-phase4-first-release-design.md:69` — the JSON Lines contract
 - `docs/archive/superpowers/specs/2026-07-16-tui-interactive-layer-design.md:367-371` — the color policy
 
-See also `docs/machine-readable-output.md` for the schemas themselves.
+See also `docs/reference/machine-readable-output.md` for the schemas themselves.

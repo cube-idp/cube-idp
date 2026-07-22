@@ -6,7 +6,7 @@
 // Pack format: a directory containing:
 //
 //	pack.cue             required: name, version; optional description,
-//	                      #Values schema (see docs/pack-contract-v1.md)
+//	                      #Values schema (see docs/reference/pack-contract-v1.md)
 //	manifests/*.yaml     optional: raw multi-doc YAML manifests
 //	kustomization.yaml   optional: a kustomize overlay rooted at the pack
 //	chart.yaml           optional: a helm chart reference, rendered client-side

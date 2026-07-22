@@ -34,7 +34,7 @@ The architecture is **Kernel+Packs**: the core stays minimal and every optional 
 beyond the kernel ships as a versioned, shareable, OCI-distributed pack.
 
 The pack format is a **public API contract at version v1**, documented in
-`docs/pack-contract-v1.md` and revised only additively; a conformance harness enforces its
+`docs/reference/pack-contract-v1.md` and revised only additively; a conformance harness enforces its
 mechanical clauses. Optional `pack.cue` metadata fields load permissively: an absent field
 yields nil and pre-feature packs load unchanged, while a malformed `description`,
 `dependsOn`, `images:`, or `gatewayService:` entry fails as `CUBE-4003`. `#Values` is a
@@ -93,10 +93,10 @@ no controller.
 | A pack whose render produces zero objects fails with CUBE-4004 rather than succeeding silently — every pack must supply `manifests/` and/or `chart.yaml`. | `internal/pack/render.go` |
 | No new plugin protocols, no reconciled CRDs, no daemon — the sole exception is the inert cluster-scoped `Pack` record CRD, whose spec fields (`url`/`urls`/`authSecretRef`/`impliedFields`) are the flattened projection of a pack's `expose:` block. | `internal/pack/manifests/pack-crd.yaml` |
 | `description` is optional at load time for backward compatibility, but publishing from the official packs repo requires a one-line user-facing description. | `internal/pack/pack.go`, `cmd/pack_publish.go` |
-| A pack is data only — `pack.cue` plus manifests, chart references, values, or kustomize overlays — and MUST NOT contain executable content. | `docs/pack-contract-v1.md` |
-| The pack format is a versioned public API contract documenting `pack.cue` fields, the `manifests/`/`chart.yaml` layout, and `${GATEWAY_HOST}`/`${GATEWAY_FQDN}` substitution. | `docs/pack-contract-v1.md`,, |
+| A pack is data only — `pack.cue` plus manifests, chart references, values, or kustomize overlays — and MUST NOT contain executable content. | `docs/reference/pack-contract-v1.md` |
+| The pack format is a versioned public API contract documenting `pack.cue` fields, the `manifests/`/`chart.yaml` layout, and `${GATEWAY_HOST}`/`${GATEWAY_FQDN}` substitution. | `docs/reference/pack-contract-v1.md`,, |
 | A conformance test enforces the mechanical v1 clauses over the `packs/` tree — the pack loads, `name` equals the directory and matches the contract pattern, `version` is semver, and `description` is non-empty. | `internal/pack/contract_conformance_test.go` |
-| The vocabulary triad's `tuning` entry is replaced by `values → chart render (packs and the engine alike)` as an additive v1.1 doc revision, leaving the pack-side contract untouched. | `docs/pack-contract-v1.md` |
+| The vocabulary triad's `tuning` entry is replaced by `values → chart render (packs and the engine alike)` as an additive v1.1 doc revision, leaving the pack-side contract untouched. | `docs/reference/pack-contract-v1.md` |
 
 ### Verification
 
@@ -152,5 +152,5 @@ before this record was written. Member origins, as `file:line` provenance in tha
 - `specs/2026-07-18-cube-idp-phase5-roadmap-design.md` — the pack format as a versioned public API contract
 - `specs/2026-07-19-cube-idp-engine-as-pack-design.md` — the v1.1 vocabulary amendment
 
-See also `docs/pack-contract-v1.md`, the frozen v1 contract document, whose `CONTRACT.md`
+See also `docs/reference/pack-contract-v1.md`, the frozen v1 contract document, whose `CONTRACT.md`
 in the `cube-idp/packs` repository is a verbatim copy.

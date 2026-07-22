@@ -34,7 +34,7 @@ auth to the repo; prefer `gh release download`.
 Every pack artifact under `ghcr.io/cube-idp/packs/` carries a keyless GitHub
 provenance attestation — verify one with `gh attestation verify
 oci://ghcr.io/cube-idp/packs/<name>:<version> --owner cube-idp` (see
-[docs/pack-contract-v1.md](docs/pack-contract-v1.md), "Verifying pack provenance").
+[docs/reference/pack-contract-v1.md](docs/reference/pack-contract-v1.md), "Verifying pack provenance").
 
 All packs — the gateway included — come from the public
 [cube-idp/packs](https://github.com/cube-idp/packs) monorepo by default
@@ -761,7 +761,7 @@ so scripts and CI never see output churn across releases.
 stream, and `status`, `doctor`, and `get secrets` also accept
 `--output json` for a single gh-style JSON document. Both schemas are
 **experimental** until the config v1 freeze — see
-[docs/machine-readable-output.md](docs/machine-readable-output.md) for the
+[docs/reference/machine-readable-output.md](docs/reference/machine-readable-output.md) for the
 full event and document reference. Recent additive JSONL fields (same
 experimental window): `step_failed` now carries `msg` and `dur_ms`,
 `step_started`/`step_done` carry `idx`/`of` for enumerated pack
