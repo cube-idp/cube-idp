@@ -455,6 +455,18 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
+	// Capability inference (ADR-0045): API groups a prerequisite already
+	// established (by shipping their CRDs) satisfy those groups for every pack,
+	// so ResolveOrder below suppresses the implicit gateway edge for them — a
+	// pack rendering an HTTPRoute needs no gateway-pack ordering once a
+	// prerequisite provides the Gateway API CRDs. Empty (no CRD-bearing
+	// prerequisite) leaves the graph exactly as before.
+	prereqRenders := make([]*pack.Rendered, 0, len(prereqs))
+	for _, dp := range prereqs {
+		prereqRenders = append(prereqRenders, dp.rendered)
+	}
+	providedGroups := pack.ProvidedGroups(prereqRenders)
+
 	// Passes 2+3: resolve the dependency graph, then deliver in that order.
 	// Split out so the fail-fast property (a graph error returns before any
 	// deliverPack call) and the topo delivery order are unit-testable with
@@ -463,7 +475,7 @@ func Run(ctx context.Context, opts Options) error {
 	// gate itself (p6 DEP3); Run keeps the packDeps return too, now that the
 	// Pack-record writer loop below needs each pack's resolved dep list for
 	// its DEPENDS-ON column (p6 DEP4).
-	packDeps, err := resolveAndDeliverPacks(ctx, con, deps, a, refs, packs, renders)
+	packDeps, err := resolveAndDeliverPacks(ctx, con, deps, a, refs, packs, renders, providedGroups)
 	if err != nil {
 		return err
 	}
@@ -718,8 +730,8 @@ func bundleRailsCheck(cube *config.Cube) error {
 // already been delivered to the cluster. Extracted from Run so this
 // ordering/fail-fast contract is unit-testable with the delivery fakes, without a
 // live cluster (Run itself needs one).
-func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDeps, a *apply.Applier, refs []config.PackRef, packs []*pack.Pack, renders []*pack.Rendered) (map[string][]string, error) {
-	order, packDeps, err := pack.ResolveOrder(packs, refs, renders)
+func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDeps, a *apply.Applier, refs []config.PackRef, packs []*pack.Pack, renders []*pack.Rendered, providedGroups map[string]bool) (map[string][]string, error) {
+	order, packDeps, err := pack.ResolveOrder(packs, refs, renders, providedGroups)
 	if err != nil {
 		return nil, err
 	}
@@ -770,9 +782,10 @@ func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDe
 // way Run keeps packs/entries/renders index-aligned in the engine-delivered
 // pack loop.
 type deliveredPrereq struct {
-	pk    *pack.Pack
-	pref  config.PackRef // the source ref, for the Pack row's CUSTOMIZED column
-	entry lock.Entry
+	pk       *pack.Pack
+	pref     config.PackRef    // the source ref, for the Pack row's CUSTOMIZED column
+	rendered *pack.Rendered    // kept so ResolveOrder can learn which API groups this prerequisite provides (ADR-0045 capability inference)
+	entry    lock.Entry
 }
 
 // deliverPrerequisite is the pre-engine delivery path (ADR-0045): a
@@ -814,8 +827,9 @@ func deliverPrerequisite(ctx context.Context, con *ui.Console, a packApplier, pr
 	}
 	pr.Done("%s@%s applied", rendered.Name, rendered.Version)
 	return &deliveredPrereq{
-		pk:   pk,
-		pref: pref,
+		pk:       pk,
+		pref:     pref,
+		rendered: rendered,
 		entry: lock.Entry{
 			Ref:          pref.Ref,
 			Name:         rendered.Name,

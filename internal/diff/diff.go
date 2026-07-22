@@ -203,6 +203,33 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 		return nil, nil, nil, err
 	}
 
+	// Prerequisites (ADR-0045): mirror up.Run — ordinary packs the CLI SSAs
+	// before the engine, so their rendered objects belong in the desired
+	// kernel set (deterministic given cube.yaml, safe to dry-run diff), their
+	// content in the drift entries (a changed prerequisite render shows as pack
+	// drift), and their Pack-record identities in orphanOnly (up.Run writes a
+	// Pack row per prerequisite). prereqRenders feeds ProvidedGroups below.
+	var prereqRenders []*pack.Rendered
+	for _, pr := range cube.Spec.Prerequisites {
+		p, err := pack.Fetch(ctx, pr.Ref, dir)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		rendered, valuesPin, err := pack.RenderResolved(ctx, p, pr, cube.Spec.Gateway, dir)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		rh, err := lock.RenderedHash(rendered.Objects)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		desired = append(desired, rendered.Objects...)
+		entries = append(entries, lock.Entry{Name: rendered.Name, RenderedHash: rh,
+			ValuesRef: pr.ValuesRef, ValuesPin: valuesPin})
+		orphanOnly = append(orphanOnly, identityStub(packGVK, "", rendered.Name))
+		prereqRenders = append(prereqRenders, rendered)
+	}
+
 	// Engine-as-pack: mirror up.Run — the engine install is the rendered
 	// engine pack (warm cache in the common case).
 	enginePk, engineRendered, err := pack.FetchRenderEngine(ctx, cube.Spec.Engine, cube.Spec.Gateway, cube.Spec.Engine.PackRef(), dir)
@@ -269,7 +296,11 @@ func desiredState(ctx context.Context, cube *config.Cube, eng engine.Engine) (de
 	// Kustomization dependsOn / argocd annotation objects. A graph error
 	// surfaces from diff exactly as CUBE-4016/4017 already do above, before
 	// any object is added to desired/orphanOnly.
-	_, packDeps, err := pack.ResolveOrder(dPacks, refs, dRenders)
+	// Same capability inference as up.Run (ADR-0045): groups a prerequisite
+	// provides suppress the implicit gateway edge, so diff's previewed
+	// dependency graph (flux Kustomization dependsOn / argocd annotations)
+	// matches what up would deliver once the CRDs come from a prerequisite.
+	_, packDeps, err := pack.ResolveOrder(dPacks, refs, dRenders, pack.ProvidedGroups(prereqRenders))
 	if err != nil {
 		return nil, nil, nil, err
 	}

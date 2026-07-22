@@ -635,7 +635,7 @@ func TestDeliverOrderRespectsDependsOn(t *testing.T) {
 	con := ui.NewConsole(make(chan event.Event, 256))
 	// eng.OrdersDeliveries() defaults true (flux-like) — the wave gate
 	// never runs, so a nil *apply.Applier is never dereferenced.
-	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders); err != nil {
+	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders, nil); err != nil {
 		t.Fatalf("resolveAndDeliverPacks: %v", err)
 	}
 	want := []string{"gateway", "a", "b"}
@@ -714,7 +714,7 @@ func TestWaveGateSkippedWhenEngineOrdersDeliveries(t *testing.T) {
 	renders := []*pack.Rendered{demoRendered("gateway"), demoRendered("a"), demoRendered("b")}
 
 	con := ui.NewConsole(make(chan event.Event, 256))
-	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders); err != nil {
+	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders, nil); err != nil {
 		t.Fatalf("resolveAndDeliverPacks: %v", err)
 	}
 	if eng.healthCalls != 0 {
@@ -753,7 +753,7 @@ func TestWaveGateBlocksDeliveryUntilDepHealthy(t *testing.T) {
 	renders := []*pack.Rendered{demoRendered("gateway"), demoRendered("a"), demoRendered("b")}
 
 	con := ui.NewConsole(make(chan event.Event, 256))
-	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders); err != nil {
+	if _, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders, nil); err != nil {
 		t.Fatalf("resolveAndDeliverPacks: %v", err)
 	}
 	if !reflect.DeepEqual(eng.delivered, []string{"gateway", "a", "b"}) {
@@ -793,7 +793,7 @@ func TestUpFailsFastOnDepCycle(t *testing.T) {
 	renders := []*pack.Rendered{demoRendered("gateway"), demoRendered("a"), demoRendered("b")}
 
 	con := ui.NewConsole(make(chan event.Event, 256))
-	_, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders)
+	_, err := resolveAndDeliverPacks(context.Background(), con, deps, nil, refs, packs, renders, nil)
 	var de *diag.Error
 	if !errors.As(err, &de) || de.Code != diag.CodePackDepCycle {
 		t.Fatalf("want CUBE-4019, got %v", err)

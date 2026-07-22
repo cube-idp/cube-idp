@@ -78,7 +78,7 @@ func TestResolveOrderNoDepsDeclaredOrder(t *testing.T) {
 	bP, bR, bD := mk("b", nil)
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(aP, aR, aD), entry(bP, bR, bD))
 
-	order, deps, err := ResolveOrder(packs, refs, rendered)
+	order, deps, err := ResolveOrder(packs, refs, rendered, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestResolveOrderDiamond(t *testing.T) {
 		entry(gwP, gwR, gwD), entry(aP, aR, aD), entry(bP, bR, bD), entry(cP, cR, cD), entry(dP, dR, dD),
 	)
 
-	order, deps, err := ResolveOrder(packs, refs, rendered)
+	order, deps, err := ResolveOrder(packs, refs, rendered, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestResolveOrderUnknownName(t *testing.T) {
 	aP, aR, aD := mk("a", []string{"nope"})
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(aP, aR, aD))
 
-	_, _, err := ResolveOrder(packs, refs, rendered)
+	_, _, err := ResolveOrder(packs, refs, rendered, nil)
 	if err == nil {
 		t.Fatal("want an error for an unknown dependsOn name")
 	}
@@ -162,7 +162,7 @@ func TestResolveOrderSelfDep(t *testing.T) {
 	aP, aR, aD := mk("a", []string{"a"})
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(aP, aR, aD))
 
-	_, _, err := ResolveOrder(packs, refs, rendered)
+	_, _, err := ResolveOrder(packs, refs, rendered, nil)
 	if err == nil {
 		t.Fatal("want an error for a self-dependency")
 	}
@@ -180,7 +180,7 @@ func TestResolveOrderTwoCycle(t *testing.T) {
 	bP, bR, bD := mk("b", []string{"a"})
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(aP, aR, aD), entry(bP, bR, bD))
 
-	_, _, err := ResolveOrder(packs, refs, rendered)
+	_, _, err := ResolveOrder(packs, refs, rendered, nil)
 	if err == nil {
 		t.Fatal("want an error for a 2-cycle")
 	}
@@ -204,7 +204,7 @@ func TestResolveOrderThreeCycle(t *testing.T) {
 	cP, cR, cD := mk("c", []string{"a"})
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(aP, aR, aD), entry(bP, bR, bD), entry(cP, cR, cD))
 
-	_, _, err := ResolveOrder(packs, refs, rendered)
+	_, _, err := ResolveOrder(packs, refs, rendered, nil)
 	if err == nil {
 		t.Fatal("want an error for a 3-cycle")
 	}
@@ -228,7 +228,7 @@ func TestResolveOrderGatewayPackCueDependsOnIsCUBE4020(t *testing.T) {
 	aP, aR, aD := mk("a", nil)
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(aP, aR, aD))
 
-	_, _, err := ResolveOrder(packs, refs, rendered)
+	_, _, err := ResolveOrder(packs, refs, rendered, nil)
 	if err == nil {
 		t.Fatal("want an error for a gateway pack.cue dependsOn")
 	}
@@ -243,7 +243,7 @@ func TestResolveOrderGatewayRefDependsOnIsCUBE4020(t *testing.T) {
 	aP, aR, aD := mk("a", nil)
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(aP, aR, aD))
 
-	_, _, err := ResolveOrder(packs, refs, rendered)
+	_, _, err := ResolveOrder(packs, refs, rendered, nil)
 	if err == nil {
 		t.Fatal("want an error for a gateway cube.yaml dependsOn")
 	}
@@ -260,7 +260,7 @@ func TestResolveOrderImplicitGatewayEdge(t *testing.T) {
 	aP, aR, aD := mk("a", nil, gatewayHTTPRoute)
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(aP, aR, aD))
 
-	order, deps, err := ResolveOrder(packs, refs, rendered)
+	order, deps, err := ResolveOrder(packs, refs, rendered, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestResolveOrderImplicitRepoEdge(t *testing.T) {
 	myR.Delivery = "repo"
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(giteaP, giteaR, giteaD), entry(myP, myR, myD))
 
-	order, deps, err := ResolveOrder(packs, refs, rendered)
+	order, deps, err := ResolveOrder(packs, refs, rendered, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestResolveOrderRepoDeliveryNoGiteaIsCUBE4018(t *testing.T) {
 	myR.Delivery = "repo"
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(myP, myR, myD))
 
-	_, _, err := ResolveOrder(packs, refs, rendered)
+	_, _, err := ResolveOrder(packs, refs, rendered, nil)
 	if err == nil {
 		t.Fatal("want an error for repo delivery with no gitea pack")
 	}
@@ -321,7 +321,7 @@ func TestResolveOrderRepoDeliveryGuaranteeAgainstArgocd(t *testing.T) {
 		entry(gwP, gwR, gwD), entry(argoP, argoR, argoD), entry(giteaP, giteaR, giteaD), entry(myP, myR, myD),
 	)
 
-	order, _, err := ResolveOrder(packs, refs, rendered)
+	order, _, err := ResolveOrder(packs, refs, rendered, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestResolveOrderDuplicateNamesIsCUBE4018(t *testing.T) {
 	a2P, a2R, a2D := mk("dup", nil)
 	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(a1P, a1R, a1D), entry(a2P, a2R, a2D))
 
-	_, _, err := ResolveOrder(packs, refs, rendered)
+	_, _, err := ResolveOrder(packs, refs, rendered, nil)
 	if err == nil {
 		t.Fatal("want an error for duplicate pack names")
 	}
@@ -360,5 +360,69 @@ func TestResolveOrderDuplicateNamesIsCUBE4018(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "dup") {
 		t.Fatalf("collision message must name the pack: %v", err)
+	}
+}
+
+// crdRendered builds a *Rendered carrying one CustomResourceDefinition whose
+// spec.group is group — the shape a CRD-bearing prerequisite (e.g. the Gateway
+// API CRDs) renders, from which ProvidedGroups reads the satisfied group.
+func crdRendered(name, group string) *Rendered {
+	crd := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "apiextensions.k8s.io/v1",
+		"kind":       "CustomResourceDefinition",
+		"metadata":   map[string]any{"name": "httproutes." + group},
+		"spec":       map[string]any{"group": group},
+	}}
+	return &Rendered{Name: name, Objects: []*unstructured.Unstructured{crd}}
+}
+
+// TestProvidedGroupsReadsCRDGroup pins the capability-inference extractor
+// (ADR-0045): ProvidedGroups returns exactly the groups a render establishes
+// by shipping their CRDs, read from spec.group. A render with no CRD provides
+// nothing (nil), so the graph is unaffected when no prerequisite carries CRDs.
+func TestProvidedGroupsReadsCRDGroup(t *testing.T) {
+	got := ProvidedGroups([]*Rendered{crdRendered("gateway-api-crds", gatewayAPIGroup)})
+	if !got[gatewayAPIGroup] || len(got) != 1 {
+		t.Fatalf("want {%s:true}, got %v", gatewayAPIGroup, got)
+	}
+	// A prerequisite rendering only non-CRD objects (or none) provides nothing.
+	if g := ProvidedGroups([]*Rendered{{Name: "kyverno", Objects: nil}}); g != nil {
+		t.Fatalf("no CRD => nil, got %v", g)
+	}
+	if g := ProvidedGroups(nil); g != nil {
+		t.Fatalf("no renders => nil, got %v", g)
+	}
+}
+
+// TestResolveOrderPrerequisiteSatisfiesGatewayGroup is the T3 capability-
+// inference contract: when a prerequisite provides the Gateway API group, a
+// pack rendering an HTTPRoute acquires NO implicit edge (a) to the gateway
+// pack — the CRDs are already Established by the pre-engine prerequisite, so
+// the phantom dependency is gone. Contrast TestResolveOrderImplicitGatewayEdge,
+// where with no such prerequisite the edge (and the ordering) still hold.
+func TestResolveOrderPrerequisiteSatisfiesGatewayGroup(t *testing.T) {
+	gwP, gwR, gwD := mk("gw", nil)
+	aP, aR, aD := mk("a", nil, gatewayHTTPRoute) // renders an HTTPRoute
+	packs, refs, rendered := split(entry(gwP, gwR, gwD), entry(aP, aR, aD))
+
+	// The Gateway API CRDs arrive as a prerequisite, satisfying the group.
+	provided := ProvidedGroups([]*Rendered{crdRendered("gateway-api-crds", gatewayAPIGroup)})
+	_, deps, err := ResolveOrder(packs, refs, rendered, provided)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// No phantom edge: "a" depends on nothing now.
+	if _, ok := deps["a"]; ok {
+		t.Fatalf("a must have NO gateway edge when a prerequisite provides the CRDs: deps=%v", deps)
+	}
+
+	// Sanity: WITHOUT the prerequisite, the edge is still there (regression
+	// fence for the pre-ADR-0045 behavior).
+	_, deps2, err := ResolveOrder(packs, refs, rendered, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(deps2["a"], []string{"gw"}) {
+		t.Fatalf("without a prerequisite the gateway edge must remain: got %v", deps2["a"])
 	}
 }
