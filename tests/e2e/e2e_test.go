@@ -895,10 +895,16 @@ func stagePrerequisitePack(t *testing.T) string {
 	// A minimal, valid CRD carrying the Gateway API group and the httproutes
 	// kind up.Run's CRD-wait keys on. Not the full v1.6.1 bundle — the leg
 	// tests cube-idp's pre-engine plumbing, not the CRD's schema fidelity.
+	// The api-approved.kubernetes.io annotation is REQUIRED for CRDs in
+	// protected (*.k8s.io) groups — the API server rejects one without it
+	// (CUBE-2003 at SSA). The value is the real Gateway API approval PR the
+	// published v1.6.1 CRDs carry.
 	crd := `apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: httproutes.gateway.networking.k8s.io
+  annotations:
+    api-approved.kubernetes.io: https://github.com/kubernetes-sigs/gateway-api/pull/4530
 spec:
   group: gateway.networking.k8s.io
   scope: Namespaced
