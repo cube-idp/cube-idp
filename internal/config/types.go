@@ -44,6 +44,13 @@ type Spec struct {
 	Cluster ClusterSpec `yaml:"cluster" json:"cluster"`
 	Engine  EngineSpec  `yaml:"engine" json:"engine"`
 	Gateway GatewaySpec `yaml:"gateway" json:"gateway"`
+	// Prerequisites are packs the CLI applies by SSA BEFORE the engine, in
+	// list order (ADR-0045). Reuses PackRef; the schema forbids
+	// delivery/dependsOn on prerequisites (never engine-delivered, no
+	// dependency graph), so those PackRef fields are always empty here.
+	// Same omitempty discipline as Packs — a nil slice round-trips as an
+	// absent key, not an explicit YAML null.
+	Prerequisites []PackRef `yaml:"prerequisites,omitempty" json:"prerequisites,omitempty"`
 	// Packs is optional (`packs?` in schema.cue); omitempty keeps a nil or
 	// empty slice out of marshaled output instead of an explicit `packs:
 	// null`, which CUE re-validation would reject (see ClusterSpec).

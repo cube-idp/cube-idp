@@ -120,6 +120,40 @@ func TestLoadRejectsArgoPackWithArgoEngine(t *testing.T) { // CUBE-0005
 	}
 }
 
+func TestLoadAcceptsPrerequisites(t *testing.T) { // ADR-0045
+	c, err := Load("testdata/prerequisites.yaml")
+	if err != nil {
+		t.Fatalf("valid prerequisites should load: %v", err)
+	}
+	if len(c.Spec.Prerequisites) != 2 {
+		t.Fatalf("want 2 prerequisites, got %d", len(c.Spec.Prerequisites))
+	}
+	if c.Spec.Prerequisites[0].Ref != "oci://ghcr.io/cube-idp/packs/gateway-api-crds:0.1.0" {
+		t.Fatalf("prerequisite[0] ref not preserved: %q", c.Spec.Prerequisites[0].Ref)
+	}
+	// list order is the contract (ADR-0045): kyverno stays second
+	if c.Spec.Prerequisites[1].Ref != "oci://ghcr.io/cube-idp/packs/kyverno:0.1.0" {
+		t.Fatalf("prerequisite[1] ref/order not preserved: %q", c.Spec.Prerequisites[1].Ref)
+	}
+}
+
+func TestLoadRejectsDualOwnerPack(t *testing.T) { // CUBE-0016, ADR-0045
+	_, err := Load("testdata/prerequisites-dual-owner.yaml")
+	if codeOf(t, err) != "CUBE-0016" {
+		t.Fatalf("want CUBE-0016 (pack in both prerequisites and packs), got %v", err)
+	}
+}
+
+func TestLoadAbsentPrerequisitesIsNil(t *testing.T) { // byte-compat: absent key stays nil
+	c, err := Load("testdata/minimal.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Spec.Prerequisites != nil {
+		t.Fatalf("absent prerequisites should be nil, got %v", c.Spec.Prerequisites)
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	_, err := Load("testdata/nope.yaml")
 	if codeOf(t, err) != "CUBE-0001" {
