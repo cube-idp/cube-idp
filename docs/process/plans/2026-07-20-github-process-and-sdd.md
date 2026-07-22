@@ -66,7 +66,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | DONE |
 | T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | DONE |
 | T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
-| T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | UNCLAIMED |
+| T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | IN_PROGRESS(sdd-t13, 2026-07-22T06:32:15Z) |
 | T14 | Instantiate the Projects v2 board per ADR-0042 §Board | T5,T13 | **yes** | UNCLAIMED · **OWNER-GATED** |
 | T15 | Docs layout: `reference/` move + `architecture/` skeleton (ADR-0042 §Docs) | T2,T5 | no | UNCLAIMED |
 
