@@ -1,0 +1,10 @@
+# .github/labels.yml — normative label taxonomy (ADR-0042).
+# CI (process-gate doc-consistency) asserts referenced labels exist here.
+type:
+  [bug, feature, chore, docs, adr, spike, question]
+area:
+  [cluster, packs, engine, registry, gateway, tui-output, diagnostics, trust, ci]
+status:
+  [blocked]   # pipeline position lives on the delivery board, not in labels
+community:
+  ["good first issue", "help wanted"]

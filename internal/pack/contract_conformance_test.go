@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Contract v1 mechanical clauses (docs/pack-contract-v1.md §2): the name
+// Contract v1 mechanical clauses (docs/reference/pack-contract-v1.md §2): the name
 // pattern and the semver version shape.
 var (
 	contractNameRE    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,30}$`)
@@ -15,7 +15,7 @@ var (
 )
 
 // TestReposPacksSatisfyContractV1 walks the repo's packs/ tree and
-// enforces docs/pack-contract-v1.md mechanically: every pack loads, has
+// enforces docs/reference/pack-contract-v1.md mechanically: every pack loads, has
 // name==dir matching the contract pattern, semver version, and (v1) a
 // non-empty description. The packs themselves live in the separate
 // github.com/cube-idp/packs repo, whose conformance harness runs this same

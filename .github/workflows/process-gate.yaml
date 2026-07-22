@@ -1,0 +1,78 @@
+name: process-gate
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+permissions:
+  contents: read
+jobs:
+  linked-work-item:
+    name: PR references an issue or ADR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR body for '#N' or 'ADR-NNNN'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if printf '%s' "$BODY" | grep -qE '(#[0-9]+|ADR-[0-9]{4})'; then
+            echo "ok: work-item reference found"; exit 0
+          fi
+          case "$HEAD_REF" in
+            release/*) echo "ok: release branch exempt"; exit 0 ;;
+          esac
+          echo "::error::PR body must reference an issue (#N) or an ADR (ADR-NNNN). See CLAUDE.md §3 / ADR-0042."
+          exit 1
+  doc-consistency:
+    name: Process docs are internally consistent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: AGENTS.md points at CLAUDE.md and the target exists
+        run: |
+          test -f CLAUDE.md
+          grep -q 'CLAUDE.md' AGENTS.md
+      - name: No machine-specific absolute paths committed
+        run: |
+          ! grep -rEn '/Users/[a-z]' --include='*.md' CLAUDE.md AGENTS.md docs/process/ .github/ 2>/dev/null
+      - name: Labels referenced by forms and rules exist in labels.yml
+        run: |
+          python3 - <<'EOF'
+          import yaml, re, glob, sys
+          tax = yaml.safe_load(open('.github/labels.yml'))
+          known = {f"{ns}:{n}" for ns in ('type','area','status') for n in tax.get(ns, [])}
+          referenced = set()
+          for f in glob.glob('.github/ISSUE_TEMPLATE/*.yml'):
+              for lbl in (yaml.safe_load(open(f)) or {}).get('labels', []):
+                  referenced.add(lbl)
+          referenced |= set(re.findall(r'`((?:type|area|status):[a-z-]+)`', open('CLAUDE.md').read()))
+          missing = referenced - known
+          if missing: sys.exit(f"labels referenced but not in labels.yml: {sorted(missing)}")
+          print("OK", len(referenced), "label refs checked")
+          EOF
+      - name: docs/ top level is the closed set (ADR-0042 §Documentation layout)
+        run: |
+          # outstanding-todos.md is temporarily allowed until the owner retires
+          # it into issues (T15 FINDINGS records the disposition) — remove it
+          # from this list when that happens.
+          ALLOWED="adr architecture reference process archive vhs outstanding-todos.md"
+          rc=0
+          for e in $(ls docs/); do
+            case " $ALLOWED " in
+              *" $e "*) ;;
+              *) echo "::error::docs/$e is not in the ADR-0042 closed set — update the ADR first"; rc=1 ;;
+            esac
+          done
+          exit $rc
+      - name: architecture docs carry valid cube:doc area headers
+        run: |
+          python3 - <<'EOF'
+          import re, glob, sys, yaml
+          areas = set(yaml.safe_load(open('.github/labels.yml')).get('area', []))
+          bad = []
+          for f in sorted(glob.glob('docs/architecture/*.md')):
+              if f.endswith('README.md'): continue
+              m = re.match(r'<!-- cube:doc area=([a-z-]+)[ >]', open(f).readline())
+              if not m or m.group(1) not in areas: bad.append(f)
+          if bad: sys.exit(f"missing/invalid cube:doc header: {bad}")
+          print("OK", "architecture headers valid")
+          EOF

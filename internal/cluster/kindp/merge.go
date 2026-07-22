@@ -79,7 +79,7 @@ func RenderConfig(ctx context.Context, name string, spec config.ClusterSpec, gw 
 		if err := sigyaml.UnmarshalStrict(j, cfg); err != nil {
 			return nil, nil, diag.Wrap(err, diag.CodeKindConfigInvalid,
 				"providerConfigRef/forProvider is not a valid kind Cluster document",
-				"unknown or mistyped field — see https://kind.sigs.k8s.io/docs/user/configuration/ and docs/kind-config-reference.md")
+				"unknown or mistyped field — see https://kind.sigs.k8s.io/docs/user/configuration/ and docs/reference/kind-config-reference.md")
 		}
 	}
 	cfg.Kind = "Cluster"

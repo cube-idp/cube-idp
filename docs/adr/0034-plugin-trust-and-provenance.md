@@ -87,7 +87,7 @@ over TLS instead.
 | --- | --- |
 | Plugin trust-store entries are keyed by the absolute, symlink-resolved canonical path (`filepath.Abs` + `EvalSymlinks`) on both record and lookup, falling back to the raw path when canonicalization fails, so trust decisions are not cwd-dependent. | `internal/plugin/trust.go` |
 | Plugin integrity rests on digest pinning from the index plus the existing sha256 trust-store consent flow; adding official-index resolution leaves the consent flow, the CUBE-7104 non-TTY refusal, `plugin trust` semantics, and the git-index install path unchanged. | `internal/plugin/officialindex.go` |
-| Pack provenance verification is a documented external `gh attestation verify oci://...` command; the binary never verifies attestations at pull time and relies on digest pinning over TLS. | `docs/pack-contract-v1.md` |
+| Pack provenance verification is a documented external `gh attestation verify oci://...` command; the binary never verifies attestations at pull time and relies on digest pinning over TLS. | `docs/reference/pack-contract-v1.md` |
 | The `--index` git path auto-trusts the installed binary rather than routing through the consent prompt — a deliberate pre-existing exception. | `internal/plugin/index.go` |
 | `plugin install` resolves the plugin index by digest and then hands off to the existing, unchanged sha256 trust-consent flow. | `cmd/plugin.go` |
 
@@ -114,9 +114,9 @@ over TLS instead.
       byte-for-byte frozen.
 - [ ] `cmd/plugin.go` still exposes `--index` for the sha256-pinned git-index
       path, and `cmd/plugin.go` dispatches to `plugin.Install` for it.
-- [ ] `docs/pack-contract-v1.md` documents verification as exactly
+- [ ] `docs/reference/pack-contract-v1.md` documents verification as exactly
       `gh attestation verify oci://ghcr.io/cube-idp/packs/<name>:<ver> --owner cube-idp`,
-      and `docs/pack-contract-v1.md` (in the `Verifying pack provenance`
+      and `docs/reference/pack-contract-v1.md` (in the `Verifying pack provenance`
       section) states cube-idp does not re-verify attestations at
       pull time.
 - [ ] `grep -rEi 'cosign|sigstore|rekor' internal/ cmd/ --include='*.go'` returns

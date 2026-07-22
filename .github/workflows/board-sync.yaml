@@ -1,0 +1,83 @@
+name: board-sync
+on:
+  pull_request:
+    types: [opened, ready_for_review, converted_to_draft, closed]
+permissions:
+  contents: read
+concurrency:
+  group: board-sync-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip until the board exists (T14 not yet executed)
+        id: gate
+        env:
+          N: ${{ vars.BOARD_PROJECT_NUMBER }}
+        run: |
+          if [ -z "$N" ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "board not instantiated — nothing to sync"; fi
+      - name: Mint board token (org App)
+        if: steps.gate.outputs.skip != 'true'
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+          owner: cube-idp
+      - name: Resolve target issue and status
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BODY: ${{ github.event.pull_request.body }}
+          TITLE: ${{ github.event.pull_request.title }}
+          ACTION: ${{ github.event.action }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          PROJECT_NUMBER: ${{ vars.BOARD_PROJECT_NUMBER }}
+        run: |
+          set -euo pipefail
+          ADR=$(printf '%s\n%s' "$TITLE" "$BODY" | grep -oE 'ADR-[0-9]{4}' | head -1 || true)
+          CLOSES=$(printf '%s' "$BODY" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
+          ISSUE="" STATUS=""
+          if [ -n "$ADR" ]; then
+            # ADR PR → move the epic titled "[ADR-NNNN] …"
+            ISSUE=$(gh api graphql \
+              -f query='query($q:String!){search(query:$q,type:ISSUE,first:1){nodes{... on Issue{number}}}}' \
+              -f q="repo:$GITHUB_REPOSITORY is:issue in:title \"[$ADR]\"" \
+              --jq '.data.search.nodes[0].number' 2>/dev/null || true)
+            case "$ACTION" in
+              opened|ready_for_review) STATUS="Proposed" ;;
+              closed) if [ "$MERGED" = "true" ]; then STATUS="Accepted"; fi ;;
+            esac
+          elif [ -n "$CLOSES" ]; then
+            ISSUE=$CLOSES
+            case "$ACTION" in
+              opened) if [ "$DRAFT" = "true" ]; then STATUS="In progress"; else STATUS="In review"; fi ;;
+              ready_for_review) STATUS="In review" ;;
+              converted_to_draft) STATUS="In progress" ;;
+              closed) : ;;   # merge auto-closes the issue; built-in workflow moves it to Done
+            esac
+          fi
+          if [ -z "$ISSUE" ] || [ -z "$STATUS" ]; then echo "nothing to sync"; exit 0; fi
+          echo "sync: issue #$ISSUE -> $STATUS"
+
+          PID=$(gh api graphql \
+            -f query='query($org:String!,$n:Int!){organization(login:$org){projectV2(number:$n){id}}}' \
+            -f org="${GITHUB_REPOSITORY_OWNER}" -F n="$PROJECT_NUMBER" \
+            --jq '.data.organization.projectV2.id')
+          FIELD=$(gh api graphql \
+            -f query='query($p:ID!){node(id:$p){... on ProjectV2{field(name:"Status"){... on ProjectV2SingleSelectField{id options{id name}}}}}}' \
+            -f p="$PID" --jq '.data.node.field')
+          FID=$(echo "$FIELD" | jq -r '.id')
+          OID=$(echo "$FIELD" | jq -r --arg s "$STATUS" '.options[] | select(.name==$s) | .id')
+          CID=$(gh api graphql \
+            -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issue(number:$n){id}}}' \
+            -f o="${GITHUB_REPOSITORY_OWNER}" -f r="${GITHUB_REPOSITORY#*/}" -F n="$ISSUE" \
+            --jq '.data.repository.issue.id')
+          ITEM=$(gh api graphql \
+            -f query='mutation($p:ID!,$c:ID!){addProjectV2ItemById(input:{projectId:$p,contentId:$c}){item{id}}}' \
+            -f p="$PID" -f c="$CID" --jq '.data.addProjectV2ItemById.item.id')   # idempotent: returns the existing item
+          gh api graphql \
+            -f query='mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){projectV2Item{id}}}' \
+            -f p="$PID" -f i="$ITEM" -f f="$FID" -f o="$OID" --jq '.data.updateProjectV2ItemFieldValue.projectV2Item.id'

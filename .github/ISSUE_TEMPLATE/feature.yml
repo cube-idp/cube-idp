@@ -1,0 +1,34 @@
+name: Feature request
+description: New capability or enhancement (Track B — or flags itself into Track A)
+title: "feat: "
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today? Why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Sketch of the change. Closed scope — what is explicitly OUT.
+    validations:
+      required: true
+  - type: dropdown
+    id: needs-adr
+    attributes:
+      label: Does this need an ADR?
+      description: New dependency, new architectural pattern, hard to reverse, or real competing alternatives → yes (Track A).
+      options: ["no — routine work within existing decisions", "yes — architectural (an epic + ADR PR must precede code)", "unsure — triage decides"]
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [cluster, packs, engine, registry, gateway, tui-output, diagnostics, trust, ci, unknown]
+    validations:
+      required: true

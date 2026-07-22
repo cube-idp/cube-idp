@@ -1,0 +1,35 @@
+name: Bug report
+description: Shipped behavior is wrong
+title: "bug: "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Exact commands and cube.yaml (or minimal fragment). Paste output, not paraphrase.
+      placeholder: |
+        $ cube-idp up ...
+        <actual output>
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`cube-idp version` output or commit SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [cluster, packs, engine, registry, gateway, tui-output, diagnostics, trust, ci, unknown]
+    validations:
+      required: true

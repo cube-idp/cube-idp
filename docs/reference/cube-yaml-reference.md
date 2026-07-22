@@ -195,6 +195,6 @@ spec: {}
 ## See also
 
 - `internal/config/schema.cue` — the authoritative schema (`cube-idp config schema` prints it)
-- `docs/pack-contract-v1.md` — the pack format contract (v1.1)
+- `docs/reference/pack-contract-v1.md` — the pack format contract (v1.1)
 - `cube-idp config render-cluster` / `render-engine` — preview the rendered
   provider config and engine install before `up`

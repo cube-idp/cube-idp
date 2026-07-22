@@ -100,7 +100,7 @@ state (degrading to declared config on any failure), and `spoke remove
 | `spoke remove --delete-cluster` deletes a kind spoke cluster via `prov.Delete`, behind a consent prompt that refuses non-interactively without `--yes`. | `cmd/spoke.go`; `cmd/spoke.go` |
 | The install path does not validate the dependency graph; graph validation happens at the next `up` or `diff`. | `cmd/pack.go` |
 | The `up` "packs-crd" step applies and inventories only the `Pack` CRD; step text is "Pack CRD established". | `internal/up/up.go` |
-| `docs/machine-readable-output.md` documents the `encode_error` event — no `ts` field, emitted so a marshal failure surfaces on-stream rather than dropping an event silently. | `internal/ui/render/json.go`; `docs/machine-readable-output.md` |
+| `docs/reference/machine-readable-output.md` documents the `encode_error` event — no `ts` field, emitted so a marshal failure surfaces on-stream rather than dropping an event silently. | `internal/ui/render/json.go`; `docs/reference/machine-readable-output.md` |
 
 ### Verification
 

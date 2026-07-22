@@ -54,6 +54,8 @@ Status values: `accepted` (in force), `superseded by ADR-NNNN`, `deprecated`.
 | 0039 | [Gateway Token Substitution and Render-Derived Gateway Edges](0039-gateway-token-substitution.md) | 4 |
 | 0040 | [Diagnostic-Code Identifiers Are Stable Product Surface, Not Planning Residue](0040-diagnostic-code-identifier-stability.md) | — |
 | 0041 | [Changelog Records Released Behavior, Not Internal Process](0041-changelog-content-policy.md) | — |
+| 0042 | [ADR-First Two-Track Delivery Process on GitHub](0042-adr-first-two-track-delivery-process.md) | — |
+| 0043 | [Cluster mounts and extraPorts Semantics for Multi-Node Clusters](0043-multinode-mounts-and-extraports.md) | 7 |
 
 ADRs 0040–0041 record decisions established by the 2026-07-20 documentation audit
 itself (rather than reconstructed from the corpus); they carry no consolidation count.
