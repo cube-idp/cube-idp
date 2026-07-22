@@ -111,7 +111,8 @@ codes: `CUBE-0016+`.
 ### Task T5: e2e + docs
 
 **Files:** `tests/e2e/…`, `docs/reference/cube-yaml-reference.md`,
-`docs/architecture/packs.md`, `docs/architecture/cluster.md`.
+`docs/architecture/packs.md`, `docs/architecture/cluster.md`,
+`docs/adr/0005-pack-dependency-graph-and-ordering.md`.
 
 - [ ] **Step 1:** e2e leg: a prerequisite pack lands before the engine on a fresh
   cluster AND an existing cluster; appears in `kubectl get packs`; `down` removes it
@@ -120,6 +121,15 @@ codes: `CUBE-0016+`.
 - [ ] **Step 2:** Document `spec.prerequisites` in `cube-yaml-reference.md`; update the
   `docs/architecture/packs.md` + `cluster.md` `cube:doc`/`cube:section` markers, add
   `adrs=…,0045`.
+- [ ] **Step 2b (ADR-0005 reconciliation — added per owner instruction, session
+  2026-07-22):** T3 made the implicit gateway edge CONDITIONAL (suppressed when a
+  prerequisite provides `gateway.networking.k8s.io`), which amends a rule ADR-0005
+  owns (ADR-0005:97 states the edge unconditionally; ADR-0005:65-66 says that ADR is
+  the one to change for any edge-rule change). Add a cross-reference note to the
+  relevant ADR-0005 row/consequence: the edge is now suppressed when a
+  spec.prerequisites pack provides that group's CRDs (ADR-0045). Doc-only; keeps
+  ADR-0005 consistent with the code. Update the `packs.md` "Dependencies and
+  ordering" section's `adrs=` marker to include 0045 too.
 - [ ] **Step 3:** Gate green; commit `test+docs: spec.prerequisites e2e + reference/architecture (ADR-0045)`.
 
 ---
