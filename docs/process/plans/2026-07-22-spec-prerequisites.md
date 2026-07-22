@@ -47,7 +47,7 @@ codes: `CUBE-0016+`.
 | T2 | Pre-engine loop: `[prerequisites…, engine]` one code path; inventory + lock + Pack rows | (create) | T1 | DONE |
 | T3 | `diff` dry-run + capability-inference satisfaction for prerequisite GVKs | (create) | T2 | DONE |
 | T4 | Gateway API CRDs as a prerequisite (the first real consumer) | #25 | T2 | DONE |
-| T5 | e2e (fresh + existing cluster; `down` cascade) + reference/architecture docs | (create) | T2,T3,T4 | UNCLAIMED |
+| T5 | e2e (fresh + existing cluster; `down` cascade) + reference/architecture docs | (create) | T2,T3,T4 | CLAIMED |
 
 ---
 
