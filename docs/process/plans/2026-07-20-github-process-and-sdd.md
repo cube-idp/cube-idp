@@ -57,7 +57,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T1 | ~~Land `docs/adr/` 0001–0039 on main~~ | — | no | **OBSOLETE** (audit merged via #31/#32) |
 | T2 | Label taxonomy across org repos + relabel open issues + `labels.yml` | — | **yes** | DONE |
 | T3 | Milestone `v0.2.0` + assignments | T2 | **yes** | DONE |
-| T4 | Issue forms | T2 | no | IN_PROGRESS(sess-t4-opus, 2026-07-22T06:10:50Z) |
+| T4 | Issue forms | T2 | no | DONE |
 | T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | DONE |
 | T6 | SDD dispatch prompt template | — | no | DONE |
 | T7 | SDD status heartbeat template | — | no | UNCLAIMED |
@@ -292,13 +292,13 @@ Expected: `5,6,11,14,15,16`
 - Consumes: T2 label names verbatim.
 - Note: forms gate the web UI only; `gh issue create` bypasses them — T9's CLAUDE.md §3 makes the same fields mandatory for agents.
 
-- [ ] **Step 1: Write `config.yml`** (blank issues off — every issue picks a track)
+- [x] **Step 1: Write `config.yml`** (blank issues off — every issue picks a track)
 
 ```yaml
 blank_issues_enabled: false
 ```
 
-- [ ] **Step 2: Write `bug.yml`**
+- [x] **Step 2: Write `bug.yml`**
 
 ```yaml
 name: Bug report
@@ -338,7 +338,7 @@ body:
       required: true
 ```
 
-- [ ] **Step 3: Write `feature.yml`**
+- [x] **Step 3: Write `feature.yml`**
 
 ```yaml
 name: Feature request
@@ -377,7 +377,7 @@ body:
       required: true
 ```
 
-- [ ] **Step 4: Write `epic.yml`** (Track A tracker)
+- [x] **Step 4: Write `epic.yml`** (Track A tracker)
 
 ```yaml
 name: "Epic: ADR-tracked feature"
@@ -418,7 +418,7 @@ body:
       required: true
 ```
 
-- [ ] **Step 5: Write `spike.yml`**
+- [x] **Step 5: Write `spike.yml`**
 
 ```yaml
 name: Spike (timeboxed exploration)
@@ -449,7 +449,7 @@ body:
       required: true
 ```
 
-- [ ] **Step 6: Validate and commit**
+- [x] **Step 6: Validate and commit**
 
 ```bash
 for F in .github/ISSUE_TEMPLATE/*.yml; do python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1])); print('OK', sys.argv[1])" "$F"; done
@@ -1649,7 +1649,21 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
   - **Verify command note for future tasks:** `gh issue list --milestone` without `--limit` truncates in this repo (27+ open issues); use `--limit 100` or the REST API `issues?milestone=<n>` to enumerate a milestone reliably.
 
 #### T4 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd (merged: no) in cube-idp/cube-idp
+- COMMITS:
+  - dfa8748 docs: github-process-and-sdd — claim T4
+  - 8d3eb89 chore: issue forms — bug/feature/epic/spike, blank issues off
+  - (this commit) docs: github-process-and-sdd — T4 complete (ledger edit; hash not self-embedded, see `git log`)
+- FINDINGS:
+  - **YAML gate tooling substitution (no file defect, same as T2/T3).** The plan's Step 6 / Global-Constraints validator `python3 -c "import yaml…"` fails on this machine — python3 has no PyYAML (system or homebrew). Verbatim local run: `import yaml` → `ModuleNotFoundError: No module named 'yaml'`. Validated all five templates with two independent parsers per the dispatch instruction instead: `ruby -ryaml -e 'YAML.load_file(...)'` → `OK` for config/bug/feature/epic/spike; and `yq '.' <f>` → `yq OK` for all five. CI (`process-gate`, ubuntu-latest) runs the committed python gate fine — no file defect. All five files created verbatim from the plan's Step 1–5 fenced content.
+  - **Label cross-check (belt-and-suspenders, not required by plan).** The four forms' `labels:` keys (`type:bug`, `type:feature`, `type:adr`, `type:spike`) were confirmed present in `.github/labels.yml` `.type` (`[bug, feature, chore, docs, adr, spike, question]`) — T2's handoff notes forms consume label names verbatim, and these match. `config.yml` carries no label. This is what T10's doc-consistency job will assert in CI.
+- REVIEW: pending final review (whole-branch review at T12)
+- BLOCKERS: none
+- HANDOFF:
+  - **Five issue-template files live on the branch** under `.github/ISSUE_TEMPLATE/`: `config.yml` (blank_issues_enabled: false), `bug.yml` (labels type:bug), `feature.yml` (type:feature, with needs-adr Track-A/B dropdown), `epic.yml` (type:adr, title prefix `[ADR-NNNN] ` — the machine-parseable join key T5 §Board and T13 board-sync depend on), `spike.yml` (type:spike, committed-exit dropdown).
+  - **Forms gate the web UI only.** `gh issue create` bypasses them — T9's CLAUDE.md §3 must make the same fields (repro/version/area for bugs; problem/proposal/needs-adr/area for features; adr/scope/subissues/milestone for epics) mandatory for agents. T11's pilot (issue #7 → `[ADR-0043] …`) should mirror the epic form's shape.
+  - **Label keys consumed (verbatim):** `type:bug`, `type:feature`, `type:adr`, `type:spike` — all present in `.github/labels.yml`; the epic title prefix `[ADR-NNNN] ` matches T5 §Board's stated join-key format byte-for-byte.
 
 #### T5 Outcome
 - STATUS: DONE
