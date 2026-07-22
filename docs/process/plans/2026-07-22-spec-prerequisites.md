@@ -43,7 +43,7 @@ codes: `CUBE-0016+`.
 
 | ID | Task | Sub-issue | Depends | STATUS |
 | --- | --- | --- | --- | --- |
-| T1 | Config surface: `spec.prerequisites` in schema + dual-owner validation + `CUBE-0016` | (create) | — | UNCLAIMED |
+| T1 | Config surface: `spec.prerequisites` in schema + dual-owner validation + `CUBE-0016` | #43 | — | IN_PROGRESS(sess-g9ryuv, 2026-07-22T13:00:08Z) |
 | T2 | Pre-engine loop: `[prerequisites…, engine]` one code path; inventory + lock + Pack rows | (create) | T1 | UNCLAIMED |
 | T3 | `diff` dry-run + capability-inference satisfaction for prerequisite GVKs | (create) | T2 | UNCLAIMED |
 | T4 | Gateway API CRDs as a prerequisite (the first real consumer) | #25 | T2 | UNCLAIMED |
