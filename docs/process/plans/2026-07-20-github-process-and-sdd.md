@@ -56,7 +56,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | --- | --- | --- | --- | --- |
 | T1 | ~~Land `docs/adr/` 0001–0039 on main~~ | — | no | **OBSOLETE** (audit merged via #31/#32) |
 | T2 | Label taxonomy across org repos + relabel open issues + `labels.yml` | — | **yes** | DONE |
-| T3 | Milestone `v0.2.0` + assignments | T2 | **yes** | IN_PROGRESS(fable-t3, 2026-07-22T06:02:30Z) |
+| T3 | Milestone `v0.2.0` + assignments | T2 | **yes** | DONE |
 | T4 | Issue forms | T2 | no | UNCLAIMED |
 | T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | DONE |
 | T6 | SDD dispatch prompt template | — | no | DONE |
@@ -255,7 +255,7 @@ Record label list output in the ledger Outcome as evidence for steps 1–4.
 
 `v0.1.0` is tagged; the next deliverable batch gets a milestone. Unassigned = backlog by convention (no "backlog" milestone).
 
-- [ ] **Step 1: Create the milestone**
+- [x] **Step 1: Create the milestone**
 
 ```bash
 gh api repos/cube-idp/cube-idp/milestones -f title="v0.2.0" \
@@ -264,13 +264,13 @@ gh api repos/cube-idp/cube-idp/milestones -f title="v0.2.0" \
 ```
 Expected: prints the milestone number (likely `1`).
 
-- [ ] **Step 2: Assign the starter set** (bugs + audit follow-ups + CI hygiene; feature issues stay backlog until an epic pulls them in)
+- [x] **Step 2: Assign the starter set** (bugs + audit follow-ups + CI hygiene; feature issues stay backlog until an epic pulls them in)
 
 ```bash
 for N in 5 6 15 11 14 16; do gh issue edit $N -R cube-idp/cube-idp --milestone "v0.2.0"; done
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 ```bash
 gh issue list -R cube-idp/cube-idp --milestone "v0.2.0" --json number -q '[.[].number] | sort | @csv'
@@ -1630,7 +1630,23 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
   - **New unmapped-by-plan issues now labeled:** #23–#31, #33 (see FINDINGS). Owner may wish to review the area assignments for #26 (diagnostics) and #31 (docs+ci) as judgment calls.
 
 #### T3 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd (merged: no) in cube-idp/cube-idp
+- COMMITS:
+  - 397b6ed docs: github-process-and-sdd — claim T3
+  - (this commit) docs: github-process-and-sdd — T3 complete
+  (Steps 1–3 are outward GitHub mutations, no repo commits; evidence below.
+  The completion commit is the HEAD carrying this ledger edit — its hash is
+  not embedded here to avoid a self-referential hash; see `git log`.)
+- FINDINGS:
+  - **Verify command page-size drift (no task defect).** The plan's Step 3 verify command `gh issue list … --json number` uses `gh`'s default page size of 30. `cube-idp/cube-idp` now carries 27+ open issues (the same issue-set drift T2 recorded), and with default ordering the returned page dropped #16, producing `5,6,11,14,15` instead of the Expected `5,6,11,14,15,16`. The assignment itself was correct — `gh issue view 16` showed `milestone=v0.2.0, state=OPEN`. Re-ran the verify with `--limit 100`, which returns the exact Expected `5,6,11,14,15,16`, and independently cross-checked via `gh api "repos/cube-idp/cube-idp/issues?milestone=1&state=all&per_page=100"` → also `5,6,11,14,15,16`. Minimal correction: use `--limit 100` on the verify. All six issues are assigned and OPEN; the milestone assignment matches the plan exactly.
+  - **Milestone number = 1** (as the plan's Step 1 "likely `1`" predicted). No pre-existing milestones (`gh api …/milestones?state=all` was empty before Step 1).
+- REVIEW: pending final review (whole-branch review at T12)
+- BLOCKERS: none
+- HANDOFF:
+  - **Milestone `v0.2.0` is live** (number **1**, state open) in `cube-idp/cube-idp`, description "First post-0.1.0 batch: correctness fixes surfaced by the docs audit, CI hygiene, docs sweep."
+  - **Assigned issues (all OPEN):** #5, #6, #11, #14, #15, #16. Feature issues stay backlog (unassigned) until an epic pulls them in, per the plan.
+  - **Verify command note for future tasks:** `gh issue list --milestone` without `--limit` truncates in this repo (27+ open issues); use `--limit 100` or the REST API `issues?milestone=<n>` to enumerate a milestone reliably.
 
 #### T4 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
