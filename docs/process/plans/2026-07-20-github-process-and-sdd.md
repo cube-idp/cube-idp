@@ -61,7 +61,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | DONE |
 | T6 | SDD dispatch prompt template | — | no | DONE |
 | T7 | SDD status heartbeat template | — | no | DONE |
-| T8 | SDD plan-ledger template | — | no | IN_PROGRESS(fable-t8, 2026-07-22T06:17:17Z) |
+| T8 | SDD plan-ledger template | — | no | DONE |
 | T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | UNCLAIMED |
 | T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | UNCLAIMED |
 | T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | UNCLAIMED |
@@ -891,7 +891,7 @@ The claim/close ledger format your p5/p7 plans carry, extracted so every future 
 **Files:**
 - Create: `docs/process/sdd-ledger-template.md`
 
-- [ ] **Step 1: Write the template**
+- [x] **Step 1: Write the template**
 
 ````markdown
 # SDD plan ledger
@@ -957,7 +957,7 @@ Evidence is pasted command OUTPUT, not paraphrase.
 - Ledger edits are separate `docs:` commits — never mixed into code commits.
 ````
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/process/sdd-ledger-template.md
@@ -1699,7 +1699,15 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - HANDOFF: template path = `docs/process/sdd-status-template.md`. Referenced by T6's dispatch template §6 ("emit the docs/process/sdd-status-template.md block …") and by T9's CLAUDE.md §SDD (10-minute heartbeat rule) — both must use this exact path string. T9 depends on T6+T7+T8 all present so all three `docs/process/*-template.md` paths resolve; with T7 done, `sdd-dispatch-template.md` (T6) and `sdd-status-template.md` (T7) both exist — only `sdd-ledger-template.md` (T8) remains before T9 is unblocked.
 
 #### T8 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: process/0040-adr-first-sdd (merged: no) in cube-idp/cube-idp
+- COMMITS:
+  - 859e0a1 docs: github-process-and-sdd — claim T8
+  - 34d2583 docs(process): SDD plan-ledger template (claim/close protocol)
+- FINDINGS: One deviation, self-corrected. The file body of `docs/process/sdd-ledger-template.md` was extracted byte-exact from the plan's Step 1 fenced content — everything INSIDE the outer 4-backtick `````markdown````` fence (plan lines 897–957: from `# SDD plan ledger` through `- Ledger edits are separate ...`), excluding the two outer fence lines (896 `````markdown````` and 958 ```` ```` ````); 61 lines, 2 inner triple-backtick fences preserved. Verified byte-exact: `diff <(sed -n '897,957p' <plan>) docs/process/sdd-ledger-template.md` → no differences ("EXACT MATCH (897-957)"); `grep -c '^````markdown$|^````$' <file>` → 0 (no outer fence leaked). NOTE the truncated first Read of the plan showed the T8 template ending at line 940 ("Evidence is pasted command OUTPUT…"); the real outer fence closes at 958, so the template also includes the `## Close protocol` and `## Red lines` sections (lines 942–957) — all captured. Deviation: the file commit was first made with an em-dash message ("… template — claim/close protocol"); the plan's Step 2 specifies parentheses ("… template (claim/close protocol)"). Corrected via `git commit --amend` (file content unchanged) → final HEAD 34d2583 carries the plan's exact message. (Pre-existing markdown-lint warnings MD028/MD031/MD032 on the plan file's own blockquote/list/fence layout are unrelated to this task and left untouched.)
+- REVIEW: pending final review (whole-branch review at T12)
+- BLOCKERS: none
+- HANDOFF: template path = `docs/process/sdd-ledger-template.md`. This completes the trio of `docs/process/*-template.md` files (T6 sdd-dispatch-template.md, T7 sdd-status-template.md, T8 sdd-ledger-template.md). T9's CLAUDE.md close protocol "mirrors `docs/process/sdd-ledger-template.md`" (per T6 §9 and the T6 Outcome HANDOFF) — that exact path string must match. With T8 DONE, all three template paths resolve, so T9 (Depends T5,T6,T7,T8) is now unblocked — every dependency of T9 is DONE.
 
 #### T9 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · REVIEW: · BLOCKERS: · HANDOFF:
