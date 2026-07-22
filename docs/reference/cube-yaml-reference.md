@@ -113,7 +113,7 @@ spec:
     # deployment — and capability inference then treats
     # gateway.networking.k8s.io as satisfied (no phantom gateway-pack
     # dependency for packs that render HTTPRoutes).
-    - ref: oci://ghcr.io/cube-idp/packs/gateway-api-crds:0.1.0
+    - ref: oci://ghcr.io/cube-idp/packs/gateway-api-crds:1.6.1
     # A prerequisite may be customized with values, exactly like any pack:
     - ref: oci://ghcr.io/cube-idp/packs/kyverno:0.1.0
       values:
