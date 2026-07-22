@@ -3,6 +3,13 @@
 Status: accepted
 Date: 2026-07-20
 
+> **Amendment 2026-07-22 (naming; Refs #33):** the two tracks are renamed
+> for operator clarity — "Track A" → **ADR track**, "Track B" → **Direct
+> track**. The letters are retired everywhere and must not be reintroduced.
+> Operator test: *if merging it changes what future PRs are allowed to do →
+> ADR track; if it only changes what ships → Direct track.* No behavior
+> changes — the two-track mechanics below are unchanged.
+
 ## Context
 
 The 2026-07-20 documentation audit validated the planning corpus (31 documents,
@@ -15,7 +22,13 @@ abandoned. The org stays on GitHub only — process, not new software.
 
 ## Decision
 
-**Track A — decision-first** (features, architecture, anything hard to reverse):
+Intake is two-track. The tracks are the **ADR track** and the **Direct
+track** (renamed 2026-07-22 from "Track A"/"Track B"; those letters are
+retired, do not reintroduce them). Operator test: *if merging it changes
+what future PRs are allowed to do → ADR track; if it only changes what
+ships → Direct track.*
+
+**ADR track — decision-first** (features, architecture, anything hard to reverse):
 1. Open an **epic issue** via the Epic form, titled `[ADR-NNNN] <name>`,
    labeled `type:adr`.
 2. Open a **small PR adding `docs/adr/NNNN-<slug>.md`** (status `proposed`)
@@ -29,9 +42,9 @@ abandoned. The org stays on GitHub only — process, not new software.
 4. The epic closes when all sub-issues close and the ADR's verification
    checkboxes pass.
 
-**Track B — routine** (bug/chore/docs): plain issue → PR with `Closes #N`.
+**Direct track — routine** (bug/chore/docs): plain issue → PR with `Closes #N`.
 Escalation guard: hitting a real architectural choice mid-implementation
-stops the work and proposes an ADR (Track B → Track A).
+stops the work and proposes an ADR (Direct track → ADR track).
 
 **Spikes** are timeboxed and terminate in exactly one of: an ADR PR, or
 closed-as-not-planned *with the reason in the closing comment*. Silent
@@ -95,7 +108,7 @@ the board tracks delivery, never decisions.
 ## Documentation layout
 
 `docs/` top level is a CLOSED set. Adding a top-level directory or loose
-file is an architectural act: it requires updating this ADR (Track A);
+file is an architectural act: it requires updating this ADR (ADR track);
 CI (`process-gate` doc-consistency) rejects unknown entries.
 
 | Directory | Contents | Nature |
@@ -149,7 +162,7 @@ templates.
 ## Consequences
 
 - Every feature has a falsifiable paper trail: ADR → epic → sub-issues → PRs.
-- Ceremony is bounded: Track B stays one-issue-one-PR light.
+- Ceremony is bounded: the Direct track stays one-issue-one-PR light.
 - `docs/superpowers/` is frozen as an archive; new plans attach to ADRs/epics.
 - Follow-ups: #17–#20 must each get a Track-A revive or a reasoned close.
 

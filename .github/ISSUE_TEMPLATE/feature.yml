@@ -1,5 +1,5 @@
 name: Feature request
-description: New capability or enhancement (Track B — or flags itself into Track A)
+description: New capability or enhancement (Direct track — or flags itself into the ADR track)
 title: "feat: "
 labels: ["type:feature"]
 body:
@@ -21,7 +21,7 @@ body:
     id: needs-adr
     attributes:
       label: Does this need an ADR?
-      description: New dependency, new architectural pattern, hard to reverse, or real competing alternatives → yes (Track A).
+      description: New dependency, new architectural pattern, hard to reverse, or real competing alternatives → yes (ADR track).
       options: ["no — routine work within existing decisions", "yes — architectural (an epic + ADR PR must precede code)", "unsure — triage decides"]
     validations:
       required: true
