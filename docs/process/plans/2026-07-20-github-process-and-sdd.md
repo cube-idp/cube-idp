@@ -63,7 +63,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T7 | SDD status heartbeat template | — | no | DONE |
 | T8 | SDD plan-ledger template | — | no | DONE |
 | T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | DONE |
-| T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | UNCLAIMED |
+| T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | IN_PROGRESS(fable-t10, 2026-07-22T06:25:18Z) |
 | T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | UNCLAIMED |
 | T12 | Finish the branch: verify, flip ADR, merge | all but T14 | **yes** | UNCLAIMED · **OWNER-GATED** (push) |
 | T13 | `board-sync` workflow (status lifecycle automation) | T2,T5 | no | UNCLAIMED |
