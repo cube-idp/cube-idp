@@ -269,6 +269,56 @@ func TestDesiredStateMatchesUpAppliedSet(t *testing.T) {
 	}
 }
 
+// TestDesiredStatePrerequisites pins the T3 diff mirror (ADR-0045): a
+// spec.prerequisites entry contributes its rendered objects to the dry-run
+// `desired` kernel set (the CLI SSAs them, deterministic given cube.yaml — so
+// a changed prerequisite render surfaces as real drift), a lock entry for
+// content-drift comparison, and its Pack-record identity to orphanOnly (up.Run
+// writes a Pack row per prerequisite). Without all three, a converged cube
+// with a prerequisite would misreport it — invisible drift, or a false orphan.
+func TestDesiredStatePrerequisites(t *testing.T) {
+	enginePack := writeEngineFixture(t)
+	cube := &config.Cube{
+		Metadata: config.Metadata{Name: "test"},
+		Spec: config.Spec{
+			Engine:        config.EngineSpec{Type: "flux", Ref: enginePack},
+			Gateway:       config.GatewaySpec{Pack: "demo-kustomize", Host: "cube-idp.localtest.me", Port: 8443, Ref: "../pack/testdata/demo-kustomize"},
+			Prerequisites: []config.PackRef{{Ref: "../pack/testdata/demo"}},
+		},
+	}
+
+	desired, orphanOnly, entries, err := desiredState(context.Background(), cube, fakeEngine{})
+	if err != nil {
+		t.Fatalf("desiredState: %v", err)
+	}
+
+	// The prerequisite's rendered ConfigMap (default/demo) is in the dry-run
+	// diff set — up SSAs it, so diff must too.
+	got := identitySet(desired)
+	prereqKey := refKey("", "ConfigMap", "default", "demo")
+	if !got[prereqKey] {
+		t.Fatalf("prerequisite render (%s) missing from desired: %v", prereqKey, sortedKeys(got))
+	}
+
+	// A lock entry named "demo" exists for content-drift comparison.
+	var haveEntry bool
+	for _, e := range entries {
+		if e.Name == "demo" {
+			haveEntry = true
+		}
+	}
+	if !haveEntry {
+		t.Fatalf("no lock entry for the prerequisite: %+v", entries)
+	}
+
+	// The prerequisite's Pack-record identity is in orphanOnly (up.Run writes
+	// a Pack row per prerequisite), so a converged cube shows no false orphan.
+	packKey := refKey("cube-idp.dev", "Pack", "", "demo")
+	if !identitySet(orphanOnly)[packKey] {
+		t.Fatalf("prerequisite Pack record (%s) missing from orphanOnly: %v", packKey, sortedKeys(identitySet(orphanOnly)))
+	}
+}
+
 // TestDesiredStateRepoDeliveredPack pins the diff mirror for repo delivery: a
 // delivery: repo pack contributes NO OCI delivery objects to the dry-run
 // diff set — up applies engine git-source objects instead, whose spec

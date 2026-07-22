@@ -92,6 +92,34 @@ spec:
     ref: oci://ghcr.io/cube-idp/packs/traefik:0.2.0
 
   # ─────────────────────────────────────────────────────────────
+  # PREREQUISITES — packs the CLI applies (SSA) BEFORE the engine,
+  # in list order (ADR-0045). The bootstrap ground the engine stands
+  # on: cluster-scoped CRDs, a policy controller, etc.
+  # ─────────────────────────────────────────────────────────────
+  # A prerequisite is an ORDINARY pack, but:
+  #   • the CLI applies it itself and waits (kstatus), before the engine
+  #     and every pack — so its CRDs/namespaces are Established up front;
+  #   • it takes NO delivery/dependsOn — never engine-delivered, no place
+  #     in the dependency graph. List order is the only ordering contract.
+  #   • it appears in `kubectl get packs` (DELIVERY: prerequisite) and
+  #     cube.lock like any pack, and `down` removes it via the inventory
+  #     cascade.
+  # A ref present in BOTH prerequisites and packs is CUBE-0016 (one owner
+  # per pack). Only {ref, valuesRef?, values?, extraManifests?} are allowed.
+  prerequisites:
+    # Canonical first use: the Gateway API CRDs (#25). Listing them here
+    # applies + Establishes the CRDs before any HTTPRoute-bearing pack, so
+    # the check is validated UP FRONT instead of failing late during
+    # deployment — and capability inference then treats
+    # gateway.networking.k8s.io as satisfied (no phantom gateway-pack
+    # dependency for packs that render HTTPRoutes).
+    - ref: oci://ghcr.io/cube-idp/packs/gateway-api-crds:1.6.1
+    # A prerequisite may be customized with values, exactly like any pack:
+    - ref: oci://ghcr.io/cube-idp/packs/kyverno:0.1.0
+      values:
+        replicaCount: 1
+
+  # ─────────────────────────────────────────────────────────────
   # PACKS — workloads delivered after the gateway (extensibility tier 1)
   # ─────────────────────────────────────────────────────────────
   packs:

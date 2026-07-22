@@ -15,12 +15,18 @@ import (
 	"sort"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/diag"
 )
 
-// gatewayAPIGroup is the object group that triggers implicit edge (a).
-const gatewayAPIGroup = "gateway.networking.k8s.io"
+// GatewayAPIGroup is the object group that triggers implicit edge (a): a pack
+// rendering an object in this group needs the Gateway API CRDs. Exported so
+// up.Run can ask "does a prerequisite provide this group?" against a
+// ProvidedGroups map keyed by it (ADR-0045 #25) using the same constant that
+// keys the map — no magic-string divergence between producer and consumer.
+const GatewayAPIGroup = "gateway.networking.k8s.io"
 
 // ResolveOrder validates the dependency graph over the fetched packs and
 // returns the delivery order (indices into the index-aligned inputs;
@@ -28,7 +34,13 @@ const gatewayAPIGroup = "gateway.networking.k8s.io"
 // dependency names (sorted; key absent when a pack has none). Errors are
 // typed: CUBE-4018 unknown name, CUBE-4019 cycle, CUBE-4020 a dependsOn
 // on the gateway pack itself.
-func ResolveOrder(packs []*Pack, refs []config.PackRef, rendered []*Rendered) ([]int, map[string][]string, error) {
+//
+// providedGroups is the set of API groups that spec.prerequisites already
+// established before any pack (ADR-0045) — the CRD-providing prerequisite ran
+// first, so a pack rendering an object in one of those groups does NOT need
+// the implicit edge (a) to the gateway pack for that group's CRDs. Callers
+// with no prerequisites pass nil, keeping the graph byte-identical to before.
+func ResolveOrder(packs []*Pack, refs []config.PackRef, rendered []*Rendered, providedGroups map[string]bool) ([]int, map[string][]string, error) {
 	n := len(packs)
 	idxByName := make(map[string]int, n)
 	for i, p := range packs {
@@ -66,8 +78,14 @@ func ResolveOrder(packs []*Pack, refs []config.PackRef, rendered []*Rendered) ([
 			edges[i][j] = true
 		}
 		for _, o := range rendered[i].Objects {
-			if o.GroupVersionKind().Group == gatewayAPIGroup {
-				edges[i][0] = true // implicit edge (a): needs the gateway pack's CRDs
+			// Implicit edge (a): a pack rendering a Gateway-API object needs the
+			// gateway pack's CRDs delivered first — UNLESS a prerequisite
+			// already provides that group's CRDs (ADR-0045). Prerequisites run
+			// before every pack, so the CRD is Established by then; the edge to
+			// the gateway pack would be a phantom, and worse, would force
+			// ordering the pack after the gateway pack for no reason.
+			if o.GroupVersionKind().Group == GatewayAPIGroup && !providedGroups[GatewayAPIGroup] {
+				edges[i][0] = true
 				break
 			}
 		}
@@ -130,6 +148,38 @@ func ResolveOrder(packs []*Pack, refs []config.PackRef, rendered []*Rendered) ([
 		order = append(order, picked)
 	}
 	return order, deps, nil
+}
+
+// ProvidedGroups returns the set of API groups the given renders establish by
+// shipping a CustomResourceDefinition for them — read from each CRD object's
+// spec.group (ADR-0045 capability inference). Prerequisites that carry CRDs
+// (e.g. the Gateway API CRDs) satisfy those groups for every downstream pack,
+// so up.Run and diff pass their prerequisite renders here and hand the result
+// to ResolveOrder, which then suppresses the implicit gateway edge for any
+// group a prerequisite already provides. A nil/empty result (no CRD-bearing
+// prerequisite) leaves the graph unchanged.
+func ProvidedGroups(renders []*Rendered) map[string]bool {
+	groups := map[string]bool{}
+	for _, r := range renders {
+		if r == nil {
+			continue
+		}
+		for _, o := range r.Objects {
+			if o.GetKind() != "CustomResourceDefinition" {
+				continue
+			}
+			// A CRD's served group is spec.group; nested-field errors and an
+			// absent group both read as "provides nothing", not a hard failure —
+			// a malformed CRD is the pack author's problem, surfaced elsewhere.
+			if g, found, err := unstructured.NestedString(o.Object, "spec", "group"); err == nil && found && g != "" {
+				groups[g] = true
+			}
+		}
+	}
+	if len(groups) == 0 {
+		return nil
+	}
+	return groups
 }
 
 func installedNames(packs []*Pack) []string {

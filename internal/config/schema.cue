@@ -38,6 +38,10 @@ package config
 			httpPort?: int & >0 & <65536
 			ref?: string & !=""
 		}
+		// prerequisites are packs the CLI applies by SSA BEFORE the engine, in
+		// list order (ADR-0045). They take no delivery/dependsOn: they are
+		// never engine-delivered and take no part in the dependency graph.
+		prerequisites?: [...{ref: string & !="", valuesRef?: string & !="", values?: {...}, extraManifests?: string & !=""}]
 		packs?: [...{ref: string & !="", valuesRef?: string & !="", values?: {...}, extraManifests?: string & !="", delivery?: "oci" | "repo", dependsOn?: [...string & !=""]}]
 		spokes?: [...{
 			name: =~"^[a-z0-9][a-z0-9-]{0,30}$"

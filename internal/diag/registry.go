@@ -37,6 +37,7 @@ var registry = map[Code]Desc{
 	CodeEnginePackMismatch:    {Summary: "engine.ref points at a pack whose pack.cue name != cube-engine-<engine.type>"},
 	CodeConfigRemoteReadOnly:  {Summary: "a config-mutating command ran against a remote -f ref (remote configs are read-only)"},
 	CodeConfigRemoteFetch:     {Summary: "remote -f ref fetch failed or did not yield one YAML document"},
+	CodePackDualOwner:         {Summary: "a pack ref appears in both spec.prerequisites and spec.packs (one owner per pack)"},
 
 	// 01xx: doctor preflight checks
 	CodeDoctorRuntime: {Summary: "container runtime not found"},

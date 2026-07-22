@@ -873,3 +873,137 @@ func TestPublishedPacksByDigest(t *testing.T) {
 	}
 	run(t, dir, bin, "down", "--yes")
 }
+
+// stagePrerequisitePack writes a minimal but REAL Gateway API CRD pack into a
+// fresh temp dir and returns its path — a self-contained fixture the
+// prerequisite e2e leg points spec.prerequisites at, so the leg proves the
+// pre-engine mechanism without depending on a $PACKS checkout or a network
+// OCI pull. The CRD is the genuine httproutes.gateway.networking.k8s.io kind
+// (group gateway.networking.k8s.io), so pack.ProvidedGroups lights up exactly
+// as it would for the published gateway-api-crds pack. Copied, never
+// symlinked (CLAUDE.md §8c: the hasher rejects symlinks).
+func stagePrerequisitePack(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pack.cue"),
+		[]byte("name:    \"gateway-api-crds\"\nversion: \"1.6.1\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "manifests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A minimal, valid CRD carrying the Gateway API group and the httproutes
+	// kind up.Run's CRD-wait keys on. Not the full v1.6.1 bundle — the leg
+	// tests cube-idp's pre-engine plumbing, not the CRD's schema fidelity.
+	// The api-approved.kubernetes.io annotation is REQUIRED for CRDs in
+	// protected (*.k8s.io) groups — the API server rejects one without it
+	// (CUBE-2003 at SSA). The value is the real Gateway API approval PR the
+	// published v1.6.1 CRDs carry.
+	crd := `apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: httproutes.gateway.networking.k8s.io
+  annotations:
+    api-approved.kubernetes.io: https://github.com/kubernetes-sigs/gateway-api/pull/4530
+spec:
+  group: gateway.networking.k8s.io
+  scope: Namespaced
+  names:
+    plural: httproutes
+    singular: httproute
+    kind: HTTPRoute
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+`
+	if err := os.WriteFile(filepath.Join(dir, "manifests", "00-httproutes-crd.yaml"), []byte(crd), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestPrerequisiteBeforeEngine proves spec.prerequisites end to end (ADR-0045,
+// #25) on a real kind cluster, flux engine:
+//
+//   - a prerequisite pack is applied BEFORE the engine — its CRD is
+//     Established once `up` returns (up SSA-waits it in the pre-engine loop);
+//   - it appears in `kubectl get packs` with delivery "prerequisite" and in
+//     cube.lock like any pack;
+//   - `down` removes it via the inventory cascade (the CRD is gone after).
+//
+// The prerequisite is a LOCAL fixture (stagePrerequisitePack) rather than the
+// published oci://…/gateway-api-crds ref, so the leg is hermetic — no network
+// pull, no $PACKS checkout — while exercising the identical code path.
+//
+// Requires docker; run locally with:
+//
+//	CUBE_IDP_E2E=1 CUBE_IDP_E2E_GATEWAY_PORT=18443 go test ./tests/e2e/ -run TestPrerequisiteBeforeEngine -v -timeout 25m
+func TestPrerequisiteBeforeEngine(t *testing.T) {
+	if os.Getenv("CUBE_IDP_E2E") != "1" {
+		t.Skip("set CUBE_IDP_E2E=1 to run")
+	}
+	port := gatewayPort(t)
+	deleteLingeringCluster(t)
+
+	bin := build(t)
+	dir := t.TempDir()
+	packsRoot := packsCheckout(t)
+	prereqPack := stagePrerequisitePack(t)
+
+	t.Cleanup(func() {
+		downCmd := exec.Command(bin, "down", "--yes")
+		downCmd.Dir = dir
+		out, _ := downCmd.CombinedOutput()
+		t.Logf("cleanup: cube-idp down\n%s", out)
+		deleteLingeringCluster(t)
+	})
+
+	run(t, dir, bin, "init", "--name", cubeName, "--local", packsRoot, "--engine", "flux")
+	patchGatewayPort(t, dir, port)
+	patchCube(t, dir, func(c *config.Cube) {
+		c.Spec.Prerequisites = []config.PackRef{{Ref: prereqPack}}
+	})
+
+	run(t, dir, bin, "up")
+
+	// (a) the prerequisite's CRD is Established — up applied AND kstatus-waited
+	// it in the pre-engine loop, so it is serve-ready the moment up returns.
+	got := strings.TrimSpace(runKubectl(t, "get", "crd", "httproutes.gateway.networking.k8s.io",
+		"-o", "jsonpath={.status.conditions[?(@.type=='Established')].status}"))
+	if got != "True" {
+		t.Fatalf("httproutes CRD Established = %q, want True (prerequisite must land before the engine)", got)
+	}
+
+	// (b) it shows up in `kubectl get packs` with delivery "prerequisite".
+	delivery := strings.TrimSpace(runKubectl(t, "get", "packs", "gateway-api-crds", "-o", "jsonpath={.spec.delivery}"))
+	if delivery != "prerequisite" {
+		t.Fatalf("packs/gateway-api-crds spec.delivery = %q, want %q", delivery, "prerequisite")
+	}
+
+	// (c) it is recorded in cube.lock like any pack.
+	lf, err := lock.Read(filepath.Join(dir, "cube.lock"))
+	if err != nil {
+		t.Fatalf("reading cube.lock: %v", err)
+	}
+	var inLock bool
+	for _, e := range lf.Packs {
+		if e.Name == "gateway-api-crds" {
+			inLock = true
+		}
+	}
+	if !inLock {
+		t.Fatalf("gateway-api-crds not in cube.lock: %+v", lf.Packs)
+	}
+
+	// (d) `down` removes it via the inventory cascade — the CRD is gone after.
+	run(t, dir, bin, "down", "--yes")
+	out, err := exec.Command("kubectl", "get", "crd", "httproutes.gateway.networking.k8s.io").CombinedOutput()
+	if err == nil {
+		t.Fatalf("httproutes CRD still present after down — inventory cascade must remove the prerequisite:\n%s", out)
+	}
+}

@@ -20,6 +20,9 @@ const (
 	// Remote -f (spec 2026-07-19 §7).
 	CodeConfigRemoteReadOnly Code = "CUBE-0014" // a config-mutating command ran against a remote -f ref (remote configs are read-only)
 	CodeConfigRemoteFetch    Code = "CUBE-0015" // remote -f ref fetch failed or did not yield one YAML document
+
+	// spec.prerequisites (ADR-0045).
+	CodePackDualOwner Code = "CUBE-0016" // a pack ref appears in both spec.prerequisites and spec.packs (one owner per pack)
 )
 
 // 01xx: doctor preflight checks

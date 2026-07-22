@@ -236,6 +236,41 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	con.Step("packs-crd", "Pack CRD established")
 
+	// Prerequisites (ADR-0045): ordinary packs the CLI applies by SSA in
+	// DECLARED list order BEFORE the engine — the bootstrap ground the engine
+	// stands on (e.g. the Gateway API CRDs). They run through the same
+	// Fetch→render→SSA(wait)→inventory pipeline as the engine install and land
+	// in cube.lock + Pack rows like any pack, but carry no delivery/dependsOn
+	// (never engine-delivered, no place in the dep graph). Each waits (kstatus)
+	// before the next, so an earlier prerequisite's CRDs are Established for a
+	// later one — and for the engine. The dir cache dir the engine install
+	// resolves below is fetched here too (same DefaultCacheDir).
+	prereqDir, err := pack.DefaultCacheDir()
+	if err != nil {
+		return err
+	}
+	// Offline: rewrite prerequisite refs to their bundle-local source dirs,
+	// exactly as the engine ref and the pack loop refs are rewritten, so a
+	// --bundle run never touches the network for a prerequisite either.
+	prereqRefs := cube.Spec.Prerequisites
+	if opened != nil {
+		prereqRefs, err = resolveBundleRefs(prereqRefs, opened.Lock, opened.PackDirLookup())
+		if err != nil {
+			return err
+		}
+	}
+	var prereqs []*deliveredPrereq
+	for i, pref := range prereqRefs {
+		dp, err := deliverPrerequisite(ctx, con, a, pref, cube.Spec.Gateway, prereqDir, i+1, len(prereqRefs))
+		if err != nil {
+			return err
+		}
+		prereqs = append(prereqs, dp)
+	}
+	if len(prereqs) > 0 {
+		con.Step("prereqs", "%d prerequisite(s) applied before the engine", len(prereqs))
+	}
+
 	// The engine install (Flux/Argo CD's own controllers coming
 	// up) is the second long, previously-silent wait.
 	// Self-management contract: the install is ALWAYS rendered first (the rendered engine
@@ -420,6 +455,18 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
+	// Capability inference (ADR-0045): API groups a prerequisite already
+	// established (by shipping their CRDs) satisfy those groups for every pack,
+	// so ResolveOrder below suppresses the implicit gateway edge for them — a
+	// pack rendering an HTTPRoute needs no gateway-pack ordering once a
+	// prerequisite provides the Gateway API CRDs. Empty (no CRD-bearing
+	// prerequisite) leaves the graph exactly as before.
+	prereqRenders := make([]*pack.Rendered, 0, len(prereqs))
+	for _, dp := range prereqs {
+		prereqRenders = append(prereqRenders, dp.rendered)
+	}
+	providedGroups := pack.ProvidedGroups(prereqRenders)
+
 	// Passes 2+3: resolve the dependency graph, then deliver in that order.
 	// Split out so the fail-fast property (a graph error returns before any
 	// deliverPack call) and the topo delivery order are unit-testable with
@@ -428,7 +475,7 @@ func Run(ctx context.Context, opts Options) error {
 	// gate itself (p6 DEP3); Run keeps the packDeps return too, now that the
 	// Pack-record writer loop below needs each pack's resolved dep list for
 	// its DEPENDS-ON column (p6 DEP4).
-	packDeps, err := resolveAndDeliverPacks(ctx, con, deps, a, refs, packs, renders)
+	packDeps, err := resolveAndDeliverPacks(ctx, con, deps, a, refs, packs, renders, providedGroups)
 	if err != nil {
 		return err
 	}
@@ -453,17 +500,27 @@ func Run(ctx context.Context, opts Options) error {
 			con.Note("warning: could not pin providerConfigRef %s (%v); cube.lock records no cluster section, so `cube-idp upgrade --plan` will report it as new", ref, err)
 		}
 	}
+	// Prerequisites are recorded in cube.lock like any pack (ADR-0045), first
+	// and in list order — they were applied first — ahead of the
+	// engine-delivered packs. Kept separate from `entries` above (which stays
+	// index-aligned with refs/packs/renders for the Pack-row loop below);
+	// merged only here, purely for the lock's flat Packs list.
+	lockEntries := make([]lock.Entry, 0, len(prereqs)+len(entries))
+	for _, dp := range prereqs {
+		lockEntries = append(lockEntries, dp.entry)
+	}
+	lockEntries = append(lockEntries, entries...)
 	lf := &lock.File{APIVersion: "cube-idp.dev/v1alpha1", Kind: "CubeLock",
 		Engine: lock.EngineLock{Type: cube.Spec.Engine.Type, Ref: cube.Spec.Engine.PackRef(),
 			Name: engineRendered.Name, Version: engineRendered.Version, Resolved: enginePk.Pinned,
 			RenderedHash: engRH,
 			Images:       mergeImages(lock.ImagesFrom(engineRendered.Objects), enginePk.Images)},
 		Cluster: clusterLock,
-		Packs:   entries}
+		Packs:   lockEntries}
 	if err := lock.Write(lock.PathForOrigin(cfgPath, cube.Origin().Remote), lf); err != nil {
 		return err
 	}
-	con.Step("lock", "cube.lock written (%d packs)", len(entries))
+	con.Step("lock", "cube.lock written (%d packs)", len(lockEntries))
 
 	// The registry HTTPRoute (registry.GatewayRoute below) is applied after
 	// the gateway pack is delivered, but pack delivery is asynchronous: the
@@ -474,7 +531,17 @@ func Run(ctx context.Context, opts Options) error {
 	// races ahead and dry-run fails with "no matches for kind HTTPRoute"
 	// (CUBE-2003). Provider-agnostically block until the CRD is Established
 	// first — a no-op wait when it already is (the traefik path).
-	if err := waitCRDEstablished(ctx, a, con, httpRouteCRD, gatewayCRDTimeout); err != nil {
+	//
+	// ADR-0045 (#25): when a prerequisite provides the Gateway API group, the
+	// CRDs were SSA-applied AND kstatus-waited (deliverPrerequisite, wait=true)
+	// before the engine and every pack — so httproutes is already Established
+	// here and the async race this wait guards against cannot occur. Skip the
+	// wait entirely: the "up-front CRD check" #25 asks for IS the prerequisite,
+	// validated before delivery instead of failing late in HTTPRoute apply.
+	// No prerequisite provides it → the legacy gateway-pack wait is unchanged.
+	if providedGroups[pack.GatewayAPIGroup] {
+		con.Step("gateway-crd", "Gateway API CRDs provided by a prerequisite (established before the engine)")
+	} else if err := waitCRDEstablished(ctx, a, con, httpRouteCRD, gatewayCRDTimeout); err != nil {
 		return err
 	}
 
@@ -563,7 +630,16 @@ func Run(ctx context.Context, opts Options) error {
 	// delivery loop above, any failure aborts Run), so refs[i] is the
 	// PackRef whose values/extraManifests/delivery decide packs[i]'s
 	// CUSTOMIZED and DELIVERY columns.
-	packObjs := make([]*unstructured.Unstructured, 0, len(packs))
+	packObjs := make([]*unstructured.Unstructured, 0, len(prereqs)+len(packs)+1)
+	// Prerequisite rows first (ADR-0045): READY is true by construction — the
+	// CLI SSA'd them with wait=true above, and being CLI-owned they have no
+	// cube-idp-<name> engine component to poll (delivery "prerequisite", no
+	// dependsOn). CUSTOMIZED follows the same values/valuesRef/extraManifests
+	// rule as any pack.
+	for _, dp := range prereqs {
+		customized := len(dp.pref.Values) > 0 || dp.pref.ValuesRef != "" || dp.pref.ExtraManifests != ""
+		packObjs = append(packObjs, pack.PackObject(dp.pk, cube.Spec.Gateway, true, customized, "prerequisite", nil))
+	}
 	for i, pk := range packs {
 		// RV2: a remotely-valued pack IS customized — valuesRef carries the
 		// same "not the pack author's stock render" meaning as inline values.
@@ -664,8 +740,8 @@ func bundleRailsCheck(cube *config.Cube) error {
 // already been delivered to the cluster. Extracted from Run so this
 // ordering/fail-fast contract is unit-testable with the delivery fakes, without a
 // live cluster (Run itself needs one).
-func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDeps, a *apply.Applier, refs []config.PackRef, packs []*pack.Pack, renders []*pack.Rendered) (map[string][]string, error) {
-	order, packDeps, err := pack.ResolveOrder(packs, refs, renders)
+func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDeps, a *apply.Applier, refs []config.PackRef, packs []*pack.Pack, renders []*pack.Rendered, providedGroups map[string]bool) (map[string][]string, error) {
+	order, packDeps, err := pack.ResolveOrder(packs, refs, renders, providedGroups)
 	if err != nil {
 		return nil, err
 	}
@@ -708,6 +784,73 @@ func resolveAndDeliverPacks(ctx context.Context, con *ui.Console, deps deliverDe
 		}
 	}
 	return packDeps, nil
+}
+
+// deliveredPrereq is one applied prerequisite: the fetched pack, its render,
+// and the cube.lock entry — everything Run needs downstream to write the lock
+// (entries) and the Pack discoverability row (pk). Kept in lockstep the same
+// way Run keeps packs/entries/renders index-aligned in the engine-delivered
+// pack loop.
+type deliveredPrereq struct {
+	pk       *pack.Pack
+	pref     config.PackRef    // the source ref, for the Pack row's CUSTOMIZED column
+	rendered *pack.Rendered    // kept so ResolveOrder can learn which API groups this prerequisite provides (ADR-0045 capability inference)
+	entry    lock.Entry
+}
+
+// deliverPrerequisite is the pre-engine delivery path (ADR-0045): a
+// prerequisite is an ordinary pack the CLI applies by SSA ITSELF — before the
+// engine exists to reconcile anything — so it runs the same Fetch →
+// RenderResolved → SSA(wait) → RecordInventory pipeline the engine install
+// uses, minus the engine's self-management branch (prerequisites are always
+// CLI-owned, never self-managed). The applied objects are recorded in
+// inventory exactly like every other cube-idp artifact, so the `down` cascade
+// removes them with no down-side change; the returned entry/pack flow into
+// cube.lock and the Pack rows so a prerequisite appears in `kubectl get packs`
+// and `cube.lock` like any pack. wait=true (kstatus) blocks until the applied
+// objects settle, so a later prerequisite — or the engine — sees the earlier
+// one's CRDs/namespaces already Established (the Gateway API CRDs case, T4).
+func deliverPrerequisite(ctx context.Context, con *ui.Console, a packApplier, pref config.PackRef, gw config.GatewaySpec, cacheDir string, pos, total int) (*deliveredPrereq, error) {
+	pr := con.ProgressN("prereq", "applying "+pref.Ref, pos, total)
+	defer pr.Stop() // no-op after Done; resolves the step on any error return
+	stepFetchSource(con, pref.Ref)
+	pk, err := pack.Fetch(ctx, pref.Ref, cacheDir)
+	if err != nil {
+		return nil, err
+	}
+	rendered, valuesPin, err := pack.RenderResolved(ctx, pk, pref, gw, cacheDir)
+	if err != nil {
+		return nil, err
+	}
+	// The CLI applies the prerequisite itself (SSA) and waits — no engine
+	// delivery, no OCI push: prerequisites bootstrap the ground the engine
+	// stands on, so nothing is reconciling them yet.
+	if err := a.Apply(ctx, rendered.Objects, true, applyTimeout); err != nil {
+		return nil, err
+	}
+	if err := a.RecordInventory(ctx, rendered.Objects); err != nil {
+		return nil, err
+	}
+	rh, err := lock.RenderedHash(rendered.Objects)
+	if err != nil {
+		return nil, err
+	}
+	pr.Done("%s@%s applied", rendered.Name, rendered.Version)
+	return &deliveredPrereq{
+		pk:       pk,
+		pref:     pref,
+		rendered: rendered,
+		entry: lock.Entry{
+			Ref:          pref.Ref,
+			Name:         rendered.Name,
+			Version:      rendered.Version,
+			Resolved:     pk.Pinned,
+			RenderedHash: rh,
+			ValuesRef:    pref.ValuesRef,
+			ValuesPin:    valuesPin,
+			Images:       mergeImages(lock.ImagesFrom(rendered.Objects), pk.Images),
+		},
+	}, nil
 }
 
 // waitDepsHealthy is the wave gate for engines that cannot order

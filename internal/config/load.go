@@ -211,6 +211,22 @@ func crossValidate(c *Cube) error {
 				"remove those fields, or switch to provider: kind or k3d")
 		}
 	}
+	// One owner per pack (ADR-0045): a ref may not appear in both
+	// spec.prerequisites (CLI-delivered before the engine) and spec.packs
+	// (engine-delivered) — the two delivery paths would fight over it.
+	if len(c.Spec.Prerequisites) > 0 {
+		packRefs := make(map[string]struct{}, len(c.Spec.Packs))
+		for _, p := range c.Spec.Packs {
+			packRefs[p.Ref] = struct{}{}
+		}
+		for _, pre := range c.Spec.Prerequisites {
+			if _, dual := packRefs[pre.Ref]; dual {
+				return diag.New(diag.CodePackDualOwner,
+					fmt.Sprintf("pack %q appears in both spec.prerequisites and spec.packs — a pack has one owner", pre.Ref),
+					"remove it from one list: prerequisites are applied by the CLI before the engine, packs are engine-delivered")
+			}
+		}
+	}
 	if c.Spec.Engine.Type == "argocd" {
 		for _, p := range c.Spec.Packs {
 			if strings.Contains(p.Ref, "packs/argocd") {
