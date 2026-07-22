@@ -46,7 +46,7 @@ codes: `CUBE-0016+`.
 | T1 | Config surface: `spec.prerequisites` in schema + dual-owner validation + `CUBE-0016` | #43 | — | DONE |
 | T2 | Pre-engine loop: `[prerequisites…, engine]` one code path; inventory + lock + Pack rows | (create) | T1 | DONE |
 | T3 | `diff` dry-run + capability-inference satisfaction for prerequisite GVKs | (create) | T2 | DONE |
-| T4 | Gateway API CRDs as a prerequisite (the first real consumer) | #25 | T2 | CLAIMED |
+| T4 | Gateway API CRDs as a prerequisite (the first real consumer) | #25 | T2 | DONE |
 | T5 | e2e (fresh + existing cluster; `down` cascade) + reference/architecture docs | (create) | T2,T3,T4 | UNCLAIMED |
 
 ---
@@ -101,12 +101,16 @@ codes: `CUBE-0016+`.
 
 **Files:** reference config/example, `$PACKS` note (out-of-repo — record only), tests.
 
-- [ ] **Step 1:** Provide/point at a prerequisite pack carrying the Gateway API CRDs;
-  move the up-front CRD check to rely on it.
-- [ ] **Step 2:** Record the `$PACKS` breaking change the ADR flags (traefik pack must
+- [x] **Step 1:** Provide/point at a prerequisite pack carrying the Gateway API CRDs;
+  move the up-front CRD check to rely on it. *(Owner decision, session 2026-07-22:
+  Option 1 — up.Run skips `waitCRDEstablished` when a prerequisite provides the
+  Gateway API group, reusing T3's `ProvidedGroups`. The real `gateway-api-crds` pack
+  is out-of-repo ($PACKS), so this repo ships the CODE that relies on it + a
+  reference example, not the pack.)*
+- [x] **Step 2:** Record the `$PACKS` breaking change the ADR flags (traefik pack must
   drop the CRDs so one field-manager owns them → version bump) as a HANDOFF for the
-  packs repo — do NOT edit `$PACKS` from here.
-- [ ] **Step 3:** Gate green; commit `feat(prereq): Gateway API CRDs via spec.prerequisites (closes #25)`.
+  packs repo — do NOT edit `$PACKS` from here. *(See Outcome HANDOFF below.)*
+- [x] **Step 3:** Gate green; commit `feat(prereq): Gateway API CRDs via spec.prerequisites (closes #25)`.
 
 ### Task T5: e2e + docs
 
@@ -194,7 +198,31 @@ codes: `CUBE-0016+`.
   - Tests to mirror/extend: `TestResolveOrderPrerequisiteSatisfiesGatewayGroup`, `TestProvidedGroupsReadsCRDGroup` (internal/pack/depgraph_test.go), `TestDesiredStatePrerequisites` (internal/diff/diff_test.go). `go build/vet/test ./...` all green on the branch.
 
 #### T4 Outcome
-- STATUS: · BRANCH: · COMMITS: · FINDINGS: · BLOCKERS: · HANDOFF:
+- STATUS: DONE
+- BRANCH: adr-0045-prerequisites (feature branch; not yet PR'd to main — lands as one PR at feature completion per CLAUDE.md §4 merge model)
+- COMMITS:
+  - 2c89dca docs: prerequisites plan — claim T4
+  - 9f96e23 feat(prereq): Gateway API CRDs via spec.prerequisites (closes #25)
+- FINDINGS:
+  - OWNER DECISION (session 2026-07-22): T4's approach was ambiguous because the real `gateway-api-crds` pack lives in `$PACKS` (out-of-repo, hands-off), so "move the up-front CRD check to rely on it" could mean (1) code that skips the runtime wait when a prerequisite provides the CRDs, (2) docs+handoff only, or (3) a new doctor preflight. Owner chose **Option 1**. This repo ships the CODE that relies on the prerequisite + a reference example; it does NOT create the pack.
+  - CODE CHANGE (up.go ~:534): the late `waitCRDEstablished(httpRouteCRD)` gate — which today fails "later during deployment" (#25's complaint) — is now skipped when `providedGroups[pack.GatewayAPIGroup]`. A prerequisite providing the Gateway API group SSA-applied AND kstatus-waited its CRDs BEFORE the engine and every pack (T2's `deliverPrerequisite`, wait=true), so `httproutes` is already Established here and the traefik-vs-envoy async race the wait guards against cannot occur. #25's "validated up front" IS the prerequisite. Backward-compatible: no prerequisite provides it → the legacy gateway-pack wait path is byte-identical.
+  - EXPORTED `pack.GatewayAPIGroup` (was unexported `gatewayAPIGroup`): up.Run now tests the SAME constant that keys the `ProvidedGroups` map ProvidedGroups builds — closing a magic-string divergence risk between the map producer (pack) and consumer (up). All in-package refs + depgraph tests updated.
+  - The reference example (`docs/reference/cube-yaml-reference.md`) adds a `prerequisites:` section (before `packs:`, matching schema order) with the Gateway API CRDs as the canonical entry + a customized (values) prerequisite, documenting delivery=prerequisite / kubectl get packs / down cascade / CUBE-0016 one-owner rule. The machine-checked shape is T1's `internal/config/testdata/prerequisites.yaml`; this is the human-facing twin.
+  - No new diag codes. No `$PACKS` edits (per plan + CLAUDE.md §8). No `init`-scaffold change (making `init` emit a `gateway-api-crds` prerequisite by default would break every fresh install until $PACKS ships that pack — deliberately deferred; see HANDOFF).
+- BLOCKERS: none in this repo. The live end-to-end proof (CRDs from a prerequisite, HTTPRoute applies with no wait) needs the out-of-repo pack and is deferred to T5's e2e once a `gateway-api-crds` pack (even a local fixture) is available.
+- HANDOFF — **$PACKS breaking change (traefik CRD ownership), for the packs-repo owner:**
+  - ADR-0045 + the archived design (`docs/archive/superpowers/specs/2026-07-19-cube-idp-prerequisites-packs-design.md` §5.1) flag: the `packs/traefik` gateway pack TODAY ships the Gateway API CRDs as static manifests (`packs/traefik/manifests/00-gateway-api-crds.yaml`). Once a `gateway-api-crds` PREREQUISITE owns those CRDs, TWO field managers (CLI SSA for the prerequisite + flux/argocd Kustomization for the traefik pack) fight over the same objects, and removing the traefik pack could GC CRDs the prerequisite owns (prune trap).
+  - REQUIRED $PACKS work (NOT done here — out of this repo's scope):
+    1. Create a `gateway-api-crds` pack that renders the Gateway API CRDs (standard upstream CRDs; spec.group `gateway.networking.k8s.io`). This is what makes `pack.ProvidedGroups` light up and up.Run skip the wait.
+    2. REMOVE the Gateway API CRDs from `packs/traefik` (and any other gateway pack that ships them, e.g. verify envoy-gateway) so exactly one manager owns them → **version bump** on the traefik pack (breaking: older CLIs expect the pack to carry the CRDs).
+    3. Compat story: an older CLI (no `spec.prerequisites`) + a new traefik pack (no CRDs) would have no CRD source → document the minimum CLI version, or keep a transitional CRD-bearing traefik release.
+    4. envoy-gateway: its controller installs Gateway CRDs at runtime — verify adopt/skip/fight behavior when the CRDs pre-exist from a prerequisite (archived design §5.2).
+  - HANDOFF for T5 (e2e + docs):
+    - For the e2e leg, a LOCAL fixture pack rendering a Gateway API CRD (spec.group `gateway.networking.k8s.io`) is enough to exercise the skip path end-to-end without $PACKS — mirror `internal/pack/testdata/crds-chart` or the depgraph test's `crdRendered` shape.
+    - The up.go skip branch emits `con.Step("gateway-crd", "Gateway API CRDs provided by a prerequisite …")` — the e2e can assert that line (and the ABSENCE of the "waiting for the Gateway API HTTPRoute CRD" progress) as the falsifiable proof the wait was skipped.
+    - Tests landed: `TestGatewayAPICRDPrerequisiteProvidesGatewayGroup` (pins the exported-constant ↔ map-key contract the up.go branch relies on), alongside T3's `TestProvidedGroupsReadsCRDGroup` / `TestResolveOrderPrerequisiteSatisfiesGatewayGroup`.
+    - T5 Step 2b (added this session): reconcile ADR-0005 — its implicit-edge rule is now conditional; add the ADR-0045 cross-reference. See T5 Files.
+    - `go build/vet/test ./...` all green on the branch.
 
 #### T5 Outcome
 - STATUS: · BRANCH: · COMMITS: · FINDINGS: · BLOCKERS: · HANDOFF:
