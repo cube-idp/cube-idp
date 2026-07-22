@@ -61,7 +61,7 @@ Statuses: `UNCLAIMED` → `IN_PROGRESS(<session>, <UTC ts>)` → `DONE` / `DONE_
 | T5 | ADR-0042: the process ADR (incl. §Board spec) | — | no | DONE |
 | T6 | SDD dispatch prompt template | — | no | DONE |
 | T7 | SDD status heartbeat template | — | no | DONE |
-| T8 | SDD plan-ledger template | — | no | UNCLAIMED |
+| T8 | SDD plan-ledger template | — | no | IN_PROGRESS(fable-t8, 2026-07-22T06:17:17Z) |
 | T9 | `CLAUDE.md` + `AGENTS.md` (binding agent rules) | T5,T6,T7,T8 | no | UNCLAIMED |
 | T10 | CI process gate workflow (+ doc-consistency job) | T2 | no | UNCLAIMED |
 | T11 | Pilot: issue #7 → ADR-0043 Track A | T2,T5,T9 | **yes** | UNCLAIMED |
