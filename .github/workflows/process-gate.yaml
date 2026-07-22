@@ -51,10 +51,7 @@ jobs:
           EOF
       - name: docs/ top level is the closed set (ADR-0042 §Documentation layout)
         run: |
-          # outstanding-todos.md is temporarily allowed until the owner retires
-          # it into issues (T15 FINDINGS records the disposition) — remove it
-          # from this list when that happens.
-          ALLOWED="adr architecture reference process archive vhs outstanding-todos.md"
+          ALLOWED="adr architecture reference process archive vhs"
           rc=0
           for e in $(ls docs/); do
             case " $ALLOWED " in
