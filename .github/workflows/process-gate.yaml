@@ -51,7 +51,7 @@ jobs:
           EOF
       - name: docs/ top level is the closed set (ADR-0042 §Documentation layout)
         run: |
-          ALLOWED="adr architecture reference process archive vhs"
+          ALLOWED="adr architecture reference process archive vhs design plans"
           rc=0
           for e in $(ls docs/); do
             case " $ALLOWED " in
