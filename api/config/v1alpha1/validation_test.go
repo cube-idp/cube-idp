@@ -1,0 +1,62 @@
+package v1alpha1_test
+
+import (
+	"strings"
+	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
+)
+
+func validConfig() *v1alpha1.Config {
+	return &v1alpha1.Config{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "cube-idp.dev/v1alpha1", Kind: "Config"},
+		ObjectMeta: metav1.ObjectMeta{Name: "dev"},
+	}
+}
+
+func TestValidate(t *testing.T) {
+	tests := []struct {
+		name      string
+		mutate    func(*v1alpha1.Config)
+		wantField string // "" = expect valid
+	}{
+		{"valid minimal", func(c *v1alpha1.Config) {}, ""},
+		{"missing name", func(c *v1alpha1.Config) { c.Name = "" }, "metadata.name"},
+		{"uppercase name", func(c *v1alpha1.Config) { c.Name = "Dev" }, "metadata.name"},
+		{"leading dash", func(c *v1alpha1.Config) { c.Name = "-dev" }, "metadata.name"},
+		{"too long", func(c *v1alpha1.Config) { c.Name = strings.Repeat("a", 32) }, "metadata.name"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := validConfig()
+			tt.mutate(c)
+			c.Default()
+			errs := c.Validate()
+
+			if tt.wantField == "" {
+				if len(errs) != 0 {
+					t.Fatalf("expected valid, got: %v", errs.ToAggregate())
+				}
+				return
+			}
+			if len(errs) == 0 {
+				t.Fatal("expected validation errors, got none")
+			}
+			if !strings.Contains(errs.ToAggregate().Error(), tt.wantField) {
+				t.Errorf("errors %v do not mention field %s", errs.ToAggregate(), tt.wantField)
+			}
+		})
+	}
+}
+
+func TestDefaultIsIdempotent(t *testing.T) {
+	c := validConfig()
+	c.Default()
+	before := c.DeepCopy()
+	c.Default()
+	if c.Name != before.Name {
+		t.Error("Default() must be idempotent")
+	}
+}
