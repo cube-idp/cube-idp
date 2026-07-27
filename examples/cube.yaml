@@ -1,7 +1,5 @@
 apiVersion: cube-idp.dev/v1alpha1
-kind: Cube
+kind: Config
 metadata:
   name: dev
-spec:
-  cluster:
-    provider: minikube
+spec: {}
