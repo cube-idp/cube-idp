@@ -1,0 +1,34 @@
+package config
+
+import (
+	"fmt"
+
+	"github.com/cube-idp/cube-idp/internal/cubeerr"
+)
+
+// The config domain owns the CUBE-CFG-* code range. Codes are declared
+// here and nowhere else; the human-readable registry lives in
+// docs/design/2026-07-27-back-to-basics-structure.md §5.2.
+const (
+	CodeUnsupportedAPIVersion cubeerr.Code = "CUBE-CFG-001"
+	CodeUnknownField          cubeerr.Code = "CUBE-CFG-002"
+	CodeInvalidConfig         cubeerr.Code = "CUBE-CFG-003"
+)
+
+func errUnsupportedAPIVersion(gvk string) error {
+	return cubeerr.Wrap(CodeUnsupportedAPIVersion,
+		fmt.Sprintf("unsupported apiVersion/kind %q", gvk),
+		"set apiVersion: cube-idp.dev/v1alpha1 and kind: Config", nil)
+}
+
+func errUnknownField(cause error) error {
+	return cubeerr.Wrap(CodeUnknownField,
+		"config contains unknown fields",
+		"remove the unknown fields listed above, or check for typos against `cube-idp config show`", cause)
+}
+
+func errInvalidConfig(cause error) error {
+	return cubeerr.Wrap(CodeInvalidConfig,
+		"invalid config",
+		"fix the fields above and re-run `cube-idp config validate`", cause)
+}

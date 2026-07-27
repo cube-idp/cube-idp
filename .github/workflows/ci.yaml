@@ -3,76 +3,23 @@ on:
   push: {branches: [main]}
   pull_request:
 jobs:
-  unit:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        # go.mod (single source of truth) requires a toolchain newer than the
-        # plan's hardcoded "1.24" — currently go 1.26.2.
         with: {go-version-file: go.mod}
-      - run: go vet ./...
-      - run: go test ./... -short
-      # (engine-as-pack: the gen-argocd-manifests.sh --check guard is gone —
-      # T12 removed the embedded engine manifests it reproduced; engine
-      # manifests now live in the cube-engine-* packs, fenced by the packs
-      # repo's conformance CI.)
-      - run: make test-apply
-      - run: make test-engines   # contract suite incl. envtest subtests, both engines
-  e2e:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      matrix:
-        provider: [kind, k3d]
-        engine: [flux, argocd]   # full coverage matrix: every provider x every engine, each running the whole up/diff/upgrade/down lifecycle
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        # go.mod (single source of truth) requires a toolchain newer than the
-        # plan's hardcoded "1.24" — currently go 1.26.2.
-        with: {go-version-file: go.mod}
-      # cube-idp itself creates/deletes clusters via the kind/k3d Go
-      # libraries, but the e2e's lingering-cluster guards shell out to the
-      # provider CLIs — install both so the guards aren't inert on
-      # ubuntu-latest.
-      - run: go install sigs.k8s.io/kind@latest
-      - run: curl -sfL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-      # The packs live in the public cube-idp/packs monorepo — the e2e
-      # suite resolves pack dirs from a checkout of it (tests/e2e/PACKS.md),
-      # wired below via CUBE_IDP_E2E_PACKS_DIR.
-      - uses: actions/checkout@v4
-        with: {repository: cube-idp/packs, path: cube-idp-packs}
-      # GitHub-hosted runners are amd64 and include docker; kind and k3d work
-      # out of the box. The zot registry image is a multi-arch manifest list
-      # (internal/registry/manifests/zot.yaml), so it resolves correctly
-      # here even though local dev on Apple Silicon is arm64. The e2e
-      # suite reads CUBE_IDP_E2E_PROVIDER to pick the provider it writes into
-      # cube.yaml (TestK3dUpDown always forces k3d, being the dedicated k3d
-      # leg).
-      - run: CUBE_IDP_E2E=1 CUBE_IDP_E2E_PROVIDER=${{ matrix.provider }} CUBE_IDP_E2E_ENGINE=${{ matrix.engine }} CUBE_IDP_E2E_PACKS_DIR="$GITHUB_WORKSPACE/cube-idp-packs/packs" go test ./tests/e2e/ -v -timeout 35m
-  release-snapshot:
+      - run: make test
+      - run: make build
+      - name: generated code is committed and reproducible
+        run: make generate && git diff --exit-code api/
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}   # goreleaser reads tags + full history
       - uses: actions/setup-go@v5
         with: {go-version-file: go.mod}
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          version: "~> v2"
-          args: release --snapshot --clean
-      # dist subdirectory names carry a GOAMD64/GOARM suffix (confirmed
-      # locally: cube-idp_linux_amd64_v1/, cube-idp_darwin_arm64_v8.0/), so
-      # `find` is needed instead of a hardcoded path — but on its own `find
-      # -name cube-idp | head -1` is unsafe: goreleaser's snapshot build
-      # produces binaries for multiple GOOS/GOARCH, readdir order is
-      # unspecified, and an empty match would make `xargs -I{}` silently run
-      # nothing (step exits 0 with no smoke performed at all). Pin the glob
-      # to the runner's own platform, fail if nothing matched, and assert the
-      # printed version is actually stamped (not the unstamped "dev" build).
-      - run: |
-          bin="$(find dist -path '*linux_amd64*' -name cube-idp -type f | head -1)"
-          test -n "$bin"
-          "$bin" version | tee /dev/stderr | grep -q 'snapshot'
+      - name: file-length gate (files <300 lines, zz_generated exempt)
+        run: make filelen
+      - uses: golangci/golangci-lint-action@v8
+        with: {version: latest}

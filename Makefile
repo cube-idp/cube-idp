@@ -1,26 +1,24 @@
-BIN := cube-idp
+GO ?= go
+
+.PHONY: build test generate lint filelen
 
 build:
-	CGO_ENABLED=0 go build -o $(BIN) .
+	CGO_ENABLED=0 $(GO) build -o cube-idp ./cmd/cube-idp
 
 test:
-	go test ./...
+	$(GO) vet ./...
+	$(GO) test ./... -count=1
 
-truth-index:
-	go run ./hack/truthindex -out hack/truth-index.json
+generate:
+	$(GO) tool controller-gen object paths=./api/config/v1alpha1
 
-truth-index-check:
-	go run ./hack/truthindex -check
+lint: filelen
+	golangci-lint run ./...
 
-envtest-assets:
-	go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use 1.33 -p path
-
-test-apply:
-	KUBEBUILDER_ASSETS=$$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use 1.33 -p path) \
-	go test ./internal/apply/ ./internal/engine/flux/ ./internal/up/ ./internal/syncer/ -v
-
-test-engines:
-	KUBEBUILDER_ASSETS=$$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use 1.33 -p path) \
-	go test ./internal/engine/... -v
-
-.PHONY: build test truth-index truth-index-check envtest-assets test-apply test-engines
+# Files stay under 300 lines (generated code exempt) — design §7.
+filelen:
+	@bad=$$(find . -name '*.go' -not -name 'zz_generated*' -not -path './.git/*' \
+		| xargs wc -l | awk '$$1 > 300 && $$2 != "total" {print $$2" ("$$1" lines)"}'); \
+	if [ -n "$$bad" ]; then \
+		echo "files exceed 300 lines:"; echo "$$bad"; exit 1; \
+	fi

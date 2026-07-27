@@ -1,4 +1,0 @@
-chart: oci://ghcr.io/stefanprodan/charts/podinfo
-version: "6.7.1"
-releaseName: podinfo
-namespace: podinfo
