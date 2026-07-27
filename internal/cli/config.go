@@ -28,7 +28,7 @@ func newConfigValidateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "config %q is valid\n", cfg.Name)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "config %q is valid\n", cfg.Name)
 			return nil
 		},
 	}
@@ -48,7 +48,7 @@ func newConfigShowCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("render config: %w", err)
 			}
-			fmt.Fprint(cmd.OutOrStdout(), string(out))
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), string(out))
 			return nil
 		},
 	}

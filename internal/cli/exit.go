@@ -28,14 +28,14 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 func printError(w io.Writer, err error) {
 	var coded *cubeerr.Coded
 	if !errors.As(err, &coded) {
-		fmt.Fprintf(w, "✗ error: %v\n", err)
+		_, _ = fmt.Fprintf(w, "✗ error: %v\n", err)
 		return
 	}
-	fmt.Fprintf(w, "✗ %s: %s\n", coded.Code, coded.Summary)
+	_, _ = fmt.Fprintf(w, "✗ %s: %s\n", coded.Code, coded.Summary)
 	if cause := coded.Unwrap(); cause != nil {
-		fmt.Fprintf(w, "    %v\n", cause)
+		_, _ = fmt.Fprintf(w, "    %v\n", cause)
 	}
 	if coded.Remediation != "" {
-		fmt.Fprintf(w, "  → %s\n", coded.Remediation)
+		_, _ = fmt.Fprintf(w, "  → %s\n", coded.Remediation)
 	}
 }
