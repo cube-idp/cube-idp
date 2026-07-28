@@ -44,6 +44,11 @@ func TestExitCode(t *testing.T) {
 		{"wrapped config code maps to 2", fmt.Errorf("x: %w", cubeerr.Wrap("CUBE-CFG-001", "s", "r", nil)), cubeerr.ExitConfig},
 		{"non-config code maps to 1", cubeerr.Wrap("CUBE-CLI-001", "s", "r", nil), cubeerr.ExitError},
 		{"uncoded error maps to 1", errors.New("plain"), cubeerr.ExitError},
+		// Only well-formed CUBE-CFG-NNN codes map to 2; malformed codes fall
+		// back to the generic error exit.
+		{"malformed bare code maps to 1", cubeerr.Wrap("WEIRD", "s", "r", nil), cubeerr.ExitError},
+		{"malformed two-part code maps to 1", cubeerr.Wrap("CUBE-CFG", "s", "r", nil), cubeerr.ExitError},
+		{"lowercase code maps to 1", cubeerr.Wrap("cube-cfg-001", "s", "r", nil), cubeerr.ExitError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

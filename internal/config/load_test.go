@@ -2,6 +2,10 @@ package config_test
 
 import (
 	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -68,9 +72,65 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-func TestLoadMissingFile(t *testing.T) {
-	_, err := config.Load(fstest.MapFS{}, "cube.yaml")
-	if err == nil {
-		t.Fatal("expected error for missing file")
+func TestLoadUnreadableFile(t *testing.T) {
+	tests := []struct {
+		name string
+		fsys fstest.MapFS
+	}{
+		{"missing file", fstest.MapFS{}},
+		{"path is a directory", fstest.MapFS{"cube.yaml": {Mode: fs.ModeDir}}},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := config.Load(tt.fsys, "cube.yaml")
+
+			var coded *cubeerr.Coded
+			if !errors.As(err, &coded) {
+				t.Fatalf("error %v is not a *cubeerr.Coded", err)
+			}
+			if coded.Code != config.CodeUnreadableConfig {
+				t.Errorf("code = %s, want %s", coded.Code, config.CodeUnreadableConfig)
+			}
+			if coded.Remediation == "" {
+				t.Error("coded error must carry a remediation")
+			}
+			if coded.Unwrap() == nil {
+				t.Error("coded error must wrap the fs cause")
+			}
+		})
+	}
+}
+
+func TestLoadFile(t *testing.T) {
+	t.Run("valid file loads", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "cube.yaml")
+		if err := os.WriteFile(path, []byte(validYAML), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := config.LoadFile(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Name != "dev" {
+			t.Errorf("Name = %q, want dev", cfg.Name)
+		}
+	})
+
+	t.Run("missing file carries user-supplied path", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "sub", "nope.yaml")
+		_, err := config.LoadFile(path)
+
+		var coded *cubeerr.Coded
+		if !errors.As(err, &coded) {
+			t.Fatalf("error %v is not a *cubeerr.Coded", err)
+		}
+		if coded.Code != config.CodeUnreadableConfig {
+			t.Errorf("code = %s, want %s", coded.Code, config.CodeUnreadableConfig)
+		}
+		// Path context is the behavior under test here, not error identity,
+		// so a containment check on the wrapped cause is deliberate.
+		if cause := coded.Unwrap(); cause == nil || !strings.Contains(cause.Error(), path) {
+			t.Errorf("cause %v should name the full user-supplied path %q", cause, path)
+		}
+	})
 }
