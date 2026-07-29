@@ -2,4 +2,10 @@ apiVersion: cube-idp.dev/v1alpha1
 kind: Config
 metadata:
   name: dev
-spec: {}
+spec:
+  cluster:
+    provider: kind
+    forProvider:
+      # kind.x-k8s.io/v1alpha4 Cluster fields
+      nodes:
+        - role: control-plane
