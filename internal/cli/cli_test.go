@@ -73,11 +73,31 @@ func TestConfigShowRoundTrip(t *testing.T) {
 }
 
 func TestMissingFile(t *testing.T) {
-	code, _, stderr := run(t, "config", "validate", "-f", filepath.Join(t.TempDir(), "nope.yaml"))
-	if code == 0 {
-		t.Fatal("exit = 0, want non-zero for missing file")
+	path := filepath.Join(t.TempDir(), "nope.yaml")
+	code, _, stderr := run(t, "config", "validate", "-f", path)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2 for missing config file", code)
 	}
-	if stderr == "" {
-		t.Error("expected an error message on stderr")
+	if !strings.Contains(stderr, "CUBE-CFG-004") {
+		t.Errorf("stderr %q should carry CUBE-CFG-004", stderr)
+	}
+	if !strings.Contains(stderr, path) {
+		t.Errorf("stderr %q should name the full user-supplied path %q", stderr, path)
+	}
+}
+
+// TestConfigShowGolden is the one sanctioned byte-exact check of CLI stdout.
+func TestConfigShowGolden(t *testing.T) {
+	path := writeTemp(t, validYAML)
+	code, stdout, stderr := run(t, "config", "show", "-f", path)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
+	}
+	want, err := os.ReadFile(filepath.Join("testdata", "show.golden"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stdout != string(want) {
+		t.Errorf("config show output differs from testdata/show.golden:\ngot:\n%s\nwant:\n%s", stdout, want)
 	}
 }
