@@ -86,6 +86,17 @@ func TestMissingFile(t *testing.T) {
 	}
 }
 
+func TestInitRequiresCluster(t *testing.T) {
+	path := writeTemp(t, validYAML)
+	code, _, stderr := run(t, "init", "-f", path)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1", code)
+	}
+	if !strings.Contains(stderr, "CUBE-CLU-001") {
+		t.Errorf("stderr %q should carry CUBE-CLU-001", stderr)
+	}
+}
+
 // TestConfigShowGolden is the one sanctioned byte-exact check of CLI stdout.
 func TestConfigShowGolden(t *testing.T) {
 	path := writeTemp(t, validYAML)

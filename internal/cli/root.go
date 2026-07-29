@@ -15,6 +15,6 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().StringP("config", "f", "cube.yaml", "path to the Config document")
-	root.AddCommand(newConfigCmd())
+	root.AddCommand(newConfigCmd(), newInitCmd())
 	return root
 }
