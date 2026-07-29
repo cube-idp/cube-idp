@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 
 	"sigs.k8s.io/yaml"
 
@@ -18,18 +17,20 @@ import (
 func Load(fsys fs.FS, path string) (*v1alpha1.Config, error) {
 	raw, err := fs.ReadFile(fsys, path)
 	if err != nil {
-		return nil, fmt.Errorf("read config %s: %w", path, err)
+		return nil, errUnreadableConfig(fmt.Errorf("read config %s: %w", path, err))
 	}
 	return decode(raw)
 }
 
-// LoadFile is an os-filesystem convenience wrapper around Load.
+// LoadFile is the os-filesystem entry point. It reads through the real
+// filesystem directly (not an os.DirFS rooted at the parent directory) so
+// errors name the path the user typed, never just its basename.
 func LoadFile(path string) (*v1alpha1.Config, error) {
-	abs, err := filepath.Abs(path)
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("resolve config path %s: %w", path, err)
+		return nil, errUnreadableConfig(fmt.Errorf("read config %s: %w", path, err))
 	}
-	return Load(os.DirFS(filepath.Dir(abs)), filepath.Base(abs))
+	return decode(raw)
 }
 
 func decode(raw []byte) (*v1alpha1.Config, error) {
