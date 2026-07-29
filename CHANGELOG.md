@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+M3 cluster domain (design: `docs/design/2026-07-29-cluster-domain.md`):
+
+- `spec.cluster` API sub-struct: typed `provider` (defaults to `kind`) plus
+  opaque `forProvider` passthrough, validated at load time.
+- `internal/cluster` domain: `Provisioner` driver seam with an exported
+  conformance suite, kubeconfig machinery (`ContextName`/`Rebrand`/`Merge` —
+  no client-go), the `Init` operation, and the `CUBE-CLU-*` code catalog.
+- kind provider (`sigs.k8s.io/kind v0.32.0`, confined to
+  `internal/cluster/kind`); real-cluster conformance is opt-in via
+  `make test-e2e`, never part of the green gate.
+- CLI: `cube-idp init` creates the cluster and installs a cube-owned
+  kubeconfig context (`cube-idp.dev/<name>`), with `--kubeconfig` and
+  `--kubeconfig-context-name` overrides.
+
 v0 greenfield baseline (2026-07-27 reset; design:
 `docs/design/2026-07-27-back-to-basics-structure.md`):
 
