@@ -27,6 +27,12 @@ completes or reorders a milestone.
   validation surfaced at the CLI edge without breaking import direction
   (`internal/config` never imports `internal/cluster`). Recorded in the
   cluster design §9.
+- **M4 — init bootstrap**: when the config file does not exist, `init`
+  scaffolds it (`metadata.name` from `--name`, else a generated
+  docker-style name constrained to the name regex) and provisions from it.
+  `--name` never mutates an existing document — coded error with "edit
+  metadata.name" remediation. Contract change → short design doc first
+  (owns: scaffold semantics, name generator, which domain writes config).
 
 ## After M3 (tentative — order revisited after cluster delivery)
 
