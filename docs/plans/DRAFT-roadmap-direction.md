@@ -40,13 +40,16 @@ Verdict on the old capabilities:
 | 27-file UI subsystem (4 render backends) | Disproportionate; plain output + `-o json` later is enough for now. |
 | Cycle-breaker packages (`cfgload`, `refval`, factories, aliases) | Pure rot — structural tax from factories importing implementations. The greenfield rules exist to prevent recurrence. |
 
-## 2. Proposed milestone units (M4–M10)
+## 2. Proposed milestone sequence (M4–M11)
 
 Each milestone: one green PR, one new `internal/<domain>` package at most,
 one `ConfigSpec` sub-struct per component, design doc first where a new
-domain / seam / dependency arrives. The numbering below follows Path A
-(design §8 order); §3 proposes alternative orderings of these same units —
-the unit *scopes* hold regardless of which path is chosen.
+domain / seam / dependency arrives. Ordering reflects the **owner direction
+(2026-07-31): finish the cluster domain first, then make pack solid before
+its consumers land** — pack is the spine every later domain consumes
+(engine ships as a pack, registry pushes packs, the orchestrator sequences
+packs), so consumers conform to the pack contract, not the reverse. §3
+records the alternative orderings considered.
 
 **M4 — init bootstrap** *(already queued; keep as-is).* When the config file
 is absent, `init` scaffolds it (`--name` or generated docker-style name) and
@@ -58,17 +61,27 @@ stays small (both touch the `init`/validate edge), otherwise land it as its
 own chore-sized PR first — either way it must not make `internal/config`
 import `internal/cluster` (cluster design §9).
 
-**M5 — kube: client access.** New leaf domain `internal/kube` (`CUBE-KUB-*`):
-construct a client from injected kubeconfig bytes (per the cluster design §9
-injection contract — consumers never import `internal/cluster`), plus the
-minimal helpers later domains need (REST config, discovery/mapper). Brings
-`k8s.io/client-go` into the closed dependency set → **design doc required**.
-Rationale: everything downstream (apply, engine, doctor) needs a client;
-keeping it a leaf with a tiny surface avoids the old `kube`+`apply`+`up`
-entanglement. No user-visible command yet; that is acceptable for one
-milestone because M6 cashes it in.
+**M5 — cluster lifecycle completion.** No new domain: close out
+`internal/cluster` per the §9 follow-ups recorded in the cluster design —
+`cube-idp delete` (or `down`) exposing the seam's `Delete`, `status`, and
+whatever of the kubeconfig-cleanup contract belongs with them. Rationale
+(owner direction): finish the domain we just opened before broadening; every
+§9 item lands while M3 context is fresh, each piece is small and
+user-visible, and `delete` exists before later milestones install software
+worth tearing down. Likely no design doc needed — the contracts are already
+recorded in §9; a checkbox plan suffices unless scope grows.
 
-**M6 — apply: SSA + inventory.** New domain `internal/apply` (`CUBE-APP-*`):
+**M6 — kube: client access.** New leaf domain `internal/kube`
+(`CUBE-KUB-*`): construct a client from injected kubeconfig bytes (per the
+cluster design §9 injection contract — consumers never import
+`internal/cluster`), plus the minimal helpers later domains need (REST
+config, discovery/mapper). Brings `k8s.io/client-go` into the closed
+dependency set → **design doc required**. Rationale: everything downstream
+(apply, engine, doctor) needs a client; keeping it a leaf with a tiny
+surface avoids the old `kube`+`apply`+`up` entanglement. No user-visible
+command yet; acceptable for one milestone because M7 cashes it in.
+
+**M7 — apply: SSA + inventory.** New domain `internal/apply` (`CUBE-APP-*`):
 server-side apply with field manager `cube-idp`, kstatus-style readiness
 wait, and a ConfigMap inventory recording what we own. Decide in its design
 doc whether to depend on `fluxcd/pkg/ssa` (old choice) or hand-roll on
@@ -77,55 +90,61 @@ client-go — either way the doc gates it. Rationale: inventory is the seed of
 domain writes through one audited apply path instead of growing its own
 (the old tree had apply fan-in 19).
 
-**M7 — pack: fetch + render, minimal contract.** New domain `internal/pack`
-(`CUBE-PKG-*`), deliberately scoped to: local-directory packs, `pack.cue`-or-
-simpler metadata (design doc decides whether CUE returns at all), raw
-manifests + kustomize rendering. Explicitly excluded from this milestone:
-helm rendering, OCI fetch, catalogs/indexes, dependency graph. User-visible:
-`pack render` (pure, no cluster) and `pack install <dir>` (render → apply via
-M6). Rationale: pack was the largest old package (59 files) and the biggest
-scope-creep magnet; landing a small frozen core first, with helm/OCI as
-their own later milestones, is the main defense. The old pack-contract-v1
-reference doc is input, not authority.
+**M8 — pack: the spine, made solid.** New domain `internal/pack`
+(`CUBE-PKG-*`). Because every later domain consumes packs, this is the most
+consequential design doc of the sequence and gets the deepest treatment:
+the pack *contract* (layout, metadata language — CUE or simpler, values
+merge, render semantics) is written against the **recorded consumer
+requirements** from the old system (engine-as-pack per ADR-0007, registry
+push format, orchestrator ordering, ADR-0045 prerequisites path) so that
+M9–M11 conform to pack rather than forcing pack revisions. Implementation
+scope stays deliberately small: local-directory packs, raw manifests +
+kustomize rendering; `pack render` (pure) and `pack install <dir>` (render →
+apply via M7). Explicitly excluded, each returning only as its own later
+milestone: helm rendering, OCI fetch, catalogs/indexes, dependency graph.
+If contract-design and implementation together exceed one comfortable PR,
+split into M8a (design doc + contract + render) and M8b (install + e2e) —
+still one green PR each. The old pack-contract-v1 reference doc is input,
+not authority.
 
-**M8 — engine: gitops driver seam + Flux.** New domain `internal/engine`
+**M9 — engine: gitops driver seam + Flux.** New domain `internal/engine`
 (`CUBE-ENG-*`), the second Kind-B driver seam: pure-translator interface
-(engines return engine-native objects; caller applies via M6) + conformance
+(engines return engine-native objects; caller applies via M7) + conformance
 suite in the domain package, `engine/flux` as the only implementation.
-Design doc required (new seam + whatever Flux manifests/deps it needs).
-Carry the old hard rule forward: Argo CD support, if it ever returns, must
-never become a compile-time dependency (`unstructured` only). Rationale:
-the seam pattern is proven by M3; a second driver seam is where the old
-factory-import-cycle rot started, so this milestone is the test of the
-"factories at the edge" rule.
+Design doc required (new seam + whatever Flux manifests/deps it needs), and
+it treats the M8 pack contract as fixed input — the engine installs as an
+ordinary pack from day one (no vendored-manifests interim). Carry the old
+hard rule forward: Argo CD support, if it ever returns, must never become a
+compile-time dependency (`unstructured` only). A second driver seam is where
+the old factory-import-cycle rot started, so this milestone is the test of
+the "factories at the edge" rule.
 
-**M9 — registry: OCI delivery bus.** New domain `internal/registry`
+**M10 — registry: OCI delivery bus.** New domain `internal/registry`
 (`CUBE-REG-*`): install zot (or the doc's chosen registry) in-cluster via
 the apply path, push rendered packs as OCI artifacts (oras-go v2 → design
-doc), point the engine's OCI source at it. Rationale: this converts M7+M8
-from "CLI applies manifests" into the real product loop (engine pulls from
-the in-cluster bus). Sequenced after engine so the engine's source
-requirements drive the registry contract, not the reverse.
+doc), point the engine's OCI source at it. Rationale: converts M8+M9 from
+"CLI applies manifests" into the real product loop (engine pulls from the
+in-cluster bus). Sequenced after engine so the engine's source requirements
+drive the registry contract, not the reverse.
 
-**M10 — orchestrator: `up`/`down` as a phase runner.** New domain
+**M11 — orchestrator: `up`/`down` as a phase runner.** New domain
 `internal/orchestrator` (`CUBE-ORC-*`): kubeadm-style `[]Phase{Name, Run}`
 sequencing cluster → registry → engine → packs, depending only on
-interfaces; composition/factories stay in `internal/cli`. `down` walks the
-M6 inventory. Rationale: this is the god-file ghost (§4 risk #1) — it lands
-last, after every phase it sequences already exists and is tested in
-isolation, so it can genuinely be "ordering and timeouts" this time.
+interfaces; composition/factories stay in `internal/cli`. `down` composes
+the M5 cluster teardown with the M7 inventory walk. Rationale: this is the
+god-file ghost (§4 risk #1) — it lands last, after every phase it sequences
+already exists and is tested in isolation, so it can genuinely be "ordering
+and timeouts" this time.
 
-**After M10 (not sequenced here):** periphery in pull order — doctor, diff,
+**After M11 (not sequenced here):** periphery in pull order — doctor, diff,
 trust/CA, lock/vendor, spokes, cnoe — each its own milestone with its own
 justification; none should land before the core loop is real.
 
-## 3. Alternative paths after M4
+## 3. Paths considered and the decision
 
-Three orderings of the §2 units, differing in *when pack lands relative to
-its prerequisites and consumers*. The governing constraint (owner input):
-pack must not land until everything it needs is already in place — the open
-question is whether "needs" means only its upstream dependencies (kube,
-apply) or also its downstream consumers (engine, registry).
+Three orderings of the milestone units were weighed, differing in *when
+pack lands relative to its prerequisites and consumers*. Kept here as the
+record behind the §2 sequence.
 
 **Path A — dependency ladder (design §8 order).**
 `kube → apply → pack → engine → registry → orchestrator`.
@@ -138,8 +157,7 @@ before its real consumers exist — when engine (source formats) and registry
 (push contract) arrive, pack may need revision, which is exactly the churn
 the owner's constraint is meant to avoid.
 
-**Path B — consumers-first: pack lands last before the orchestrator
-(recommended).**
+**Path B — consumers-first: pack lands last before the orchestrator.**
 `kube → apply → engine → registry → pack → orchestrator`.
 Pack arrives with *everything* in place: client, apply path, a live engine
 defining what a delivery source looks like, and a registry defining the
@@ -165,12 +183,21 @@ exists before anything installs software worth tearing down. *Weakness:*
 the core loop arrives one or two milestones later, and `delete` at this
 stage only removes a kind cluster — cheap but thin.
 
-**Recommendation.** Path **B**, optionally prefixed with C's first
-milestone if the owner wants `delete`/`down` to exist before anything gets
-installed — the two compose cleanly (`cluster-complete → kube → apply →
-engine → registry → pack → orchestrator`, 7 milestones, one green PR each).
-Path A remains the documented fallback if B's vendored-manifests engine
-bootstrap feels like too much of an ADR-0007 regression.
+**Decision (owner, 2026-07-31): C's cluster-completion first, then the A
+ladder with pack made solid before its consumers** — the §2 sequence
+(`cluster-complete → kube → apply → pack → engine → registry →
+orchestrator`). Reasoning: pack is used everywhere — engine, registry, and
+orchestrator all consume it — so it must be the stable spine consumers
+conform to, and it should land only once its own prerequisites (client,
+apply path) are real. Path B's concern (contract designed before consumers
+exist) is answered structurally rather than by reordering: the M8 pack
+design doc is written against the *recorded* consumer requirements from the
+old system (engine-as-pack ADR-0007, registry push format, ADR-0045
+prerequisites path, orchestrator ordering), M9–M11 design docs treat the
+pack contract as fixed input, and any post-M8 contract change is a
+design-doc-level event — never a drive-by edit inside a consumer milestone.
+This also removes B's ugliest cost: the engine installs as an ordinary pack
+from day one, no vendored-manifests interim.
 
 **Independent of path — `forProvider` validation:** fold into M4 if the
 edge-validation mechanism is obvious once the M4 design doc is written;
@@ -188,6 +215,7 @@ one small green PR; the only hard constraint is the import direction
 | Dependency creep (old tree: Helm SDK, controller-runtime, TUI stack, forked go-getter, cloud SDKs) | **kube** (client-go), **apply** (ssa lib?), **pack** (CUE? kustomize-api?), **engine/registry** (flux manifests, oras) | Closed set + design-doc gate per dependency; carry the old single-file import-boundary trick (only one file may import a heavy SDK) into any milestone that adopts one. |
 | Business logic leaking into `cmd/`/`cli` (old `cmd` imported 25 packages) | **Every milestone**; pressure spikes at M4 (scaffold logic) and the orchestrator milestone (composition) | `internal/cli` stays flag-mapping + factories; scaffold/name-generation logic must live in a domain, decided in the M4 design doc. |
 | Pack domain sprawl (59 files: fetch+render+helm+catalog+depgraph+OCI in one package) | **pack milestone** onward | The pack design doc draws the exclusion list (no helm, no OCI, no graph, no catalog); each exclusion returns only as its own milestone. |
+| Pack contract designed before its consumers exist (residual risk of the chosen path) | **M9/M10** (engine, registry) | M8 contract written against recorded consumer requirements (ADR-0007 engine-as-pack, ADR-0045 prerequisites, push format); M9-M11 design docs treat the pack contract as fixed input; any post-M8 contract change requires its own design doc. |
 | Seam ceremony without a second implementation | **engine milestone** (single-impl seam) | Acceptable only because gitops engines are a designated Kind-B swappable backend (design §6); conformance suite + fake keep it honest, as in M3. |
 
 ## 5. Open questions for the owner
@@ -212,9 +240,12 @@ one small green PR; the only hard constraint is the import direction
    kube+apply be one milestone ("apply a manifest to the init'd cluster") at the cost of a
    bigger PR?
 
-7. **Path choice (§3):** does "pack needs everything in place" mean
-   upstream only (Path A) or consumers too (Path B, recommended)? And should
-   the cluster-lifecycle completion milestone (Path C prefix) run first?
+7. **M5 scope check:** which §9 follow-ups belong in the
+   cluster-completion milestone — `delete` and `status` only, or also the
+   kubeconfig-cleanup contract? And is the command named `delete` or `down`,
+   given the orchestrator later owns full teardown?
+8. **M8 shape:** one PR, or split as M8a (design doc + contract + render)
+   and M8b (install + e2e)? The contract work is the heavy part either way.
 
 ---
 *Draft prepared 2026-07-29, revised 2026-07-31 on branch `RafPe/roadmap-direction`; no other
