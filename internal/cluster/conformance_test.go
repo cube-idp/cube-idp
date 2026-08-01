@@ -32,7 +32,7 @@ func (f *fakeProvisioner) Kubeconfig(_ context.Context, name string) ([]byte, er
 	if !f.clusters[name] {
 		return nil, fmt.Errorf("cluster %q not found", name)
 	}
-	return []byte(fmt.Sprintf(`apiVersion: v1
+	return fmt.Appendf(nil, `apiVersion: v1
 kind: Config
 clusters:
   - name: fake-%[1]s
@@ -48,7 +48,7 @@ users:
     user:
       token: fake
 current-context: fake-%[1]s
-`, name)), nil
+`, name), nil
 }
 
 func TestConformance_Fake(t *testing.T) {
