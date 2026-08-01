@@ -1,35 +1,56 @@
 # cube-idp — Agent Rules
 
 These rules bind every AI agent session in this repository. The structural
-authority is `docs/design/2026-07-27-back-to-basics-structure.md`; when this
-file and that design disagree, flag the conflict — don't silently pick one.
+authority is `docs/ARCHITECTURE.md` (living, updated in place); when this
+file and that document disagree, flag the conflict — don't silently pick
+one.
 
 ## 1. What this repo is
 
 cube-idp is being rebuilt from a greenfield v0 baseline (2026-07-27 reset).
-v0 holds only the config domain: a CRD-ready `Config` type
-(`cube-idp.dev/v1alpha1`), a strict loader, and a CLI exposing
-`config validate` and `config show`. Components are added in small
-milestones — the queue is `docs/plans/ROADMAP.md`.
+Components are added in small milestones — the queue is `/ROADMAP.md`.
+Current domains: **config** (CRD-ready `Config` type, strict loader,
+`config validate|show`) and **cluster** (M3: `spec.cluster`, `Provisioner`
+driver seam, kind provider, `init`). Per-domain contracts:
+`docs/domains/<name>.md`.
 
-Active documentation is `docs/design/` (approved designs) and `docs/plans/`
-(implementation plans + ROADMAP). Everything else under `docs/` — `adr/`,
-`architecture/`, `process/`, `reference/`, `archive/`, `vhs/` — is pre-reset
-history: read-only, NOT binding, never extended. Do not follow the old
-ADR/board/SDD process those files describe.
+### Documentation map (the complete, closed set)
+
+| Document | Purpose | Touched when |
+|---|---|---|
+| `/ROADMAP.md` | milestone queue + done log | the PR that completes/reorders a milestone |
+| `/README.md` | user-facing intro | user-visible behavior changes |
+| `/CLAUDE.md` | agent rules + this map | rules or the doc system change |
+| `/CHANGELOG.md` | release notes | every milestone PR |
+| `docs/ARCHITECTURE.md` | binding cross-cutting architecture (living) | architectural decisions, in the deciding PR |
+| `docs/domains/<name>.md` | one living contract per domain | the domain's milestones (file created when the domain lands) |
+| `docs/DECISIONS.md` | append-only dated decision log | every owner-approved decision |
+| `docs/work/` | ephemeral milestone plans/groundwork | created during a milestone, DELETED in its closing PR |
+| `docs/archived/` | pre-reset + superseded history | never (read-only, not binding) |
+
+Anti-sprawl rules: dated markdown files are banned outside `docs/archived/`
+and `docs/work/`. New markdown may only appear as a new `docs/domains/`
+file (with its domain) or inside `docs/work/`. Anything else requires
+editing this map first. A milestone's "design doc" is a reviewed diff to
+`ARCHITECTURE.md`/`domains/<x>.md` plus a `DECISIONS.md` entry —
+owner-approved before code, exactly as before.
 
 ## 2. Layout and import direction
 
 ```
-cmd/cube-idp ──▶ internal/cli ──▶ internal/config ──▶ api/config/v1alpha1
-                      │                  │
-                      └──────▶ internal/cubeerr ◀────┘
+cmd/cube-idp ──▶ internal/cli ──▶ internal/config  ──▶ api/config/v1alpha1
+                      │      └──▶ internal/cluster ──▶ api/config/v1alpha1
+                      │                │  └── cluster/kind (driver subpackage)
+                      └──────▶ internal/cubeerr ◀──── (config, cluster)
 ```
 
 - Imports flow strictly left to right. `api/` and `internal/cubeerr` are
-  leaves: they import nothing from `internal/` — ever.
+  leaves: they import nothing from `internal/` — ever. Domains never import
+  each other (`internal/config` ↔ `internal/cluster` in particular).
 - One component domain = one package under `internal/`. New components add
   a package; they do not grow existing ones.
+- Driver subpackages (e.g. `internal/cluster/kind`) are the ONLY importers
+  of their backend SDK; nothing else may touch `sigs.k8s.io/kind`.
 - Factories and composition live at the CLI/orchestrator edge, never inside
   domain packages (every old import-cycle workaround traced to a factory
   importing its implementations).
@@ -43,6 +64,10 @@ make build && make test && make lint
 ```
 
 all pass AND `make generate` produces no diff. CI runs exactly these gates.
+
+`make test-e2e` (kind driver conformance against real Docker, worktree-local
+KUBECONFIG) is opt-in verification — it is never part of the green gate, and
+the gate must stay hermetic: no test in `make test` may need Docker.
 
 Size limits are enforced, not aspirational: functions <50 lines (funlen),
 files <300 lines (`make filelen`; `zz_generated*` exempt). When a gate
@@ -58,8 +83,9 @@ trips, refactor the code — never raise the limit.
   A non-nil `*Config` is always complete and valid.
 - Errors: `internal/cubeerr` is machinery only and must never grow a code
   catalog. Each domain declares its own `CUBE-<TAG>-NNN` codes in its own
-  `errors.go` (config owns `CUBE-CFG-*`). A new component picks an unused
-  tag and adds a row to the registry in the design doc §5.2.
+  `errors.go` (config owns `CUBE-CFG-*`, cluster owns `CUBE-CLU-*`). A new
+  component picks an unused tag and updates the registry table in
+  `docs/ARCHITECTURE.md` §5.
 - `ConfigSpec` grows one typed sub-struct per component, with its defaults
   and validation beside it; the loading machinery never changes.
 
@@ -70,8 +96,9 @@ trips, refactor the code — never raise the limit.
 - `context.Context` is the first parameter on anything that does I/O or can
   block.
 - Interfaces are consumer-side by default: defined where used, 1–3 methods,
-  and only once a real second consumer or implementation exists. v0 has
-  zero hand-rolled interfaces, deliberately.
+  and only once a real second consumer or implementation exists. The only
+  interfaces so far are designated driver seams (`cluster.Provisioner`) —
+  deliberately.
 - Swappable backends (cluster providers, gitops engines) use driver seams:
   the interface plus an exported `Run<Seam>Conformance(t, factory)` suite
   live in the domain package; implementations live in subpackages and each
@@ -83,21 +110,53 @@ trips, refactor the code — never raise the limit.
 - Assert on errors via `errors.As` into `*cubeerr.Coded` plus code
   equality — never string matching.
 - Runtime dependencies are a closed set (`k8s.io/apimachinery`,
-  `sigs.k8s.io/yaml`, `github.com/spf13/cobra`). Adding one requires a
-  design doc in `docs/design/`, never a plan footnote.
+  `sigs.k8s.io/yaml`, `github.com/spf13/cobra`, and `sigs.k8s.io/kind` —
+  the latter confined to `internal/cluster/kind` — see the dependency
+  table in `docs/ARCHITECTURE.md` §8). Adding one requires an
+  owner-approved `ARCHITECTURE.md` §8 update + `DECISIONS.md` entry, never
+  a plan footnote.
 
-## 6. Milestone flow
+## 6. Milestone flow (epic-driven)
 
-Scale process to the weight of the change; every milestone lands as ONE
-green PR to `main`:
+Scale process to the weight of the change. Every milestone is a GitHub
+**epic issue** (label `epic`), opened when the milestone is picked up:
 
-- Real architectural choice (new domain, new dependency, new seam, contract
-  change) → short design doc in `docs/design/` first, owner-approved.
-- Multi-task implementation → checkbox plan in `docs/plans/`.
-- Small chore/fix/docs → straight to a PR.
+1. **Design gate first** where the triggers apply (new domain, new
+   dependency, new seam, contract change): a reviewed diff to
+   `docs/ARCHITECTURE.md` / `docs/domains/<x>.md` + a `docs/DECISIONS.md`
+   entry, operator-approved before any code.
+2. **Task breakdown before work starts.** Every task becomes its own
+   issue (label `task` + relevant labels below), listed as a checklist of
+   issue refs in the epic body; each task issue says "Part of #<epic>".
+   The breakdown is aligned with the operator BEFORE work begins.
+3. **PRs stay small; a milestone may span several.** Every PR references
+   its epic ("Epic: #N") and closes the task issues it completes
+   ("Closes #M"). Each PR is green (§3) and delivered as small reviewed
+   chunks: implement one reviewable unit, run the gates, present the diff
+   for operator/coordinator review of cross-subsystem effects and rule
+   conformance, commit — never one big drop.
+4. **Scope change == issues.** Adding or dropping work mid-milestone
+   requires operator alignment, a new (or closed) task issue reflecting
+   it, and the matching doc updates in the same breath. Undeclared work
+   does not exist.
+5. **The last task of every epic, always:** "Docs & architecture
+   consistent and updated" (label `docs`) — verify ROADMAP,
+   ARCHITECTURE, domains/, DECISIONS, README, and CHANGELOG reflect
+   reality, this milestone's `docs/work/` items are deleted, and every
+   pointer resolves. The epic closes only after this issue does.
 
-Update `docs/plans/ROADMAP.md` in the same PR that completes (or reorders)
-a milestone. Never work on `main`.
+Labels in use: `epic`, `task`, `docs`, `feature` (new-capability work),
+`scope-change` (a task added after the epic's initial alignment), `bug`
+(defect found outside milestone flow), `needs-decision` (blocked on an
+operator decision), `needs-adr` (requires a DECISIONS.md entry / design
+gate before work starts), `wontfix`; `domain:<name>` labels are created
+as domains land. PR sizing: `size-s|m|l|xl` on pull requests (`size-xl`
+is a signal to split). This is the complete set — new labels require
+editing this list. Small chore/fix/docs work outside any milestone still
+goes straight to a PR without an epic.
+
+Update `/ROADMAP.md` in the PR that completes (or reorders) a milestone.
+Never work on `main`.
 
 ## 7. Cluster work (applies from the cluster milestone on)
 

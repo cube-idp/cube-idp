@@ -27,6 +27,15 @@ func TestValidate(t *testing.T) {
 		{"uppercase name", func(c *v1alpha1.Config) { c.Name = "Dev" }, "metadata.name"},
 		{"leading dash", func(c *v1alpha1.Config) { c.Name = "-dev" }, "metadata.name"},
 		{"too long", func(c *v1alpha1.Config) { c.Name = strings.Repeat("a", 32) }, "metadata.name"},
+		{"valid cluster with kind provider", func(c *v1alpha1.Config) {
+			c.Spec.Cluster = &v1alpha1.ClusterSpec{Provider: v1alpha1.ClusterProviderKind}
+		}, ""},
+		{"empty provider is defaulted before validate", func(c *v1alpha1.Config) {
+			c.Spec.Cluster = &v1alpha1.ClusterSpec{}
+		}, ""},
+		{"unknown cluster provider", func(c *v1alpha1.Config) {
+			c.Spec.Cluster = &v1alpha1.ClusterSpec{Provider: "k3d"}
+		}, "spec.cluster.provider"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -22,5 +22,10 @@ func (c *Config) Validate() field.ErrorList {
 		errs = append(errs, field.Invalid(namePath, c.Name,
 			"must match ^[a-z0-9][a-z0-9-]{0,30}$ (lowercase alphanumeric and dashes, max 31 chars)"))
 	}
+	if c.Spec.Cluster != nil && c.Spec.Cluster.Provider != ClusterProviderKind {
+		errs = append(errs, field.NotSupported(
+			field.NewPath("spec", "cluster", "provider"),
+			string(c.Spec.Cluster.Provider), []string{string(ClusterProviderKind)}))
+	}
 	return errs
 }
