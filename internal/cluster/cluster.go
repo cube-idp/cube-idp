@@ -17,8 +17,9 @@ type Spec struct {
 	ForProvider *runtime.RawExtension // provider-specific config, opaque here
 }
 
-// Provisioner is the driver seam for cluster backends (design §4).
-// Implementations must satisfy RunClusterConformance.
+// Provisioner is the driver seam for swappable cluster backends.
+// Implementations live in subpackages and must satisfy
+// RunClusterConformance.
 type Provisioner interface {
 	// Ensure creates the cluster if absent; no-op if it exists.
 	// Idempotent by name: it does not diff a live cluster against Spec.

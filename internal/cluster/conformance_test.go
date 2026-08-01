@@ -7,7 +7,7 @@ import (
 )
 
 // fakeProvisioner is the hand-rolled stateful reference implementation:
-// it proves the conformance suite itself, Docker-free (design §7).
+// it proves the conformance suite itself without needing Docker.
 type fakeProvisioner struct {
 	clusters map[string]bool
 }

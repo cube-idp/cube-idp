@@ -49,7 +49,8 @@ type contextBody struct {
 }
 
 // Rebrand renames a single-cluster, provider-native kubeconfig to
-// contextName and stamps the context namespace when non-empty (design §4).
+// contextName and stamps the context namespace when non-empty, so kubectl
+// and clientcmd-based clients pick up the cube-owned identity.
 func Rebrand(raw []byte, contextName, namespace string) ([]byte, error) {
 	var kc kubeconfig
 	if err := yaml.Unmarshal(raw, &kc); err != nil {

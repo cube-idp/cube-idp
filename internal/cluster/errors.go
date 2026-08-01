@@ -6,8 +6,10 @@ import (
 	"github.com/cube-idp/cube-idp/internal/cubeerr"
 )
 
-// The cluster domain owns the CUBE-CLU-* code range (design §6); the
-// human-readable registry row lives in the design docs.
+// The cluster domain owns the CUBE-CLU-* code range. Codes are declared
+// here and nowhere else; the cross-domain tag registry lives in
+// docs/ARCHITECTURE.md. Constructors are exported because driver
+// subpackages and the CLI edge raise these errors.
 const (
 	CodeNoClusterConfigured cubeerr.Code = "CUBE-CLU-001"
 	CodeUnsupportedProvider cubeerr.Code = "CUBE-CLU-002"

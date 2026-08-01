@@ -8,7 +8,9 @@ import (
 )
 
 // RunClusterConformance asserts the behavioral contract every Provisioner
-// must satisfy (design §7). Drivers run it from their own test packages.
+// must satisfy: absent→ensure→exists round-trip, idempotent Ensure and
+// Delete, and a parseable kubeconfig only while the cluster exists.
+// Drivers run it from their own test packages.
 func RunClusterConformance(t *testing.T, factory func() Provisioner) {
 	t.Helper()
 	const name = "cube-conformance"

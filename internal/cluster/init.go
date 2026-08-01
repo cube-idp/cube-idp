@@ -7,9 +7,10 @@ import (
 	"path/filepath"
 )
 
-// InitOptions parameterizes Init. Namespace is a method-level option by
-// design (no spec surface): today the CLI passes it empty; future flows
-// set it programmatically (design §1 decision 6).
+// InitOptions parameterizes Init. Namespace deliberately has no config
+// counterpart: a cube spans many namespaces, so a single spec-level
+// default would misdirect resources. Callers that know the target
+// namespace pass it here; empty omits it from the generated context.
 type InitOptions struct {
 	Spec        Spec
 	ContextName string // "" → ContextName(Spec.Name)

@@ -7,8 +7,8 @@ import (
 )
 
 // The config domain owns the CUBE-CFG-* code range. Codes are declared
-// here and nowhere else; the human-readable registry lives in
-// docs/design/2026-07-27-back-to-basics-structure.md §5.2.
+// here and nowhere else; the cross-domain tag registry lives in
+// docs/ARCHITECTURE.md.
 const (
 	CodeUnsupportedAPIVersion cubeerr.Code = "CUBE-CFG-001"
 	CodeUnknownField          cubeerr.Code = "CUBE-CFG-002"

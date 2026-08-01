@@ -11,8 +11,9 @@ import (
 	"github.com/cube-idp/cube-idp/internal/config"
 )
 
-// newProvisioner maps a validated provider to its driver. Factories live
-// at the CLI edge (design §2); a var so tests inject a mock seam.
+// newProvisioner maps a validated provider to its driver. Driver
+// selection stays out of domain packages to keep them import-cycle-free;
+// a var so tests inject a mock seam.
 var newProvisioner = func(p v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
 	switch p {
 	case v1alpha1.ClusterProviderKind:

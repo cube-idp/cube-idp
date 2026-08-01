@@ -1,6 +1,7 @@
 // Package kind implements the cluster.Provisioner driver seam with kind
 // (Kubernetes-in-Docker), driven as a Go library. It is the ONLY package
-// allowed to import sigs.k8s.io/kind (design §8).
+// allowed to import sigs.k8s.io/kind, keeping the heavy SDK out of every
+// other build path.
 package kind
 
 import (
@@ -35,7 +36,8 @@ func New() (*Provider, error) {
 }
 
 // Ensure creates the cluster if absent. Idempotency is by name only —
-// it never diffs a live cluster against the spec (design §5).
+// an existing cluster is never diffed against the spec, so config
+// changes require delete + re-init.
 func (p *Provider) Ensure(ctx context.Context, s cluster.Spec) error {
 	exists, err := p.Exists(ctx, s.Name)
 	if err != nil {
