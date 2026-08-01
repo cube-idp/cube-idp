@@ -627,7 +627,8 @@ substitution call (§2.6), externalManifests lifecycle naming (§2.7, after
 the clarify items resolve), dependsOn resolution rules (§2.8), the
 CUBE-PKG catalog, and the dependency adoptions this milestone makes
 (`cuelang.org/go`, kustomize libs).
-Deliverable: approved doc in `docs/design/`.
+Deliverable: owner-approved design per the doc map — `docs/domains/pack.md`
+(new domain file) + a `docs/DECISIONS.md` entry.
 Dependencies: answers to the final open-questions list.
 **Gate: this IS the design-doc gate for CUE + kustomize; per-backend
 fetch SDKs and helm get their own later gates.**
