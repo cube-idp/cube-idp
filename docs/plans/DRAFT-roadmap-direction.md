@@ -1,6 +1,10 @@
 # DRAFT — Roadmap direction (for owner review)
 
-Status: **proposal, not binding**. Nothing here reorders `ROADMAP.md`; that
+Status: **decided through M5, directional after** (owner, 2026-08-01): the
+roadmap commits to M4 (init bootstrap) and M5 (cluster lifecycle
+completion); M6 onward is the *default* continuation, kept as optional
+paths to re-evaluate after M5 based on how development goes. Nothing here
+reorders `ROADMAP.md` itself; that
 happens only in the PR that completes or reorders a milestone. Inputs: the
 old codebase at `9a1edd9` (~20.4k LOC, 33 internal packages, 45 ADRs), the
 back-to-basics design (`docs/design/2026-07-27-back-to-basics-structure.md`),
@@ -40,7 +44,7 @@ Verdict on the old capabilities:
 | 27-file UI subsystem (4 render backends) | Disproportionate; plain output + `-o json` later is enough for now. |
 | Cycle-breaker packages (`cfgload`, `refval`, factories, aliases) | Pure rot — structural tax from factories importing implementations. The greenfield rules exist to prevent recurrence. |
 
-## 2. Proposed milestone sequence (M4–M11)
+## 2. Milestone sequence — committed to M5, optional after
 
 Each milestone: one green PR, one new `internal/<domain>` package at most,
 one `ConfigSpec` sub-struct per component, design doc first where a new
@@ -50,6 +54,10 @@ its consumers land** — pack is the spine every later domain consumes
 (engine ships as a pack, registry pushes packs, the orchestrator sequences
 packs), so consumers conform to the pack contract, not the reverse. §3
 records the alternative orderings considered.
+
+**Committed (goes to `ROADMAP.md`): M4 and M5.** Everything from M6 on is
+the default path, not a commitment — re-evaluated after M5 lands, against
+what development has taught us; the §3 alternatives stay open until then.
 
 **M4 — init bootstrap** *(already queued; keep as-is).* When the config file
 is absent, `init` scaffolds it (`--name` or generated docker-style name) and
@@ -70,6 +78,8 @@ whatever of the kubeconfig-cleanup contract belongs with them. Rationale
 user-visible, and `delete` exists before later milestones install software
 worth tearing down. Likely no design doc needed — the contracts are already
 recorded in §9; a checkbox plan suffices unless scope grows.
+
+### Optional default path from here on (re-evaluate after M5)
 
 **M6 — kube: client access.** New leaf domain `internal/kube`
 (`CUBE-KUB-*`): construct a client from injected kubeconfig bytes (per the
@@ -183,8 +193,9 @@ exists before anything installs software worth tearing down. *Weakness:*
 the core loop arrives one or two milestones later, and `delete` at this
 stage only removes a kind cluster — cheap but thin.
 
-**Decision (owner, 2026-07-31): C's cluster-completion first, then the A
-ladder with pack made solid before its consumers** — the §2 sequence
+**Decision (owner, 2026-07-31, scoped 2026-08-01): C's cluster-completion
+first — committed through M5; then, as the default rather than a
+commitment, the A ladder with pack made solid before its consumers** — the §2 sequence
 (`cluster-complete → kube → apply → pack → engine → registry →
 orchestrator`). Reasoning: pack is used everywhere — engine, registry, and
 orchestrator all consume it — so it must be the stable spine consumers
@@ -248,5 +259,5 @@ one small green PR; the only hard constraint is the import direction
    and M8b (install + e2e)? The contract work is the heavy part either way.
 
 ---
-*Draft prepared 2026-07-29, revised 2026-07-31 on branch `RafPe/roadmap-direction`; no other
+*Draft prepared 2026-07-29, revised 2026-07-31 and 2026-08-01 on branch `RafPe/roadmap-direction`; no other
 files touched.*
