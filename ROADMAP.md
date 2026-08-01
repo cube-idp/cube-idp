@@ -1,8 +1,9 @@
 # cube-idp roadmap
 
-Small milestones; every milestone lands as one green PR to `main`
-(flow: CLAUDE.md §6). This file is the queue — update it in the PR that
-completes or reorders a milestone.
+Small milestones; each milestone runs as a GitHub epic issue with
+operator-aligned task issues, delivered through small green PRs that
+reference the epic (flow: CLAUDE.md §6). This file is the queue — update
+it in the PR that completes or reorders a milestone.
 
 ## Done
 

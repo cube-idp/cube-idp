@@ -116,26 +116,42 @@ trips, refactor the code — never raise the limit.
   owner-approved `ARCHITECTURE.md` §8 update + `DECISIONS.md` entry, never
   a plan footnote.
 
-## 6. Milestone flow
+## 6. Milestone flow (epic-driven)
 
-Scale process to the weight of the change; every milestone lands as ONE
-green PR to `main`:
+Scale process to the weight of the change. Every milestone is a GitHub
+**epic issue** (label `epic`), opened when the milestone is picked up:
 
-- Real architectural choice (new domain, new dependency, new seam, contract
-  change) → owner-approved design first: a reviewed diff to
-  `docs/ARCHITECTURE.md` / `docs/domains/<x>.md` + a `docs/DECISIONS.md`
-  entry.
-- Multi-task implementation → checkbox plan in `docs/work/`, deleted in
-  the milestone's closing PR.
-- Small chore/fix/docs → straight to a PR.
+1. **Design gate first** where the triggers apply (new domain, new
+   dependency, new seam, contract change): a reviewed diff to
+   `docs/ARCHITECTURE.md` / `docs/domains/<x>.md` + a `docs/DECISIONS.md`
+   entry, operator-approved before any code.
+2. **Task breakdown before work starts.** Every task becomes its own
+   issue (label `task` + relevant labels below), listed as a checklist of
+   issue refs in the epic body; each task issue says "Part of #<epic>".
+   The breakdown is aligned with the operator BEFORE work begins.
+3. **PRs stay small; a milestone may span several.** Every PR references
+   its epic ("Epic: #N") and closes the task issues it completes
+   ("Closes #M"). Each PR is green (§3) and delivered as small reviewed
+   chunks: implement one reviewable unit, run the gates, present the diff
+   for operator/coordinator review of cross-subsystem effects and rule
+   conformance, commit — never one big drop.
+4. **Scope change == issues.** Adding or dropping work mid-milestone
+   requires operator alignment, a new (or closed) task issue reflecting
+   it, and the matching doc updates in the same breath. Undeclared work
+   does not exist.
+5. **The last task of every epic, always:** "Docs & architecture
+   consistent and updated" (label `docs`) — verify ROADMAP,
+   ARCHITECTURE, domains/, DECISIONS, README, and CHANGELOG reflect
+   reality, this milestone's `docs/work/` items are deleted, and every
+   pointer resolves. The epic closes only after this issue does.
 
-Deliver milestones as small sequential chunks: implement one reviewable
-unit, run the gates, present the diff for owner/coordinator review of
-cross-subsystem effects and rule conformance, commit, then start the next
-chunk — never one big drop.
+Labels in use: `epic`, `task`, `docs`, `scope-change` (a task added after
+the epic's initial alignment), `wontfix`; `domain:<name>` labels are
+created as domains land. Small chore/fix/docs work outside any milestone
+still goes straight to a PR without an epic.
 
-Update `/ROADMAP.md` in the same PR that completes (or reorders) a
-milestone. Never work on `main`.
+Update `/ROADMAP.md` in the PR that completes (or reorders) a milestone.
+Never work on `main`.
 
 ## 7. Cluster work (applies from the cluster milestone on)
 

@@ -56,6 +56,17 @@ packs), `values`/`valuesRef`, `externalManifests` with lifecycle grouping,
 `dependsOn[]` by uuid-or-name, and a scaffold command (stub-first).
 Groundwork: `docs/work/pack-groundwork.md`.
 
+**2026-08-01 — Epic-driven milestone flow.** Supersedes "one green PR per
+milestone": each milestone is a GitHub epic issue; tasks are individual
+issues aligned with the operator BEFORE work starts and ticked off as PRs
+close them; a milestone may span several small green PRs, each
+referencing the epic. Scope change mid-milestone = new/closed task issues
++ operator alignment + doc updates, never silent. Every epic's final task
+is "Docs & architecture consistent and updated" — the epic cannot close
+before it. Labels: `epic`, `task`, `docs`, `scope-change`, `wontfix`,
+`domain:<name>` as domains land. Pre-reset issues were closed wontfix the
+same day (the tracker restarts with this flow).
+
 **2026-08-01 — Documentation system reset.** ROADMAP moved to repo root;
 all dated/pre-reset docs frozen under `docs/archived/`. Living set:
 `docs/ARCHITECTURE.md` (cross-cutting, updated in place),
