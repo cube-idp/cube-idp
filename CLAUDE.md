@@ -145,12 +145,15 @@ Scale process to the weight of the change. Every milestone is a GitHub
    reality, this milestone's `docs/work/` items are deleted, and every
    pointer resolves. The epic closes only after this issue does.
 
-Labels in use: `epic`, `task`, `docs`, `scope-change` (a task added after
-the epic's initial alignment), `bug` (defect found outside milestone
-flow), `needs-decision` (blocked on an operator decision), `wontfix`;
-`domain:<name>` labels are created as domains land. This is the complete
-set — new labels require editing this list. Small chore/fix/docs work
-outside any milestone still goes straight to a PR without an epic.
+Labels in use: `epic`, `task`, `docs`, `feature` (new-capability work),
+`scope-change` (a task added after the epic's initial alignment), `bug`
+(defect found outside milestone flow), `needs-decision` (blocked on an
+operator decision), `needs-adr` (requires a DECISIONS.md entry / design
+gate before work starts), `wontfix`; `domain:<name>` labels are created
+as domains land. PR sizing: `size-s|m|l|xl` on pull requests (`size-xl`
+is a signal to split). This is the complete set — new labels require
+editing this list. Small chore/fix/docs work outside any milestone still
+goes straight to a PR without an epic.
 
 Update `/ROADMAP.md` in the PR that completes (or reorders) a milestone.
 Never work on `main`.
