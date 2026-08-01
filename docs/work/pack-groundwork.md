@@ -160,8 +160,12 @@ several decisions hang on how v1 *actually* behaved:
   them; invalid YAML was CUBE-4017; a pack with non-empty values or
   extraManifests was marked CUSTOMIZED on its Pack record. v1 had exactly
   one lifecycle position ("with the pack, appended after") and no remote
-  refs. The new `externalManifests` (§2.7) generalizes this to
-  resolver-fetched refs with explicit lifecycle groups.
+  refs — the inline channel was its ONLY channel, carried as one opaque
+  string, and ADR-0004's own cons list records the cost ("mistakes
+  surface only as a parse error rather than schema-level feedback"). The
+  new `externalManifests` (§2.7) keeps both lessons: lifecycle groups fed
+  by resolver-fetched refs AND inline manifests — the latter typed
+  objects, not a string.
 - **The ref grammar and its triplication** (`source.go` `Fetch`,
   `fetchfile.go` `FetchFile`, `resolve.go` `ResolveRemote`): accepted
   forms were a local directory path, `oci://host/repo:tag|@digest`,
@@ -169,7 +173,11 @@ several decisions hang on how v1 *actually* behaved:
   forms (`git::…`, `s3::…`, `http(s)://…`); pins were `oci:<digest>`,
   `git+<sha>`, `dir:<dirhash>`, `file:<sha256>`. Each of the three
   functions re-implemented the same scheme switch. One resolver replaces
-  all three (§2.1).
+  all three (§2.1). And ref resolution was never pack-only: `FetchFile`'s
+  own doc comment names `spec.cluster.providerConfigRef` and remote `-f`
+  (a cube.yaml fetched by ref) as consumers alongside
+  `packs[].valuesRef` — the cross-domain evidence behind the §2.1
+  placement call.
 - **ADR-0007's identity guard is a NAME check.** `VerifyEnginePackRef`
   rejected a fetched pack whose declared `pack.cue` name ≠
   `cube-engine-<type>` (CUBE-0013) before any mutation. Relevant to the
@@ -188,12 +196,12 @@ several decisions hang on how v1 *actually* behaved:
 | --- | --- |
 | 1 | **CUE stays.** `pack.cue` IS the metadata language; the `#Values` lockdown/expose/default mechanism (§1.6) carries forward. The old Fork-1/Q2 is answered. |
 | 2 | **A scaffolding command exists** for pack boilerplate; may land early as a coded not-implemented stub with a `#todo` marker. Naming proposal in §2.9. |
-| 3 | **The pack CR entry carries `packRef`** — the pack source, one of the supported backends (local dir, https, git, oci, s3, …). ONE resolver serves `packRef`, `valuesRef`, and `externalManifests` refs. |
+| 3 | **The pack CR entry carries `packRef`** — the pack source, one of the supported backends (local dir, https, git, oci, s3, …). ONE resolver serves `packRef`, `valuesRef`, and `externalManifests` refs. Owner follow-up 2026-08-01: the resolver is shared infrastructure beyond pack (v1's `FetchFile` already served cluster's `providerConfigRef` and remote `-f`) — placement assessed in the bigger picture in §2.1; lean: an `internal/ref` leaf package, so future consumers never face a sideways import. |
 | 4 | **`pack.cue` default field set:** `name`; `namespace` (optional — only to force everything into one namespace); `type: raw\|helm\|kustomize` (explicit — kills the v1 silent-takeover cliff); `uuid` (so two differently-customized copies of one pack can coexist). |
-| 4a | **`category` field, in the CR too:** restricted spellings `gateway` and `engine` (at minimum), anything else free-form. Identification metadata only — never behavior (see #9). |
+| 4a | **`category` field, in the CR too:** restricted spellings `gateway` and `engine` (at minimum), anything else free-form. Identification metadata only — never behavior (see #9). Enforcement decided (owner, 2026-08-01): reserved spelling only, no uniqueness rule; the spellings are intended to feed later *validation* (§2.5). |
 | 5 | **`pack render` stays as previously proposed** (pure, fs.FS, stdout multi-doc, client-side dry-run). |
-| 6 | **Values: inline `values` AND `valuesRef`** (remote ref to a values file) — helm and kustomize types only; kustomize semantics assessed in §2.6. |
-| 7 | **`externalManifests` returns:** extra manifests with lifecycle relative to the pack's rendered output; each lifecycle group joins into ONE YAML document; groups apply either BEFORE or WITH the pack; no fine-grained ordering inside a group. Naming proposal + one flagged ambiguity in §2.7. |
+| 6 | **Values: inline `values` AND `valuesRef`** (remote ref to a values file) — helm and kustomize types only. Kustomize semantics decided (owner, 2026-08-01): post-build `${VAR}` substitution, Flux-postBuild-style, schema'd by `#Values` (§2.6). |
+| 7 | **`externalManifests` returns:** extra manifests with lifecycle relative to the pack's rendered output; each lifecycle group joins into ONE YAML document; no fine-grained ordering inside a group. Entries carry a remote `ref` OR an inline manifest under key `manifest` (v1's inline channel returns — reassessed shape proposal in §2.7). Lifecycle set decided (owner, 2026-08-01): `pre \| with`, no `post` group (§2.7). |
 | 8 | **`dependsOn[]` is in-contract from day one:** entries accept the uuid OR the name of any pack in the setup. Resolution rules + error cases in §2.8. |
 | 9 | **Engine and gateway are NOT special:** ordinary packs, rendered and deployed like any other. No implicit depgraph edges, no special-cased code paths. `category` identifies them; it never changes behavior. |
 | — | **Helm implication:** `type: helm` is in the contract from day one, but helm *rendering* stays excluded from the first pack milestones — render/install on a helm pack return a coded not-implemented error until the helm milestone lands (same stub pattern as the scaffold command). |
@@ -220,7 +228,7 @@ seam either** (owner asked for an honest assessment; here it is):
 | One behavioral contract a conformance suite asserts | **Partially genuine**: "resolve ref → dir/bytes + stable pin, idempotent, symlink-safe" is a real shared contract — but it needs a shared *test helper*, not an exported interface |
 
 **Recommendation: a closed set of concrete functions behind ONE exported
-entry point.** `internal/pack/ref` (name illustrative) exports
+entry point.** The resolver exports
 `Resolve(ctx, ref, opts) (Resolved, error)` where `Resolved` carries a
 directory (packRef mode) or a single document's bytes (valuesRef /
 externalManifests mode) plus the pin. Inside: one unexported
@@ -235,6 +243,31 @@ oci → `oras-go/v2` (aligned with the M10 registry milestone's choice),
 s3 → an AWS SDK (demand-driven; the old forked-go-getter/AWS-SDK drag is
 exactly what the closed dependency set exists to prevent). Local dir and
 https need stdlib only and come first.
+
+**Placement — assessed in the bigger picture (owner follow-up,
+2026-08-01): the resolver is NOT pack-private, so it must not live inside
+`internal/pack`.** The v1 evidence is direct (§1.6): `FetchFile`'s own
+doc comment names `spec.cluster.providerConfigRef` and remote `-f` (the
+cube.yaml itself fetched by ref) as consumers alongside
+`packs[].valuesRef` — ref resolution served three domains even in the old
+tree, and future cluster/provider-side ref fields (a `providerConfigRef`
+analog, a provider `valuesRef`) would need it again. Parking it under
+pack would leave every such consumer exactly three bad options: import
+`internal/pack` sideways (banned — domains never import each other),
+re-implement (the §1.2 triplication reborn *across* domains instead of
+within one), or have the CLI edge inject pack's resolver (workable, but
+it makes pack the accidental home of shared infrastructure — precisely
+the `authclient`/`IsLocalRegistryHost` misplacement class this rework
+exists to prevent). **Recommendation: `internal/ref`, a shared LEAF
+package** — the same pattern the roadmap already uses for `internal/kube`
+(a leaf consumed by later domains): it imports only `cubeerr` and its
+per-backend SDKs (never `api/` or any domain), pack imports it today, and
+cluster / the CLI `-f` edge / registry import the same leaf when they
+grow ref fields — the import direction stays acyclic by construction. It
+owns its own error catalog under a new tag, `CUBE-REF-*` (`REF` is unused
+in the tag registry; adding the row is part of the T1 design event per
+the doc map). Consumers wrap its errors with their own context per the
+`%w` rule; exit code stays 1.
 
 **The one genuine interface: a Kind-A consumer-side applier seam, arriving
 with `pack install`** — unchanged. Pack must not import `internal/apply`
@@ -252,8 +285,22 @@ func Install(ctx context.Context, a Applier, opts InstallOptions) error
 
 The CLI edge constructs the M7 apply implementation and injects it —
 mirror image of `cluster.Init(ctx, p Provisioner, opts)`. Hand-rolled
-function-field mock in tests. (Exact method shape — does it return applied
-objects for inventory? — remains an M7/M8 design-doc alignment point.)
+function-field mock in tests. **Method shape (owner-decided 2026-08-01):
+error-only — `Apply` does NOT return the applied object set.** Rationale:
+inventory is the apply domain's own responsibility (one audited recording
+path inside the M7 implementation, instead of bookkeeping every apply
+consumer must remember); SSA applies exactly the set it is handed, so a
+return adds no information pack needs; and the narrowest seam keeps the
+mock trivial, widened later only if a real consumer arrives (doctrine:
+narrow over time, never widen casually). Ownership flows *down*, not
+back up: pack stamps identity labels (pack name + effective uuid) on the
+objects it hands to `Apply`, and the M7 inventory records what it sees —
+`down`/`diff` later read M7's inventory, never pack. Whether stamping
+happens at render or just before apply (keeping `pack render` stdout
+pristine) is a design-doc detail. Dry-run is construction-time
+configuration of the M7 applier at the CLI edge, not a seam method. The
+M7 design doc must adopt the inventory-inside-Apply contract — that is
+the one obligation this decision exports.
 The `externalManifests` `pre` lifecycle group (§2.7) rides the same seam:
 an ordered sequence of `Apply` calls, no new interface.
 
@@ -270,12 +317,14 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config  ──▶ api/con
                       │      ├──▶ internal/cluster ──▶ api/config/v1alpha1
                       │      ├──▶ internal/pack ─────▶ api/config/v1alpha1
                       │      │        │ (imports api + cubeerr + apimachinery/yaml
-                      │      │        │  + cuelang.org/go; kustomize + heavy fetch
-                      │      │        │  SDKs confined per §2.1/ADR-0022)
-                      │      │        └── pack/ref (resolver; per-backend files)
+                      │      │        │  + cuelang.org/go; kustomize confined
+                      │      │        │  per §2.1/ADR-0022)
+                      │      │        └──▶ internal/ref  (shared LEAF resolver, §2.1:
+                      │      │               imports cubeerr + per-backend SDKs only;
+                      │      │               future consumers: cluster, cli -f, registry)
                       │      ├──▶ internal/apply (M7) — pack NEVER imports it;
                       │      │        cli passes apply's concrete type into pack.Install
-                      └──────┴──▶ internal/cubeerr ◀── (config, cluster, pack)
+                      └──────┴──▶ internal/cubeerr ◀── (config, cluster, pack, ref)
 ```
 
 Hard rules restated for pack: never sideways into `cluster`, `kube`, or
@@ -294,8 +343,15 @@ internal/pack/
 ├── install.go     # Applier seam + Install(); externalManifests lifecycle
 ├── new.go         # scaffold (stub first, then real)
 ├── errors.go      # CUBE-PKG-* catalog
-├── ref/           # resolver: resolve.go + one file per backend + stubs
 └── *_test.go      # table-driven; fstest.MapFS fixtures
+
+internal/ref/      # shared leaf resolver (§2.1 placement) — NOT under pack
+├── resolve.go     # Resolve(): grammar, scheme table, dir/single-doc modes, pins
+├── local.go       # local-dir backend (stdlib)
+├── https.go       # https backend (stdlib)
+├── stub.go        # git/oci/s3 not-implemented stubs (replaced by T14–T16)
+├── errors.go      # CUBE-REF-* catalog (new tag registry row, T1)
+└── *_test.go      # shared per-backend invariant helper + tables
 ```
 
 **`spec.packs` — the pack CR entry (owner-decided 2026-08-01: this shape
@@ -330,9 +386,11 @@ type PackSpec struct {
     DependsOn []string `json:"dependsOn,omitempty"`
 }
 
+// ExternalManifest is one entry: exactly ONE of Ref / Manifest (§2.7).
 type ExternalManifest struct {
-    Ref       string `json:"ref"`       // same resolver, single-document mode
-    Lifecycle string `json:"lifecycle"` // §2.7 naming proposal
+    Ref       string                `json:"ref,omitempty"`      // same resolver, single-document mode
+    Manifest  *runtime.RawExtension `json:"manifest,omitempty"` // one inline Kubernetes object
+    Lifecycle string                `json:"lifecycle"`          // §2.7 naming proposal
 }
 ```
 
@@ -407,7 +465,8 @@ Interplay findings the design doc must carry:
    optionally overrides the pack.cue uuid for that instance, and
    validation requires the *effective* uuid to be unique across the setup
    (duplicate ⇒ coded error). Listing one packRef twice without distinct
-   uuid overrides is exactly that error.
+   uuid overrides is exactly that error. **Owner-confirmed 2026-08-01:
+   the uuid override IS the answer to same-ref-twice instance identity.**
 4. **Fork workflow.** Copying a pack directory to customize its contents
    creates a new artifact ⇒ new uuid. The blessed path is the scaffold
    (`pack new --from <ref>`: copy + fresh uuid, a real-scaffold-task
@@ -431,10 +490,13 @@ category-keyed dispatch anywhere in `internal/pack`. A grep for
 `category` in the domain should only ever hit parsing, validation, and
 plumbing-through.
 
-What "restricted" enforces beyond spelling (e.g. at-most-one `gateway`
-per setup?) is a genuinely-open question (final list) — uniqueness would
-still be identification (validation), not behavior, so either answer
-stays inside decision #9.
+**Enforcement (owner-decided 2026-08-01): reserved spelling only** — no
+uniqueness rule; two packs may both claim `gateway`. Owner note recorded
+for the design doc: the reserved spellings are intended to feed later
+*validation* — checks keyed to what a pack identifies as (e.g. expecting
+a `gateway`-categorized pack to satisfy gateway-shaped expectations).
+That is still identification/validation, never behavior, so decision #9
+holds unchanged.
 
 ### 2.6 Values: inline + valuesRef; the kustomize assessment (requirement #6)
 
@@ -466,48 +528,92 @@ Type-specific application of the validated map:
   the substitution variables. Alternatives considered and rejected:
   values-as-strategic-merge-patch (duplicates what overlays already do,
   invites structural drift) and configmap-generator injection (only
-  reaches workloads that mount it). **Recommendation: valuesRef/values
-  DO make sense for kustomize, with post-build substitution as the
-  defined semantic** — final call in the design doc (kept on the open
-  list since decision #6 said "assess", not "decided").
+  reaches workloads that mount it). **Owner-decided 2026-08-01: the
+  recommendation is accepted** — valuesRef/values apply to kustomize
+  packs with post-build `${VAR}` substitution as the defined semantic,
+  schema'd (locked down and defaulted) by `#Values`.
 
-### 2.7 externalManifests: lifecycle groups (requirement #7)
+### 2.7 externalManifests: lifecycle groups, ref or inline (requirement #7)
 
-v1 prior art (§1.6): inline YAML string, appended after the pack's
-objects, one implicit lifecycle position. The return generalizes it:
+v1 prior art (§1.6): the ONLY channel was inline — one opaque multi-doc
+YAML string under `extraManifests`, appended after the pack's objects,
+one implicit lifecycle position. The return generalizes both axes:
+**where** the manifests come from (a remote `ref` OR an inline manifest
+under key `manifest` — the v1 inline channel, reassessed below) and
+**when** they apply (explicit lifecycle groups). A full entry in the new
+setup:
 
 ```yaml
-externalManifests:
-  - ref: https://example.com/crds.yaml     # shared resolver, single-doc mode
-    lifecycle: pre
-  - ref: oci://registry/extras:1.0
-    lifecycle: with                        # v1's position, now explicit
+spec:
+  packs:
+    - packRef: oci://registry/monitoring:2.1.0
+      externalManifests:
+        # remote: shared resolver, single-document mode
+        - ref: https://example.com/crds.yaml
+          lifecycle: pre
+        # inline: one typed Kubernetes object per entry — real YAML,
+        # not a string block; schema feedback at load time
+        - manifest:
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: monitoring
+          lifecycle: pre
+        - manifest:
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: extra-dashboards
+              namespace: monitoring
+            data:
+              custom.json: "{...}"
+          lifecycle: with                  # v1's position, now explicit
+        - ref: oci://registry/extras:1.0
+          lifecycle: with
 ```
 
+**Inline-shape reassessment (owner follow-up, 2026-08-01).** The v1
+inline channel returns, but not in its v1 shape. v1 carried the objects
+as one unstructured string, and ADR-0004's own cons list names the price:
+mistakes surfaced only as a parse error (CUBE-4017), never as
+schema-level feedback. The reassessed proposal: **`manifest` holds
+exactly ONE Kubernetes object as a typed embedded value**
+(`runtime.RawExtension` in the Go types — the same mechanism
+`spec.cluster.forProvider` already uses, so the precedent is in-house),
+authored as real nested YAML rather than an escaped `|` block. Several
+inline objects = several entries, each with its own lifecycle — which is
+what makes per-object lifecycle assignment expressible at all (the v1
+string bound every object to one implicit position). Load-time
+validation checks each entry is exactly one of `ref`/`manifest` and that
+an inline object carries `apiVersion` + `kind`; the multi-doc-string
+alternative (v1 continuity) was considered and rejected for exactly the
+ADR-0004 cons. Inline entries never touch the resolver and need no pin —
+the config document itself is their provenance.
+
 Owner-sketched semantics, integrated: entries are grouped by lifecycle;
-each group's fetched documents are **joined into ONE multi-doc YAML
-document** (join order = declared order, purely for reproducible output —
-no ordering *semantics* inside a group); the `pre` group is applied before
-the pack, the `with` group is appended to the pack's rendered output and
-applied with it (exactly where v1 put extraManifests). Application rides
-the §2.1 Applier seam — `pre` is simply an earlier `Apply` call; whether
-`pre` waits for readiness before the pack applies is an M7-alignment
-detail for the design doc (lean: yes — that is the ADR-0045 SSA-with-wait
-shape, and it is what makes `pre` mean something).
+each group's documents — fetched and inline alike — are **joined into ONE
+multi-doc YAML document** (join order = declared order, purely for
+reproducible output — no ordering *semantics* inside a group); the `pre`
+group is applied before the pack, the `with` group is appended to the
+pack's rendered output and applied with it (exactly where v1 put
+extraManifests). Application rides the §2.1 Applier seam — `pre` is
+simply an earlier `Apply` call; whether `pre` waits for readiness before
+the pack applies is an M7-alignment detail for the design doc (lean: yes
+— that is the ADR-0045 SSA-with-wait shape, and it is what makes `pre`
+mean something).
 
-**Proposed lifecycle naming: `pre | with`.** Short, self-explaining
-relative to the pack ("before the pack" / "with the pack"), and leaves
-`post` available. **Flagged ambiguity (clarify item):** the owner sketch
-wrote both "before & post apply" and "applied either BEFORE or WITH the
-pack" — these disagree on whether a third, after-the-pack group exists.
-The `pre|with` proposal implements the second phrasing; if `post` is
-wanted, it slots into the same design (one more group, applied after the
-pack's objects) at near-zero structural cost. On the final open list.
+**Lifecycle set (owner-decided 2026-08-01): `pre | with` — exactly two
+groups, no `post`.** Short, self-explaining relative to the pack
+("before the pack" / "with the pack"). The earlier wording ambiguity
+("before & post apply" vs "before or with the pack") is resolved in
+favor of the two-group model; if an after-the-pack group is ever wanted,
+it slots into the same design (one more group) at near-zero structural
+cost — but that would be its own recorded decision.
 
-Fetched external manifests are parsed and validated like any rendered
-output (a group yielding zero objects is an error, same as a pack);
-render-time visibility (`pack render` printing them, marked by group) is
-a design-doc detail worth having.
+External manifests — fetched and inline — are parsed and validated like
+any rendered output (a group yielding zero objects is an error, same as
+a pack); render-time visibility (`pack render` printing them, marked by
+group) is a design-doc detail worth having.
 
 ### 2.8 dependsOn: in-contract, uuid-or-name resolution (requirement #8)
 
@@ -592,15 +698,22 @@ $ echo $?
 | `CUBE-PKG-005` | kustomize build failed |
 | `CUBE-PKG-006` | pack (or externalManifests group) rendered zero objects |
 | `CUBE-PKG-007` | install/apply failed (wrapped) |
-| `CUBE-PKG-008` | not implemented in this build (helm render, scaffold, unimplemented ref backend — the stub code; message names the feature and its milestone) |
-| `CUBE-PKG-009` | invalid or unsupported ref (grammar error / unknown scheme) |
-| `CUBE-PKG-010` | ref fetch failed (wrapped backend cause) |
+| `CUBE-PKG-008` | not implemented in this build (helm render, scaffold — the stub code; message names the feature and its milestone) |
 | `CUBE-PKG-011` | values/valuesRef on a `type: raw` pack |
 | `CUBE-PKG-012` | values rejected by `#Values` (lockdown/validation failure) |
 | `CUBE-PKG-013` | dependsOn: unknown reference |
 | `CUBE-PKG-014` | dependsOn: ambiguous name (remediation: use uuid) |
 | `CUBE-PKG-015` | dependsOn: cycle / self-dependency |
 | `CUBE-PKG-016` | duplicate effective uuid in the setup |
+| `CUBE-PKG-017` | invalid externalManifests entry (both or neither of `ref`/`manifest`; inline object missing apiVersion/kind) |
+
+Ref-resolution errors leave the pack catalog with the resolver (§2.1
+placement): `internal/ref` owns `CUBE-REF-*` — invalid/unsupported ref
+(grammar error / unknown scheme), fetch failed (wrapped backend cause),
+and backend not implemented (the resolver's own stub code, replacing the
+former PKG-009/010 rows). Pack — and any future consumer — wraps them
+with its own context per the `%w` rule; the tag registry gains the `REF`
+row in T1.
 
 Kustomize dependency (`sigs.k8s.io/kustomize/api` + `kyaml`) remains a
 design-doc-gated adoption, confined to one importing file — unchanged from
@@ -625,8 +738,9 @@ shape (§2.2), the resolver architecture + ref grammar + backend set and
 stub policy (§2.1), values semantics per type incl. the kustomize
 substitution call (§2.6), externalManifests lifecycle naming (§2.7, after
 the clarify items resolve), dependsOn resolution rules (§2.8), the
-CUBE-PKG catalog, and the dependency adoptions this milestone makes
-(`cuelang.org/go`, kustomize libs).
+resolver placement (`internal/ref` shared leaf, §2.1) with its
+`CUBE-REF-*` tag registry row, the CUBE-PKG catalog, and the dependency
+adoptions this milestone makes (`cuelang.org/go`, kustomize libs).
 Deliverable: owner-approved design per the doc map — `docs/domains/pack.md`
 (new domain file) + a `docs/DECISIONS.md` entry.
 Dependencies: answers to the final open-questions list.
@@ -671,18 +785,23 @@ fixture family, dep adoption recorded by T1.
 Dependencies: T3. Gate: covered by T1's kustomize section.
 
 **T7 — ref resolver core + backend stubs** *(the stub half of "exotic
-backends"; T13–T15 depend on it).*
-Scope: `internal/pack/ref`: `Resolve` with dir mode + single-document
-mode; grammar; pins (`dir:<dirhash>`, `file:<sha256>`); symlink/zip-slip
+backends"; T13–T16 depend on it).*
+Scope: `internal/ref` — the shared LEAF package per the §2.1 placement
+call, NOT under pack: `Resolve` with dir mode + single-document mode;
+grammar; pins (`dir:<dirhash>`, `file:<sha256>`); symlink/zip-slip
 guards; local-dir + https backends (stdlib only); scheme table returning
-`CUBE-PKG-008` for git/oci/s3; the shared per-backend test helper (§2.1).
-Deliverable: resolver package + tests.
+the `CUBE-REF-*` not-implemented code for git/oci/s3; the `CUBE-REF-*`
+catalog + tag registry row; the shared per-backend test helper (§2.1).
+Pack is the first importer; cluster ref fields, remote `-f`, and registry
+import the same leaf later without any sideways dependency.
+Deliverable: `internal/ref` package + tests.
 Dependencies: T1.
 
 **T8 — `spec.packs` CR sub-struct.**
 Scope: `PackSpec` + `ExternalManifest` types per §2.2 in
 `api/config/v1alpha1`, defaults + validation (packRef required, category
-spellings, lifecycle enum, effective-uuid uniqueness), `config
+spellings, lifecycle enum, `ref`-XOR-`manifest` + inline
+apiVersion/kind checks, effective-uuid uniqueness), `config
 validate`/`show` coverage, deepcopy regen.
 Deliverable: api types + validation tests.
 Dependencies: T1. Independent of the render chain (parallel to T2–T6).
@@ -697,17 +816,19 @@ Dependencies: T2, T8.
 Scope: `install.go` per §2.1; `--dry-run` via server-side dry-run through
 the seam; wiring at the CLI edge.
 Deliverable: install path + function-field mock tests.
-Dependencies: T3; **external: M7 applier shape (and M6 kube underneath
-it)** — the seam's method shape needs the M7/M8 alignment noted in §2.1.
+Dependencies: T3; **external: M7 (and M6 kube underneath it)**. The seam
+shape is decided (§2.1: error-only, inventory inside the M7
+implementation) — the remaining wait is M7 landing with that contract.
 
 **T11 — externalManifests.**
-Scope: fetch via T7 single-document mode; §2.7 grouping + one-document
-join; `with` group appended to render output; `pre` group applied ahead
-through the Applier seam.
+Scope: fetch via T7 single-document mode; inline `manifest` entries
+decoded from the CR (no resolver, no pin); §2.7 grouping + one-document
+join across both sources; `with` group appended to render output; `pre`
+group applied ahead through the Applier seam.
 Deliverable: CR-to-apply path + tests (group of zero objects, bad ref,
-lifecycle enum rows).
-Dependencies: T7, T8; `pre` semantics depend on T10/M7; **blocked on the
-`pre|with` vs `post` clarify item.**
+invalid inline entry, mixed ref+inline group, lifecycle enum rows).
+Dependencies: T7, T8; `pre` semantics depend on T10/M7. Lifecycle enum
+decided: `pre | with` (§2.7) — no longer a blocker.
 
 **T12 — values/valuesRef pipeline.**
 Scope: `values.go` (merge half): valuesRef base ⊕ inline RFC-7386 patch →
@@ -715,9 +836,8 @@ Scope: `values.go` (merge half): valuesRef base ⊕ inline RFC-7386 patch →
 if §2.6's recommendation is confirmed; helm application deferred to T16.
 Deliverable: merge + substitution machinery with tests; valuesRef pin
 surfaced for future lock work.
-Dependencies: T2, T7, T8; **blocked on the kustomize-values open
-question** (if declined, this task shrinks and moves into the helm
-milestone).
+Dependencies: T2, T7, T8. Kustomize substitution confirmed (§2.6) — the
+full scope applies; no remaining blocker beyond its task dependencies.
 
 **T13 — scaffold, real implementation.**
 Scope: `pack new` generates directory + valid pack.cue (uuid v4,
@@ -756,9 +876,9 @@ Dependencies: T10.
 | --- | --- | --- | --- |
 | **C1 — contract + raw render** | T1, T2, T3, T4, T5 | owner sign-off on T1 (CUE + kustomize adoption recorded; kustomize code lands in C2) | design doc merged; `pack new` (stub), `pack render` on a raw pack; helm stub error |
 | **C2 — kustomize render** | T6 | — | `pack render` on a kustomize pack |
-| **C3 — CR + resolver + deps** | T7, T8, T9 | — | `config validate` covers `spec.packs`; local+https refs resolve; dependsOn errors fire; git/oci/s3 stubs |
-| **C4 — install + e2e** | T10, T18 | **M6, M7 landed; Applier shape agreed** | `pack install` against kind, e2e green |
-| **C5 — values + externalManifests** | T11, T12 | clarify items (lifecycle `post`?, kustomize values); C4 for `pre` | valuesRef/values on kustomize; externalManifests both groups |
+| **C3 — CR + resolver + deps** | T7, T8, T9 | — | `config validate` covers `spec.packs`; `internal/ref` lands as a leaf (local+https resolve; git/oci/s3 stubs; `REF` tag row); dependsOn errors fire |
+| **C4 — install + e2e** | T10, T18 | **M6, M7 landed** (Applier shape decided, §2.1) | `pack install` against kind, e2e green |
+| **C5 — values + externalManifests** | T11, T12 | C4 for `pre` | valuesRef/values on kustomize (post-build substitution); externalManifests both groups, ref + inline |
 | **C6 — scaffold real** | T13 | — | `pack new` → `pack render` round-trip |
 | **later, each its own PR + gate** | T14 (git), T15 (oci, near M10), T16 (s3, on demand), T17 (helm) | per-task design-doc gates | backend/helm stubs replaced |
 
@@ -771,31 +891,30 @@ added to the unit.
 loader → render → install → e2e), and its only *external* wait is
 **M6+M7 before C4** — everything in C1–C3 is buildable with today's tree.
 C2 and C3 are mutually independent and both depend only on C1, so they
-can proceed in either order (or in parallel worktrees). C5 is the most
-gated chunk (needs C3, C4, and two clarify answers) — resolving the two
-clarify items during C1's design-doc review keeps it off the critical
-path. The long tail is T17 (helm): last major dependency decision,
+can proceed in either order (or in parallel worktrees). With the
+2026-08-01 clarifications resolved, C5's only remaining gates are C3 and
+C4. The long tail is T17 (helm): last major dependency decision,
 deliberately latest.
 
-## Open questions (genuinely open — everything else above is decided)
+## Open questions
 
-1. **externalManifests lifecycle set:** the owner sketch said both
-   "before & post apply" and "before or with the pack" — does a `post`
-   (after-the-pack) group exist, or only `pre | with`? (§2.7; blocks T11's
-   enum.)
-2. **Kustomize values semantics:** accept §2.6's recommendation
-   (post-build `${VAR}` substitution, Flux-postBuild-style, schema'd by
-   `#Values`) — or restrict values/valuesRef to helm only? (Blocks T12's
-   scope.)
-3. **`category` restriction enforcement:** reserved spelling only, or
-   also uniqueness (at most one `gateway`/`engine` per setup)? Either
-   stays identification-not-behavior. (§2.5; T8 validation detail.)
-4. **Applier method shape (carried from the first draft):** should
-   `Apply` return the applied object set (feeding the M7 inventory /
-   future `down`)? Needs a joint look at the M7 doc before C4. (§2.1.)
-5. **Same-ref-twice instance identity:** confirm the §2.4 proposal —
-   `spec.packs[].uuid` override + effective-uuid uniqueness validation —
-   as the answer for two CR entries sharing one packRef.
+None — the five clarify items from the 2026-08-01 rework round are all
+resolved (owner, 2026-08-01) and folded into the body:
+
+1. externalManifests lifecycle set: **`pre | with`**, no `post` (§2.7).
+2. Kustomize values: **recommendation accepted** — post-build `${VAR}`
+   substitution, Flux-postBuild-style, schema'd by `#Values` (§2.6).
+3. `category` enforcement: **reserved spelling only**, no uniqueness;
+   spellings feed later validation, never behavior (§2.5).
+4. Applier seam: **error-only `Apply`**; inventory recorded inside the
+   M7 implementation; ownership via labels stamped by pack (§2.1). The
+   one exported obligation: the M7 design doc must adopt the
+   inventory-inside-Apply contract.
+5. Same-ref-twice identity: **solved by the `spec.packs[].uuid`
+   override** + effective-uuid uniqueness validation (§2.4).
+
+T1 (the design doc) now has every input it needs; nothing in this file
+is waiting on an owner call.
 
 ---
 *Groundwork prepared 2026-08-01 and reworked the same day after owner review,

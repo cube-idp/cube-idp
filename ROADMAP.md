@@ -15,14 +15,15 @@ completes or reorders a milestone.
 - **M2 — error-handling polish** (PR #51, 2026-07-29): `LoadFile` path
   context, a `CUBE-CFG-*` code for an unreadable config file, malformed-tag
   test row in `cubeerr`, golden-file test for `config show`.
+- **M3 — cluster** (PR #52): `spec.cluster` sub-struct (`provider` +
+  opaque `forProvider`) + `internal/cluster` driver seam with conformance
+  suite + kind provider (kind as a Go library) + `init` command with
+  cube-owned kubeconfig contexts.
+  Design: `docs/archived/design/2026-07-29-cluster-domain.md`; living
+  contract: `docs/domains/cluster.md`.
 
 ## Queue
 
-- **M3 — cluster** (in progress, this PR): `spec.cluster` sub-struct
-  (`provider` + opaque `forProvider`) + `internal/cluster` driver seam with
-  conformance suite + kind provider (kind as a Go library) + `init` command
-  with cube-owned kubeconfig contexts.
-  Design: `docs/archived/design/2026-07-29-cluster-domain.md`.
 - **Follow-up — `config validate` covers `forProvider`**: provider-side
   validation surfaced at the CLI edge without breaking import direction
   (`internal/config` never imports `internal/cluster`). Recorded in the
