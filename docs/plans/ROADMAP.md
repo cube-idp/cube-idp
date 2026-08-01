@@ -33,12 +33,21 @@ completes or reorders a milestone.
   `--name` never mutates an existing document — coded error with "edit
   metadata.name" remediation. Contract change → short design doc first
   (owns: scaffold semantics, name generator, which domain writes config).
+  Fold the `forProvider`-validation follow-up in if it stays small.
+- **M5 — cluster lifecycle completion**: no new domain; close out
+  `internal/cluster` per cluster design §9 — `delete` (or `down`) exposing
+  the seam's `Delete`, `status`, kubeconfig cleanup. Command naming and
+  exact §9 scope decided at plan time (direction doc Q7). Likely checkbox
+  plan only; design doc only if scope grows.
 
-## After M3 (tentative — order revisited after cluster delivery)
+## Default continuation after M5 (directional, not committed)
 
-kube (client access) · apply (SSA/inventory) · pack (fetch/render) ·
-engine (gitops, driver seam) · registry (OCI) · orchestrator (`up`, phase
-runner) · periphery (trust, spokes, doctor, diff, …)
+Re-evaluated once M5 lands. Decision record, alternatives, risk table, and
+open questions: `docs/plans/2026-08-01-roadmap-direction.md`.
 
-Reference build sequence from the design doc §8: config → kube → apply →
-cluster → pack → engine → registry → orchestrator → periphery.
+kube (client access, client-go → design doc) → apply (SSA + inventory) →
+pack (the spine, made solid — contract designed against recorded consumer
+requirements; consumers conform to pack, never the reverse) → engine
+(gitops driver seam + Flux, installs as an ordinary pack) → registry (OCI
+bus) → orchestrator (`up`/`down` phase runner, last) → periphery in pull
+order (doctor, diff, trust, lock/vendor, spokes, …).
