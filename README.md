@@ -8,9 +8,9 @@ was reset to a greenfield baseline on 2026-07-27 and grows in small
 milestones; today it holds the config domain (validate/show) and the
 cluster domain (kind provisioning via `init`, M3). The previous
 implementation is preserved in git history on `main`. Structure and
-rationale: [docs/design/2026-07-27-back-to-basics-structure.md](docs/design/2026-07-27-back-to-basics-structure.md).
-What's next: [docs/plans/ROADMAP.md](docs/plans/ROADMAP.md) and the
-[roadmap direction](docs/plans/2026-08-01-roadmap-direction.md).
+rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+What's next: [ROADMAP.md](ROADMAP.md). Decision history:
+[docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Build
 

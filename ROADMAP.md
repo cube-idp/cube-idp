@@ -9,7 +9,7 @@ completes or reorders a milestone.
 - **M0 — v0 config baseline** (PR #49, 2026-07-27): teardown of the old
   implementation + `Config` API, strict loader, `cubeerr` machinery, CLI
   `config validate|show`, CI gates.
-  Design: `docs/design/2026-07-27-back-to-basics-structure.md`.
+  Design: `docs/archived/design/2026-07-27-back-to-basics-structure.md`.
 - **M1 — docs reset** (PR #50, 2026-07-29): CLAUDE.md rewritten for the
   v0 world, short v0 README, CHANGELOG wipe, this ROADMAP.
 - **M2 — error-handling polish** (PR #51, 2026-07-29): `LoadFile` path
@@ -22,7 +22,7 @@ completes or reorders a milestone.
   (`provider` + opaque `forProvider`) + `internal/cluster` driver seam with
   conformance suite + kind provider (kind as a Go library) + `init` command
   with cube-owned kubeconfig contexts.
-  Design: `docs/design/2026-07-29-cluster-domain.md`.
+  Design: `docs/archived/design/2026-07-29-cluster-domain.md`.
 - **Follow-up — `config validate` covers `forProvider`**: provider-side
   validation surfaced at the CLI edge without breaking import direction
   (`internal/config` never imports `internal/cluster`). Recorded in the
@@ -43,7 +43,7 @@ completes or reorders a milestone.
 ## Default continuation after M5 (directional, not committed)
 
 Re-evaluated once M5 lands. Decision record, alternatives, risk table, and
-open questions: `docs/plans/2026-08-01-roadmap-direction.md`.
+open questions: `docs/archived/plans/2026-08-01-roadmap-direction.md`.
 
 kube (client access, client-go → design doc) → apply (SSA + inventory) →
 pack (the spine, made solid — contract designed against recorded consumer

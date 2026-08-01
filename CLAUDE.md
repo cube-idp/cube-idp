@@ -1,28 +1,39 @@
 # cube-idp — Agent Rules
 
 These rules bind every AI agent session in this repository. The structural
-authority is `docs/design/2026-07-27-back-to-basics-structure.md`; when this
-file and that design disagree, flag the conflict — don't silently pick one.
+authority is `docs/ARCHITECTURE.md` (living, updated in place); when this
+file and that document disagree, flag the conflict — don't silently pick
+one.
 
 ## 1. What this repo is
 
 cube-idp is being rebuilt from a greenfield v0 baseline (2026-07-27 reset).
-Components are added in small milestones — done/queued state lives in
-`docs/plans/ROADMAP.md`; direction and rationale in
-`docs/plans/2026-08-01-roadmap-direction.md`. Current domains:
+Components are added in small milestones — the queue is `/ROADMAP.md`.
+Current domains: **config** (CRD-ready `Config` type, strict loader,
+`config validate|show`) and **cluster** (M3: `spec.cluster`, `Provisioner`
+driver seam, kind provider, `init`). Per-domain contracts:
+`docs/domains/<name>.md`.
 
-- **config**: CRD-ready `Config` type (`cube-idp.dev/v1alpha1`), strict
-  loader, CLI `config validate` and `config show`.
-- **cluster** (M3): `spec.cluster` sub-struct, `Provisioner` driver seam +
-  conformance suite, kind provider, CLI `init` installing cube-owned
-  kubeconfig contexts (`cube-idp.dev/<name>`).
-  Design: `docs/design/2026-07-29-cluster-domain.md`.
+### Documentation map (the complete, closed set)
 
-Active documentation is `docs/design/` (approved designs) and `docs/plans/`
-(implementation plans + ROADMAP). Everything else under `docs/` — `adr/`,
-`architecture/`, `process/`, `reference/`, `archive/`, `vhs/` — is pre-reset
-history: read-only, NOT binding, never extended. Do not follow the old
-ADR/board/SDD process those files describe.
+| Document | Purpose | Touched when |
+|---|---|---|
+| `/ROADMAP.md` | milestone queue + done log | the PR that completes/reorders a milestone |
+| `/README.md` | user-facing intro | user-visible behavior changes |
+| `/CLAUDE.md` | agent rules + this map | rules or the doc system change |
+| `/CHANGELOG.md` | release notes | every milestone PR |
+| `docs/ARCHITECTURE.md` | binding cross-cutting architecture (living) | architectural decisions, in the deciding PR |
+| `docs/domains/<name>.md` | one living contract per domain | the domain's milestones (file created when the domain lands) |
+| `docs/DECISIONS.md` | append-only dated decision log | every owner-approved decision |
+| `docs/work/` | ephemeral milestone plans/groundwork | created during a milestone, DELETED in its closing PR |
+| `docs/archived/` | pre-reset + superseded history | never (read-only, not binding) |
+
+Anti-sprawl rules: dated markdown files are banned outside `docs/archived/`
+and `docs/work/`. New markdown may only appear as a new `docs/domains/`
+file (with its domain) or inside `docs/work/`. Anything else requires
+editing this map first. A milestone's "design doc" is a reviewed diff to
+`ARCHITECTURE.md`/`domains/<x>.md` plus a `DECISIONS.md` entry —
+owner-approved before code, exactly as before.
 
 ## 2. Layout and import direction
 
@@ -73,8 +84,8 @@ trips, refactor the code — never raise the limit.
 - Errors: `internal/cubeerr` is machinery only and must never grow a code
   catalog. Each domain declares its own `CUBE-<TAG>-NNN` codes in its own
   `errors.go` (config owns `CUBE-CFG-*`, cluster owns `CUBE-CLU-*`). A new
-  component picks an unused tag and adds a row to the registry in the
-  design doc §5.2.
+  component picks an unused tag and updates the registry table in
+  `docs/ARCHITECTURE.md` §5.
 - `ConfigSpec` grows one typed sub-struct per component, with its defaults
   and validation beside it; the loading machinery never changes.
 
@@ -100,9 +111,10 @@ trips, refactor the code — never raise the limit.
   equality — never string matching.
 - Runtime dependencies are a closed set (`k8s.io/apimachinery`,
   `sigs.k8s.io/yaml`, `github.com/spf13/cobra`, and `sigs.k8s.io/kind` —
-  the latter confined to `internal/cluster/kind`, per the 2026-07-29
-  cluster design §8). Adding one requires a design doc in `docs/design/`,
-  never a plan footnote.
+  the latter confined to `internal/cluster/kind` — see the dependency
+  table in `docs/ARCHITECTURE.md` §8). Adding one requires an
+  owner-approved `ARCHITECTURE.md` §8 update + `DECISIONS.md` entry, never
+  a plan footnote.
 
 ## 6. Milestone flow
 
@@ -110,12 +122,15 @@ Scale process to the weight of the change; every milestone lands as ONE
 green PR to `main`:
 
 - Real architectural choice (new domain, new dependency, new seam, contract
-  change) → short design doc in `docs/design/` first, owner-approved.
-- Multi-task implementation → checkbox plan in `docs/plans/`.
+  change) → owner-approved design first: a reviewed diff to
+  `docs/ARCHITECTURE.md` / `docs/domains/<x>.md` + a `docs/DECISIONS.md`
+  entry.
+- Multi-task implementation → checkbox plan in `docs/work/`, deleted in
+  the milestone's closing PR.
 - Small chore/fix/docs → straight to a PR.
 
-Update `docs/plans/ROADMAP.md` in the same PR that completes (or reorders)
-a milestone. Never work on `main`.
+Update `/ROADMAP.md` in the same PR that completes (or reorders) a
+milestone. Never work on `main`.
 
 ## 7. Cluster work (applies from the cluster milestone on)
 
