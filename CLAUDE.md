@@ -129,6 +129,11 @@ green PR to `main`:
   the milestone's closing PR.
 - Small chore/fix/docs → straight to a PR.
 
+Deliver milestones as small sequential chunks: implement one reviewable
+unit, run the gates, present the diff for owner/coordinator review of
+cross-subsystem effects and rule conformance, commit, then start the next
+chunk — never one big drop.
+
 Update `/ROADMAP.md` in the same PR that completes (or reorders) a
 milestone. Never work on `main`.
 

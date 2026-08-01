@@ -32,8 +32,9 @@ completes or reorders a milestone.
   scaffolds it (`metadata.name` from `--name`, else a generated
   docker-style name constrained to the name regex) and provisions from it.
   `--name` never mutates an existing document — coded error with "edit
-  metadata.name" remediation. Contract change → short design doc first
-  (owns: scaffold semantics, name generator, which domain writes config).
+  metadata.name" remediation. Contract change → design gate first
+  (ARCHITECTURE/domain diff + DECISIONS entry; owns: scaffold semantics,
+  name generator, which domain writes config).
   Fold the `forProvider`-validation follow-up in if it stays small.
 - **M5 — cluster lifecycle completion**: no new domain; close out
   `internal/cluster` per cluster design §9 — `delete` (or `down`) exposing
@@ -46,9 +47,15 @@ completes or reorders a milestone.
 Re-evaluated once M5 lands. Decision record, alternatives, risk table, and
 open questions: `docs/archived/plans/2026-08-01-roadmap-direction.md`.
 
-kube (client access, client-go → design doc) → apply (SSA + inventory) →
+kube (client access, client-go → design gate) → apply (SSA + inventory) →
 pack (the spine, made solid — contract designed against recorded consumer
 requirements; consumers conform to pack, never the reverse) → engine
 (gitops driver seam + Flux, installs as an ordinary pack) → registry (OCI
 bus) → orchestrator (`up`/`down` phase runner, last) → periphery in pull
 order (doctor, diff, trust, lock/vendor, spokes, …).
+
+**Prepared work:** the pack unit is fully pre-shaped in
+`docs/work/pack-groundwork.md` — owner-decided contract direction
+(pack.cue/CUE, packRef, uuid/category, values, externalManifests,
+dependsOn), an 18-task breakdown grouped into 6 one-PR chunks with
+dependencies, and 5 open owner questions that gate its design task (T1).

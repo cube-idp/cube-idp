@@ -2,8 +2,9 @@
 
 Date: 2026-08-01 (reworked 2026-08-01 after owner review)
 Status: groundwork (research record + owner-directed shape). **Not a design
-doc** — the M8 design doc in `docs/design/` formalizes the contract,
-owner-approved. This file feeds it. Everything marked **owner-decided
+doc** — the pack design gate (a `docs/domains/pack.md` draft + a
+`docs/DECISIONS.md` entry, owner-approved per the CLAUDE.md doc map)
+formalizes the contract. This file feeds it. Everything marked **owner-decided
 2026-08-01** is a fixed input to that doc, no longer an option; §2.0 lists
 the decisions, Part 3 turns them into tasks.
 Inputs: old codebase at `9a1edd9` (`internal/pack` + `internal/oci` +
