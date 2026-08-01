@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-M3 cluster domain (design: `docs/design/2026-07-29-cluster-domain.md`):
+M3 cluster domain (design: `docs/archived/design/2026-07-29-cluster-domain.md`):
 
 - `spec.cluster` API sub-struct: typed `provider` (defaults to `kind`) plus
   opaque `forProvider` passthrough, validated at load time.
@@ -17,7 +17,7 @@ M3 cluster domain (design: `docs/design/2026-07-29-cluster-domain.md`):
   `--kubeconfig-context-name` overrides.
 
 v0 greenfield baseline (2026-07-27 reset; design:
-`docs/design/2026-07-27-back-to-basics-structure.md`):
+`docs/archived/design/2026-07-27-back-to-basics-structure.md`):
 
 - `Config` API `cube-idp.dev/v1alpha1`: CRD-ready types (real apimachinery
   `TypeMeta`/`ObjectMeta`), controller-gen deepcopy, name validation.
