@@ -14,6 +14,7 @@ const (
 	CodeUnknownField          cubeerr.Code = "CUBE-CFG-002"
 	CodeInvalidConfig         cubeerr.Code = "CUBE-CFG-003"
 	CodeUnreadableConfig      cubeerr.Code = "CUBE-CFG-004"
+	CodeNameConflict          cubeerr.Code = "CUBE-CFG-005"
 )
 
 func errUnsupportedAPIVersion(gvk string) error {
@@ -32,6 +33,16 @@ func errInvalidConfig(cause error) error {
 	return cubeerr.Wrap(CodeInvalidConfig,
 		"invalid config",
 		"fix the fields above and re-run `cube-idp config validate`", cause)
+}
+
+// ErrNameConflict is exported because the CLI edge raises it: it detects
+// the --name-vs-document mismatch when composing scaffold-if-absent.
+// Mismatch only — a flag name equal to the document's metadata.name is a
+// no-op for the caller, not an error.
+func ErrNameConflict(path, documentName, flagName string) error {
+	return cubeerr.Wrap(CodeNameConflict,
+		fmt.Sprintf("--name %q conflicts with %s (metadata.name %q)", flagName, path, documentName),
+		fmt.Sprintf("edit metadata.name in %s instead — flags never mutate an existing config", path), nil)
 }
 
 func errUnreadableConfig(cause error) error {
