@@ -45,5 +45,5 @@ func ErrProvisionFailed(action, name string, cause error) error {
 func ErrKubeconfigFailed(cause error) error {
 	return cubeerr.Wrap(CodeKubeconfigFailed,
 		"kubeconfig generation failed",
-		"see cause above; check file permissions on the kubeconfig target", cause)
+		"see cause above; check permissions on the kubeconfig target, or pass --kubeconfig <path> to write elsewhere", cause)
 }

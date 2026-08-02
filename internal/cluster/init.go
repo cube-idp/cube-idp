@@ -46,7 +46,10 @@ func Init(ctx context.Context, p Provisioner, opts InitOptions) error {
 }
 
 func mergeIntoDefault(branded []byte) error {
-	target := defaultKubeconfigPath()
+	target, err := defaultKubeconfigPath()
+	if err != nil {
+		return ErrKubeconfigFailed(err)
+	}
 	existing, err := os.ReadFile(target)
 	if err != nil && !os.IsNotExist(err) {
 		return ErrKubeconfigFailed(fmt.Errorf("read kubeconfig %s: %w", target, err))
@@ -58,29 +61,45 @@ func mergeIntoDefault(branded []byte) error {
 	return writeKubeconfig(target, merged)
 }
 
+// writeKubeconfig writes atomically: temp file in the target directory,
+// then rename — a crash mid-write can never truncate the user's file.
 func writeKubeconfig(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ErrKubeconfigFailed(fmt.Errorf("create kubeconfig dir for %s: %w", path, err))
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, ".kubeconfig-*") // 0600 by default
+	if err != nil {
+		return ErrKubeconfigFailed(fmt.Errorf("temp file for %s: %w", path, err))
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }() // no-op once renamed
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return ErrKubeconfigFailed(fmt.Errorf("write kubeconfig %s: %w", path, err))
+	}
+	if err := tmp.Close(); err != nil {
+		return ErrKubeconfigFailed(fmt.Errorf("write kubeconfig %s: %w", path, err))
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
 		return ErrKubeconfigFailed(fmt.Errorf("write kubeconfig %s: %w", path, err))
 	}
 	return nil
 }
 
 // defaultKubeconfigPath mirrors kubectl's resolution: first KUBECONFIG
-// list entry, else ~/.kube/config.
-func defaultKubeconfigPath() string {
+// list entry, else ~/.kube/config. A home-less environment is an error,
+// never a silent CWD-relative fallback.
+func defaultKubeconfigPath() (string, error) {
 	if env := os.Getenv("KUBECONFIG"); env != "" {
 		for _, p := range filepath.SplitList(env) {
 			if p != "" {
-				return p
+				return p, nil
 			}
 		}
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".kube/config"
+		return "", fmt.Errorf("determine default kubeconfig location: %w", err)
 	}
-	return filepath.Join(home, ".kube", "config")
+	return filepath.Join(home, ".kube", "config"), nil
 }

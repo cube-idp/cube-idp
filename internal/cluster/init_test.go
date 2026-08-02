@@ -32,6 +32,20 @@ func (m *mockProvisioner) Kubeconfig(ctx context.Context, name string) ([]byte, 
 	return []byte(strings.ReplaceAll(kindStyleKubeconfig, "kind-dev", "kind-"+name)), nil
 }
 
+// TestInitNoHomeFails: with neither KUBECONFIG nor a home directory the
+// default kubeconfig location is undeterminable — a coded error, never a
+// silent CWD-relative write.
+func TestInitNoHomeFails(t *testing.T) {
+	t.Setenv("KUBECONFIG", "")
+	t.Setenv("HOME", "")
+	err := Init(t.Context(), &mockProvisioner{}, InitOptions{Spec: Spec{Name: "dev"}})
+
+	var coded *cubeerr.Coded
+	if !errors.As(err, &coded) || coded.Code != CodeKubeconfigFailed {
+		t.Fatalf("err = %v, want code %s", err, CodeKubeconfigFailed)
+	}
+}
+
 func TestInit(t *testing.T) {
 	initCases := []struct {
 		name     string
@@ -88,7 +102,7 @@ func TestInit(t *testing.T) {
 				tt.opts.KubeconfigPath = target
 			}
 
-			err := Init(context.Background(), tt.mock, tt.opts)
+			err := Init(t.Context(), tt.mock, tt.opts)
 
 			if tt.wantCode != "" {
 				var coded *cubeerr.Coded
