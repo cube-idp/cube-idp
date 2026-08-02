@@ -19,7 +19,7 @@ const (
 	CodeScaffoldFailed        cubeerr.Code = "CUBE-CFG-007"
 )
 
-func errUnsupportedAPIVersion(gvk string) error {
+func newUnsupportedAPIVersionError(gvk string) error {
 	return cubeerr.Wrap(CodeUnsupportedAPIVersion,
 		fmt.Sprintf("unsupported apiVersion/kind %q", gvk),
 		"set apiVersion: cube-idp.dev/v1alpha1 and kind: Config", nil)
@@ -27,37 +27,37 @@ func errUnsupportedAPIVersion(gvk string) error {
 
 // newMissingGVKError covers the empty/absent apiVersion+kind case with a
 // clearer message than the generic `unsupported apiVersion/kind "/"`.
-// Same code as errUnsupportedAPIVersion — the condition, not the shape,
-// differs. (New-convention name; err* constructors are renamed later.)
+// Same code as newUnsupportedAPIVersionError — the condition, not the shape,
+// differs.
 func newMissingGVKError() error {
 	return cubeerr.Wrap(CodeUnsupportedAPIVersion,
 		"config file has no apiVersion/kind",
 		"set apiVersion: cube-idp.dev/v1alpha1 and kind: Config", nil)
 }
 
-func errUnknownField(cause error) error {
+func newUnknownFieldError(cause error) error {
 	return cubeerr.Wrap(CodeUnknownField,
 		"config contains unknown fields",
 		"remove the unknown fields listed above, or check for typos against `cube-idp config show`", cause)
 }
 
-func errInvalidConfig(cause error) error {
+func newInvalidConfigError(cause error) error {
 	return cubeerr.Wrap(CodeInvalidConfig,
 		"invalid config",
 		"fix the fields above and re-run `cube-idp config validate`", cause)
 }
 
-// ErrNameConflict is exported because the CLI edge raises it: it detects
+// NewNameConflictError is exported because the CLI edge raises it: it detects
 // the --name-vs-document mismatch when composing scaffold-if-absent.
 // Mismatch only — a flag name equal to the document's metadata.name is a
 // no-op for the caller, not an error.
-func ErrNameConflict(path, documentName, flagName string) error {
+func NewNameConflictError(path, documentName, flagName string) error {
 	return cubeerr.Wrap(CodeNameConflict,
 		fmt.Sprintf("--name %q conflicts with %s (metadata.name %q)", flagName, path, documentName),
 		fmt.Sprintf("edit metadata.name in %s instead — flags never mutate an existing config", path), nil)
 }
 
-func errUnreadableConfig(cause error) error {
+func newUnreadableConfigError(cause error) error {
 	return cubeerr.Wrap(CodeUnreadableConfig,
 		"cannot read config file",
 		"check that the path exists and is readable, or point -f/--config at the right file", cause)

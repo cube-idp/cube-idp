@@ -31,7 +31,7 @@ func Init(ctx context.Context, p Provisioner, opts InitOptions) error {
 	}
 	raw, err := p.Kubeconfig(ctx, opts.Spec.Name)
 	if err != nil {
-		return ErrKubeconfigFailed(fmt.Errorf("fetch kubeconfig for %s: %w", opts.Spec.Name, err))
+		return NewKubeconfigFailedError(fmt.Errorf("fetch kubeconfig for %s: %w", opts.Spec.Name, err))
 	}
 	name := opts.ContextName
 	if name == "" {
@@ -39,7 +39,7 @@ func Init(ctx context.Context, p Provisioner, opts InitOptions) error {
 	}
 	branded, err := Rebrand(raw, name, opts.Namespace)
 	if err != nil {
-		return ErrKubeconfigFailed(fmt.Errorf("rebrand kubeconfig as %s: %w", name, err))
+		return NewKubeconfigFailedError(fmt.Errorf("rebrand kubeconfig as %s: %w", name, err))
 	}
 	if opts.KubeconfigPath != "" {
 		return writeKubeconfig(opts.KubeconfigPath, branded)
@@ -50,15 +50,15 @@ func Init(ctx context.Context, p Provisioner, opts InitOptions) error {
 func mergeIntoDefault(branded []byte) error {
 	target, err := defaultKubeconfigPath()
 	if err != nil {
-		return ErrKubeconfigFailed(err)
+		return NewKubeconfigFailedError(err)
 	}
 	existing, err := os.ReadFile(target)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return ErrKubeconfigFailed(fmt.Errorf("read kubeconfig %s: %w", target, err))
+		return NewKubeconfigFailedError(fmt.Errorf("read kubeconfig %s: %w", target, err))
 	}
 	merged, err := Merge(existing, branded)
 	if err != nil {
-		return ErrKubeconfigFailed(fmt.Errorf("merge into %s: %w", target, err))
+		return NewKubeconfigFailedError(fmt.Errorf("merge into %s: %w", target, err))
 	}
 	return writeKubeconfig(target, merged)
 }
@@ -68,22 +68,22 @@ func mergeIntoDefault(branded []byte) error {
 func writeKubeconfig(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return ErrKubeconfigFailed(fmt.Errorf("create kubeconfig dir for %s: %w", path, err))
+		return NewKubeconfigFailedError(fmt.Errorf("create kubeconfig dir for %s: %w", path, err))
 	}
 	tmp, err := os.CreateTemp(dir, ".kubeconfig-*") // 0600 by default
 	if err != nil {
-		return ErrKubeconfigFailed(fmt.Errorf("temp file for %s: %w", path, err))
+		return NewKubeconfigFailedError(fmt.Errorf("temp file for %s: %w", path, err))
 	}
 	defer func() { _ = os.Remove(tmp.Name()) }() // no-op once renamed
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		return ErrKubeconfigFailed(fmt.Errorf("write kubeconfig %s: %w", path, err))
+		return NewKubeconfigFailedError(fmt.Errorf("write kubeconfig %s: %w", path, err))
 	}
 	if err := tmp.Close(); err != nil {
-		return ErrKubeconfigFailed(fmt.Errorf("write kubeconfig %s: %w", path, err))
+		return NewKubeconfigFailedError(fmt.Errorf("write kubeconfig %s: %w", path, err))
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
-		return ErrKubeconfigFailed(fmt.Errorf("write kubeconfig %s: %w", path, err))
+		return NewKubeconfigFailedError(fmt.Errorf("write kubeconfig %s: %w", path, err))
 	}
 	return nil
 }

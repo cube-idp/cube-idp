@@ -17,7 +17,7 @@ import (
 func Load(fsys fs.FS, path string) (*v1alpha1.Config, error) {
 	raw, err := fs.ReadFile(fsys, path)
 	if err != nil {
-		return nil, errUnreadableConfig(fmt.Errorf("read config %s: %w", path, err))
+		return nil, newUnreadableConfigError(fmt.Errorf("read config %s: %w", path, err))
 	}
 	return decode(raw)
 }
@@ -28,7 +28,7 @@ func Load(fsys fs.FS, path string) (*v1alpha1.Config, error) {
 func LoadFile(path string) (*v1alpha1.Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, errUnreadableConfig(fmt.Errorf("read config %s: %w", path, err))
+		return nil, newUnreadableConfigError(fmt.Errorf("read config %s: %w", path, err))
 	}
 	return decode(raw)
 }
@@ -50,14 +50,14 @@ func decode(raw []byte) (*v1alpha1.Config, error) {
 	case v1alpha1.GroupVersion.String() + "/Config":
 		var c v1alpha1.Config
 		if err := yaml.UnmarshalStrict(raw, &c); err != nil {
-			return nil, errUnknownField(err)
+			return nil, newUnknownFieldError(err)
 		}
 		c.Default()
 		if errs := c.Validate(); len(errs) > 0 {
-			return nil, errInvalidConfig(errs.ToAggregate())
+			return nil, newInvalidConfigError(errs.ToAggregate())
 		}
 		return &c, nil
 	default:
-		return nil, errUnsupportedAPIVersion(gvk)
+		return nil, newUnsupportedAPIVersionError(gvk)
 	}
 }

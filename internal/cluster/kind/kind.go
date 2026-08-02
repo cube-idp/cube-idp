@@ -55,7 +55,7 @@ func decodeForProvider(s cluster.Spec) (*v1alpha4.Cluster, error) {
 	cfg := &v1alpha4.Cluster{}
 	if s.ForProvider != nil && len(s.ForProvider.Raw) > 0 {
 		if err := yaml.UnmarshalStrict(s.ForProvider.Raw, cfg); err != nil {
-			return nil, cluster.ErrInvalidForProvider(fmt.Errorf("decode forProvider as kind.x-k8s.io/v1alpha4 Cluster: %w", err))
+			return nil, cluster.NewInvalidForProviderError(fmt.Errorf("decode forProvider as kind.x-k8s.io/v1alpha4 Cluster: %w", err))
 		}
 	}
 	return cfg, nil
@@ -87,13 +87,13 @@ func (p *Provider) Ensure(ctx context.Context, s cluster.Spec) error {
 
 	kp, err := p.kp()
 	if err != nil {
-		return cluster.ErrProvisionFailed("create", s.Name, err)
+		return cluster.NewProvisionFailedError("create", s.Name, err)
 	}
 	// Point kind's own kubeconfig export at a throwaway path so it never
 	// touches the user's file; the domain owns kubeconfig installation.
 	tmp, err := os.MkdirTemp("", "cube-idp-kind-*")
 	if err != nil {
-		return cluster.ErrProvisionFailed("create", s.Name, fmt.Errorf("temp kubeconfig dir: %w", err))
+		return cluster.NewProvisionFailedError("create", s.Name, fmt.Errorf("temp kubeconfig dir: %w", err))
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 
@@ -101,7 +101,7 @@ func (p *Provider) Ensure(ctx context.Context, s cluster.Spec) error {
 		kindcluster.CreateWithV1Alpha4Config(cfg),
 		kindcluster.CreateWithKubeconfigPath(filepath.Join(tmp, "kubeconfig")),
 	); err != nil {
-		return cluster.ErrProvisionFailed("create", s.Name, err)
+		return cluster.NewProvisionFailedError("create", s.Name, err)
 	}
 	return nil
 }
@@ -109,11 +109,11 @@ func (p *Provider) Ensure(ctx context.Context, s cluster.Spec) error {
 func (p *Provider) Exists(_ context.Context, name string) (bool, error) {
 	kp, err := p.kp()
 	if err != nil {
-		return false, cluster.ErrProvisionFailed("list", name, err)
+		return false, cluster.NewProvisionFailedError("list", name, err)
 	}
 	names, err := kp.List()
 	if err != nil {
-		return false, cluster.ErrProvisionFailed("list", name, err)
+		return false, cluster.NewProvisionFailedError("list", name, err)
 	}
 	return slices.Contains(names, name), nil
 }
@@ -121,11 +121,11 @@ func (p *Provider) Exists(_ context.Context, name string) (bool, error) {
 func (p *Provider) Delete(_ context.Context, name string) error {
 	kp, err := p.kp()
 	if err != nil {
-		return cluster.ErrProvisionFailed("delete", name, err)
+		return cluster.NewProvisionFailedError("delete", name, err)
 	}
 	// kind's Delete is a no-op for absent clusters, matching the seam.
 	if err := kp.Delete(name, ""); err != nil {
-		return cluster.ErrProvisionFailed("delete", name, err)
+		return cluster.NewProvisionFailedError("delete", name, err)
 	}
 	return nil
 }
