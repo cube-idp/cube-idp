@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -18,7 +17,7 @@ import (
 func RunClusterConformance(t *testing.T, factory func() Provisioner) {
 	t.Helper()
 	const name = "cube-conformance"
-	ctx := context.Background()
+	ctx := t.Context()
 	p := factory()
 	t.Cleanup(func() { _ = p.Delete(ctx, name) })
 

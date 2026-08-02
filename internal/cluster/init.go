@@ -2,7 +2,9 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -51,7 +53,7 @@ func mergeIntoDefault(branded []byte) error {
 		return ErrKubeconfigFailed(err)
 	}
 	existing, err := os.ReadFile(target)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return ErrKubeconfigFailed(fmt.Errorf("read kubeconfig %s: %w", target, err))
 	}
 	merged, err := Merge(existing, branded)

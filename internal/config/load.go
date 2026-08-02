@@ -42,6 +42,9 @@ func decode(raw []byte) (*v1alpha1.Config, error) {
 		return nil, fmt.Errorf("determine apiVersion/kind: %w", err)
 	}
 
+	if tm.APIVersion == "" && tm.Kind == "" {
+		return nil, newMissingGVKError()
+	}
 	gvk := tm.APIVersion + "/" + tm.Kind
 	switch gvk {
 	case v1alpha1.GroupVersion.String() + "/Config":

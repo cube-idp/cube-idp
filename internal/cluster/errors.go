@@ -18,30 +18,40 @@ const (
 	CodeKubeconfigFailed    cubeerr.Code = "CUBE-CLU-005"
 )
 
+// ErrNoClusterConfigured reports a config without spec.cluster where an
+// operation requires a managed cluster.
 func ErrNoClusterConfigured() error {
 	return cubeerr.Wrap(CodeNoClusterConfigured,
 		"no cluster configured",
 		"add spec.cluster to the config to let cube-idp manage a cluster", nil)
 }
 
+// ErrUnsupportedProvider reports a spec.cluster.provider no registered
+// driver implements.
 func ErrUnsupportedProvider(provider string) error {
 	return cubeerr.Wrap(CodeUnsupportedProvider,
 		fmt.Sprintf("no driver for provider %q", provider),
 		"use a supported spec.cluster.provider (kind)", nil)
 }
 
+// ErrInvalidForProvider reports a spec.cluster.forProvider payload the
+// selected provider cannot decode.
 func ErrInvalidForProvider(cause error) error {
 	return cubeerr.Wrap(CodeInvalidForProvider,
 		"invalid spec.cluster.forProvider payload",
 		"fix the provider config fields listed above (kind: kind.x-k8s.io/v1alpha4 Cluster)", cause)
 }
 
+// ErrProvisionFailed reports a provisioning action (create/list/delete)
+// that failed against the backend.
 func ErrProvisionFailed(action, name string, cause error) error {
 	return cubeerr.Wrap(CodeProvisionFailed,
 		fmt.Sprintf("%s cluster %q failed", action, name),
 		"check that the container runtime (Docker/Podman) is running; see cause above", cause)
 }
 
+// ErrKubeconfigFailed reports a failure generating, merging, or writing
+// the cube-branded kubeconfig.
 func ErrKubeconfigFailed(cause error) error {
 	return cubeerr.Wrap(CodeKubeconfigFailed,
 		"kubeconfig generation failed",

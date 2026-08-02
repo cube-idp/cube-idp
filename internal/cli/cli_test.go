@@ -2,7 +2,6 @@ package cli_test
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +29,7 @@ func writeTemp(t *testing.T, content string) string {
 func run(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errBuf bytes.Buffer
-	code = cli.Execute(context.Background(), args, &out, &errBuf)
+	code = cli.Execute(t.Context(), args, &out, &errBuf)
 	return code, out.String(), errBuf.String()
 }
 

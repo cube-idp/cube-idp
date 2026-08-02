@@ -11,10 +11,13 @@ import (
 	"github.com/cube-idp/cube-idp/internal/config"
 )
 
-// newProvisioner maps a validated provider to its driver. Driver
+// provisionerFactory maps a validated provider to its driver. Driver
 // selection stays out of domain packages to keep them import-cycle-free;
-// a var so tests inject a mock seam.
-var newProvisioner = func(p v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
+// the factory is injected into newInitCmd so tests pass a mock seam
+// instead of mutating package state.
+type provisionerFactory func(p v1alpha1.ClusterProvider) (cluster.Provisioner, error)
+
+func defaultProvisioner(p v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
 	switch p {
 	case v1alpha1.ClusterProviderKind:
 		return kindprov.New()
@@ -23,11 +26,13 @@ var newProvisioner = func(p v1alpha1.ClusterProvider) (cluster.Provisioner, erro
 	}
 }
 
-func newInitCmd() *cobra.Command {
+func newInitCmd(newProvisioner provisionerFactory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Create the cluster from the Config and install its kubeconfig context",
-		RunE:  runInit,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runInit(cmd, newProvisioner)
+		},
 	}
 	cmd.Flags().String("kubeconfig", "",
 		"write the kubeconfig to this file instead of merging into the default location")
@@ -36,7 +41,7 @@ func newInitCmd() *cobra.Command {
 	return cmd
 }
 
-func runInit(cmd *cobra.Command, _ []string) error {
+func runInit(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	path, _ := cmd.Flags().GetString("config")
 	kubeconfigPath, _ := cmd.Flags().GetString("kubeconfig")
 	contextName, _ := cmd.Flags().GetString("kubeconfig-context-name")
