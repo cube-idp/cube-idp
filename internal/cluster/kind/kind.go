@@ -26,11 +26,19 @@ type Provider struct {
 	kp func() (*kindcluster.Provider, error)
 }
 
+// Signature drift must fail the build, not silently drop the optional
+// capability the CLI edge type-asserts for.
+var (
+	_ cluster.Provisioner   = (*Provider)(nil)
+	_ cluster.SpecValidator = (*Provider)(nil)
+)
+
 // New returns a kind-backed Provisioner. Container-runtime detection
 // (docker/podman/nerdctl) is deferred to the first provisioning call so
 // that construction — and the pure ValidateSpec capability — never needs
 // a runtime; the error return is kept for future construction-time
-// failures.
+// failures. Detection runs once: its result — including a failure — is
+// cached for the Provider's lifetime.
 func New() (*Provider, error) {
 	return &Provider{kp: sync.OnceValues(func() (*kindcluster.Provider, error) {
 		opt, err := kindcluster.DetectNodeProvider()
