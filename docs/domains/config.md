@@ -53,7 +53,9 @@ cluster" per the cluster contract — the scaffold provisions out of the box.
   invalid name surfaces as `CUBE-CFG-003` and nothing is written. No name
   validation is duplicated outside the pipeline.
 - The file is created with `O_CREATE|O_EXCL`: scaffolding can never
-  clobber an existing document, even in a race.
+  clobber an existing document, even in a race (`CUBE-CFG-006`); other
+  scaffold I/O failures are `CUBE-CFG-007`, and a partial file is
+  removed on a failed write.
 - Name generation: `GenerateName()` returns a docker-style
   `<adjective>-<noun>` name. It lives in `internal/config` beside the
   loader — NOT in `api/` (which stays logic-free). A unit test asserts
@@ -72,6 +74,8 @@ cluster" per the cluster contract — the scaffold provisions out of the box.
 | `CUBE-CFG-003` | invalid config (validation errors) |
 | `CUBE-CFG-004` | config file missing/unreadable |
 | `CUBE-CFG-005` | `--name` conflicts with existing document's `metadata.name` (M4) |
+| `CUBE-CFG-006` | config already exists — scaffold never overwrites (M4) |
+| `CUBE-CFG-007` | scaffold I/O failure (M4) |
 
 `CUBE-CFG-005` fires only on *mismatch*: a `--name` equal to the
 document's `metadata.name` is a no-op and proceeds (keeps

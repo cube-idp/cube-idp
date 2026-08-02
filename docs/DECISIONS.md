@@ -100,4 +100,8 @@ validate` works without Docker. Import direction untouched:
 the CLI edge. Provider-payload failures keep the provider's code
 (`CUBE-CLU-003`, exit 1) — codes are never re-tagged across domains. No
 ARCHITECTURE change: no new tag, no new dependency, capability pattern
-already sanctioned (§4).
+already sanctioned (§4). *Amended 2026-08-02:* after the go-skills
+review the owner reversed the uncoded-scaffold-errors call —
+already-exists and scaffold I/O failures are coded (`CUBE-CFG-006`,
+`CUBE-CFG-007`) so the scaffold path carries remediation and exit 2
+like every other config error.
