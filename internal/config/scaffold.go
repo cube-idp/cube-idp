@@ -34,11 +34,15 @@ func ScaffoldFile(path, name string) error {
 	if err != nil {
 		return fmt.Errorf("scaffold config %s: %w", path, err)
 	}
+	// O_EXCL creation means the file is ours: remove it on a failed
+	// write/close, or a retry would hit "file exists" on a broken file.
 	if _, err := f.Write([]byte(doc)); err != nil {
 		_ = f.Close()
+		_ = os.Remove(path)
 		return fmt.Errorf("scaffold config %s: %w", path, err)
 	}
 	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
 		return fmt.Errorf("scaffold config %s: %w", path, err)
 	}
 	return nil
