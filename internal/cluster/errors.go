@@ -50,10 +50,10 @@ func NewProvisionFailedError(action, name string, cause error) error {
 		"check that the container runtime (Docker/Podman) is running; see cause above", cause)
 }
 
-// NewKubeconfigFailedError reports a failure generating, merging, or writing
-// the cube-branded kubeconfig.
+// NewKubeconfigFailedError reports a failure generating, merging, writing,
+// or cleaning up the cube-branded kubeconfig.
 func NewKubeconfigFailedError(cause error) error {
 	return cubeerr.Wrap(CodeKubeconfigFailed,
-		"kubeconfig generation failed",
+		"kubeconfig update failed",
 		"see cause above; check permissions on the kubeconfig target, or pass --kubeconfig <path> to write elsewhere", cause)
 }
