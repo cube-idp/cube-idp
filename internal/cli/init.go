@@ -1,7 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -38,17 +42,29 @@ func newInitCmd(newProvisioner provisionerFactory) *cobra.Command {
 		"write the kubeconfig to this file instead of merging into the default location")
 	cmd.Flags().String("kubeconfig-context-name", "",
 		"override the generated context name (default: cube-idp.dev/<cluster-name>)")
+	cmd.Flags().String("name", "",
+		"cube name for a scaffolded config (must match metadata.name when the file already exists)")
 	return cmd
 }
 
 func runInit(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	path, _ := cmd.Flags().GetString("config")
+	nameFlag, _ := cmd.Flags().GetString("name")
 	kubeconfigPath, _ := cmd.Flags().GetString("kubeconfig")
 	contextName, _ := cmd.Flags().GetString("kubeconfig-context-name")
 
+	if err := scaffoldIfAbsent(cmd.OutOrStdout(), path, nameFlag); err != nil {
+		return err
+	}
 	cfg, err := config.LoadFile(path)
 	if err != nil {
 		return err
+	}
+	// Mismatch only: a --name equal to the document's metadata.name is a
+	// no-op, keeping init --name <x> idempotent. Flags never mutate an
+	// existing config.
+	if nameFlag != "" && cfg.Name != nameFlag {
+		return config.NewNameConflictError(path, cfg.Name, nameFlag)
 	}
 	if cfg.Spec.Cluster == nil {
 		return cluster.NewNoClusterConfiguredError()
@@ -69,5 +85,26 @@ func runInit(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 		name = cluster.ContextName(cfg.Name)
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "cluster %q ready — kubeconfig context %q installed\n", cfg.Name, name)
+	return nil
+}
+
+// scaffoldIfAbsent creates the config document when path does not exist:
+// metadata.name from nameFlag if set, else a generated docker-style name.
+// An existing file is left untouched, and any other stat failure falls
+// through to the loader, which reports it with path context. A concurrent
+// creation between the check and the O_EXCL write surfaces as the
+// scaffold's own already-exists error rather than clobbering the file.
+func scaffoldIfAbsent(stdout io.Writer, path, nameFlag string) error {
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	name := nameFlag
+	if name == "" {
+		name = config.GenerateName()
+	}
+	if err := config.ScaffoldFile(path, name); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(stdout, "scaffolded %s — cube %q\n", path, name)
 	return nil
 }
