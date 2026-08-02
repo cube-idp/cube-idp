@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 
 	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
@@ -32,18 +34,21 @@ func ScaffoldFile(path, name string) error {
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return fmt.Errorf("scaffold config %s: %w", path, err)
+		if errors.Is(err, fs.ErrExist) {
+			return newAlreadyExistsError(path)
+		}
+		return newScaffoldFailedError(path, err)
 	}
 	// O_EXCL creation means the file is ours: remove it on a failed
 	// write/close, or a retry would hit "file exists" on a broken file.
 	if _, err := f.Write([]byte(doc)); err != nil {
 		_ = f.Close()
 		_ = os.Remove(path)
-		return fmt.Errorf("scaffold config %s: %w", path, err)
+		return newScaffoldFailedError(path, err)
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(path)
-		return fmt.Errorf("scaffold config %s: %w", path, err)
+		return newScaffoldFailedError(path, err)
 	}
 	return nil
 }

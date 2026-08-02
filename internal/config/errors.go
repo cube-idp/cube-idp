@@ -15,6 +15,8 @@ const (
 	CodeInvalidConfig         cubeerr.Code = "CUBE-CFG-003"
 	CodeUnreadableConfig      cubeerr.Code = "CUBE-CFG-004"
 	CodeNameConflict          cubeerr.Code = "CUBE-CFG-005"
+	CodeAlreadyExists         cubeerr.Code = "CUBE-CFG-006"
+	CodeScaffoldFailed        cubeerr.Code = "CUBE-CFG-007"
 )
 
 func errUnsupportedAPIVersion(gvk string) error {
@@ -49,4 +51,19 @@ func errUnreadableConfig(cause error) error {
 	return cubeerr.Wrap(CodeUnreadableConfig,
 		"cannot read config file",
 		"check that the path exists and is readable, or point -f/--config at the right file", cause)
+}
+
+// New-convention constructor names (New<Thing>Error / new<thing>Error,
+// rules audit 2026-08-02); the older err*/Err* constructors above are
+// renamed in a separate mechanical PR.
+func newAlreadyExistsError(path string) error {
+	return cubeerr.Wrap(CodeAlreadyExists,
+		fmt.Sprintf("config already exists at %s", path),
+		"cube-idp never overwrites an existing config; delete it or pass a different -f", nil)
+}
+
+func newScaffoldFailedError(path string, cause error) error {
+	return cubeerr.Wrap(CodeScaffoldFailed,
+		fmt.Sprintf("cannot scaffold config file %s", path),
+		"check that the target directory exists and is writable", cause)
 }
