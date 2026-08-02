@@ -116,6 +116,56 @@ func Merge(existing, incoming []byte) ([]byte, error) {
 	return out, nil
 }
 
+// Remove deletes every entry named contextName from a kubeconfig's
+// clusters/contexts/users lists, plus current-context when it pointed at
+// the removed context — the exact reverse of installing a Rebrand-ed
+// config with Merge. Same map-based model as Merge: every key cube-idp
+// does not understand passes through untouched. The previous
+// current-context is not restorable (Merge overwrote it), so it is
+// unset, matching kubectl's delete-context behavior. The bool reports
+// whether anything changed; when false the returned bytes are the input,
+// so callers can skip rewriting an untouched file.
+func Remove(existing []byte, contextName string) ([]byte, bool, error) {
+	if len(existing) == 0 {
+		return existing, false, nil
+	}
+	var kc map[string]any
+	if err := yaml.Unmarshal(existing, &kc); err != nil {
+		return nil, false, fmt.Errorf("parse kubeconfig: %w", err)
+	}
+	changed := false
+	for _, key := range []string{"clusters", "contexts", "users"} {
+		list, _ := kc[key].([]any)
+		kept := make([]any, 0, len(list))
+		for _, e := range list {
+			if entryName(e) != contextName {
+				kept = append(kept, e)
+			}
+		}
+		if len(kept) == len(list) {
+			continue // untouched lists keep their original value, even empty ones
+		}
+		changed = true
+		if len(kept) == 0 {
+			delete(kc, key)
+		} else {
+			kc[key] = kept
+		}
+	}
+	if cc, _ := kc["current-context"].(string); cc == contextName {
+		delete(kc, "current-context")
+		changed = true
+	}
+	if !changed {
+		return existing, false, nil
+	}
+	out, err := yaml.Marshal(kc)
+	if err != nil {
+		return nil, false, fmt.Errorf("render kubeconfig: %w", err)
+	}
+	return out, true, nil
+}
+
 // entryName extracts the name of a kubeconfig list entry. Incoming
 // entries always carry names (Rebrand stamps them); a nameless entry in
 // the existing file yields "" and is never displaced by a named one.
