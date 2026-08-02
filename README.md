@@ -5,8 +5,8 @@ platform from one declarative config document.
 
 **Status: greenfield rebuild — config + cluster domains.** The repository
 was reset to a greenfield baseline on 2026-07-27 and grows in small
-milestones; today it holds the config domain (validate/show) and the
-cluster domain (kind provisioning via `init`, M3). The previous
+milestones; today it holds the config domain (validate/show/scaffold) and
+the cluster domain (kind provisioning via `init`). The previous
 implementation is preserved in git history on `main`. Structure and
 rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 What's next: [ROADMAP.md](ROADMAP.md). Decision history:
@@ -39,9 +39,28 @@ cube-owned context (`cube-idp.dev/<name>`) into your kubeconfig;
 `--kubeconfig <path>` writes a standalone file instead of merging, and
 `--kubeconfig-context-name` overrides the context name.
 
-Exit codes: `0` success, `2` config error (`CUBE-CFG-NNN` code with a
-remediation hint), `1` anything else (cluster errors render as
-`CUBE-CLU-NNN`).
+When the config file does not exist, `init` scaffolds it first — with
+`metadata.name` from `--name`, otherwise a generated docker-style name —
+prints a notice naming the created file and cube, then provisions from
+it:
+
+```
+$ cube-idp init          # no cube.yaml yet
+scaffolded cube.yaml — cube "sunny-walrus"
+cluster "sunny-walrus" ready — kubeconfig context "cube-idp.dev/sunny-walrus" installed
+```
+
+`--name` never modifies an existing document: a mismatch with its
+`metadata.name` fails (`CUBE-CFG-005` — edit the file instead), while a
+matching `--name` proceeds, so re-runs stay idempotent.
+
+`config validate` also checks the provider-specific
+`spec.cluster.forProvider` payload against the selected provider — no
+Docker needed.
+
+Exit codes: `0` success, `2` config document error (`CUBE-CFG-NNN` code
+with a remediation hint), `1` anything else (cluster and provider-payload
+errors render as `CUBE-CLU-NNN`).
 
 Minimal config ([examples/cube.yaml](examples/cube.yaml)):
 

@@ -126,3 +126,10 @@ handling is handle-once (return wrapped or render at the edge, never
 both). Rules the skills endorse (consumer-side interfaces, hand-rolled
 mocks, driver-seam conformance suites, the load pipeline, type-asserted
 capabilities, code-equality assertions) are recorded as unchanged.
+
+**2026-08-02 — C4 architecture docs adopted.** The C4 model lives in
+`docs/architecture/` with `workspace.dsl` as the source of truth
+(regeneration commands in its header comment) beside the rendered SVGs;
+`docs/ARCHITECTURE.md` §9 embeds the same views as mermaid. DSL, SVGs,
+and mermaid embeds are regenerated together from the DSL — never
+hand-edited.
