@@ -37,6 +37,27 @@ stateful fake runs it in the green gate; the kind driver runs it for real
 behind `make test-e2e` (opt-in, auto-skips without Docker).
 `internal/cluster/kind` is the sole importer of `sigs.k8s.io/kind`.
 
+### Optional capability: spec validation (M4)
+
+Per the interface doctrine, optional capabilities are separate small
+type-asserted interfaces beside the seam:
+
+```go
+type SpecValidator interface {
+    ValidateSpec(s Spec) error // pure: no I/O, no side effects
+}
+```
+
+The kind driver implements it by strict-decoding `forProvider` as a
+`kind.x-k8s.io/v1alpha4` Cluster — the same decode `Ensure` performs,
+extracted into a shared helper — returning `CUBE-CLU-003` on failure.
+Constraint discovered in code: driver *construction* must not require a
+container runtime (`config validate` must work without Docker), so kind's
+runtime detection moves from `New()` to first provisioning call
+(`Ensure`/`Exists`/`Delete`/`Kubeconfig`); `ValidateSpec` never triggers
+it. The conformance suite gains an optional sub-test: if the provisioner
+implements `SpecValidator`, an invalid payload must yield a coded error.
+
 ## Kubeconfig machinery
 
 Own minimal typed model over `sigs.k8s.io/yaml` (no client-go):
@@ -60,13 +81,23 @@ file (`--kubeconfig`, no merge). Driver selection happens at the CLI edge.
 |---|---|
 | `CUBE-CLU-001` | no cluster configured |
 | `CUBE-CLU-002` | no driver for provider |
-| `CUBE-CLU-003` | invalid `forProvider` payload |
+| `CUBE-CLU-003` | invalid `forProvider` payload (from M4 also surfaced by `config validate`) |
 | `CUBE-CLU-004` | provisioning failed |
 | `CUBE-CLU-005` | kubeconfig generation/merge/write failed |
 
 ## CLI surface
 
-`init [-f cube.yaml] [--kubeconfig <path>] [--kubeconfig-context-name <n>]`.
+`init [-f cube.yaml] [--name <cube-name>] [--kubeconfig <path>]
+[--kubeconfig-context-name <n>]`.
+
+From M4 the CLI edge composes scaffold-if-absent → load → provision: when
+the config file does not exist, `init` scaffolds it first
+(`metadata.name` from `--name`, else a generated docker-style name) and
+prints a notice naming the created file and cube. The scaffold machinery
+belongs to the config domain (`docs/domains/config.md`) — this domain
+never writes config. `--name` never mutates an existing document: a
+mismatch with the loaded `metadata.name` is `CUBE-CFG-005`; a match
+proceeds (idempotent re-runs stay cheap).
 
 ## Contracts for future domains
 
