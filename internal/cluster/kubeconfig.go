@@ -78,25 +78,36 @@ func Rebrand(raw []byte, contextName, namespace string) ([]byte, error) {
 
 // Merge upserts incoming's entries into existing by name and adopts
 // incoming's current-context. An empty existing yields incoming as-is.
+// Only the keys cube-idp understands (clusters, contexts, users,
+// current-context, plus apiVersion/kind when absent) are touched; every
+// other top-level key in the user's file passes through untouched —
+// "never destroys what we don't understand" is structural, not assumed.
 func Merge(existing, incoming []byte) ([]byte, error) {
 	if len(existing) == 0 {
 		return incoming, nil
 	}
-	var dst, src kubeconfig
+	var dst, src map[string]any
 	if err := yaml.Unmarshal(existing, &dst); err != nil {
 		return nil, fmt.Errorf("parse existing kubeconfig: %w", err)
 	}
 	if err := yaml.Unmarshal(incoming, &src); err != nil {
 		return nil, fmt.Errorf("parse incoming kubeconfig: %w", err)
 	}
-	dst.Clusters = upsertNamed(dst.Clusters, src.Clusters)
-	dst.Users = upsertNamed(dst.Users, src.Users)
-	dst.Contexts = upsertContexts(dst.Contexts, src.Contexts)
-	if src.CurrentContext != "" {
-		dst.CurrentContext = src.CurrentContext
+	if dst == nil {
+		dst = map[string]any{}
 	}
-	if dst.APIVersion == "" {
-		dst.APIVersion, dst.Kind = src.APIVersion, src.Kind
+	for _, key := range []string{"clusters", "contexts", "users"} {
+		dstList, _ := dst[key].([]any)
+		srcList, _ := src[key].([]any)
+		if merged := upsert(dstList, srcList, entryName); len(merged) > 0 {
+			dst[key] = merged
+		}
+	}
+	if cc, _ := src["current-context"].(string); cc != "" {
+		dst["current-context"] = cc
+	}
+	if v, _ := dst["apiVersion"].(string); v == "" {
+		dst["apiVersion"], dst["kind"] = src["apiVersion"], src["kind"]
 	}
 	out, err := yaml.Marshal(dst)
 	if err != nil {
@@ -105,27 +116,22 @@ func Merge(existing, incoming []byte) ([]byte, error) {
 	return out, nil
 }
 
-func upsertNamed(dst, src []namedEntry) []namedEntry {
-	for _, s := range src {
-		replaced := false
-		for i := range dst {
-			if dst[i].Name == s.Name {
-				dst[i], replaced = s, true
-				break
-			}
-		}
-		if !replaced {
-			dst = append(dst, s)
-		}
-	}
-	return dst
+// entryName extracts the name of a kubeconfig list entry. Incoming
+// entries always carry names (Rebrand stamps them); a nameless entry in
+// the existing file yields "" and is never displaced by a named one.
+func entryName(e any) string {
+	m, _ := e.(map[string]any)
+	name, _ := m["name"].(string)
+	return name
 }
 
-func upsertContexts(dst, src []contextEntry) []contextEntry {
+// upsert replaces dst elements whose name matches a src element and
+// appends the rest, preserving dst order.
+func upsert[E any](dst, src []E, name func(E) string) []E {
 	for _, s := range src {
 		replaced := false
 		for i := range dst {
-			if dst[i].Name == s.Name {
+			if name(dst[i]) == name(s) {
 				dst[i], replaced = s, true
 				break
 			}

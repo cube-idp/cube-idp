@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newRootCmd() *cobra.Command {
+func newRootCmd(factory provisionerFactory) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "cube-idp",
 		Short:         "cube-idp — internal developer platform, from a single config",
@@ -15,6 +15,6 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().StringP("config", "f", "cube.yaml", "path to the Config document")
-	root.AddCommand(newConfigCmd(), newInitCmd())
+	root.AddCommand(newConfigCmd(), newInitCmd(factory))
 	return root
 }

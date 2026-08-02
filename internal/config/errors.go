@@ -25,6 +25,16 @@ func errUnsupportedAPIVersion(gvk string) error {
 		"set apiVersion: cube-idp.dev/v1alpha1 and kind: Config", nil)
 }
 
+// newMissingGVKError covers the empty/absent apiVersion+kind case with a
+// clearer message than the generic `unsupported apiVersion/kind "/"`.
+// Same code as errUnsupportedAPIVersion — the condition, not the shape,
+// differs. (New-convention name; err* constructors are renamed later.)
+func newMissingGVKError() error {
+	return cubeerr.Wrap(CodeUnsupportedAPIVersion,
+		"config file has no apiVersion/kind",
+		"set apiVersion: cube-idp.dev/v1alpha1 and kind: Config", nil)
+}
+
 func errUnknownField(cause error) error {
 	return cubeerr.Wrap(CodeUnknownField,
 		"config contains unknown fields",

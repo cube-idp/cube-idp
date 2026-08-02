@@ -1,13 +1,17 @@
 package v1alpha1
 
 import (
+	"fmt"
 	"regexp"
 
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-// nameRE constrains the cube identity: DNS-label-like, max 31 chars.
-var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,30}$`)
+// namePattern constrains the cube identity: DNS-label-like, max 31
+// chars. The error message derives from it — one source, no drift.
+const namePattern = `^[a-z0-9][a-z0-9-]{0,30}$`
+
+var nameRE = regexp.MustCompile(namePattern)
 
 // Validate checks the defaulted Config and returns every problem found.
 // It never mutates; call Default first.
@@ -20,7 +24,7 @@ func (c *Config) Validate() field.ErrorList {
 		errs = append(errs, field.Required(namePath, "cube identity is required"))
 	case !nameRE.MatchString(c.Name):
 		errs = append(errs, field.Invalid(namePath, c.Name,
-			"must match ^[a-z0-9][a-z0-9-]{0,30}$ (lowercase alphanumeric and dashes, max 31 chars)"))
+			fmt.Sprintf("must match %s (lowercase alphanumeric and dashes, max 31 chars)", namePattern)))
 	}
 	if c.Spec.Cluster != nil && c.Spec.Cluster.Provider != ClusterProviderKind {
 		errs = append(errs, field.NotSupported(
