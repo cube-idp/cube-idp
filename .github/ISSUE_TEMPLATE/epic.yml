@@ -1,36 +1,30 @@
-name: "Epic: ADR-tracked feature"
-description: ADR track — a decision plus its delivery, as one epic with sub-issues
-title: "[ADR-NNNN] "
-labels: ["type:adr"]
+name: Epic (milestone pickup)
+description: Open when a ROADMAP milestone is picked up — task breakdown aligned before work starts
+title: "epic: "
+labels: ["epic"]
 body:
   - type: input
-    id: adr
+    id: roadmap
     attributes:
-      label: ADR
-      description: Path once the ADR PR exists, e.g. docs/adr/0043-multinode-mounts-ports.md (PR link until merged)
+      label: Roadmap milestone
+      description: The ROADMAP.md entry this epic delivers, e.g. "M5 — cluster lifecycle completion"
     validations:
       required: true
   - type: textarea
     id: scope
     attributes:
       label: Scope
-      description: One paragraph. What ships when this epic closes; what is explicitly out.
+      description: One paragraph. What ships when this epic closes; what is explicitly out. Name the design gate if one applies (CLAUDE.md §6).
     validations:
       required: true
   - type: textarea
-    id: subissues
+    id: tasks
     attributes:
-      label: Delivery plan
-      description: One line per intended sub-issue (converted to real sub-issues once the ADR is accepted).
+      label: Task breakdown
+      description: One line per task issue (each becomes its own `task` issue referencing this epic). The final task is always "Docs & architecture consistent and updated".
       placeholder: |
-        - [ ] mounts apply to all nodes by default
-        - [ ] extraPorts semantics per provider
-        - [ ] e2e coverage
-    validations:
-      required: true
-  - type: input
-    id: milestone
-    attributes:
-      label: Target milestone
+        - [ ] #NN task one
+        - [ ] #NN task two
+        - [ ] #NN Docs & architecture consistent and updated
     validations:
       required: true

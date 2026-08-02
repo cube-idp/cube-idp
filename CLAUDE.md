@@ -177,7 +177,11 @@ operator decision), `needs-adr` (requires a DECISIONS.md entry / design
 gate before work starts), `wontfix`; `domain:<name>` labels are created
 as domains land. PR sizing: `size-s|m|l|xl` on pull requests (`size-xl`
 is a signal to split). This is the complete set — new labels require
-editing this list. Small chore/fix/docs work outside any milestone still
+editing this list. Issue forms in `.github/ISSUE_TEMPLATE/` auto-apply
+their label and may only reference labels from this list; the forms are
+updated in the same PR as any change to it. PRs carry exactly one
+`size-*` label; `domain:*` and type labels live on issues, not PRs.
+Small chore/fix/docs work outside any milestone still
 goes straight to a PR without an epic.
 
 Update `/ROADMAP.md` in the PR that completes (or reorders) a milestone.

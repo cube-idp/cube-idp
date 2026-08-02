@@ -1,7 +1,7 @@
 name: Feature request
-description: New capability or enhancement (Direct track — or flags itself into the ADR track)
+description: New capability or enhancement
 title: "feat: "
-labels: ["type:feature"]
+labels: ["feature"]
 body:
   - type: textarea
     id: problem
@@ -18,17 +18,10 @@ body:
     validations:
       required: true
   - type: dropdown
-    id: needs-adr
+    id: design-gate
     attributes:
-      label: Does this need an ADR?
-      description: New dependency, new architectural pattern, hard to reverse, or real competing alternatives → yes (ADR track).
-      options: ["no — routine work within existing decisions", "yes — architectural (an epic + ADR PR must precede code)", "unsure — triage decides"]
-    validations:
-      required: true
-  - type: dropdown
-    id: area
-    attributes:
-      label: Area
-      options: [cluster, packs, engine, registry, gateway, tui-output, diagnostics, trust, ci, unknown]
+      label: Does this need a design gate?
+      description: New domain, new dependency, new seam, or a contract change → yes (reviewed ARCHITECTURE/domain diff + DECISIONS.md entry before code, per CLAUDE.md §6).
+      options: ["no — routine work within existing decisions", "yes — design gate first", "unsure — triage decides"]
     validations:
       required: true
