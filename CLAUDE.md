@@ -23,6 +23,7 @@ driver seam, kind provider, `init`). Per-domain contracts:
 | `/CLAUDE.md` | agent rules + this map | rules or the doc system change |
 | `/CHANGELOG.md` | release notes | every milestone PR |
 | `docs/ARCHITECTURE.md` | binding cross-cutting architecture (living) | architectural decisions, in the deciding PR |
+| `docs/architecture/` | C4 model: `workspace.dsl` + rendered SVGs | when the architecture changes, regenerated from the DSL |
 | `docs/domains/<name>.md` | one living contract per domain | the domain's milestones (file created when the domain lands) |
 | `docs/DECISIONS.md` | append-only dated decision log | every owner-approved decision |
 | `docs/work/` | ephemeral milestone plans/groundwork | created during a milestone, DELETED in its closing PR |
@@ -30,8 +31,10 @@ driver seam, kind provider, `init`). Per-domain contracts:
 
 Anti-sprawl rules: dated markdown files are banned outside `docs/archived/`
 and `docs/work/`. New markdown may only appear as a new `docs/domains/`
-file (with its domain) or inside `docs/work/`. Anything else requires
-editing this map first. A milestone's "design doc" is a reviewed diff to
+file (with its domain) or inside `docs/work/`; `docs/architecture/` holds
+only the C4 model and its rendered assets (DSL + SVGs, regenerated
+together, no markdown). Anything else requires editing this map first.
+A milestone's "design doc" is a reviewed diff to
 `ARCHITECTURE.md`/`domains/<x>.md` plus a `DECISIONS.md` entry —
 owner-approved before code, exactly as before.
 
