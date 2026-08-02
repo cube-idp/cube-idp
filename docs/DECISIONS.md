@@ -105,3 +105,24 @@ review the owner reversed the uncoded-scaffold-errors call —
 already-exists and scaffold I/O failures are coded (`CUBE-CFG-006`,
 `CUBE-CFG-007`) so the scaffold path carries remediation and exit 2
 like every other config error.
+
+**2026-08-02 — Go conventions aligned with the go-skills review (rules
+audit).** Owner-approved amendments to CLAUDE.md §2/§3/§5 and
+ARCHITECTURE §4/§5/§7: test seams are injected, mutable package-level
+state banned outside `main`; formatting joins the lint gate
+(gofmt/goimports formatters, `gofmt -l .` silent); tests and conformance
+suites use `t.Context()`; stdlib error checks use
+`errors.Is(fs.ErrNotExist)`-style, never the legacy `os.IsNotExist`
+family; coded-error constructors are named
+`new<Thing>Error`/`New<Thing>Error` — the `Err` prefix is reserved for
+`errors.Is`-comparable sentinels (which this repo has none of), and the
+existing `Err*`/`err*` constructors are renamed in one mechanical PR
+after the in-flight M4 branches merge; table tests only where cases
+share one code path, separate functions otherwise; funlen excludes
+`_test.go`; the string-matching ban narrowed to error *identity*
+(substring checks on rendered CLI output and message context stay
+sanctioned); every exported identifier carries a doc comment; error
+handling is handle-once (return wrapped or render at the edge, never
+both). Rules the skills endorse (consumer-side interfaces, hand-rolled
+mocks, driver-seam conformance suites, the load pipeline, type-asserted
+capabilities, code-equality assertions) are recorded as unchanged.

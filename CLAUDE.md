@@ -53,7 +53,10 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config  ──▶ api/con
   of their backend SDK; nothing else may touch `sigs.k8s.io/kind`.
 - Factories and composition live at the CLI/orchestrator edge, never inside
   domain packages (every old import-cycle workaround traced to a factory
-  importing its implementations).
+  importing its implementations). Test seams are injected — a factory is
+  passed as a parameter or struct field to the code that uses it, never
+  exposed as a mutable package-level `var` that tests overwrite with
+  save/restore. Mutable package-level state is banned outside `main`.
 
 ## 3. Green definition
 
@@ -63,15 +66,21 @@ Work is done only when, actually run in the worktree:
 make build && make test && make lint
 ```
 
-all pass AND `make generate` produces no diff. CI runs exactly these gates.
+all pass AND `make generate` produces no diff AND `gofmt -l .` prints
+nothing. Formatting is part of the lint gate, not a courtesy: the
+golangci-lint config enables the `gofmt` and `goimports` formatters, so
+unformatted code fails `make lint` in CI, never just in review. CI runs
+exactly these gates.
 
 `make test-e2e` (kind driver conformance against real Docker, worktree-local
 KUBECONFIG) is opt-in verification — it is never part of the green gate, and
 the gate must stay hermetic: no test in `make test` may need Docker.
 
 Size limits are enforced, not aspirational: functions <50 lines (funlen),
-files <300 lines (`make filelen`; `zz_generated*` exempt). When a gate
-trips, refactor the code — never raise the limit.
+files <300 lines (`make filelen`; `zz_generated*` exempt). funlen
+excludes `_test.go` files (a table of cases is data, not complexity —
+keep tables inside their test function). When a gate trips, refactor the
+code — never raise the limit.
 
 ## 4. Structure conventions
 
@@ -91,10 +100,15 @@ trips, refactor the code — never raise the limit.
 
 ## 5. Go rules
 
-- Wrap every error hop with `%w` plus context:
-  `fmt.Errorf("read config %s: %w", path, err)`.
+- Handle every error exactly once: return it wrapped with `%w` plus
+  context the caller doesn't already have
+  (`fmt.Errorf("read config %s: %w", path, err)`), or handle it at the
+  edge — never both, and never wrap with restated context. Only
+  `internal/cli/exit.go` renders.
 - `context.Context` is the first parameter on anything that does I/O or can
-  block.
+  block. Tests and conformance suites obtain their context from
+  `t.Context()`, never `context.Background()` — cancellation at test end is
+  part of the contract being exercised.
 - Interfaces are consumer-side by default: defined where used, 1–3 methods,
   and only once a real second consumer or implementation exists. The only
   interfaces so far are designated driver seams (`cluster.Provisioner`) —
@@ -105,10 +119,21 @@ trips, refactor the code — never raise the limit.
   runs the shared suite.
 - Mocks are hand-rolled function-field structs. No mockgen, no generated
   mocks.
-- Tests are table-driven; error paths are first-class rows, not
-  afterthoughts.
+- Tests are table-driven wherever cases share one code path; error paths
+  are first-class rows, not afterthoughts. Cases needing conditional
+  setup, per-case mocking, or branching assertions get separate test
+  functions instead of a forced table.
 - Assert on errors via `errors.As` into `*cubeerr.Coded` plus code
-  equality — never string matching.
+  equality — never string matching for error identity. For stdlib errors,
+  use `errors.Is` with the sentinel (`errors.Is(err, fs.ErrNotExist)`),
+  never the legacy `os.IsNotExist`-family helpers, which do not unwrap.
+- Coded-error constructors are functions named `new<Thing>Error`
+  (exported: `New<Thing>Error`) — the `Err` prefix is reserved for
+  sentinel `var`s comparable with `errors.Is`, and this repo has none.
+  Error identity is always the `cubeerr.Code`, asserted via `errors.As`.
+- Every exported identifier has a doc comment — a full sentence starting
+  with the identifier's name. A group comment may cover a const/var block,
+  but exported functions and types are documented individually.
 - Runtime dependencies are a closed set (`k8s.io/apimachinery`,
   `sigs.k8s.io/yaml`, `github.com/spf13/cobra`, and `sigs.k8s.io/kind` —
   the latter confined to `internal/cluster/kind` — see the dependency
