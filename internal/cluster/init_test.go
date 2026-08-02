@@ -32,52 +32,51 @@ func (m *mockProvisioner) Kubeconfig(ctx context.Context, name string) ([]byte, 
 	return []byte(strings.ReplaceAll(kindStyleKubeconfig, "kind-dev", "kind-"+name)), nil
 }
 
-// initCases lives at package level to keep TestInit under funlen.
-var initCases = []struct {
-	name     string
-	opts     InitOptions
-	mock     *mockProvisioner
-	wantCode cubeerr.Code // "" = success
-	wantIn   []string     // substrings expected in the target file
-	explicit bool         // true → assert default location untouched
-}{
-	{
-		name:   "merges into KUBECONFIG default with derived context",
-		opts:   InitOptions{Spec: Spec{Name: "dev"}},
-		mock:   &mockProvisioner{},
-		wantIn: []string{"cube-idp.dev/dev", "current-context: cube-idp.dev/dev"},
-	},
-	{
-		name: "explicit path writes file, no merge into default",
-		opts: InitOptions{Spec: Spec{Name: "dev"}}, // KubeconfigPath set in test body
-		mock: &mockProvisioner{}, explicit: true,
-		wantIn: []string{"cube-idp.dev/dev"},
-	},
-	{
-		name:   "context name override and namespace stamped",
-		opts:   InitOptions{Spec: Spec{Name: "dev"}, ContextName: "my-ctx", Namespace: "platform"},
-		mock:   &mockProvisioner{},
-		wantIn: []string{"name: my-ctx", "namespace: platform"},
-	},
-	{
-		name: "ensure failure surfaces driver error untouched",
-		opts: InitOptions{Spec: Spec{Name: "dev"}},
-		mock: &mockProvisioner{EnsureFunc: func(context.Context, Spec) error {
-			return ErrProvisionFailed("create", "dev", errors.New("boom"))
-		}},
-		wantCode: CodeProvisionFailed,
-	},
-	{
-		name: "kubeconfig failure wraps as CLU-005",
-		opts: InitOptions{Spec: Spec{Name: "dev"}},
-		mock: &mockProvisioner{KubeconfigFunc: func(context.Context, string) ([]byte, error) {
-			return nil, fmt.Errorf("boom")
-		}},
-		wantCode: CodeKubeconfigFailed,
-	},
-}
-
 func TestInit(t *testing.T) {
+	initCases := []struct {
+		name     string
+		opts     InitOptions
+		mock     *mockProvisioner
+		wantCode cubeerr.Code // "" = success
+		wantIn   []string     // substrings expected in the target file
+		explicit bool         // true → assert default location untouched
+	}{
+		{
+			name:   "merges into KUBECONFIG default with derived context",
+			opts:   InitOptions{Spec: Spec{Name: "dev"}},
+			mock:   &mockProvisioner{},
+			wantIn: []string{"cube-idp.dev/dev", "current-context: cube-idp.dev/dev"},
+		},
+		{
+			name: "explicit path writes file, no merge into default",
+			opts: InitOptions{Spec: Spec{Name: "dev"}}, // KubeconfigPath set in test body
+			mock: &mockProvisioner{}, explicit: true,
+			wantIn: []string{"cube-idp.dev/dev"},
+		},
+		{
+			name:   "context name override and namespace stamped",
+			opts:   InitOptions{Spec: Spec{Name: "dev"}, ContextName: "my-ctx", Namespace: "platform"},
+			mock:   &mockProvisioner{},
+			wantIn: []string{"name: my-ctx", "namespace: platform"},
+		},
+		{
+			name: "ensure failure surfaces driver error untouched",
+			opts: InitOptions{Spec: Spec{Name: "dev"}},
+			mock: &mockProvisioner{EnsureFunc: func(context.Context, Spec) error {
+				return ErrProvisionFailed("create", "dev", errors.New("boom"))
+			}},
+			wantCode: CodeProvisionFailed,
+		},
+		{
+			name: "kubeconfig failure wraps as CLU-005",
+			opts: InitOptions{Spec: Spec{Name: "dev"}},
+			mock: &mockProvisioner{KubeconfigFunc: func(context.Context, string) ([]byte, error) {
+				return nil, fmt.Errorf("boom")
+			}},
+			wantCode: CodeKubeconfigFailed,
+		},
+	}
+
 	for _, tt := range initCases {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
