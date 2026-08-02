@@ -53,7 +53,11 @@ Two kinds of seams, bright line between them:
 - **Kind A — consumer-side (the default):** the consuming package defines
   the 1–3 method interface it needs, only once a real second consumer or
   implementation exists. Domains return concrete structs. Mocks are
-  hand-rolled function-field structs — no mockgen.
+  hand-rolled function-field structs — no mockgen. Test seams are
+  injected — a factory is passed as a parameter or struct field to the
+  code that uses it, never exposed as a mutable package-level `var` that
+  tests overwrite with save/restore; mutable package-level state is
+  banned outside `main`.
 - **Kind B — driver seams (the exception):** only for genuinely swappable
   backends (cluster providers, gitops engines). Interface + exported
   `Run<Seam>Conformance(t, factory)` suite live in the domain package;
@@ -70,7 +74,11 @@ Machinery (`internal/cubeerr`: `Code`, `Coded`, `Wrap`, `ExitCode`) is
 separated from catalogs and never grows one. Each domain owns its
 `CUBE-<TAG>-NNN` codes in its own `errors.go`; every user-reaching error is
 a `*cubeerr.Coded` with summary + remediation wrapping the technical cause
-(`%w` on every hop). Only `internal/cli/exit.go` renders errors and maps
+(`%w` on every hop). Coded-error constructors are functions named
+`new<Thing>Error` (exported: `New<Thing>Error`) — the `Err` prefix is
+reserved for sentinel `var`s comparable with `errors.Is`, and this repo
+has none; error identity is always the `cubeerr.Code`, asserted via
+`errors.As`. Only `internal/cli/exit.go` renders errors and maps
 exit codes: 0 success, 2 config error, 1 anything else. Domains never
 print.
 
@@ -100,11 +108,19 @@ edge; size limits (function <50 lines, file <300) are CI-enforced.
 
 ## 7. Testing strategy
 
-Table-driven tests for every exported function; error paths are
-first-class rows. Error assertions via `errors.As` into `*cubeerr.Coded` +
-code equality — never string matching (golden files are the one sanctioned
-byte-exact check, for CLI stdout). Filesystem access through injected
-`fs.FS`, mocked with `fstest.MapFS`. Driver seams ship conformance suites
+Table-driven tests wherever cases share one code path; error paths are
+first-class rows. When cases need conditional setup, per-case mocking,
+or branching assertions, write separate test functions instead of
+forcing a table — a table with `if tt.explicit`-style branches is a
+smell, not compliance. Error *identity* is asserted via `errors.As` into
+`*cubeerr.Coded` + code equality — never by matching message strings.
+Substring checks are fine for what they actually test: rendered CLI
+output (codes, field paths, remediation on stderr) and context carried
+in messages (paths). Golden files are the one sanctioned byte-exact
+check, for CLI stdout. Tests and conformance suites obtain their context
+from `t.Context()`, never `context.Background()` — cancellation at test
+end is part of the contract being exercised. Filesystem access through
+injected `fs.FS`, mocked with `fstest.MapFS`. Driver seams ship conformance suites
 designed to run without live infrastructure (stateful fakes in the green
 gate); real-backend runs are opt-in (`make test-e2e`) and never part of the
 gate.
