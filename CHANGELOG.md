@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+M4 init bootstrap (design gate: `docs/DECISIONS.md` 2026-08-01):
+
+- `cube-idp init` scaffolds a missing config file before provisioning:
+  `metadata.name` from the new `--name` flag, else a generated
+  docker-style `<adjective>-<noun>` name. The rendered document is
+  validated through the standard load pipeline before an `O_EXCL` create
+  (an existing file is never clobbered — `CUBE-CFG-006`; scaffold I/O
+  failures are `CUBE-CFG-007`), and a stdout notice names the created
+  file and cube.
+- `--name` never mutates an existing document: a mismatch with
+  `metadata.name` fails with `CUBE-CFG-005` ("edit metadata.name"
+  remediation); a matching `--name` proceeds, keeping re-runs idempotent.
+- `config validate` now also surfaces provider-side
+  `spec.cluster.forProvider` validation via the cluster seam's optional
+  `SpecValidator` capability, composed at the CLI edge. Exit contract:
+  0 valid, 2 document errors (`CUBE-CFG-*`), 1 provider-payload errors
+  (`CUBE-CLU-003`). kind's container-runtime detection is deferred to
+  the first provisioning call, so validation works without Docker.
+
 M3 cluster domain (design: `docs/archived/design/2026-07-29-cluster-domain.md`):
 
 - `spec.cluster` API sub-struct: typed `provider` (defaults to `kind`) plus
