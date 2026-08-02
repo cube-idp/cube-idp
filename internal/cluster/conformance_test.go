@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"testing"
+
+	"sigs.k8s.io/yaml"
 )
 
 // fakeProvisioner is the hand-rolled stateful reference implementation:
@@ -16,6 +18,20 @@ func newFake() *fakeProvisioner { return &fakeProvisioner{clusters: map[string]b
 
 func (f *fakeProvisioner) Ensure(_ context.Context, s Spec) error {
 	f.clusters[s.Name] = true
+	return nil
+}
+
+// ValidateSpec makes the fake exercise the optional SpecValidator
+// conformance path: any object payload passes, anything else is the
+// coded invalid-forProvider error.
+func (f *fakeProvisioner) ValidateSpec(s Spec) error {
+	if s.ForProvider == nil || len(s.ForProvider.Raw) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := yaml.Unmarshal(s.ForProvider.Raw, &m); err != nil {
+		return ErrInvalidForProvider(err)
+	}
 	return nil
 }
 
