@@ -156,3 +156,43 @@ current-context: other
 		t.Fatal("Merge duplicated entries on re-merge")
 	}
 }
+
+// TestMergePreservesUnknownKeys proves the merge is structurally
+// lossless: top-level keys cube-idp does not understand survive a merge
+// round-trip untouched.
+func TestMergePreservesUnknownKeys(t *testing.T) {
+	const existing = `apiVersion: v1
+kind: Config
+clusters:
+  - name: other
+    cluster:
+      server: https://example.com
+contexts:
+  - name: other
+    context:
+      cluster: other
+      user: other
+users:
+  - name: other
+    user:
+      token: abc
+current-context: other
+preferences:
+  colors: true
+some-future-key:
+  vendor: acme
+`
+	branded, err := Rebrand([]byte(kindStyleKubeconfig), "cube-idp.dev/dev", "")
+	if err != nil {
+		t.Fatalf("Rebrand fixture: %v", err)
+	}
+	out, err := Merge([]byte(existing), branded)
+	if err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	for _, s := range []string{"colors: true", "some-future-key:", "vendor: acme", "name: other", "cube-idp.dev/dev"} {
+		if !strings.Contains(string(out), s) {
+			t.Errorf("merged output missing %q:\n%s", s, out)
+		}
+	}
+}

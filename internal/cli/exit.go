@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cube-idp/cube-idp/internal/cubeerr"
 )
 
@@ -13,7 +15,12 @@ import (
 // place errors are rendered: coded errors print code, summary, cause
 // detail, and remediation to stderr.
 func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	root := newRootCmd()
+	return execute(ctx, newRootCmd(defaultProvisioner), args, stdout, stderr)
+}
+
+// execute is Execute minus composition, so tests run a command tree
+// built with an injected provisioner factory.
+func execute(ctx context.Context, root *cobra.Command, args []string, stdout, stderr io.Writer) int {
 	root.SetArgs(args)
 	root.SetOut(stdout)
 	root.SetErr(stderr)

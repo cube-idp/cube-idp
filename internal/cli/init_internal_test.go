@@ -39,6 +39,7 @@ current-context: kind-NAME
 }
 
 func TestInitWritesKubeconfig(t *testing.T) {
+	t.Parallel() // no package state mutated: the factory is injected
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "cube.yaml")
 	cfgYAML := `apiVersion: cube-idp.dev/v1alpha1
@@ -54,14 +55,12 @@ spec:
 	}
 	kubeconfigPath := filepath.Join(dir, "kubeconfig")
 
-	restore := newProvisioner
-	newProvisioner = func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
+	root := newRootCmd(func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
 		return mockProvisioner{}, nil
-	}
-	defer func() { newProvisioner = restore }()
+	})
 
 	var stdout, stderr bytes.Buffer
-	code := Execute(context.Background(),
+	code := execute(t.Context(), root,
 		[]string{"init", "-f", cfgPath, "--kubeconfig", kubeconfigPath}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit = %d, stderr: %s", code, stderr.String())
