@@ -103,7 +103,7 @@ func TestScaffoldFileMissingDir(t *testing.T) {
 	}
 }
 
-func TestErrNameConflict(t *testing.T) {
+func TestNewNameConflictError(t *testing.T) {
 	err := config.NewNameConflictError("cube.yaml",
 		"dev" /* documentName */, "prod" /* flagName */)
 
