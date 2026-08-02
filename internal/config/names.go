@@ -22,7 +22,9 @@ var (
 )
 
 // GenerateName returns a random docker-style cube name
-// (<adjective>-<noun>) for scaffolded config documents.
+// (<adjective>-<noun>) for scaffolded config documents. The result
+// always satisfies the api name regex (asserted exhaustively in tests),
+// so callers never need to re-validate it.
 func GenerateName() string {
 	adj := nameAdjectives[rand.IntN(len(nameAdjectives))]
 	noun := nameNouns[rand.IntN(len(nameNouns))]
