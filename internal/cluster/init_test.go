@@ -14,6 +14,7 @@ import (
 
 type mockProvisioner struct {
 	EnsureFunc     func(ctx context.Context, s Spec) error
+	ExistsFunc     func(ctx context.Context, name string) (bool, error)
 	DeleteFunc     func(ctx context.Context, name string) error
 	KubeconfigFunc func(ctx context.Context, name string) ([]byte, error)
 }
@@ -24,7 +25,12 @@ func (m *mockProvisioner) Ensure(ctx context.Context, s Spec) error {
 	}
 	return nil
 }
-func (m *mockProvisioner) Exists(context.Context, string) (bool, error) { return false, nil }
+func (m *mockProvisioner) Exists(ctx context.Context, name string) (bool, error) {
+	if m.ExistsFunc != nil {
+		return m.ExistsFunc(ctx, name)
+	}
+	return false, nil
+}
 func (m *mockProvisioner) Delete(ctx context.Context, name string) error {
 	if m.DeleteFunc != nil {
 		return m.DeleteFunc(ctx, name)
