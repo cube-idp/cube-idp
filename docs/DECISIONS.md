@@ -76,3 +76,32 @@ in the milestone's closing PR; git history is the archive). Dated files
 are banned outside `archived/`; a milestone's design gate is now an
 ARCHITECTURE/domain diff + a DECISIONS entry, still owner-approved before
 code.
+
+**2026-08-01 — M4 init bootstrap design gate.** `init` scaffolds a
+missing config file, then provisions from it; the `forProvider`
+validation follow-up folds in. Positions: (1) scaffolding/serialization
+is config-domain machinery (`ScaffoldFile` — fixed template with
+`metadata.name` + `spec.cluster: {}`, validated through the standard load
+pipeline in memory before writing, created `O_EXCL`); cluster never
+writes config; the CLI edge composes scaffold-if-absent → load →
+provision. (2) The docker-style `<adjective>-<noun>` generator lives in
+`internal/config` (NOT `api/`, which stays logic-free); every wordlist
+combination must match the api name regex. (3) `--name` never mutates an
+existing document — a mismatch with `metadata.name` is new
+`CUBE-CFG-005` ("edit metadata.name" remediation, exported constructor
+for the edge); a *matching* `--name` proceeds, preserving `init`
+idempotency (the 2026-07-29 no-mutation decision governs the mismatch
+case only). (4) Provider-side validation is an optional type-asserted
+capability beside the seam (`SpecValidator.ValidateSpec`, pure); kind
+implements it with the strict decode already in `Ensure`, and its runtime
+detection moves from `New()` to first provisioning call so `config
+validate` works without Docker. Import direction untouched:
+`internal/config` never imports `internal/cluster`; composition stays at
+the CLI edge. Provider-payload failures keep the provider's code
+(`CUBE-CLU-003`, exit 1) — codes are never re-tagged across domains. No
+ARCHITECTURE change: no new tag, no new dependency, capability pattern
+already sanctioned (§4). *Amended 2026-08-02:* after the go-skills
+review the owner reversed the uncoded-scaffold-errors call —
+already-exists and scaffold I/O failures are coded (`CUBE-CFG-006`,
+`CUBE-CFG-007`) so the scaffold path carries remediation and exit 2
+like every other config error.

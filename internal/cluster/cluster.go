@@ -17,6 +17,15 @@ type Spec struct {
 	ForProvider *runtime.RawExtension // provider-specific config, opaque here
 }
 
+// SpecValidator is an optional capability a Provisioner may implement:
+// pure validation of the provider-specific payload — no I/O, and no
+// backend runtime required. The CLI edge type-asserts for it so
+// `config validate` can surface provider-side errors without
+// provisioning anything.
+type SpecValidator interface {
+	ValidateSpec(s Spec) error
+}
+
 // Provisioner is the driver seam for swappable cluster backends.
 // Implementations live in subpackages and must satisfy
 // RunClusterConformance.

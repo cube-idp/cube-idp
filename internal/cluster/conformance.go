@@ -2,9 +2,13 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
+
+	"github.com/cube-idp/cube-idp/internal/cubeerr"
 )
 
 // RunClusterConformance asserts the behavioral contract every Provisioner
@@ -28,6 +32,8 @@ func RunClusterConformance(t *testing.T, factory func() Provisioner) {
 			t.Fatalf("Exists %s = %v, want %v", when, got, want)
 		}
 	}
+
+	assertSpecValidation(t, p, name)
 
 	assertExists(false, "before Ensure")
 	if err := p.Ensure(ctx, Spec{Name: name}); err != nil {
@@ -53,6 +59,31 @@ func RunClusterConformance(t *testing.T, factory func() Provisioner) {
 	}
 	if _, err := p.Kubeconfig(ctx, name); err == nil {
 		t.Fatal("Kubeconfig after Delete: want error, got nil")
+	}
+}
+
+// assertSpecValidation exercises the optional SpecValidator capability:
+// an empty payload must pass, and a payload no provider can decode (a
+// YAML array where a config object belongs) must yield the domain's
+// coded invalid-forProvider error. No-op for drivers without the
+// capability.
+func assertSpecValidation(t *testing.T, p Provisioner, name string) {
+	t.Helper()
+	v, ok := p.(SpecValidator)
+	if !ok {
+		return
+	}
+	if err := v.ValidateSpec(Spec{Name: name}); err != nil {
+		t.Fatalf("ValidateSpec (no payload): %v", err)
+	}
+	err := v.ValidateSpec(Spec{Name: name,
+		ForProvider: &runtime.RawExtension{Raw: []byte(`[1]`)}})
+	var coded *cubeerr.Coded
+	if !errors.As(err, &coded) {
+		t.Fatalf("ValidateSpec (invalid payload) = %v, want *cubeerr.Coded", err)
+	}
+	if coded.Code != CodeInvalidForProvider {
+		t.Fatalf("code = %s, want %s", coded.Code, CodeInvalidForProvider)
 	}
 }
 

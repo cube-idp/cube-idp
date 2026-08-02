@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 
 	v1alpha4 "sigs.k8s.io/kind/pkg/apis/config/v1alpha4"
 	kindcluster "sigs.k8s.io/kind/pkg/cluster"
@@ -22,23 +23,59 @@ import (
 // seam's ctx parameters are accepted and unused — a documented library
 // limitation, not a design choice.
 type Provider struct {
-	kp *kindcluster.Provider
+	kp func() (*kindcluster.Provider, error)
 }
 
-// New detects the container runtime (docker/podman/nerdctl) and returns
-// a kind-backed Provisioner.
+// Signature drift must fail the build, not silently drop the optional
+// capability the CLI edge type-asserts for.
+var (
+	_ cluster.Provisioner   = (*Provider)(nil)
+	_ cluster.SpecValidator = (*Provider)(nil)
+)
+
+// New returns a kind-backed Provisioner. Container-runtime detection
+// (docker/podman/nerdctl) is deferred to the first provisioning call so
+// that construction — and the pure ValidateSpec capability — never needs
+// a runtime; the error return is kept for future construction-time
+// failures. Detection runs once: its result — including a failure — is
+// cached for the Provider's lifetime.
 func New() (*Provider, error) {
-	opt, err := kindcluster.DetectNodeProvider()
-	if err != nil {
-		return nil, fmt.Errorf("detect container runtime for kind: %w", err)
+	return &Provider{kp: sync.OnceValues(func() (*kindcluster.Provider, error) {
+		opt, err := kindcluster.DetectNodeProvider()
+		if err != nil {
+			return nil, fmt.Errorf("detect container runtime for kind: %w", err)
+		}
+		return kindcluster.NewProvider(opt), nil
+	})}, nil
+}
+
+// decodeForProvider strictly decodes spec.cluster.forProvider as a
+// kind.x-k8s.io/v1alpha4 Cluster; absent or empty means the default.
+func decodeForProvider(s cluster.Spec) (*v1alpha4.Cluster, error) {
+	cfg := &v1alpha4.Cluster{}
+	if s.ForProvider != nil && len(s.ForProvider.Raw) > 0 {
+		if err := yaml.UnmarshalStrict(s.ForProvider.Raw, cfg); err != nil {
+			return nil, cluster.ErrInvalidForProvider(fmt.Errorf("decode forProvider as kind.x-k8s.io/v1alpha4 Cluster: %w", err))
+		}
 	}
-	return &Provider{kp: kindcluster.NewProvider(opt)}, nil
+	return cfg, nil
+}
+
+// ValidateSpec implements the optional cluster.SpecValidator capability:
+// pure payload validation, no container runtime touched.
+func (p *Provider) ValidateSpec(s cluster.Spec) error {
+	_, err := decodeForProvider(s)
+	return err
 }
 
 // Ensure creates the cluster if absent. Idempotency is by name only —
 // an existing cluster is never diffed against the spec, so config
 // changes require delete + re-init.
 func (p *Provider) Ensure(ctx context.Context, s cluster.Spec) error {
+	cfg, err := decodeForProvider(s)
+	if err != nil {
+		return err
+	}
 	exists, err := p.Exists(ctx, s.Name)
 	if err != nil {
 		return err
@@ -46,14 +83,12 @@ func (p *Provider) Ensure(ctx context.Context, s cluster.Spec) error {
 	if exists {
 		return nil
 	}
-	cfg := &v1alpha4.Cluster{}
-	if s.ForProvider != nil && len(s.ForProvider.Raw) > 0 {
-		if err := yaml.UnmarshalStrict(s.ForProvider.Raw, cfg); err != nil {
-			return cluster.ErrInvalidForProvider(fmt.Errorf("decode forProvider as kind.x-k8s.io/v1alpha4 Cluster: %w", err))
-		}
-	}
 	cfg.Name = s.Name
 
+	kp, err := p.kp()
+	if err != nil {
+		return cluster.ErrProvisionFailed("create", s.Name, err)
+	}
 	// Point kind's own kubeconfig export at a throwaway path so it never
 	// touches the user's file; the domain owns kubeconfig installation.
 	tmp, err := os.MkdirTemp("", "cube-idp-kind-*")
@@ -62,7 +97,7 @@ func (p *Provider) Ensure(ctx context.Context, s cluster.Spec) error {
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 
-	if err := p.kp.Create(s.Name,
+	if err := kp.Create(s.Name,
 		kindcluster.CreateWithV1Alpha4Config(cfg),
 		kindcluster.CreateWithKubeconfigPath(filepath.Join(tmp, "kubeconfig")),
 	); err != nil {
@@ -72,7 +107,11 @@ func (p *Provider) Ensure(ctx context.Context, s cluster.Spec) error {
 }
 
 func (p *Provider) Exists(_ context.Context, name string) (bool, error) {
-	names, err := p.kp.List()
+	kp, err := p.kp()
+	if err != nil {
+		return false, cluster.ErrProvisionFailed("list", name, err)
+	}
+	names, err := kp.List()
 	if err != nil {
 		return false, cluster.ErrProvisionFailed("list", name, err)
 	}
@@ -80,15 +119,23 @@ func (p *Provider) Exists(_ context.Context, name string) (bool, error) {
 }
 
 func (p *Provider) Delete(_ context.Context, name string) error {
+	kp, err := p.kp()
+	if err != nil {
+		return cluster.ErrProvisionFailed("delete", name, err)
+	}
 	// kind's Delete is a no-op for absent clusters, matching the seam.
-	if err := p.kp.Delete(name, ""); err != nil {
+	if err := kp.Delete(name, ""); err != nil {
 		return cluster.ErrProvisionFailed("delete", name, err)
 	}
 	return nil
 }
 
 func (p *Provider) Kubeconfig(_ context.Context, name string) ([]byte, error) {
-	kc, err := p.kp.KubeConfig(name, false)
+	kp, err := p.kp()
+	if err != nil {
+		return nil, fmt.Errorf("kind kubeconfig for %s: %w", name, err)
+	}
+	kc, err := kp.KubeConfig(name, false)
 	if err != nil {
 		return nil, fmt.Errorf("kind kubeconfig for %s: %w", name, err)
 	}
