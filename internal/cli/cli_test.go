@@ -85,6 +85,50 @@ func TestMissingFile(t *testing.T) {
 	}
 }
 
+// TestConfigValidateForProvider drives the real kind driver's pure
+// SpecValidator capability — no container runtime is touched, so these
+// stay in the hermetic gate. Both rows share one code path: load, then
+// provider-side validation at the CLI edge.
+func TestConfigValidateForProvider(t *testing.T) {
+	tests := []struct {
+		name        string
+		forProvider string
+		wantCode    int
+		wantStderr  string // empty = expect success output on stdout
+	}{
+		{
+			name:        "valid kind payload",
+			forProvider: "      nodes:\n        - role: control-plane\n",
+			wantCode:    0,
+		},
+		{
+			name:        "invalid kind payload",
+			forProvider: "      notAKindField: true\n",
+			wantCode:    1,
+			wantStderr:  "CUBE-CLU-003",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := "apiVersion: cube-idp.dev/v1alpha1\nkind: Config\nmetadata:\n  name: dev\nspec:\n  cluster:\n    provider: kind\n    forProvider:\n" + tt.forProvider
+			path := writeTemp(t, doc)
+			code, stdout, stderr := run(t, "config", "validate", "-f", path)
+			if code != tt.wantCode {
+				t.Fatalf("exit = %d, want %d (stderr: %s)", code, tt.wantCode, stderr)
+			}
+			if tt.wantStderr == "" {
+				if !strings.Contains(stdout, "valid") {
+					t.Errorf("stdout %q should confirm validity", stdout)
+				}
+				return
+			}
+			if !strings.Contains(stderr, tt.wantStderr) {
+				t.Errorf("stderr %q should carry %s", stderr, tt.wantStderr)
+			}
+		})
+	}
+}
+
 func TestInitRequiresCluster(t *testing.T) {
 	path := writeTemp(t, validYAML)
 	code, _, stderr := run(t, "init", "-f", path)
