@@ -22,7 +22,7 @@ func defaultProvisioner(p v1alpha1.ClusterProvider) (cluster.Provisioner, error)
 	case v1alpha1.ClusterProviderKind:
 		return kindprov.New()
 	default:
-		return nil, cluster.ErrUnsupportedProvider(string(p))
+		return nil, cluster.NewUnsupportedProviderError(string(p))
 	}
 }
 
@@ -51,7 +51,7 @@ func runInit(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 		return err
 	}
 	if cfg.Spec.Cluster == nil {
-		return cluster.ErrNoClusterConfigured()
+		return cluster.NewNoClusterConfiguredError()
 	}
 	p, err := newProvisioner(cfg.Spec.Cluster.Provider)
 	if err != nil {

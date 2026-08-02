@@ -104,7 +104,7 @@ func TestScaffoldFileMissingDir(t *testing.T) {
 }
 
 func TestErrNameConflict(t *testing.T) {
-	err := config.ErrNameConflict("cube.yaml",
+	err := config.NewNameConflictError("cube.yaml",
 		"dev" /* documentName */, "prod" /* flagName */)
 
 	coded := assertCoded(t, err, config.CodeNameConflict)

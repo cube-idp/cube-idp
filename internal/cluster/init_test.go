@@ -77,7 +77,7 @@ func TestInit(t *testing.T) {
 			name: "ensure failure surfaces driver error untouched",
 			opts: InitOptions{Spec: Spec{Name: "dev"}},
 			mock: &mockProvisioner{EnsureFunc: func(context.Context, Spec) error {
-				return ErrProvisionFailed("create", "dev", errors.New("boom"))
+				return NewProvisionFailedError("create", "dev", errors.New("boom"))
 			}},
 			wantCode: CodeProvisionFailed,
 		},

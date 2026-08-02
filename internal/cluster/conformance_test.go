@@ -30,7 +30,7 @@ func (f *fakeProvisioner) ValidateSpec(s Spec) error {
 	}
 	var m map[string]any
 	if err := yaml.Unmarshal(s.ForProvider.Raw, &m); err != nil {
-		return ErrInvalidForProvider(err)
+		return NewInvalidForProviderError(err)
 	}
 	return nil
 }
