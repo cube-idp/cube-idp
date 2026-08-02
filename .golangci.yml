@@ -8,3 +8,15 @@ linters:
     funlen:
       lines: 50
       ignore-comments: true
+  exclusions:
+    rules:
+      # Table-driven test functions are dominated by their case tables;
+      # the 50-line limit stays for production code only (rules audit f2).
+      - path: _test\.go
+        linters:
+          - funlen
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

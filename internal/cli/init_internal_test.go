@@ -14,7 +14,7 @@ import (
 
 type mockProvisioner struct{}
 
-func (mockProvisioner) Ensure(context.Context, cluster.Spec) error    { return nil }
+func (mockProvisioner) Ensure(context.Context, cluster.Spec) error   { return nil }
 func (mockProvisioner) Exists(context.Context, string) (bool, error) { return true, nil }
 func (mockProvisioner) Delete(context.Context, string) error         { return nil }
 func (mockProvisioner) Kubeconfig(_ context.Context, name string) ([]byte, error) {

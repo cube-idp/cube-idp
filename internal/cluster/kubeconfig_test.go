@@ -30,45 +30,44 @@ func TestContextName(t *testing.T) {
 	}
 }
 
-// rebrandCases lives at package level to keep TestRebrand under funlen.
-var rebrandCases = []struct {
-	name        string
-	raw         string
-	contextName string
-	namespace   string
-	wantErr     bool
-	wantSubstr  []string
-	notSubstr   []string
-}{
-	{
-		name: "renames all entries and current-context",
-		raw:  kindStyleKubeconfig, contextName: "cube-idp.dev/dev",
-		wantSubstr: []string{"cube-idp.dev/dev", "certificate-authority-data: Zm9v", "client-certificate-data: YmFy"},
-		notSubstr:  []string{"kind-dev"},
-	},
-	{
-		name: "stamps namespace when set",
-		raw:  kindStyleKubeconfig, contextName: "cube-idp.dev/dev", namespace: "platform",
-		wantSubstr: []string{"namespace: platform"},
-	},
-	{
-		name: "omits namespace when empty",
-		raw:  kindStyleKubeconfig, contextName: "cube-idp.dev/dev",
-		notSubstr: []string{"namespace:"},
-	},
-	{
-		name: "rejects multi-context kubeconfig",
-		raw: kindStyleKubeconfig + `  - name: other
+func TestRebrand(t *testing.T) {
+	rebrandCases := []struct {
+		name        string
+		raw         string
+		contextName string
+		namespace   string
+		wantErr     bool
+		wantSubstr  []string
+		notSubstr   []string
+	}{
+		{
+			name: "renames all entries and current-context",
+			raw:  kindStyleKubeconfig, contextName: "cube-idp.dev/dev",
+			wantSubstr: []string{"cube-idp.dev/dev", "certificate-authority-data: Zm9v", "client-certificate-data: YmFy"},
+			notSubstr:  []string{"kind-dev"},
+		},
+		{
+			name: "stamps namespace when set",
+			raw:  kindStyleKubeconfig, contextName: "cube-idp.dev/dev", namespace: "platform",
+			wantSubstr: []string{"namespace: platform"},
+		},
+		{
+			name: "omits namespace when empty",
+			raw:  kindStyleKubeconfig, contextName: "cube-idp.dev/dev",
+			notSubstr: []string{"namespace:"},
+		},
+		{
+			name: "rejects multi-context kubeconfig",
+			raw: kindStyleKubeconfig + `  - name: other
     context:
       cluster: other
       user: other
 `,
-		contextName: "x", wantErr: true,
-	},
-	{name: "rejects unparseable input", raw: ":\tnot yaml", contextName: "x", wantErr: true},
-}
+			contextName: "x", wantErr: true,
+		},
+		{name: "rejects unparseable input", raw: ":\tnot yaml", contextName: "x", wantErr: true},
+	}
 
-func TestRebrand(t *testing.T) {
 	for _, tt := range rebrandCases {
 		t.Run(tt.name, func(t *testing.T) {
 			out, err := Rebrand([]byte(tt.raw), tt.contextName, tt.namespace)
@@ -95,9 +94,9 @@ func TestRebrand(t *testing.T) {
 	}
 }
 
-// otherKubeconfig is TestMerge's pre-existing-file fixture, package-level
-// to keep the test under funlen.
-const otherKubeconfig = `apiVersion: v1
+func TestMerge(t *testing.T) {
+	// otherKubeconfig is the pre-existing-file fixture.
+	const otherKubeconfig = `apiVersion: v1
 kind: Config
 clusters:
   - name: other
@@ -115,7 +114,6 @@ users:
 current-context: other
 `
 
-func TestMerge(t *testing.T) {
 	branded, err := Rebrand([]byte(kindStyleKubeconfig), "cube-idp.dev/dev", "")
 	if err != nil {
 		t.Fatalf("Rebrand fixture: %v", err)
