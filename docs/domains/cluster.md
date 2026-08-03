@@ -87,17 +87,24 @@ file (`--kubeconfig`, no merge). Driver selection happens at the CLI edge.
 
 ## CLI surface
 
-`init [-f cube.yaml] [--name <cube-name>] [--kubeconfig <path>]
-[--kubeconfig-context-name <n>]`.
+`init [-f cube.yaml] [--name <cube-name>]` — config-only since the M5
+split (operator decision 2026-08-03, `docs/DECISIONS.md`):
+scaffold-if-absent → load → report, exit 0 and idempotent. It never
+provisions and never touches a kubeconfig. When the config file does not
+exist, `init` scaffolds it (`metadata.name` from `--name`, else a
+generated docker-style name) and prints a notice naming the created file
+and cube plus a `create` next-step hint. The scaffold machinery belongs
+to the config domain (`docs/domains/config.md`) — this domain never
+writes config. `--name` never mutates an existing document: a mismatch
+with the loaded `metadata.name` is `CUBE-CFG-005`; a match proceeds
+(idempotent re-runs stay cheap).
 
-From M4 the CLI edge composes scaffold-if-absent → load → provision: when
-the config file does not exist, `init` scaffolds it first
-(`metadata.name` from `--name`, else a generated docker-style name) and
-prints a notice naming the created file and cube. The scaffold machinery
-belongs to the config domain (`docs/domains/config.md`) — this domain
-never writes config. `--name` never mutates an existing document: a
-mismatch with the loaded `metadata.name` is `CUBE-CFG-005`; a match
-proceeds (idempotent re-runs stay cheap).
+`create [-f cube.yaml] [--kubeconfig <path>]
+[--kubeconfig-context-name <n>]` — load → provision via the seam →
+install the cube-owned kubeconfig context (the Init operation above,
+formerly `init`'s job). `create` never scaffolds: a missing config file
+is the loader's coded error, keeping the config document the single
+source of truth.
 
 ## Contracts for future domains
 
