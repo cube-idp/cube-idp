@@ -147,12 +147,17 @@ C4 views of the system, exported from the Structurizr model at
 `docs/architecture/workspace.dsl` (the source of truth, which also carries
 the regeneration commands). The mermaid blocks below and the SVGs in
 `docs/architecture/` are generated together from that DSL — regenerated,
-never hand-edited.
+never hand-edited. Green chips on the arrows are the relationship
+actions (what the source does to the target); each view's color/shape
+legend is rendered beside its SVG:
+[SystemContext](architecture/structurizr-SystemContext-key.svg),
+[Containers](architecture/structurizr-Containers-key.svg),
+[Components](architecture/structurizr-Components-key.svg).
 
 System context — who and what surrounds the cube-idp binary:
 
 ```mermaid
-%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e8f1fa"}}}%%
+%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e6f4ea"}}}%%
 graph LR
   linkStyle default fill:#ffffff
 
@@ -184,7 +189,7 @@ graph LR
 Containers — the binary and the two files it owns on the operator's machine:
 
 ```mermaid
-%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e8f1fa"}}}%%
+%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e6f4ea"}}}%%
 graph LR
   linkStyle default fill:#ffffff
 
@@ -227,7 +232,7 @@ graph LR
 Components — the packages inside the binary and their import direction:
 
 ```mermaid
-%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e8f1fa"}}}%%
+%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e6f4ea"}}}%%
 graph LR
   linkStyle default fill:#ffffff
 
