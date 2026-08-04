@@ -9,7 +9,7 @@
 //     export -workspace workspace.dsl -format plantuml/c4plantuml
 //   docker run --rm -v "$PWD:/data" plantuml/plantuml -tsvg "/data/*.puml"
 //   rm structurizr-*.puml
-workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M5)" {
+workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, M6 design)" {
 
     model {
         operator = person "Platform Operator" "Declares a cube in cube.yaml and drives it with the cube-idp CLI"
@@ -23,6 +23,7 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
                 apiPkg = component "Config API" "Pure contract: Config types, defaults, validation. No I/O, no logic; hub for the cube-idp.dev/v1alpha1 group" "api/config/v1alpha1"
                 clusterDomain = component "Cluster domain" "Provisioner driver seam + optional SpecValidator capability, Init/Delete/Status operations, kubeconfig rebrand/lossless-merge/removal/atomic-write machinery; owns CUBE-CLU-* codes; exported conformance suite" "internal/cluster"
                 kindDriver = component "kind driver" "Sole importer of sigs.k8s.io/kind; implements Provisioner + SpecValidator; container-runtime detection deferred to first provisioning call" "internal/cluster/kind"
+                kubeDomain = component "Kube domain" "Shared leaf (M6): constructs REST config, discovery, RESTMapper and dynamic client from injected kubeconfig bytes + context name; Ping reachability check; sole constructor of clients (client-go construction confinement); owns CUBE-KUB-* codes" "internal/kube"
                 cubeerrPkg = component "Error machinery" "Coded error shape (code, summary, remediation) and exit-code mapping only — no code catalog" "internal/cubeerr"
             }
 
@@ -65,11 +66,14 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         cliPkg -> configDomain "Scaffold-if-absent, LoadFile; raises NewNameConflictError on --name mismatch"
         cliPkg -> clusterDomain "Composes Init (create), Delete, Status; type-asserts SpecValidator for config validate"
         cliPkg -> kindDriver "Constructs via injected provisioner factory (composition at the edge only)"
+        cliPkg -> kubeDomain "Injects kubeconfig bytes + context name; composes Ping into the status reachability line (M6)"
         cliPkg -> cubeerrPkg "Maps error chain to exit code; renders Coded errors to stderr"
         configDomain -> apiPkg "Strict decode → Default() → Validate()"
         clusterDomain -> apiPkg "Provider constants, API group for the context-name prefix"
         configDomain -> cubeerrPkg "Wraps CUBE-CFG-* errors with"
         clusterDomain -> cubeerrPkg "Wraps CUBE-CLU-* errors with"
+        kubeDomain -> cubeerrPkg "Wraps CUBE-KUB-* errors with"
+        kubeDomain -> kindCluster "Checks API reachability of, discovers resources on" "k8s.io/client-go HTTPS"
         kindDriver -> clusterDomain "Implements Provisioner + SpecValidator (compile-time asserted)"
         kindDriver -> containerRuntime "DetectNodeProvider + cluster create/list/delete" "sigs.k8s.io/kind"
     }

@@ -51,23 +51,32 @@ it in the PR that completes or reorders a milestone.
 
 ## Queue
 
-- *(empty — the next milestone is picked from the continuation below.)*
+- **M6 — kube: client access** (epic #81): new leaf domain `internal/kube`
+  (`CUBE-KUB-*`) — clients constructed from injected kubeconfig bytes +
+  context name (REST config, discovery, RESTMapper, dynamic, `Ping`);
+  `k8s.io/client-go` joins the closed set with construction-scoped
+  confinement; no driver seam. Thin user-visible proof: `status` gains an
+  API-reachability line. Design gate: `docs/DECISIONS.md` 2026-08-04;
+  living contract: `docs/domains/kube.md`.
 
-## Default continuation after M5 (directional, not committed)
+## Default continuation after M6 (directional, not committed)
 
-M5 has landed — this queue is re-evaluated now. Decision record,
-alternatives, risk table, and
-open questions: `docs/archived/plans/2026-08-01-roadmap-direction.md`.
+Re-evaluated after M5 (2026-08-04): M6 = kube confirmed per the default;
+the remainder stays directional, re-checked as milestones land. Decision
+record, alternatives, risk table, and open questions:
+`docs/archived/plans/2026-08-01-roadmap-direction.md`.
 
-kube (client access, client-go → design gate) → apply (SSA + inventory) →
-pack (the spine, made solid — contract designed against recorded consumer
-requirements; consumers conform to pack, never the reverse) → engine
-(gitops driver seam + Flux, installs as an ordinary pack) → registry (OCI
-bus) → orchestrator (`up`/`down` phase runner, last) → periphery in pull
-order (doctor, diff, trust, lock/vendor, spokes, …).
+apply (SSA + inventory) → pack (the spine, made solid — contract designed
+against recorded consumer requirements; consumers conform to pack, never
+the reverse) → engine (gitops driver seam + Flux, installs as an ordinary
+pack) → registry (OCI bus) → orchestrator (`up`/`down` phase runner, last)
+→ periphery in pull order (doctor, diff, trust, lock/vendor, spokes, …).
 
 **Prepared work:** the pack unit is fully pre-shaped in
 `docs/work/pack-groundwork.md` — owner-decided contract direction
 (pack.cue/CUE, packRef, uuid/category, values, externalManifests,
-dependsOn), an 18-task breakdown grouped into 6 one-PR chunks with
-dependencies, and 5 open owner questions that gate its design task (T1).
+dependsOn) and an 18-task breakdown grouped into 6 one-PR chunks with
+dependencies. All five 2026-08-01 owner questions are resolved and folded
+in; its design task (T1) is fully unblocked, and only the install chunk
+waits on M6/M7. Still open for the M8/M9 design gates: Argo CD scope and
+the air-gap commitment (direction doc §5 Q1/Q3).

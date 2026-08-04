@@ -20,13 +20,20 @@ separated from per-domain error catalogs; a thin phase-runner orchestrator
 
 ```
 cmd/cube-idp ──▶ internal/cli ──▶ internal/config  ──▶ api/config/v1alpha1
-                      │      └──▶ internal/cluster ──▶ api/config/v1alpha1
-                      │                │  └── cluster/kind (driver subpackage)
-                      └──────▶ internal/cubeerr ◀──── (config, cluster)
+                      │      ├──▶ internal/cluster ──▶ api/config/v1alpha1
+                      │      │        │  └── cluster/kind (driver subpackage)
+                      │      ├──▶ internal/kube  (M6 leaf: injected kubeconfig
+                      │      │        bytes + context name → clients)
+                      └──────┴──▶ internal/cubeerr ◀── (config, cluster, kube)
 ```
 
 - Imports flow strictly left to right. `api/` and `internal/cubeerr` are
   leaves: they import nothing from `internal/` — ever.
+- `internal/kube` is a shared leaf (M6): it imports only `internal/cubeerr`
+  and `k8s.io/client-go` — never `api/` or any domain. Kubeconfig bytes and
+  the context name are injected by the CLI/orchestrator edge; the domain
+  never reads files and never derives the `cube-idp.dev/<name>` context
+  name itself.
 - Domains never import each other. Values cross domains by injection at
   the CLI/orchestrator edge, where factories and composition live.
 - One component domain = one package under `internal/` = one file under
@@ -89,7 +96,7 @@ Tag registry (a new component adds a row; nothing renumbers):
 | `CFG` | config (api types + loader) | `internal/config` | active |
 | `CLI` | cli / output | `internal/cli` | active |
 | `CLU` | cluster provider | `internal/cluster` | active (M3) |
-| `KUB` | kube client access | `internal/kube` | reserved |
+| `KUB` | kube client access | `internal/kube` | active (M6) |
 | `ENG` | gitops engine | `internal/engine` | reserved |
 | `PKG` | packs (fetch/render/deps) | `internal/pack` | reserved |
 | `REG` | registry / OCI artifacts | `internal/registry` | reserved |
@@ -136,10 +143,17 @@ owner-approved architecture/decision update, never a plan footnote:
 | `sigs.k8s.io/yaml` | strict YAML→JSON decoding honoring json tags | — |
 | `github.com/spf13/cobra` | CLI framework (K8s ecosystem norm) | `internal/cli` |
 | `sigs.k8s.io/kind` | library-first cluster provisioning (M3) | `internal/cluster/kind` only |
+| `k8s.io/client-go` | Kubernetes client construction — REST config from kubeconfig bytes, discovery, RESTMapper, dynamic client (M6); everything downstream (apply, engine, doctor) builds on it | construction confined to `internal/kube` (see below) |
 
 Build-only: `sigs.k8s.io/controller-tools` (controller-gen, pinned Go tool
 dependency). Heavy SDKs adopted later are confined to a single importing
-file or subpackage.
+file or subpackage. `k8s.io/client-go` deviates deliberately (decision
+2026-08-04): its confinement is **construction-scoped** — only
+`internal/kube` turns kubeconfig bytes into clients, but consumers may
+reference its stable interface types (e.g. `dynamic.Interface`,
+`meta.RESTMapper`) in signatures rather than mirror-wrapping them;
+client-go sits closer to apimachinery's status than to kind's. Its version
+is pinned to the apimachinery minor.
 
 ## 9. Architecture diagrams (C4)
 
