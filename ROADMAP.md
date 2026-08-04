@@ -36,17 +36,27 @@ it in the PR that completes or reorders a milestone.
   payload. Design gate: `docs/DECISIONS.md` 2026-08-01; living contracts:
   `docs/domains/config.md`, `docs/domains/cluster.md`.
 
+- **M5 — cluster lifecycle completion** (epic #72; PRs #76, #77, #79,
+  2026-08-04): `delete` exposes the seam's `Delete` and losslessly removes
+  the cube-owned kubeconfig context (map-based removal mirroring the
+  merge, atomic write, `current-context` unset only when it pointed at the
+  removed context, file never unlinked, write skipped when nothing
+  matched); `status` reports cluster existence + context installation,
+  read-only, exit 0 whenever the report succeeds. Mid-milestone scope
+  change (#78, operator testing feedback): `init` split — `init` is
+  config-only (scaffold-if-absent, load+validate, report, exit-0
+  idempotent), the new `create` command owns provision + context install
+  and never scaffolds. Operator decisions: `docs/DECISIONS.md` 2026-08-02
+  and 2026-08-03; living contract: `docs/domains/cluster.md`.
+
 ## Queue
 
-- **M5 — cluster lifecycle completion**: no new domain; close out
-  `internal/cluster` per cluster design §9 — `delete` (or `down`) exposing
-  the seam's `Delete`, `status`, kubeconfig cleanup. Command naming and
-  exact §9 scope decided at plan time (direction doc Q7). Likely checkbox
-  plan only; design doc only if scope grows.
+- *(empty — the next milestone is picked from the continuation below.)*
 
 ## Default continuation after M5 (directional, not committed)
 
-Re-evaluated once M5 lands. Decision record, alternatives, risk table, and
+M5 has landed — this queue is re-evaluated now. Decision record,
+alternatives, risk table, and
 open questions: `docs/archived/plans/2026-08-01-roadmap-direction.md`.
 
 kube (client access, client-go → design gate) → apply (SSA + inventory) →

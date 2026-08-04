@@ -18,8 +18,8 @@ Crossplane-shaped: `provider` (typed constant, only `kind`, defaulted) +
 `forProvider` (`runtime.RawExtension` — opaque at load time, strictly
 decoded and validated by the selected provider; for kind: a
 `kind.x-k8s.io/v1alpha4` Cluster). Absent `spec.cluster` = not managing a
-cluster (`init` fails with `CUBE-CLU-001`); present-and-empty = default
-kind cluster.
+cluster (`create`/`delete`/`status` fail with `CUBE-CLU-001`);
+present-and-empty = default kind cluster.
 
 ## The driver seam (Kind B)
 
@@ -63,17 +63,35 @@ implements `SpecValidator`, an invalid payload must yield a coded error.
 Own minimal typed model over `sigs.k8s.io/yaml` (no client-go):
 `ContextName(name)` = `<API group>/<name>` (single source of truth for the
 `cube-idp.dev/` prefix), `Rebrand(raw, contextName, namespace)`,
-`Merge(existing, incoming)`. The context `namespace` is a method-level
+`Merge(existing, incoming)`, and `Remove(existing, contextName)` — the
+exact reverse of Merge-installing a Rebrand-ed config: entries dropped by
+name over the same map-based lossless model, `current-context` unset only
+when it pointed at the removed context, and a changed-flag so callers
+skip rewriting untouched files. The context `namespace` is a method-level
 option (`InitOptions.Namespace`) with no config surface: kubectl treats it
 as the context default, and clientcmd exposes it programmatically —
 future domains re-apply the same pattern locally (namespace as an option
 on their own operations), never by rewriting kubeconfig.
 
-## The Init operation
+## Operations (M5: full lifecycle)
 
-`Init(ctx, Provisioner, InitOptions)`: Ensure → Kubeconfig → Rebrand →
-merge into `$KUBECONFIG`/`~/.kube/config` (default) or write standalone
-file (`--kubeconfig`, no merge). Driver selection happens at the CLI edge.
+Driver selection happens at the CLI edge for all three; the domain never
+prints.
+
+- `Init(ctx, Provisioner, InitOptions)`: Ensure → Kubeconfig → Rebrand →
+  merge into `$KUBECONFIG`/`~/.kube/config` (default) or write standalone
+  file (`--kubeconfig`, no merge).
+- `Delete(ctx, Provisioner, DeleteOptions) (changed bool, err error)`:
+  the reverse — seam `Delete` (absent cluster no-op), then `Remove` from
+  the same kubeconfig target Init writes, atomically and only when
+  something matched. A missing kubeconfig file is a clean no-op, and a
+  file is **never unlinked** — an emptied kubeconfig stays on disk
+  (operator decision 2026-08-02).
+- `Status(ctx, Provisioner, StatusOptions) (StatusReport, error)`:
+  read-only — seam `Exists` plus a typed parse of the kubeconfig target,
+  reporting `ClusterExists`/`ContextInstalled` with the resolved names.
+  A missing kubeconfig file is "not installed"; only failures to
+  determine the answer are errors.
 
 ## Error codes (`CUBE-CLU-*`, exit 1)
 
@@ -83,7 +101,7 @@ file (`--kubeconfig`, no merge). Driver selection happens at the CLI edge.
 | `CUBE-CLU-002` | no driver for provider |
 | `CUBE-CLU-003` | invalid `forProvider` payload (from M4 also surfaced by `config validate`) |
 | `CUBE-CLU-004` | provisioning failed |
-| `CUBE-CLU-005` | kubeconfig generation/merge/write failed |
+| `CUBE-CLU-005` | kubeconfig update failed (generation, merge, write, or cleanup) |
 
 ## CLI surface
 
@@ -106,14 +124,25 @@ formerly `init`'s job). `create` never scaffolds: a missing config file
 is the loader's coded error, keeping the config document the single
 source of truth.
 
+`delete [-f cube.yaml] [--kubeconfig <path>]
+[--kubeconfig-context-name <n>]` — the reverse of `create` (the Delete
+operation above): resolves the cube from the config document (no
+`--name`, never scaffolds), removes the cluster, and cleans the
+cube-owned context out of the same kubeconfig target `create` writes.
+One line of output states whether kubeconfig changes were needed.
+
+`status [-f cube.yaml] [--kubeconfig <path>]
+[--kubeconfig-context-name <n>]` — the Status operation rendered as two
+lines (cluster exists/not found; context installed in `<path>`/not
+installed). Exit 0 whenever the report succeeds — an absent cluster is a
+finding, not a failure; coded errors keep their usual exit semantics.
+
 ## Contracts for future domains
 
 Consumers receive kubeconfig bytes by injection at the orchestrator/CLI
 edge (never by importing `internal/cluster`), or derive the merged context
 name from the API group constant (importing only leaf `api/`).
 
-## Pending (M5 — cluster lifecycle completion)
-
-- `delete` (or `down`) command exposing the seam's `Delete`; `status`;
-  kubeconfig cleanup on deletion. Command naming and exact scope decided
-  at plan time.
+The domain is lifecycle-complete as of M5 (epic #72) — nothing pending.
+Future cluster work (new providers, drift detection) starts as a new
+milestone against this contract.

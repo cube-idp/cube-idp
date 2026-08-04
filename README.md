@@ -6,7 +6,8 @@ platform from one declarative config document.
 **Status: greenfield rebuild — config + cluster domains.** The repository
 was reset to a greenfield baseline on 2026-07-27 and grows in small
 milestones; today it holds the config domain (validate/show/scaffold) and
-the cluster domain (kind provisioning via `init`). The previous
+the cluster domain with a full kind lifecycle
+(`init`/`create`/`status`/`delete`). The previous
 implementation is preserved in git history on `main`. Structure and
 rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 What's next: [ROADMAP.md](ROADMAP.md). Decision history:
@@ -24,35 +25,47 @@ Requires Go 1.26+.
 
 All commands operate on a `Config` document (`cube-idp.dev/v1alpha1`):
 
+The lifecycle is four verbs — `init` writes config, `create`/`delete`
+manage the cluster, `status` reports:
+
+```
+$ cube-idp init                        # no cube.yaml yet — scaffolds it, nothing else
+scaffolded cube.yaml — cube "sunny-walrus"
+run "cube-idp create" to provision the cluster
+
+$ cube-idp create                      # needs Docker/Podman
+cluster "sunny-walrus" ready — kubeconfig context "cube-idp.dev/sunny-walrus" installed
+
+$ cube-idp status
+cluster "sunny-walrus": exists
+kubeconfig context "cube-idp.dev/sunny-walrus": installed in /home/you/.kube/config
+
+$ cube-idp delete
+cluster "sunny-walrus" deleted — kubeconfig context "cube-idp.dev/sunny-walrus" removed
+```
+
+`init` is config-only: it scaffolds a missing config (`metadata.name`
+from `--name`, otherwise a generated docker-style name), validates it,
+and reports — re-runs print `config cube.yaml exists — cube "…"` and
+exit 0. `--name` never modifies an existing document: a mismatch with its
+`metadata.name` fails (`CUBE-CFG-005` — edit the file instead), while a
+matching `--name` proceeds.
+
+`create` provisions the cluster declared in `spec.cluster` (kind) and
+merges a cube-owned context (`cube-idp.dev/<name>`) into your kubeconfig;
+`delete` removes the cluster and cleans that context back out (only
+cube-owned entries are touched, and the file is never deleted); `status`
+is read-only and exits 0 whenever the report succeeds. All three resolve
+the cube from the config document and never scaffold it. Each takes
+`--kubeconfig <path>` to target a standalone file instead of the default
+location, and `--kubeconfig-context-name` to override the context name.
+
 ```
 $ cube-idp config validate -f examples/cube.yaml
 config "dev" is valid
 
 $ cube-idp config show -f examples/cube.yaml     # round-trips the defaulted config as YAML
-
-$ cube-idp init -f examples/cube.yaml            # needs Docker/Podman
-cluster "dev" ready — kubeconfig context "cube-idp.dev/dev" installed
 ```
-
-`init` creates the cluster declared in `spec.cluster` (kind) and merges a
-cube-owned context (`cube-idp.dev/<name>`) into your kubeconfig;
-`--kubeconfig <path>` writes a standalone file instead of merging, and
-`--kubeconfig-context-name` overrides the context name.
-
-When the config file does not exist, `init` scaffolds it first — with
-`metadata.name` from `--name`, otherwise a generated docker-style name —
-prints a notice naming the created file and cube, then provisions from
-it:
-
-```
-$ cube-idp init          # no cube.yaml yet
-scaffolded cube.yaml — cube "sunny-walrus"
-cluster "sunny-walrus" ready — kubeconfig context "cube-idp.dev/sunny-walrus" installed
-```
-
-`--name` never modifies an existing document: a mismatch with its
-`metadata.name` fails (`CUBE-CFG-005` — edit the file instead), while a
-matching `--name` proceeds, so re-runs stay idempotent.
 
 `config validate` also checks the provider-specific
 `spec.cluster.forProvider` payload against the selected provider — no

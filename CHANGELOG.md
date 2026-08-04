@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+M5 cluster lifecycle completion (epic #72; operator decisions:
+`docs/DECISIONS.md` 2026-08-02 and 2026-08-03):
+
+- `cube-idp delete` removes the cluster through the driver seam (an
+  absent cluster is a no-op) and cleans the cube-owned context out of
+  the kubeconfig losslessly: map-based removal mirroring the merge,
+  atomic write, `current-context` unset only when it pointed at the
+  removed context, the file never unlinked, and the write skipped when
+  nothing matched. Missing config is the loader's error — `delete`
+  never scaffolds.
+- `cube-idp status` reports whether the declared cluster exists and
+  whether its cube-owned kubeconfig context is installed. Read-only;
+  exit 0 whenever the report succeeds — an absent cluster is a finding,
+  not a failure.
+- `init` split (scope change #78, from operator testing feedback):
+  `init` is config-only — scaffold-if-absent, load+validate, report,
+  exit 0 and idempotent — and drops its `--kubeconfig*` flags. The new
+  `cube-idp create` owns load → provision → kubeconfig context install
+  and never scaffolds.
+- `CUBE-CLU-005`'s summary generalized to "kubeconfig update failed",
+  covering cleanup as well as install.
+
 M4 init bootstrap (design gate: `docs/DECISIONS.md` 2026-08-01):
 
 - `cube-idp init` scaffolds a missing config file before provisioning:
