@@ -1,11 +1,16 @@
 // C4 model of cube-idp — source of truth for docs/architecture/.
 // Regenerate the rendered assets (SVGs here, mermaid embeds in
-// docs/ARCHITECTURE.md) from this file via docker, never by hand:
+// docs/ARCHITECTURE.md) from this file via docker, never by hand.
+// NOTE: the plain `plantuml` (structurizr) format is required — the
+// c4plantuml exporter silently drops the styles block below. Quote the
+// glob (zsh). Delete the exporter's *-key.puml legend files and the
+// .mmd/.puml intermediates after embedding; only DSL + SVGs live here.
 //   docker run --rm -v "$PWD:/usr/local/structurizr" structurizr/structurizr \
 //     export -workspace workspace.dsl -format mermaid
 //   docker run --rm -v "$PWD:/usr/local/structurizr" structurizr/structurizr \
-//     export -workspace workspace.dsl -format plantuml/c4plantuml
-//   docker run --rm -v "$PWD:/data" plantuml/plantuml -tsvg /data/*.puml
+//     export -workspace workspace.dsl -format plantuml
+//   rm structurizr-*-key.puml
+//   docker run --rm -v "$PWD:/data" plantuml/plantuml -tsvg "/data/*.puml"
 workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M5)" {
 
     model {
@@ -111,8 +116,11 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
                 color #000000
             }
             element "External" {
-                background #999999
+                background #4d4d4d
                 color #ffffff
+            }
+            relationship "Relationship" {
+                color #000000
             }
         }
     }

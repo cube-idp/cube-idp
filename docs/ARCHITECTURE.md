@@ -161,11 +161,11 @@ graph LR
     1["<div style='font-weight: bold'>Platform Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Declares a cube in cube.yaml<br />and drives it with the<br />cube-idp CLI</div>"]
     style 1 fill:#08427b,stroke:#052e56,color:#ffffff
     13["<div style='font-weight: bold'>Container Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Docker / Podman / nerdctl —<br />hosts the kind cluster nodes</div>"]
-    style 13 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    style 13 fill:#4d4d4d,stroke:#353535,color:#ffffff
     14["<div style='font-weight: bold'>kind Kubernetes Cluster</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>The local cluster provisioned<br />from spec.cluster; name = the<br />cube's metadata.name</div>"]
-    style 14 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    style 14 fill:#4d4d4d,stroke:#353535,color:#ffffff
     15["<div style='font-weight: bold'>kubectl</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Operator's Kubernetes<br />tooling; uses the<br />cube-branded kubeconfig<br />context</div>"]
-    style 15 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    style 15 fill:#4d4d4d,stroke:#353535,color:#ffffff
     2["<div style='font-weight: bold'>cube-idp</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>CLI that provisions and<br />manages the cluster declared<br />in a single Config document;<br />the document is the sole<br />source of truth</div>"]
     style 2 fill:#1168bd,stroke:#0b4884,color:#ffffff
 
@@ -192,11 +192,11 @@ graph LR
     1["<div style='font-weight: bold'>Platform Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Declares a cube in cube.yaml<br />and drives it with the<br />cube-idp CLI</div>"]
     style 1 fill:#08427b,stroke:#052e56,color:#ffffff
     13["<div style='font-weight: bold'>Container Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Docker / Podman / nerdctl —<br />hosts the kind cluster nodes</div>"]
-    style 13 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    style 13 fill:#4d4d4d,stroke:#353535,color:#ffffff
     14["<div style='font-weight: bold'>kind Kubernetes Cluster</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>The local cluster provisioned<br />from spec.cluster; name = the<br />cube's metadata.name</div>"]
-    style 14 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    style 14 fill:#4d4d4d,stroke:#353535,color:#ffffff
     15["<div style='font-weight: bold'>kubectl</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Operator's Kubernetes<br />tooling; uses the<br />cube-branded kubeconfig<br />context</div>"]
-    style 15 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    style 15 fill:#4d4d4d,stroke:#353535,color:#ffffff
 
     subgraph 2 ["cube-idp"]
       style 2 fill:#ffffff,stroke:#0b4884,color:#0b4884
@@ -232,7 +232,7 @@ graph LR
     style diagram fill:#ffffff,stroke:#ffffff
 
     13["<div style='font-weight: bold'>Container Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Docker / Podman / nerdctl —<br />hosts the kind cluster nodes</div>"]
-    style 13 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    style 13 fill:#4d4d4d,stroke:#353535,color:#ffffff
 
     subgraph 2 ["cube-idp"]
       style 2 fill:#ffffff,stroke:#0b4884,color:#0b4884
