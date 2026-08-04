@@ -146,3 +146,14 @@ cube-owned entries losslessly via the map-based machinery, unsets
 write when nothing matched, and never unlinks a file — an emptied
 kubeconfig stays on disk. `status` (same milestone) exits 0 whenever its
 report succeeds; cluster-absent is a finding, not a failure.
+
+**2026-08-03 — init split: scaffold-only `init`, new `create` provisions
+(M5 scope change, #78).** Operator decision from testing feedback:
+`init` must not spin up a cluster. It becomes config-only —
+scaffold-if-absent (unchanged `--name` semantics), load+validate,
+report, exit 0 idempotent — and drops its `--kubeconfig*` flags. The new
+`create` command owns load → provision → kubeconfig context install and
+never scaffolds (missing config is the loader's coded error, the same
+doctrine as `delete`). Verb: `create`, pairing with `delete`; `up`/`down`
+stay reserved for the future orchestrator, `apply` is reserved for the
+SSA milestone, and a flag-modal `init` was rejected.

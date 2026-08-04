@@ -2,8 +2,9 @@ package cli
 
 import (
 	"bytes"
-	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,82 +16,27 @@ import (
 	"github.com/cube-idp/cube-idp/internal/config"
 )
 
-type mockProvisioner struct{}
-
-func (mockProvisioner) Ensure(context.Context, cluster.Spec) error   { return nil }
-func (mockProvisioner) Exists(context.Context, string) (bool, error) { return true, nil }
-func (mockProvisioner) Delete(context.Context, string) error         { return nil }
-func (mockProvisioner) Kubeconfig(_ context.Context, name string) ([]byte, error) {
-	kc := `apiVersion: v1
-kind: Config
-clusters:
-  - name: kind-NAME
-    cluster:
-      server: https://127.0.0.1:6443
-contexts:
-  - name: kind-NAME
-    context:
-      cluster: kind-NAME
-      user: kind-NAME
-users:
-  - name: kind-NAME
-    user:
-      token: fake
-current-context: kind-NAME
-`
-	return []byte(strings.ReplaceAll(kc, "NAME", name)), nil
-}
-
-func TestInitWritesKubeconfig(t *testing.T) {
-	t.Parallel() // no package state mutated: the factory is injected
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "cube.yaml")
-	cfgYAML := `apiVersion: cube-idp.dev/v1alpha1
-kind: Config
-metadata:
-  name: dev
-spec:
-  cluster:
-    provider: kind
-`
-	if err := os.WriteFile(cfgPath, []byte(cfgYAML), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	kubeconfigPath := filepath.Join(dir, "kubeconfig")
-
-	root := newRootCmd(func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
-		return mockProvisioner{}, nil
-	})
-
-	var stdout, stderr bytes.Buffer
-	code := execute(t.Context(), root,
-		[]string{"init", "-f", cfgPath, "--kubeconfig", kubeconfigPath}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("exit = %d, stderr: %s", code, stderr.String())
-	}
-	raw, err := os.ReadFile(kubeconfigPath)
-	if err != nil {
-		t.Fatalf("kubeconfig not written: %v", err)
-	}
-	if !strings.Contains(string(raw), "cube-idp.dev/dev") {
-		t.Fatalf("kubeconfig missing cube context:\n%s", raw)
-	}
-}
-
-// execInit executes init against an injected mock provisioner, pointing
-// --kubeconfig inside dir so nothing touches the user's kubeconfig.
+// execInit executes init. The injected factory still returns the shared
+// mock — init must never need a provisioner, and a mock factory keeps
+// that true even if a regression wires one back in.
 func execInit(t *testing.T, dir string, extraArgs ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	root := newRootCmd(func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
 		return mockProvisioner{}, nil
 	})
-	args := append([]string{
-		"init", "-f", filepath.Join(dir, "cube.yaml"),
-		"--kubeconfig", filepath.Join(dir, "kubeconfig"),
-	}, extraArgs...)
+	args := append([]string{"init", "-f", filepath.Join(dir, "cube.yaml")}, extraArgs...)
 	var out, errBuf bytes.Buffer
 	code = execute(t.Context(), root, args, &out, &errBuf)
 	return code, out.String(), errBuf.String()
+}
+
+// assertNoKubeconfig fails if anything appeared at dir/kubeconfig —
+// init is config-only; provisioning and kubeconfig writes are create's.
+func assertNoKubeconfig(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(dir, "kubeconfig")); !errors.Is(err, fs.ErrNotExist) {
+		t.Error("init produced a kubeconfig — provisioning is create's job")
+	}
 }
 
 func TestInitScaffoldsMissingConfig(t *testing.T) {
@@ -123,11 +69,38 @@ func TestInitScaffoldsMissingConfig(t *testing.T) {
 			if !strings.Contains(stdout, notice) {
 				t.Errorf("stdout %q missing scaffold notice %q", stdout, notice)
 			}
-			if _, err := os.Stat(filepath.Join(dir, "kubeconfig")); err != nil {
-				t.Errorf("kubeconfig not written after scaffold+provision: %v", err)
+			if hint := `run "cube-idp create" to provision the cluster`; !strings.Contains(stdout, hint) {
+				t.Errorf("stdout %q missing next-step hint %q", stdout, hint)
 			}
+			assertNoKubeconfig(t, dir)
 		})
 	}
+}
+
+// TestInitExistingConfigReports: a second init is an idempotent
+// load-and-report — exit 0, the exists line, no scaffold notice, no hint.
+func TestInitExistingConfigReports(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "cube.yaml")
+	doc := "apiVersion: cube-idp.dev/v1alpha1\nkind: Config\nmetadata:\n  name: dev\nspec:\n  cluster: {}\n"
+	if err := os.WriteFile(cfgPath, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, stderr := execInit(t, dir)
+	if code != 0 {
+		t.Fatalf("exit = %d, stderr: %s", code, stderr)
+	}
+	if want := fmt.Sprintf("config %s exists — cube %q", cfgPath, "dev"); !strings.Contains(stdout, want) {
+		t.Errorf("stdout %q missing exists report %q", stdout, want)
+	}
+	for _, unwanted := range []string{"scaffolded", "cube-idp create"} {
+		if strings.Contains(stdout, unwanted) {
+			t.Errorf("stdout %q must not contain %q on the exists path", stdout, unwanted)
+		}
+	}
+	assertNoKubeconfig(t, dir)
 }
 
 func TestInitNameMismatchFails(t *testing.T) {
@@ -153,9 +126,6 @@ func TestInitNameMismatchFails(t *testing.T) {
 	if !bytes.Equal(after, original) {
 		t.Errorf("config mutated by --name mismatch:\n%s", after)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "kubeconfig")); err == nil {
-		t.Error("provisioning ran despite the name conflict")
-	}
 }
 
 func TestInitMatchingNameProceeds(t *testing.T) {
@@ -174,8 +144,8 @@ func TestInitMatchingNameProceeds(t *testing.T) {
 	if strings.Contains(stdout, "scaffolded") {
 		t.Errorf("stdout %q claims a scaffold, but the config already existed", stdout)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "kubeconfig")); err != nil {
-		t.Errorf("kubeconfig not written: %v", err)
+	if want := fmt.Sprintf("config %s exists — cube %q", cfgPath, "dev"); !strings.Contains(stdout, want) {
+		t.Errorf("stdout %q missing exists report %q", stdout, want)
 	}
 }
 

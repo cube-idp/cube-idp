@@ -129,9 +129,12 @@ func TestConfigValidateForProvider(t *testing.T) {
 	}
 }
 
-func TestInitRequiresCluster(t *testing.T) {
+// TestCreateRequiresCluster drives the exported Execute (real
+// composition): CUBE-CLU-001 is raised before any driver is
+// constructed, so no container runtime is touched.
+func TestCreateRequiresCluster(t *testing.T) {
 	path := writeTemp(t, validYAML)
-	code, _, stderr := run(t, "init", "-f", path)
+	code, _, stderr := run(t, "create", "-f", path)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
