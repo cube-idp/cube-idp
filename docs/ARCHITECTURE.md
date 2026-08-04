@@ -157,7 +157,7 @@ legend is rendered beside its SVG:
 System context — who and what surrounds the cube-idp binary:
 
 ```mermaid
-%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e6f4ea"}}}%%
+%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#b7e4c7"}}}%%
 graph LR
   linkStyle default fill:#ffffff
 
@@ -189,7 +189,7 @@ graph LR
 Containers — the binary and the two files it owns on the operator's machine:
 
 ```mermaid
-%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e6f4ea"}}}%%
+%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#b7e4c7"}}}%%
 graph LR
   linkStyle default fill:#ffffff
 
@@ -232,7 +232,7 @@ graph LR
 Components — the packages inside the binary and their import direction:
 
 ```mermaid
-%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e6f4ea"}}}%%
+%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#b7e4c7"}}}%%
 graph LR
   linkStyle default fill:#ffffff
 

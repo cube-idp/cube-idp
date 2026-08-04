@@ -10,7 +10,7 @@
 //   # The mermaid exporter drops relationship styles; stamp readable
 //   # edge styling (black lines/label text, light-green label bg for
 //   # the relationship/action chips) into each export before embedding:
-//   sed -i '' -e '1s/^/%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e6f4ea"}}}%%\n/' structurizr-*.mmd
+//   sed -i '' -e '1s/^/%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#b7e4c7"}}}%%\n/' structurizr-*.mmd
 //   docker run --rm -v "$PWD:/usr/local/structurizr" structurizr/structurizr \
 //     export -workspace workspace.dsl -format plantuml
 //   docker run --rm -v "$PWD:/data" plantuml/plantuml -tsvg "/data/*.puml"
