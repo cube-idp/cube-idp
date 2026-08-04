@@ -7,6 +7,10 @@
 // .mmd/.puml intermediates after embedding; only DSL + SVGs live here.
 //   docker run --rm -v "$PWD:/usr/local/structurizr" structurizr/structurizr \
 //     export -workspace workspace.dsl -format mermaid
+//   # The mermaid exporter drops relationship styles; stamp readable
+//   # edge styling (black lines/label text, light-blue label bg) into
+//   # each export before embedding:
+//   sed -i '' -e '1s/^/%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e8f1fa"}}}%%\n/' structurizr-*.mmd
 //   docker run --rm -v "$PWD:/usr/local/structurizr" structurizr/structurizr \
 //     export -workspace workspace.dsl -format plantuml
 //   rm structurizr-*-key.puml

@@ -152,6 +152,7 @@ never hand-edited.
 System context — who and what surrounds the cube-idp binary:
 
 ```mermaid
+%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e8f1fa"}}}%%
 graph LR
   linkStyle default fill:#ffffff
 
@@ -183,6 +184,7 @@ graph LR
 Containers — the binary and the two files it owns on the operator's machine:
 
 ```mermaid
+%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e8f1fa"}}}%%
 graph LR
   linkStyle default fill:#ffffff
 
@@ -225,6 +227,7 @@ graph LR
 Components — the packages inside the binary and their import direction:
 
 ```mermaid
+%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#e8f1fa"}}}%%
 graph LR
   linkStyle default fill:#ffffff
 
