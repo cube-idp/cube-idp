@@ -145,138 +145,25 @@ file or subpackage.
 
 C4 views of the system, exported from the Structurizr model at
 `docs/architecture/workspace.dsl` (the source of truth, which also carries
-the regeneration commands). The mermaid blocks below and the SVGs in
-`docs/architecture/` are generated together from that DSL — regenerated,
-never hand-edited. Green chips on the arrows are the relationship
-actions (what the source does to the target); each view's color/shape
-legend is rendered beside its SVG:
-[SystemContext](architecture/structurizr-SystemContext-key.svg),
-[Containers](architecture/structurizr-Containers-key.svg),
-[Components](architecture/structurizr-Components-key.svg).
+the regeneration commands). The SVG images embedded below live in
+`docs/architecture/` and are rendered from that DSL — regenerated,
+never hand-edited. Text on the arrows is the relationship action (what the
+source does to the target); each view links its color/shape legend.
 
 System context — who and what surrounds the cube-idp binary:
 
-```mermaid
-%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#b7e4c7"}}}%%
-graph LR
-  linkStyle default fill:#ffffff
+![SystemContext view](architecture/structurizr-SystemContext.svg)
 
-  subgraph diagram ["System Context View: cube-idp"]
-    style diagram fill:#ffffff,stroke:#ffffff
-
-    1["<div style='font-weight: bold'>Platform Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Declares a cube in cube.yaml<br />and drives it with the<br />cube-idp CLI</div>"]
-    style 1 fill:#08427b,stroke:#052e56,color:#ffffff
-    13["<div style='font-weight: bold'>Container Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Docker / Podman / nerdctl —<br />hosts the kind cluster nodes</div>"]
-    style 13 fill:#4d4d4d,stroke:#353535,color:#ffffff
-    14["<div style='font-weight: bold'>kind Kubernetes Cluster</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>The local cluster provisioned<br />from spec.cluster; name = the<br />cube's metadata.name</div>"]
-    style 14 fill:#4d4d4d,stroke:#353535,color:#ffffff
-    15["<div style='font-weight: bold'>kubectl</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Operator's Kubernetes<br />tooling; uses the<br />cube-branded kubeconfig<br />context</div>"]
-    style 15 fill:#4d4d4d,stroke:#353535,color:#ffffff
-    2["<div style='font-weight: bold'>cube-idp</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>CLI that provisions and<br />manages the cluster declared<br />in a single Config document;<br />the document is the sole<br />source of truth</div>"]
-    style 2 fill:#1168bd,stroke:#0b4884,color:#ffffff
-
-    1-. "<div>Runs init, create, delete,<br />status and config<br />validate|show</div><div style='font-size: 70%'>[shell]</div>" .->2
-    1-. "<div>Operates the cluster with</div><div style='font-size: 70%'></div>" .->15
-    15-. "<div>Reads contexts from</div><div style='font-size: 70%'></div>" .->2
-    15-. "<div>Talks to the API server of</div><div style='font-size: 70%'>[HTTPS]</div>" .->14
-    13-. "<div>Hosts the node containers of</div><div style='font-size: 70%'></div>" .->14
-    2-. "<div>Creates/inspects/deletes kind<br />clusters through</div><div style='font-size: 70%'>[sigs.k8s.io/kind]</div>" .->13
-    2-. "<div>Provisions (create) and tears<br />down (delete) from<br />spec.cluster, idempotent by<br />name; exports the kubeconfig<br />of</div><div style='font-size: 70%'>[sigs.k8s.io/kind]</div>" .->14
-
-  end
-```
+[SystemContext legend](architecture/structurizr-SystemContext-key.svg)
 
 Containers — the binary and the two files it owns on the operator's machine:
 
-```mermaid
-%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#b7e4c7"}}}%%
-graph LR
-  linkStyle default fill:#ffffff
+![Containers view](architecture/structurizr-Containers.svg)
 
-  subgraph diagram ["Container View: cube-idp"]
-    style diagram fill:#ffffff,stroke:#ffffff
-
-    1["<div style='font-weight: bold'>Platform Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Declares a cube in cube.yaml<br />and drives it with the<br />cube-idp CLI</div>"]
-    style 1 fill:#08427b,stroke:#052e56,color:#ffffff
-    13["<div style='font-weight: bold'>Container Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Docker / Podman / nerdctl —<br />hosts the kind cluster nodes</div>"]
-    style 13 fill:#4d4d4d,stroke:#353535,color:#ffffff
-    14["<div style='font-weight: bold'>kind Kubernetes Cluster</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>The local cluster provisioned<br />from spec.cluster; name = the<br />cube's metadata.name</div>"]
-    style 14 fill:#4d4d4d,stroke:#353535,color:#ffffff
-    15["<div style='font-weight: bold'>kubectl</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Operator's Kubernetes<br />tooling; uses the<br />cube-branded kubeconfig<br />context</div>"]
-    style 15 fill:#4d4d4d,stroke:#353535,color:#ffffff
-
-    subgraph 2 ["cube-idp"]
-      style 2 fill:#ffffff,stroke:#0b4884,color:#0b4884
-
-      11["<div style='font-weight: bold'>Config document</div><div style='font-size: 70%; margin-top: 0px'>[Container: cube.yaml (YAML)]</div><div style='font-size: 80%; margin-top:10px'>The declared cube<br />(metadata.name +<br />spec.cluster); scaffolded by<br />init when absent, only ever<br />written by the config domain</div>"]
-      style 11 fill:#b8d0e8,stroke:#8091a2,color:#000000
-      12["<div style='font-weight: bold'>Kubeconfig</div><div style='font-size: 70%; margin-top: 0px'>[Container: ~/.kube/config or --kubeconfig path]</div><div style='font-size: 80%; margin-top:10px'>User's kubeconfig; cube-idp<br />merges its<br />cube-idp.dev/<name> context<br />in losslessly and writes<br />atomically</div>"]
-      style 12 fill:#b8d0e8,stroke:#8091a2,color:#000000
-      3["<div style='font-weight: bold'>cube-idp binary</div><div style='font-size: 70%; margin-top: 0px'>[Container: Go 1.26]</div><div style='font-size: 80%; margin-top:10px'>Single Go binary; cobra CLI<br />with init, create, delete,<br />status and config<br />validate|show commands</div>"]
-      style 3 fill:#438dd5,stroke:#2e6295,color:#ffffff
-    end
-
-    1-. "<div>Runs init, create, delete,<br />status and config<br />validate|show</div><div style='font-size: 70%'>[shell]</div>" .->3
-    1-. "<div>Operates the cluster with</div><div style='font-size: 70%'></div>" .->15
-    15-. "<div>Reads contexts from</div><div style='font-size: 70%'></div>" .->12
-    15-. "<div>Talks to the API server of</div><div style='font-size: 70%'>[HTTPS]</div>" .->14
-    13-. "<div>Hosts the node containers of</div><div style='font-size: 70%'></div>" .->14
-    3-. "<div>Scaffolds when absent (init),<br />reads and validates</div><div style='font-size: 70%'>[os file I/O]</div>" .->11
-    3-. "<div>Merges the cube context in<br />losslessly (create), removes<br />it (delete), inspects it<br />(status); always writes<br />atomically, never unlinks</div><div style='font-size: 70%'>[os file I/O]</div>" .->12
-    3-. "<div>Creates/inspects/deletes kind<br />clusters through</div><div style='font-size: 70%'>[sigs.k8s.io/kind]</div>" .->13
-    3-. "<div>Provisions (create) and tears<br />down (delete) from<br />spec.cluster, idempotent by<br />name; exports the kubeconfig<br />of</div><div style='font-size: 70%'>[sigs.k8s.io/kind]</div>" .->14
-
-  end
-```
+[Containers legend](architecture/structurizr-Containers-key.svg)
 
 Components — the packages inside the binary and their import direction:
 
-```mermaid
-%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#b7e4c7"}}}%%
-graph LR
-  linkStyle default fill:#ffffff
+![Components view](architecture/structurizr-Components.svg)
 
-  subgraph diagram ["Component View: cube-idp - cube-idp binary"]
-    style diagram fill:#ffffff,stroke:#ffffff
-
-    13["<div style='font-weight: bold'>Container Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Docker / Podman / nerdctl —<br />hosts the kind cluster nodes</div>"]
-    style 13 fill:#4d4d4d,stroke:#353535,color:#ffffff
-
-    subgraph 2 ["cube-idp"]
-      style 2 fill:#ffffff,stroke:#0b4884,color:#0b4884
-
-      subgraph 3 ["cube-idp binary"]
-        style 3 fill:#ffffff,stroke:#2e6295,color:#2e6295
-
-        10["<div style='font-weight: bold'>Error machinery</div><div style='font-size: 70%; margin-top: 0px'>[Component: internal/cubeerr]</div><div style='font-size: 80%; margin-top:10px'>Coded error shape (code,<br />summary, remediation) and<br />exit-code mapping only — no<br />code catalog</div>"]
-        style 10 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        4["<div style='font-weight: bold'>Entrypoint</div><div style='font-size: 70%; margin-top: 0px'>[Component: cmd/cube-idp]</div><div style='font-size: 80%; margin-top:10px'>Signal-aware context,<br />delegates to the CLI and<br />exits with the mapped code</div>"]
-        style 4 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        5["<div style='font-weight: bold'>CLI edge</div><div style='font-size: 70%; margin-top: 0px'>[Component: internal/cli]</div><div style='font-size: 80%; margin-top:10px'>Cobra wiring only: flag<br />mapping, edge composition<br />(init: scaffold-if-absent →<br />load → report;<br />create/delete/status: load →<br />domain operation with<br />injected provisioner factory,<br />SpecValidator type-assert),<br />sole error renderer with exit<br />codes 0/2/1</div>"]
-        style 5 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        6["<div style='font-weight: bold'>Config domain</div><div style='font-size: 70%; margin-top: 0px'>[Component: internal/config]</div><div style='font-size: 80%; margin-top:10px'>Strict load pipeline (decode<br />→ Default → Validate), config<br />scaffolding with O_EXCL<br />clobber safety, docker-style<br />name generator; owns<br />CUBE-CFG-* codes</div>"]
-        style 6 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        7["<div style='font-weight: bold'>Config API</div><div style='font-size: 70%; margin-top: 0px'>[Component: api/config/v1alpha1]</div><div style='font-size: 80%; margin-top:10px'>Pure contract: Config types,<br />defaults, validation. No I/O,<br />no logic; hub for the<br />cube-idp.dev/v1alpha1 group</div>"]
-        style 7 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        8["<div style='font-weight: bold'>Cluster domain</div><div style='font-size: 70%; margin-top: 0px'>[Component: internal/cluster]</div><div style='font-size: 80%; margin-top:10px'>Provisioner driver seam +<br />optional SpecValidator<br />capability,<br />Init/Delete/Status<br />operations, kubeconfig<br />rebrand/lossless-merge/removal/atomic-write<br />machinery; owns CUBE-CLU-*<br />codes; exported conformance<br />suite</div>"]
-        style 8 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        9["<div style='font-weight: bold'>kind driver</div><div style='font-size: 70%; margin-top: 0px'>[Component: internal/cluster/kind]</div><div style='font-size: 80%; margin-top:10px'>Sole importer of<br />sigs.k8s.io/kind; implements<br />Provisioner + SpecValidator;<br />container-runtime detection<br />deferred to first<br />provisioning call</div>"]
-        style 9 fill:#85bbf0,stroke:#5d82a8,color:#000000
-      end
-
-    end
-
-    4-. "<div>Calls Execute; exits with<br />returned code</div><div style='font-size: 70%'></div>" .->5
-    5-. "<div>Scaffold-if-absent, LoadFile;<br />raises NewNameConflictError<br />on --name mismatch</div><div style='font-size: 70%'></div>" .->6
-    5-. "<div>Composes Init (create),<br />Delete, Status; type-asserts<br />SpecValidator for config<br />validate</div><div style='font-size: 70%'></div>" .->8
-    5-. "<div>Constructs via injected<br />provisioner factory<br />(composition at the edge<br />only)</div><div style='font-size: 70%'></div>" .->9
-    5-. "<div>Maps error chain to exit<br />code; renders Coded errors to<br />stderr</div><div style='font-size: 70%'></div>" .->10
-    6-. "<div>Strict decode → Default() →<br />Validate()</div><div style='font-size: 70%'></div>" .->7
-    8-. "<div>Provider constants, API group<br />for the context-name prefix</div><div style='font-size: 70%'></div>" .->7
-    6-. "<div>Wraps CUBE-CFG-* errors with</div><div style='font-size: 70%'></div>" .->10
-    8-. "<div>Wraps CUBE-CLU-* errors with</div><div style='font-size: 70%'></div>" .->10
-    9-. "<div>Implements Provisioner +<br />SpecValidator (compile-time<br />asserted)</div><div style='font-size: 70%'></div>" .->8
-    9-. "<div>DetectNodeProvider + cluster<br />create/list/delete</div><div style='font-size: 70%'>[sigs.k8s.io/kind]</div>" .->13
-
-  end
-```
+[Components legend](architecture/structurizr-Components-key.svg)

@@ -1,20 +1,14 @@
 // C4 model of cube-idp — source of truth for docs/architecture/.
-// Regenerate the rendered assets (SVGs here, mermaid embeds in
-// docs/ARCHITECTURE.md) from this file via docker, never by hand.
+// Regenerate the rendered SVGs (embedded as images in
+// docs/ARCHITECTURE.md §9) from this file via docker, never by hand.
 // NOTE: the plain `plantuml` (structurizr) format is required — the
 // c4plantuml exporter silently drops the styles block below. Quote the
-// glob (zsh). Delete the .mmd/.puml intermediates after embedding;
-// only the DSL and SVGs (views + their *-key legend SVGs) live here.
-//   docker run --rm -v "$PWD:/usr/local/structurizr" structurizr/structurizr \
-//     export -workspace workspace.dsl -format mermaid
-//   # The mermaid exporter drops relationship styles; stamp readable
-//   # edge styling (black lines/label text, light-green label bg for
-//   # the relationship/action chips) into each export before embedding:
-//   sed -i '' -e '1s/^/%%{init: {"themeVariables": {"lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#b7e4c7"}}}%%\n/' structurizr-*.mmd
+// glob (zsh). Delete the .puml intermediates after rendering; only the
+// DSL and SVGs (views + their *-key legend SVGs) live here.
 //   docker run --rm -v "$PWD:/usr/local/structurizr" structurizr/structurizr \
 //     export -workspace workspace.dsl -format plantuml
 //   docker run --rm -v "$PWD:/data" plantuml/plantuml -tsvg "/data/*.puml"
-//   (the *-key.svg outputs are each view's legend — keep them)
+//   rm structurizr-*.puml
 workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M5)" {
 
     model {
