@@ -48,8 +48,8 @@ func TestStatusReportsInstalled(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "cube.yaml"), []byte(statusClusterYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, stderr := execInit(t, dir); code != 0 {
-		t.Fatalf("init exit = %d, stderr: %s", code, stderr)
+	if code, _, stderr := execCreate(t, dir); code != 0 {
+		t.Fatalf("create exit = %d, stderr: %s", code, stderr)
 	}
 
 	code, stdout, stderr := execStatus(t, dir, mockProvisioner{})
