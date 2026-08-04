@@ -133,3 +133,16 @@ capabilities, code-equality assertions) are recorded as unchanged.
 `docs/ARCHITECTURE.md` §9 embeds the same views as mermaid. DSL, SVGs,
 and mermaid embeds are regenerated together from the DSL — never
 hand-edited.
+
+**2026-08-02 — Cluster deletion command named `delete` (M5).** Operator
+decision: the CLI verb exposing the seam's `Delete` is `delete` —
+matching the seam method and kubectl-style verbs; `down` stays reserved
+for the future up/down orchestrator. Cleanup semantics fixed at plan
+time: `delete` resolves the cube from the config document (no `--name`,
+never scaffolds), targets the same kubeconfig file init writes
+(`--kubeconfig`, else `$KUBECONFIG`/`~/.kube/config`), removes only the
+cube-owned entries losslessly via the map-based machinery, unsets
+`current-context` only when it pointed at the removed context, skips the
+write when nothing matched, and never unlinks a file — an emptied
+kubeconfig stays on disk. `status` (same milestone) exits 0 whenever its
+report succeeds; cluster-absent is a finding, not a failure.

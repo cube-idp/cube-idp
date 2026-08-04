@@ -14,6 +14,7 @@ import (
 
 type mockProvisioner struct {
 	EnsureFunc     func(ctx context.Context, s Spec) error
+	DeleteFunc     func(ctx context.Context, name string) error
 	KubeconfigFunc func(ctx context.Context, name string) ([]byte, error)
 }
 
@@ -24,7 +25,12 @@ func (m *mockProvisioner) Ensure(ctx context.Context, s Spec) error {
 	return nil
 }
 func (m *mockProvisioner) Exists(context.Context, string) (bool, error) { return false, nil }
-func (m *mockProvisioner) Delete(context.Context, string) error         { return nil }
+func (m *mockProvisioner) Delete(ctx context.Context, name string) error {
+	if m.DeleteFunc != nil {
+		return m.DeleteFunc(ctx, name)
+	}
+	return nil
+}
 func (m *mockProvisioner) Kubeconfig(ctx context.Context, name string) ([]byte, error) {
 	if m.KubeconfigFunc != nil {
 		return m.KubeconfigFunc(ctx, name)
