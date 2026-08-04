@@ -48,8 +48,8 @@ func TestDeleteRemovesKubeconfigContext(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	writeConfig(t, dir, clusterConfigYAML)
-	if code, _, stderr := execInit(t, dir); code != 0 {
-		t.Fatalf("init exit = %d, stderr: %s", code, stderr)
+	if code, _, stderr := execCreate(t, dir); code != 0 {
+		t.Fatalf("create exit = %d, stderr: %s", code, stderr)
 	}
 
 	code, stdout, stderr := execDelete(t, dir)
