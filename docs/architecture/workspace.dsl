@@ -1,12 +1,12 @@
 // C4 model of cube-idp — source of truth for docs/architecture/.
 // Regenerate the rendered SVGs (embedded as images in
-// docs/ARCHITECTURE.md §9) from this file via docker, never by hand.
-// NOTE: the plain `plantuml` (structurizr) format is required — the
-// c4plantuml exporter silently drops the styles block below. Quote the
-// glob (zsh). Delete the .puml intermediates after rendering; only the
-// DSL and SVGs (views + their *-key legend SVGs) live here.
+// docs/ARCHITECTURE.md §9) from this file via docker, never by hand —
+// the c4-architecture skill's canonical pipeline (C4-PlantUML look:
+// person icons, system boundary, arrow labels with [technology],
+// built-in legend). Quote the glob (zsh); delete the .puml
+// intermediates after rendering; only the DSL and SVGs live here.
 //   docker run --rm -v "$PWD:/usr/local/structurizr" structurizr/structurizr \
-//     export -workspace workspace.dsl -format plantuml
+//     export -workspace workspace.dsl -format plantuml/c4plantuml
 //   docker run --rm -v "$PWD:/data" plantuml/plantuml -tsvg "/data/*.puml"
 //   rm structurizr-*.puml
 workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M5)" {
@@ -114,11 +114,8 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
                 color #000000
             }
             element "External" {
-                background #4d4d4d
+                background #999999
                 color #ffffff
-            }
-            relationship "Relationship" {
-                color #000000
             }
         }
     }

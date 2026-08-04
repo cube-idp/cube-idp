@@ -146,24 +146,19 @@ file or subpackage.
 C4 views of the system, exported from the Structurizr model at
 `docs/architecture/workspace.dsl` (the source of truth, which also carries
 the regeneration commands). The SVG images embedded below live in
-`docs/architecture/` and are rendered from that DSL — regenerated,
-never hand-edited. Text on the arrows is the relationship action (what the
-source does to the target); each view links its color/shape legend.
+`docs/architecture/` and are rendered from that DSL via the
+c4-architecture pipeline (C4-PlantUML) — regenerated, never hand-edited.
+Arrow labels are the relationship action with its technology in
+brackets; each diagram carries its own legend.
 
 System context — who and what surrounds the cube-idp binary:
 
 ![SystemContext view](architecture/structurizr-SystemContext.svg)
 
-[SystemContext legend](architecture/structurizr-SystemContext-key.svg)
-
 Containers — the binary and the two files it owns on the operator's machine:
 
 ![Containers view](architecture/structurizr-Containers.svg)
 
-[Containers legend](architecture/structurizr-Containers-key.svg)
-
 Components — the packages inside the binary and their import direction:
 
 ![Components view](architecture/structurizr-Components.svg)
-
-[Components legend](architecture/structurizr-Components-key.svg)
