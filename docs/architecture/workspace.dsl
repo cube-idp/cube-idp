@@ -6,19 +6,19 @@
 //   docker run --rm -v "$PWD:/usr/local/structurizr" structurizr/structurizr \
 //     export -workspace workspace.dsl -format plantuml/c4plantuml
 //   docker run --rm -v "$PWD:/data" plantuml/plantuml -tsvg /data/*.puml
-workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M4)" {
+workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M5)" {
 
     model {
         operator = person "Platform Operator" "Declares a cube in cube.yaml and drives it with the cube-idp CLI"
 
         cubeIdp = softwareSystem "cube-idp" "CLI that provisions and manages the cluster declared in a single Config document; the document is the sole source of truth" {
 
-            cli = container "cube-idp binary" "Single Go binary; cobra CLI with init and config validate|show commands" "Go 1.26" {
+            cli = container "cube-idp binary" "Single Go binary; cobra CLI with init, create, delete, status and config validate|show commands" "Go 1.26" {
                 mainPkg = component "Entrypoint" "Signal-aware context, delegates to the CLI and exits with the mapped code" "cmd/cube-idp"
-                cliPkg = component "CLI edge" "Cobra wiring only: flag mapping, edge composition (scaffold-if-absent → load → provision, provisioner factory injection, SpecValidator type-assert), sole error renderer with exit codes 0/2/1" "internal/cli"
+                cliPkg = component "CLI edge" "Cobra wiring only: flag mapping, edge composition (init: scaffold-if-absent → load → report; create/delete/status: load → domain operation with injected provisioner factory, SpecValidator type-assert), sole error renderer with exit codes 0/2/1" "internal/cli"
                 configDomain = component "Config domain" "Strict load pipeline (decode → Default → Validate), config scaffolding with O_EXCL clobber safety, docker-style name generator; owns CUBE-CFG-* codes" "internal/config"
                 apiPkg = component "Config API" "Pure contract: Config types, defaults, validation. No I/O, no logic; hub for the cube-idp.dev/v1alpha1 group" "api/config/v1alpha1"
-                clusterDomain = component "Cluster domain" "Provisioner driver seam + optional SpecValidator capability, Init operation, kubeconfig rebrand/lossless-merge/atomic-write machinery; owns CUBE-CLU-* codes; exported conformance suite" "internal/cluster"
+                clusterDomain = component "Cluster domain" "Provisioner driver seam + optional SpecValidator capability, Init/Delete/Status operations, kubeconfig rebrand/lossless-merge/removal/atomic-write machinery; owns CUBE-CLU-* codes; exported conformance suite" "internal/cluster"
                 kindDriver = component "kind driver" "Sole importer of sigs.k8s.io/kind; implements Provisioner + SpecValidator; container-runtime detection deferred to first provisioning call" "internal/cluster/kind"
                 cubeerrPkg = component "Error machinery" "Coded error shape (code, summary, remediation) and exit-code mapping only — no code catalog" "internal/cubeerr"
             }
@@ -45,7 +45,7 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         }
 
         # People / system relationships
-        operator -> cli "Runs init and config validate|show" "shell"
+        operator -> cli "Runs init, create, delete, status and config validate|show" "shell"
         operator -> kubectlTool "Operates the cluster with"
         kubectlTool -> kubeconfigFile "Reads contexts from"
         kubectlTool -> kindCluster "Talks to the API server of" "HTTPS"
@@ -53,14 +53,14 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
 
         # Container-level relationships
         cli -> configDoc "Scaffolds when absent (init), reads and validates" "os file I/O"
-        cli -> kubeconfigFile "Rebrands, merges context in losslessly, writes atomically" "os file I/O"
+        cli -> kubeconfigFile "Merges the cube context in losslessly (create), removes it (delete), inspects it (status); always writes atomically, never unlinks" "os file I/O"
         cli -> containerRuntime "Creates/inspects/deletes kind clusters through" "sigs.k8s.io/kind"
-        cli -> kindCluster "Provisions from spec.cluster (idempotent by name) and exports the kubeconfig of" "sigs.k8s.io/kind"
+        cli -> kindCluster "Provisions (create) and tears down (delete) from spec.cluster, idempotent by name; exports the kubeconfig of" "sigs.k8s.io/kind"
 
         # Component-level relationships (import direction, strictly left to right)
         mainPkg -> cliPkg "Calls Execute; exits with returned code"
         cliPkg -> configDomain "Scaffold-if-absent, LoadFile; raises NewNameConflictError on --name mismatch"
-        cliPkg -> clusterDomain "Composes Init; type-asserts SpecValidator for config validate"
+        cliPkg -> clusterDomain "Composes Init (create), Delete, Status; type-asserts SpecValidator for config validate"
         cliPkg -> kindDriver "Constructs via injected provisioner factory (composition at the edge only)"
         cliPkg -> cubeerrPkg "Maps error chain to exit code; renders Coded errors to stderr"
         configDomain -> apiPkg "Strict decode → Default() → Validate()"
