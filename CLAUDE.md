@@ -10,9 +10,10 @@ one.
 cube-idp is being rebuilt from a greenfield v0 baseline (2026-07-27 reset).
 Components are added in small milestones — the queue is `/ROADMAP.md`.
 Current domains: **config** (CRD-ready `Config` type, strict loader,
-`config validate|show`) and **cluster** (M3: `spec.cluster`, `Provisioner`
-driver seam, kind provider, `init`). Per-domain contracts:
-`docs/domains/<name>.md`.
+`config validate|show`), **cluster** (M3–M5: `spec.cluster`, `Provisioner`
+driver seam, kind provider, full lifecycle CLI), and **kube** (M6: leaf
+client access from injected kubeconfig bytes + context name). Per-domain
+contracts: `docs/domains/<name>.md`.
 
 ### Documentation map (the complete, closed set)
 
@@ -42,9 +43,11 @@ owner-approved before code, exactly as before.
 
 ```
 cmd/cube-idp ──▶ internal/cli ──▶ internal/config  ──▶ api/config/v1alpha1
-                      │      └──▶ internal/cluster ──▶ api/config/v1alpha1
-                      │                │  └── cluster/kind (driver subpackage)
-                      └──────▶ internal/cubeerr ◀──── (config, cluster)
+                      │      ├──▶ internal/cluster ──▶ api/config/v1alpha1
+                      │      │        │  └── cluster/kind (driver subpackage)
+                      │      ├──▶ internal/kube  (M6 leaf: injected kubeconfig
+                      │      │        bytes + context name → clients)
+                      └──────┴──▶ internal/cubeerr ◀── (config, cluster, kube)
 ```
 
 - Imports flow strictly left to right. `api/` and `internal/cubeerr` are
@@ -138,8 +141,9 @@ code — never raise the limit.
   with the identifier's name. A group comment may cover a const/var block,
   but exported functions and types are documented individually.
 - Runtime dependencies are a closed set (`k8s.io/apimachinery`,
-  `sigs.k8s.io/yaml`, `github.com/spf13/cobra`, and `sigs.k8s.io/kind` —
-  the latter confined to `internal/cluster/kind` — see the dependency
+  `sigs.k8s.io/yaml`, `github.com/spf13/cobra`, `sigs.k8s.io/kind` —
+  confined to `internal/cluster/kind` — and `k8s.io/client-go` —
+  construction confined to `internal/kube` — see the dependency
   table in `docs/ARCHITECTURE.md` §8). Adding one requires an
   owner-approved `ARCHITECTURE.md` §8 update + `DECISIONS.md` entry, never
   a plan footnote.

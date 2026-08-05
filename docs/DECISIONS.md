@@ -157,3 +157,27 @@ never scaffolds (missing config is the loader's coded error, the same
 doctrine as `delete`). Verb: `create`, pairing with `delete`; `up`/`down`
 stay reserved for the future orchestrator, `apply` is reserved for the
 SSA milestone, and a flag-modal `init` was rejected.
+
+**2026-08-04 — M6 kube design gate (roadmap re-evaluation + new domain).**
+The post-M5 re-evaluation confirms the default continuation: M6 = kube
+(epic #81); the remainder (apply → pack → engine → registry →
+orchestrator → periphery) stays directional. The pull-pack-forward reorder
+was weighed and rejected — pack lands only once its prerequisites (client,
+apply path) are real, per the 2026-08-01 rationale. Positions: (1)
+`k8s.io/client-go` joins the closed runtime set, pinned to the
+apimachinery minor, with **construction-scoped confinement**: only
+`internal/kube` constructs clients from kubeconfig bytes; consumers may
+reference client-go's stable interface types in signatures (closer to
+apimachinery's status than kind's — mirror-wrapping rejected as ceremony).
+(2) `internal/kube` is a shared leaf importing only `cubeerr` + client-go;
+kubeconfig **bytes + context name are injected** at the CLI/orchestrator
+edge — the domain never reads files, never derives the context name, never
+imports `internal/cluster`. (3) **No driver seam**: one Kubernetes API,
+nothing swappable; consumer-side doctrine applies (M7 defines what it
+needs where it uses it). (4) Operator answers folded in: the milestone is
+kube-only plus a thin user-visible proof (`status` gains one
+API-reachability line composed at the edge via `kube.Ping`; unreachable is
+a finding, not a failure); no near-term second-provider pull — the
+bytes+context contract already accommodates `existing`/k3d, no extra room
+reserved. Argo CD scope and air-gap commitment stay open, due before the
+M8/M9 design gates. Living contract: `docs/domains/kube.md`.
