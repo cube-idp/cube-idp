@@ -9,7 +9,7 @@
 //     export -workspace workspace.dsl -format plantuml/c4plantuml
 //   docker run --rm -v "$PWD:/data" plantuml/plantuml -tsvg "/data/*.puml"
 //   rm structurizr-*.puml
-workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, M6 design)" {
+workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M6)" {
 
     model {
         operator = person "Platform Operator" "Declares a cube in cube.yaml and drives it with the cube-idp CLI"

@@ -3,11 +3,12 @@
 `cube-idp` is a single Go binary for standing up an internal developer
 platform from one declarative config document.
 
-**Status: greenfield rebuild — config + cluster domains.** The repository
-was reset to a greenfield baseline on 2026-07-27 and grows in small
-milestones; today it holds the config domain (validate/show/scaffold) and
-the cluster domain with a full kind lifecycle
-(`init`/`create`/`status`/`delete`). The previous
+**Status: greenfield rebuild — config, cluster, and kube domains.** The
+repository was reset to a greenfield baseline on 2026-07-27 and grows in
+small milestones; today it holds the config domain
+(validate/show/scaffold), the cluster domain with a full kind lifecycle
+(`init`/`create`/`status`/`delete`), and the kube domain (Kubernetes
+client access — powering `status`'s API-reachability line). The previous
 implementation is preserved in git history on `main`. Structure and
 rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 What's next: [ROADMAP.md](ROADMAP.md). Decision history:
@@ -39,6 +40,7 @@ cluster "sunny-walrus" ready — kubeconfig context "cube-idp.dev/sunny-walrus" 
 $ cube-idp status
 cluster "sunny-walrus": exists
 kubeconfig context "cube-idp.dev/sunny-walrus": installed in /home/you/.kube/config
+api server: reachable
 
 $ cube-idp delete
 cluster "sunny-walrus" deleted — kubeconfig context "cube-idp.dev/sunny-walrus" removed
@@ -55,7 +57,8 @@ matching `--name` proceeds.
 merges a cube-owned context (`cube-idp.dev/<name>`) into your kubeconfig;
 `delete` removes the cluster and cleans that context back out (only
 cube-owned entries are touched, and the file is never deleted); `status`
-is read-only and exits 0 whenever the report succeeds. All three resolve
+is read-only and exits 0 whenever the report succeeds — an absent
+cluster or unreachable API server is a finding, not a failure. All three resolve
 the cube from the config document and never scaffold it. Each takes
 `--kubeconfig <path>` to target a standalone file instead of the default
 location, and `--kubeconfig-context-name` to override the context name.
@@ -96,7 +99,7 @@ spec:
 make test           # go vet + go test ./... -count=1 (hermetic, no Docker)
 make lint           # golangci-lint (funlen 50) + 300-line file gate
 make generate       # controller-gen deepcopy (output is committed)
-make test-e2e       # kind driver conformance against real Docker (opt-in)
+make test-e2e       # kind conformance + kube round-trip against real Docker (opt-in)
 ```
 
 Agent and contributor rules: [CLAUDE.md](CLAUDE.md). Release notes:

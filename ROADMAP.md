@@ -49,15 +49,20 @@ it in the PR that completes or reorders a milestone.
   and never scaffolds. Operator decisions: `docs/DECISIONS.md` 2026-08-02
   and 2026-08-03; living contract: `docs/domains/cluster.md`.
 
+- **M6 — kube: client access** (epic #81; PRs #87–#90, 2026-08-05): new
+  leaf domain `internal/kube` (`CUBE-KUB-*`) — clients constructed from
+  injected kubeconfig bytes + context name (REST config, discovery,
+  memory-cached RESTMapper, dynamic client, bounded `Ping`);
+  `k8s.io/client-go v0.36.2` joins the closed set with
+  construction-scoped confinement; no driver seam (one Kubernetes API).
+  `status` gains a third line — api server reachable/unreachable/not
+  checked — composed at the CLI edge; opt-in e2e round-trip in the new
+  `tests/e2e` package. Design gate: `docs/DECISIONS.md` 2026-08-04;
+  living contract: `docs/domains/kube.md`.
+
 ## Queue
 
-- **M6 — kube: client access** (epic #81): new leaf domain `internal/kube`
-  (`CUBE-KUB-*`) — clients constructed from injected kubeconfig bytes +
-  context name (REST config, discovery, RESTMapper, dynamic, `Ping`);
-  `k8s.io/client-go` joins the closed set with construction-scoped
-  confinement; no driver seam. Thin user-visible proof: `status` gains an
-  API-reachability line. Design gate: `docs/DECISIONS.md` 2026-08-04;
-  living contract: `docs/domains/kube.md`.
+- *(empty — the next milestone is picked from the continuation below.)*
 
 ## Default continuation after M6 (directional, not committed)
 
