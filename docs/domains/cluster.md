@@ -132,10 +132,13 @@ cube-owned context out of the same kubeconfig target `create` writes.
 One line of output states whether kubeconfig changes were needed.
 
 `status [-f cube.yaml] [--kubeconfig <path>]
-[--kubeconfig-context-name <n>]` — the Status operation rendered as two
+[--kubeconfig-context-name <n>]` — the Status operation rendered as three
 lines (cluster exists/not found; context installed in `<path>`/not
-installed). Exit 0 whenever the report succeeds — an absent cluster is a
-finding, not a failure; coded errors keep their usual exit semantics.
+installed; api server reachable/unreachable/not checked — the third line
+is composed at the CLI edge via the kube domain, see
+`docs/domains/kube.md`, M6). Exit 0 whenever the report succeeds — an
+absent cluster or unreachable API server is a finding, not a failure;
+coded errors keep their usual exit semantics.
 
 ## Contracts for future domains
 
