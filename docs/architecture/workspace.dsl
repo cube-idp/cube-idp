@@ -60,9 +60,11 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         cli -> kubeconfigFile "Merges the cube context in losslessly (create), removes it (delete), inspects it (status); always writes atomically, never unlinks" "os file I/O"
         cli -> containerRuntime "Creates/inspects/deletes kind clusters through" "sigs.k8s.io/kind"
         cli -> kindCluster "Provisions (create) and tears down (delete) from spec.cluster, idempotent by name; exports the kubeconfig of" "sigs.k8s.io/kind"
+        cli -> kindCluster "Probes API-server readiness of (status)" "k8s.io/client-go HTTPS"
 
         # Component-level relationships (import direction, strictly left to right)
         mainPkg -> cliPkg "Calls Execute; exits with returned code"
+        cliPkg -> apiPkg "References ClusterProvider constants in the provisioner-factory seam"
         cliPkg -> configDomain "Scaffold-if-absent, LoadFile; raises NewNameConflictError on --name mismatch"
         cliPkg -> clusterDomain "Composes Init (create), Delete, Status; type-asserts SpecValidator for config validate"
         cliPkg -> kindDriver "Constructs via injected provisioner factory (composition at the edge only)"

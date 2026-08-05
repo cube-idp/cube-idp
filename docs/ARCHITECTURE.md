@@ -29,11 +29,11 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config  ──▶ api/con
 
 - Imports flow strictly left to right. `api/` and `internal/cubeerr` are
   leaves: they import nothing from `internal/` — ever.
-- `internal/kube` is a shared leaf (M6): it imports only `internal/cubeerr`
-  and `k8s.io/client-go` — never `api/` or any domain. Kubeconfig bytes and
-  the context name are injected by the CLI/orchestrator edge; the domain
-  never reads files and never derives the `cube-idp.dev/<name>` context
-  name itself.
+- `internal/kube` is a shared leaf (M6): it imports only `internal/cubeerr`,
+  `k8s.io/client-go`, and `k8s.io/apimachinery` — never `api/` or any
+  domain. Kubeconfig bytes and the context name are injected by the
+  CLI/orchestrator edge; the domain never reads files and never derives
+  the `cube-idp.dev/<name>` context name itself.
 - Domains never import each other. Values cross domains by injection at
   the CLI/orchestrator edge, where factories and composition live.
 - One component domain = one package under `internal/` = one file under

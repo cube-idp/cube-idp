@@ -8,10 +8,10 @@ Living contract of the kube domain (`internal/kube`). Cross-cutting rules:
 
 Construct Kubernetes client access from **injected kubeconfig bytes**,
 exposing the minimal surface later domains need — nothing more. The domain
-is a shared **leaf**: it imports only `internal/cubeerr` and
-`k8s.io/client-go`, never `api/` or any other domain, and is consumed by
-injection at the CLI/orchestrator edge exactly like every cross-domain
-value in this repo.
+is a shared **leaf**: it imports only `internal/cubeerr`,
+`k8s.io/client-go`, and `k8s.io/apimachinery` — never `api/` or any other
+domain — and is consumed by injection at the CLI/orchestrator edge
+exactly like every cross-domain value in this repo.
 
 ## The injection contract
 
@@ -71,10 +71,10 @@ hand-rolled function-field structs.
 
 ## Testing
 
-Hermetic gate tests over fixture kubeconfigs (`fstest`-style byte
-fixtures): parse failures, context selection (found/missing/empty-name
-default), construction error rows — first-class table rows, no live
-cluster, no Docker. `Ping` against a real cluster runs only behind
+Hermetic gate tests over in-memory fixture kubeconfigs (bytes injected
+directly — no filesystem involved): parse failures, context selection
+(found/missing/empty-name default), construction error rows —
+first-class table rows, no live cluster, no Docker. `Ping` against a real cluster runs only behind
 `make test-e2e` (kind path, worktree-local KUBECONFIG per CLAUDE.md §7).
 
 ## CLI surface
