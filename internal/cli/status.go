@@ -1,13 +1,21 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/kube"
 )
+
+// statusPingTimeout bounds the API reachability probe so status never
+// hangs on a black-holed server address.
+const statusPingTimeout = 5 * time.Second
 
 func newStatusCmd(newProvisioner provisionerFactory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -50,6 +58,10 @@ func runStatus(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	if err != nil {
 		return err
 	}
+	apiState, err := apiServerState(cmd.Context(), rep)
+	if err != nil {
+		return err
+	}
 	clusterState := "not found"
 	if rep.ClusterExists {
 		clusterState = "exists"
@@ -60,5 +72,32 @@ func runStatus(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "cluster %q: %s\n", cfg.Name, clusterState)
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "kubeconfig context %q: %s\n", rep.ContextName, contextState)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "api server: %s\n", apiState)
 	return nil
+}
+
+// apiServerState resolves the reachability line for the API server behind
+// the installed context: the edge reads the kubeconfig target the report
+// names and injects bytes + context name into the kube domain (kube never
+// reads files). An uninstalled context is not probed; an unreachable
+// server is a finding, not a failure — only failures to build a client
+// keep their coded-error exit semantics.
+func apiServerState(ctx context.Context, rep cluster.StatusReport) (string, error) {
+	if !rep.ContextInstalled {
+		return "not checked (context not installed)", nil
+	}
+	raw, err := os.ReadFile(rep.KubeconfigPath)
+	if err != nil {
+		return "", cluster.NewKubeconfigFailedError(fmt.Errorf("read kubeconfig %s: %w", rep.KubeconfigPath, err))
+	}
+	client, err := kube.New(raw, rep.ContextName)
+	if err != nil {
+		return "", err
+	}
+	pingCtx, cancel := context.WithTimeout(ctx, statusPingTimeout)
+	defer cancel()
+	if err := client.Ping(pingCtx); err != nil {
+		return "unreachable", nil
+	}
+	return "reachable", nil
 }
