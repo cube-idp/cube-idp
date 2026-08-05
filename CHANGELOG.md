@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+M6 kube client access (epic #81; design gate: `docs/DECISIONS.md`
+2026-08-04):
+
+- New leaf domain `internal/kube`: Kubernetes clients constructed from
+  injected kubeconfig bytes + a context name — REST config, discovery,
+  memory-cached RESTMapper, dynamic client, and a bounded `Ping`
+  reachability probe — with the `CUBE-KUB-*` error catalog. No driver
+  seam: there is exactly one Kubernetes API.
+- `cube-idp status` reports API-server reachability as a third line
+  (`api server: reachable|unreachable|not checked`), composed at the CLI
+  edge via the kube injection contract. An unreachable server is a
+  finding, not a failure — exit stays 0.
+- `k8s.io/client-go` v0.36.2 (pinned to the apimachinery minor) joins
+  the closed dependency set, construction-confined to `internal/kube`;
+  consumers may reference its stable interface types.
+- `make test-e2e` gains a kube client round-trip against a real kind
+  cluster in the new `tests/e2e` package; the green gate stays hermetic.
+
 M5 cluster lifecycle completion (epic #72; operator decisions:
 `docs/DECISIONS.md` 2026-08-02 and 2026-08-03):
 
