@@ -1,5 +1,29 @@
 # Pack groundwork — research + shaping input for the M8 design doc
 
+> **Superseded in part by the M7 bootstrap design gate (2026-08-06 —
+> `docs/DECISIONS.md`, epic #92). Read this banner before acting on any
+> `internal/apply` / "M7 applier" reference below.**
+>
+> - **M7 is `internal/bootstrap` (tag `BST`), not `internal/apply` (tag
+>   `APP`, retired).** Every `internal/apply` / "the M7 apply
+>   implementation" mention in this file means the bootstrap domain, whose
+>   SSA is **private** — there is no reusable, injected `Applier` service.
+> - **§2.1's exported obligation is dropped.** The `pack.Install(ctx, a
+>   Applier, …)` seam and the "inventory-inside-Apply" contract are
+>   **superseded**: M8 delivers packs by **writing to the Flux source that
+>   M7 bootstrap wired (delivery-through-engine)**, not by calling a
+>   cube-idp applier. The M7 design doc does **not** adopt an
+>   inventory-inside-Apply contract; bootstrap keeps its own inventory as
+>   the seed of `down`.
+> - **The C4 critical path shifts:** "C4 — install + e2e … depends on M6,
+>   M7 (Applier shape)" no longer applies; M8's install/delivery chunk is
+>   rewritten against the live Flux loop when the M8 design doc (T1) is
+>   written. Treat the §2.1/§2.2/§3 `Applier` and `internal/apply` details
+>   as historical.
+> - Kept unchanged: the pack.cue contract, resolver/`internal/ref`
+>   placement, values/externalManifests/dependsOn shaping — none of those
+>   depended on the applier seam.
+
 Date: 2026-08-01 (reworked 2026-08-01 after owner review)
 Status: groundwork (research record + owner-directed shape). **Not a design
 doc** — the pack design gate (a `docs/domains/pack.md` draft + a
@@ -269,6 +293,10 @@ owns its own error catalog under a new tag, `CUBE-REF-*` (`REF` is unused
 in the tag registry; adding the row is part of the T1 design event per
 the doc map). Consumers wrap its errors with their own context per the
 `%w` rule; exit code stays 1.
+
+**[SUPERSEDED 2026-08-06 — see the banner at the top of this file: the
+`Applier` seam and inventory-inside-Apply obligation are dropped; M8
+delivers through the Flux source. The block below is historical.]**
 
 **The one genuine interface: a Kind-A consumer-side applier seam, arriving
 with `pack install`** — unchanged. Pack must not import `internal/apply`
@@ -813,7 +841,11 @@ deterministic order exposed as data for the future orchestrator.
 Deliverable: resolution + topo-sort with full error-row coverage.
 Dependencies: T2, T8.
 
-**T10 — `pack install` + Applier seam.**
+**T10 — `pack install` + Applier seam.** **[SUPERSEDED 2026-08-06 — the
+Applier seam is dropped (banner). M8 delivers packs by writing to the Flux
+source that M7 bootstrap wired (delivery-through-engine); `pack install`
+is re-scoped against the live Flux loop when the M8 design doc is written.
+The description below is historical.]**
 Scope: `install.go` per §2.1; `--dry-run` via server-side dry-run through
 the seam; wiring at the CLI edge.
 Deliverable: install path + function-field mock tests.

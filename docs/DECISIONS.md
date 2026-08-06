@@ -181,3 +181,68 @@ a finding, not a failure); no near-term second-provider pull — the
 bytes+context contract already accommodates `existing`/k3d, no extra room
 reserved. Argo CD scope and air-gap commitment stay open, due before the
 M8/M9 design gates. Living contract: `docs/domains/kube.md`.
+
+**2026-08-06 — M7 bootstrap design gate (new domain + gitops-engine
+direction).** The gitops **engine is a mandatory component; Flux is the
+default, installed before all packs** as the bootstrap primitive.
+Everything else — prerequisites included — is an ordinary pack reconciled
+by the engine, ordered by engine dependencies. **This supersedes ADR-0045's
+"prerequisites before the engine" ordering** (engine first now; recorded
+explicitly). Positions:
+
+1. **New domain `internal/bootstrap`, tag `BST`** (epic #92). It is a
+   *micro-bootstrap applier only*: install Flux + its source/sync wiring,
+   wait ready, hand over permanently. Steady-state ownership of all
+   packs/manifests is the engine's; **no-engine operation is not a supported
+   mode.** The reserved `APP` (`internal/apply`) tag row is **retired /
+   superseded** — there is no standalone apply domain; SSA lives privately
+   inside `bootstrap`.
+2. **SSA is hand-rolled on `k8s.io/client-go`** via `internal/kube`'s
+   clients, injected at the CLI edge as interface types (`dynamic.Interface`,
+   `meta.RESTMapper`) — `bootstrap` never imports `internal/kube`. Decided on
+   measured evidence: `fluxcd/pkg/ssa` v0.77.0 would add **+37 modules**
+   (164→201 in the module graph), **+72 `go.sum` lines**, **+3.6 MB binary
+   (+7.5 %, measured with `ResourceManager` linked)**, and back-door
+   `sigs.k8s.io/controller-runtime` past the M6 gate's explicit rejection —
+   for a job reduced to applying one known manifest set. kstatus/`cli-utils`
+   are likewise excluded; readiness predicates read off `unstructured`
+   status. **No new §8 runtime dependency** — the Flux manifests are embedded
+   data, and client-go/apimachinery are already in the closed set.
+3. **Wait scope = the bootstrap kind-set only:** CRD Established,
+   Deployment/StatefulSet ready, Job complete, Namespace Active. Engine-CR
+   readiness (GitRepository/Kustomization reconciled) belongs to the future
+   M9 seam, not M7.
+4. **Applier-seam supersession (Q1).** `docs/work/pack-groundwork.md` §2.1's
+   exported obligation — a reusable `Applier` / "inventory-inside-Apply"
+   seam that `pack.Install` injects — is **superseded**: `bootstrap`'s SSA
+   stays private and M8 delivers packs by writing to the Flux source
+   (delivery-through-engine). The bootstrap **inventory** (seed of `down`) is
+   kept, in-domain. This design-gate PR reconciles pack-groundwork.md's stale
+   `internal/apply` / "M7 apply implementation" references.
+5. **Flux acquisition = embed.** `go:embed` of vendored `flux install
+   --export` output (source-controller + kustomize-controller at minimum),
+   pinned version constant + recorded sha256 provenance + a `make` regen
+   target. Fetch-and-verify at runtime rejected (breaks the hermetic gate +
+   air-gap). The air-gap local-manifest override is **deferred to the M10
+   air-gap decision**.
+6. **Config surface `spec.engine`** (`EngineSpec`): minimal-typed now —
+   `provider` (defaulted `flux`), `version`, `source` — validated in `api/`.
+   M9 may migrate it to cluster-style `provider` + opaque `forProvider` as a
+   design-gate event (noted in the domain doc). **CLI verb `cube-idp
+   bootstrap`**; the 2026-08-03 reservation of `apply` is superseded (the
+   `apply` verb stays retired).
+7. **Demo source (git vs OCI) deferred (Q6).** In-cluster Flux cannot read a
+   manifest directory on the operator's machine, so the pre-M8 source is a
+   reachable git URL or an OCIRepository (the latter pulls an M10 concern
+   forward). The call is deferred: tasks T5 (source/sync CRs) and T8 (e2e)
+   are **sequenced last**, gated on a `M7-demo-source` checkpoint.
+8. **ArgoCD** returns later only as an engine *pack*; replace-vs-layer
+   (Argo-at-bootstrap vs Flux-deploys-Argo) is parked for the M9 design gate.
+   Argo never becomes a compile-time dependency.
+
+ROADMAP resequenced (directional continuation): M7 bootstrap → M8 pack
+(delivery-through-engine, groundwork's 18 tasks) → M9 engine seam +
+Flux-as-conforming-pack + the Argo question → M10 bus (git vs OCI; air-gap
+answer due) → M11 thin `up`/`down` finisher. Rationale: M7 makes the product
+demo-able (up → gitops-managed cluster) and M8 iterates against real
+substrate. Living contract: `docs/domains/bootstrap.md`.

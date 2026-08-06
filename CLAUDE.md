@@ -11,8 +11,11 @@ cube-idp is being rebuilt from a greenfield v0 baseline (2026-07-27 reset).
 Components are added in small milestones — the queue is `/ROADMAP.md`.
 Current domains: **config** (CRD-ready `Config` type, strict loader,
 `config validate|show`), **cluster** (M3–M5: `spec.cluster`, `Provisioner`
-driver seam, kind provider, full lifecycle CLI), and **kube** (M6: leaf
-client access from injected kubeconfig bytes + context name). Per-domain
+driver seam, kind provider, full lifecycle CLI), **kube** (M6: leaf
+client access from injected kubeconfig bytes + context name), and
+**bootstrap** (M7: micro-bootstrap applier — SSA-installs embedded Flux
+from `spec.engine` over injected client-go interfaces, waits the bootstrap
+kind-set, records an inventory, then hands over to the engine). Per-domain
 contracts: `docs/domains/<name>.md`.
 
 ### Documentation map (the complete, closed set)
@@ -42,12 +45,14 @@ owner-approved before code, exactly as before.
 ## 2. Layout and import direction
 
 ```
-cmd/cube-idp ──▶ internal/cli ──▶ internal/config  ──▶ api/config/v1alpha1
-                      │      ├──▶ internal/cluster ──▶ api/config/v1alpha1
+cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/config/v1alpha1
+                      │      ├──▶ internal/cluster   ──▶ api/config/v1alpha1
                       │      │        │  └── cluster/kind (driver subpackage)
                       │      ├──▶ internal/kube  (M6 leaf: injected kubeconfig
                       │      │        bytes + context name → clients)
-                      └──────┴──▶ internal/cubeerr ◀── (config, cluster, kube)
+                      │      ├──▶ internal/bootstrap (M7: SSA-applies embedded Flux
+                      │      │        via injected client-go ifaces → api/config)
+                      └──────┴──▶ internal/cubeerr ◀── (config, cluster, kube, bootstrap)
 ```
 
 - Imports flow strictly left to right. `api/` and `internal/cubeerr` are

@@ -9,14 +9,14 @@
 //     export -workspace workspace.dsl -format plantuml/c4plantuml
 //   docker run --rm -v "$PWD:/data" plantuml/plantuml -tsvg "/data/*.puml"
 //   rm structurizr-*.puml
-workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M6)" {
+workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M7)" {
 
     model {
         operator = person "Platform Operator" "Declares a cube in cube.yaml and drives it with the cube-idp CLI"
 
         cubeIdp = softwareSystem "cube-idp" "CLI that provisions and manages the cluster declared in a single Config document; the document is the sole source of truth" {
 
-            cli = container "cube-idp binary" "Single Go binary; cobra CLI with init, create, delete, status and config validate|show commands" "Go 1.26" {
+            cli = container "cube-idp binary" "Single Go binary; cobra CLI with init, create, delete, status, bootstrap and config validate|show commands" "Go 1.26" {
                 mainPkg = component "Entrypoint" "Signal-aware context, delegates to the CLI and exits with the mapped code" "cmd/cube-idp"
                 cliPkg = component "CLI edge" "Cobra wiring only: flag mapping, edge composition (init: scaffold-if-absent → load → report; create/delete/status: load → domain operation with injected provisioner factory, SpecValidator type-assert), sole error renderer with exit codes 0/2/1" "internal/cli"
                 configDomain = component "Config domain" "Strict load pipeline (decode → Default → Validate), config scaffolding with O_EXCL clobber safety, docker-style name generator; owns CUBE-CFG-* codes" "internal/config"
@@ -24,6 +24,7 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
                 clusterDomain = component "Cluster domain" "Provisioner driver seam + optional SpecValidator capability, Init/Delete/Status operations, kubeconfig rebrand/lossless-merge/removal/atomic-write machinery; owns CUBE-CLU-* codes; exported conformance suite" "internal/cluster"
                 kindDriver = component "kind driver" "Sole importer of sigs.k8s.io/kind; implements Provisioner + SpecValidator; container-runtime detection deferred to first provisioning call" "internal/cluster/kind"
                 kubeDomain = component "Kube domain" "Shared leaf (M6): constructs REST config, discovery, RESTMapper and dynamic client from injected kubeconfig bytes + context name; Ping reachability check; sole constructor of clients (client-go construction confinement); owns CUBE-KUB-* codes" "internal/kube"
+                bootstrapDomain = component "Bootstrap domain" "Micro-bootstrap applier (M7): SSA-applies embedded pinned Flux manifests + source/sync CRs from spec.engine over injected client-go interfaces, waits the bootstrap kind-set (CRD Established, Deployment/StatefulSet ready, Job complete, Namespace Active), records an inventory (seed of down); SSA hand-rolled on client-go (no new dependency), does not import internal/kube; owns CUBE-BST-* codes" "internal/bootstrap"
                 cubeerrPkg = component "Error machinery" "Coded error shape (code, summary, remediation) and exit-code mapping only — no code catalog" "internal/cubeerr"
             }
 
@@ -49,7 +50,7 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         }
 
         # People / system relationships
-        operator -> cli "Runs init, create, delete, status and config validate|show" "shell"
+        operator -> cli "Runs init, create, delete, status, bootstrap and config validate|show" "shell"
         operator -> kubectlTool "Operates the cluster with"
         kubectlTool -> kubeconfigFile "Reads contexts from"
         kubectlTool -> kindCluster "Talks to the API server of" "HTTPS"
@@ -61,6 +62,7 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         cli -> containerRuntime "Creates/inspects/deletes kind clusters through" "sigs.k8s.io/kind"
         cli -> kindCluster "Provisions (create) and tears down (delete) from spec.cluster, idempotent by name; exports the kubeconfig of" "sigs.k8s.io/kind"
         cli -> kindCluster "Probes API-server readiness of (status)" "k8s.io/client-go HTTPS"
+        cli -> kindCluster "Installs embedded Flux + source/sync wiring into and waits the bootstrap kind-set on (bootstrap)" "k8s.io/client-go HTTPS"
 
         # Component-level relationships (import direction, strictly left to right)
         mainPkg -> cliPkg "Calls Execute; exits with returned code"
@@ -69,6 +71,7 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         cliPkg -> clusterDomain "Composes Init (create), Delete, Status; type-asserts SpecValidator for config validate"
         cliPkg -> kindDriver "Constructs via injected provisioner factory (composition at the edge only)"
         cliPkg -> kubeDomain "Injects kubeconfig bytes + context name; composes Ping into the status reachability line (M6)"
+        cliPkg -> bootstrapDomain "Composes bootstrap (M7): injects dynamic.Interface + meta.RESTMapper (built by kube) and spec.engine; runs Flux install + kind-set wait + inventory"
         cliPkg -> cubeerrPkg "Maps error chain to exit code; renders Coded errors to stderr"
         configDomain -> apiPkg "Strict decode → Default() → Validate()"
         clusterDomain -> apiPkg "Provider constants, API group for the context-name prefix"
@@ -76,6 +79,9 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         clusterDomain -> cubeerrPkg "Wraps CUBE-CLU-* errors with"
         kubeDomain -> cubeerrPkg "Wraps CUBE-KUB-* errors with"
         kubeDomain -> kindCluster "Checks API reachability of, discovers resources on" "k8s.io/client-go HTTPS"
+        bootstrapDomain -> apiPkg "Reads the spec.engine sub-struct"
+        bootstrapDomain -> cubeerrPkg "Wraps CUBE-BST-* errors with"
+        bootstrapDomain -> kindCluster "SSA-applies embedded Flux + source/sync CRs to and waits the bootstrap kind-set on (injected client-go interfaces; never imports internal/kube)" "k8s.io/client-go HTTPS"
         kindDriver -> clusterDomain "Implements Provisioner + SpecValidator (compile-time asserted)"
         kindDriver -> containerRuntime "DetectNodeProvider + cluster create/list/delete" "sigs.k8s.io/kind"
     }

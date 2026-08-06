@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+M7 bootstrap (epic #92; design gate: `docs/DECISIONS.md` 2026-08-06):
+
+- Design gate for the new `internal/bootstrap` domain (`CUBE-BST-*`, tag
+  `BST`): a micro-bootstrap applier that SSA-applies embedded, pinned Flux
+  install manifests plus source/sync CRs from a new `spec.engine`
+  sub-struct, waits the bootstrap kind-set, records an inventory, then
+  hands over to the engine. SSA hand-rolled on `k8s.io/client-go` — no new
+  runtime dependency; Flux manifests embedded as data. New verb
+  `cube-idp bootstrap` (behavior lands in later M7 PRs).
+- Direction recorded: the gitops engine is mandatory (Flux default,
+  installed before all packs) — superseding ADR-0045's ordering — and the
+  ROADMAP is re-sequenced M7 bootstrap → M8 pack (delivery-through-engine)
+  → M9 engine seam → M10 bus → M11 `up`/`down`. The reserved `apply`
+  domain/verb is retired.
+
 M6 kube client access (epic #81; design gate: `docs/DECISIONS.md`
 2026-08-04):
 

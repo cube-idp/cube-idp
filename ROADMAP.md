@@ -62,26 +62,42 @@ it in the PR that completes or reorders a milestone.
 
 ## Queue
 
-- *(empty — the next milestone is picked from the continuation below.)*
+- **M7 — bootstrap** (epic #92; design gate: `docs/DECISIONS.md`
+  2026-08-06): new domain `internal/bootstrap` (`CUBE-BST-*`) — the
+  **micro-bootstrap applier**. It SSA-applies the embedded, pinned **Flux**
+  install manifests (the mandatory default gitops engine, installed before
+  all packs) plus the source/sync CRs derived from a new `spec.engine`
+  sub-struct, waits on the bootstrap kind-set (CRD Established,
+  Deployment/StatefulSet ready, Job complete, Namespace Active), records a
+  bootstrap inventory (seed of `down`), then hands over permanently — the
+  engine owns steady state; no-engine operation is not supported. SSA is
+  hand-rolled on `k8s.io/client-go` (no new dependency; measured rejection
+  of `fluxcd/pkg/ssa` in the design gate); Flux manifests are embedded data
+  (`go:embed`, pinned + sha256). New verb `cube-idp bootstrap`. The
+  git-vs-OCI demo source is deferred to a mid-milestone `M7-demo-source`
+  checkpoint (tasks T5/T8 sequenced last). Supersedes ADR-0045's
+  "prerequisites before the engine" ordering.
 
-## Default continuation after M6 (directional, not committed)
+## Continuation after M7 (directional, not committed)
 
-Re-evaluated after M5 (2026-08-04): M6 = kube confirmed per the default;
-the remainder stays directional, re-checked as milestones land. Decision
-record, alternatives, risk table, and open questions:
-`docs/archived/plans/2026-08-01-roadmap-direction.md`.
+Re-sequenced by operator direction (2026-08-05, recorded in the M7 design
+gate). Decision record, alternatives, risk table, and prior open questions:
+`docs/archived/plans/2026-08-01-roadmap-direction.md`; the pack unit's
+shaping and 18-task breakdown: `docs/work/pack-groundwork.md`.
 
-apply (SSA + inventory) → pack (the spine, made solid — contract designed
-against recorded consumer requirements; consumers conform to pack, never
-the reverse) → engine (gitops driver seam + Flux, installs as an ordinary
-pack) → registry (OCI bus) → orchestrator (`up`/`down` phase runner, last)
-→ periphery in pull order (doctor, diff, trust, lock/vendor, spokes, …).
+M8 pack (done properly against the **live Flux loop** —
+**delivery-through-engine**: packs are delivered by writing to the Flux
+source, not through a cube-idp applier; groundwork's 18 tasks, contract
+designed against recorded consumer requirements) → M9 engine (gitops driver
+seam formalized + **Flux re-expressed as a conforming pack** + the Argo
+replace-vs-layer question) → M10 bus (OCI/git delivery; Flux does both; the
+air-gap answer is due by then) → M11 thin `up`/`down` finisher (ordering
+lives in the engine) → periphery in pull order (doctor, diff, trust,
+lock/vendor, spokes, …).
 
-**Prepared work:** the pack unit is fully pre-shaped in
-`docs/work/pack-groundwork.md` — owner-decided contract direction
-(pack.cue/CUE, packRef, uuid/category, values, externalManifests,
-dependsOn) and an 18-task breakdown grouped into 6 one-PR chunks with
-dependencies. All five 2026-08-01 owner questions are resolved and folded
-in; its design task (T1) is fully unblocked, and only the install chunk
-waits on M6/M7. Still open for the M8/M9 design gates: Argo CD scope and
-the air-gap commitment (direction doc §5 Q1/Q3).
+Rationale: M7 makes the product demo-able (up → gitops-managed cluster) and
+M8 iterates against real substrate. Carried-forward hard rules: Argo CD
+never a compile-time dependency; any post-M8 pack-contract change is a
+design-gate event, never a drive-by edit inside a consumer milestone. Still
+open for the M9/M10 design gates: the Argo scope and the air-gap commitment
+(direction doc §5).
