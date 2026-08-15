@@ -35,3 +35,28 @@ func TestManifests(t *testing.T) {
 		t.Fatalf("re-read after mutating the result failed: %v — Manifests() aliased the embed", err)
 	}
 }
+
+// TestFluxObjects parses the real embedded asset into apply-ready objects and
+// confirms it carries the Namespace and CRDs the kind-set wait targets.
+func TestFluxObjects(t *testing.T) {
+	objs, err := bootstrap.FluxObjects()
+	if err != nil {
+		t.Fatalf("FluxObjects() error = %v", err)
+	}
+	if len(objs) == 0 {
+		t.Fatal("FluxObjects() parsed no objects")
+	}
+
+	kinds := map[string]int{}
+	for _, o := range objs {
+		if o.GetName() == "" || o.GetKind() == "" {
+			t.Errorf("parsed object missing kind/name: %v", o.Object)
+		}
+		kinds[o.GetKind()]++
+	}
+	for _, want := range []string{"Namespace", "CustomResourceDefinition", "Deployment"} {
+		if kinds[want] == 0 {
+			t.Errorf("embedded manifests have no %s (parsed kinds: %v)", want, kinds)
+		}
+	}
+}
