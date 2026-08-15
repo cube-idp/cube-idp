@@ -31,5 +31,10 @@ func (c *Config) Validate() field.ErrorList {
 			field.NewPath("spec", "cluster", "provider"),
 			string(c.Spec.Cluster.Provider), []string{string(ClusterProviderKind)}))
 	}
+	if c.Spec.Engine != nil && c.Spec.Engine.Provider != EngineProviderFlux {
+		errs = append(errs, field.NotSupported(
+			field.NewPath("spec", "engine", "provider"),
+			string(c.Spec.Engine.Provider), []string{string(EngineProviderFlux)}))
+	}
 	return errs
 }

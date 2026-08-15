@@ -36,6 +36,15 @@ func TestValidate(t *testing.T) {
 		{"unknown cluster provider", func(c *v1alpha1.Config) {
 			c.Spec.Cluster = &v1alpha1.ClusterSpec{Provider: "k3d"}
 		}, "spec.cluster.provider"},
+		{"valid engine with flux provider", func(c *v1alpha1.Config) {
+			c.Spec.Engine = &v1alpha1.EngineSpec{Provider: v1alpha1.EngineProviderFlux}
+		}, ""},
+		{"empty engine provider is defaulted before validate", func(c *v1alpha1.Config) {
+			c.Spec.Engine = &v1alpha1.EngineSpec{}
+		}, ""},
+		{"unknown engine provider", func(c *v1alpha1.Config) {
+			c.Spec.Engine = &v1alpha1.EngineSpec{Provider: "argo"}
+		}, "spec.engine.provider"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

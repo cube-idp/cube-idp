@@ -6,4 +6,7 @@ func (c *Config) Default() {
 	if c.Spec.Cluster != nil && c.Spec.Cluster.Provider == "" {
 		c.Spec.Cluster.Provider = ClusterProviderKind
 	}
+	if c.Spec.Engine != nil && c.Spec.Engine.Provider == "" {
+		c.Spec.Engine.Provider = EngineProviderFlux
+	}
 }
