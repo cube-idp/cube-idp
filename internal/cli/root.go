@@ -15,6 +15,6 @@ func newRootCmd(factory provisionerFactory) *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().StringP("config", "f", "cube.yaml", "path to the Config document")
-	root.AddCommand(newConfigCmd(factory), newInitCmd(), newCreateCmd(factory), newDeleteCmd(factory), newStatusCmd(factory))
+	root.AddCommand(newConfigCmd(factory), newInitCmd(), newCreateCmd(factory), newDeleteCmd(factory), newStatusCmd(factory), newBootstrapCmd(factory))
 	return root
 }

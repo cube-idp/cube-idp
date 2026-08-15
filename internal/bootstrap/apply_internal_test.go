@@ -25,6 +25,7 @@ var (
 // cannot model server-side apply for unstructured objects.
 type fakeCluster struct {
 	store    map[string]*unstructured.Unstructured
+	calls    []string
 	applyErr error
 }
 
@@ -41,6 +42,7 @@ func objKey(o *unstructured.Unstructured) string {
 }
 
 func (f *fakeCluster) apply(_ context.Context, obj *unstructured.Unstructured) error {
+	f.calls = append(f.calls, "apply:"+objKey(obj))
 	if f.applyErr != nil {
 		return f.applyErr
 	}
@@ -49,6 +51,7 @@ func (f *fakeCluster) apply(_ context.Context, obj *unstructured.Unstructured) e
 }
 
 func (f *fakeCluster) get(_ context.Context, obj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+	f.calls = append(f.calls, "get:"+objKey(obj))
 	if o, ok := f.store[objKey(obj)]; ok {
 		return o, nil
 	}
