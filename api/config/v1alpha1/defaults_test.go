@@ -36,3 +36,34 @@ func TestDefaultCluster(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultEngine(t *testing.T) {
+	tests := []struct {
+		name string
+		in   v1alpha1.ConfigSpec
+		want v1alpha1.EngineProvider // "" means Engine must stay nil
+	}{
+		{name: "absent engine stays nil", in: v1alpha1.ConfigSpec{}, want: ""},
+		{name: "empty provider defaults to flux",
+			in:   v1alpha1.ConfigSpec{Engine: &v1alpha1.EngineSpec{}},
+			want: v1alpha1.EngineProviderFlux},
+		{name: "set provider untouched (idempotent)",
+			in:   v1alpha1.ConfigSpec{Engine: &v1alpha1.EngineSpec{Provider: v1alpha1.EngineProviderFlux}},
+			want: v1alpha1.EngineProviderFlux},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := v1alpha1.Config{Spec: tt.in}
+			c.Default()
+			if tt.want == "" {
+				if c.Spec.Engine != nil {
+					t.Fatalf("Engine = %+v, want nil", c.Spec.Engine)
+				}
+				return
+			}
+			if got := c.Spec.Engine.Provider; got != tt.want {
+				t.Fatalf("Provider = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
