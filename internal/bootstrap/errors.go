@@ -31,6 +31,9 @@ const (
 	// CodeWaitTimeout reports bootstrap resources that did not reach the
 	// ready kind-set before the context was done.
 	CodeWaitTimeout cubeerr.Code = "CUBE-BST-005"
+	// CodeInventory reports a failure to encode the bootstrap inventory (the
+	// seed of down) before recording it.
+	CodeInventory cubeerr.Code = "CUBE-BST-006"
 )
 
 func newAssetIntegrityError(got string) error {
@@ -58,6 +61,13 @@ func newApplyError(obj *unstructured.Unstructured, cause error) error {
 	return cubeerr.Wrap(CodeApplyFailed,
 		fmt.Sprintf("server-side apply failed for %s", describe(obj)),
 		"check cluster connectivity and RBAC for the cube-idp field manager",
+		cause)
+}
+
+func newInventoryError(cause error) error {
+	return cubeerr.Wrap(CodeInventory,
+		"cannot encode the bootstrap inventory",
+		"this is an internal error; please report it",
 		cause)
 }
 
