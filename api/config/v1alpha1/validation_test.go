@@ -45,6 +45,33 @@ func TestValidate(t *testing.T) {
 		{"unknown engine provider", func(c *v1alpha1.Config) {
 			c.Spec.Engine = &v1alpha1.EngineSpec{Provider: "argo"}
 		}, "spec.engine.provider"},
+		{"valid git source", func(c *v1alpha1.Config) {
+			c.Spec.Engine = &v1alpha1.EngineSpec{Source: &v1alpha1.EngineSource{
+				Kind: v1alpha1.EngineSourceGit, URL: "https://github.com/org/fleet"}}
+		}, ""},
+		{"valid oci source", func(c *v1alpha1.Config) {
+			c.Spec.Engine = &v1alpha1.EngineSpec{Source: &v1alpha1.EngineSource{
+				Kind: v1alpha1.EngineSourceOCI, URL: "oci://ghcr.io/org/fleet"}}
+		}, ""},
+		{"unknown source kind", func(c *v1alpha1.Config) {
+			c.Spec.Engine = &v1alpha1.EngineSpec{Source: &v1alpha1.EngineSource{
+				Kind: "svn", URL: "https://x"}}
+		}, "spec.engine.source.kind"},
+		{"source missing url", func(c *v1alpha1.Config) {
+			c.Spec.Engine = &v1alpha1.EngineSpec{Source: &v1alpha1.EngineSource{Kind: v1alpha1.EngineSourceGit}}
+		}, "spec.engine.source.url"},
+		{"oci kind with non-oci url", func(c *v1alpha1.Config) {
+			c.Spec.Engine = &v1alpha1.EngineSpec{Source: &v1alpha1.EngineSource{
+				Kind: v1alpha1.EngineSourceOCI, URL: "https://github.com/org/fleet"}}
+		}, "spec.engine.source.url"},
+		{"git kind with oci url", func(c *v1alpha1.Config) {
+			c.Spec.Engine = &v1alpha1.EngineSpec{Source: &v1alpha1.EngineSource{
+				Kind: v1alpha1.EngineSourceGit, URL: "oci://ghcr.io/org/fleet"}}
+		}, "spec.engine.source.url"},
+		{"source bad interval", func(c *v1alpha1.Config) {
+			c.Spec.Engine = &v1alpha1.EngineSpec{Source: &v1alpha1.EngineSource{
+				Kind: v1alpha1.EngineSourceGit, URL: "https://x", Interval: "soon"}}
+		}, "spec.engine.source.interval"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

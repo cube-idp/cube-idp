@@ -67,3 +67,34 @@ func TestDefaultEngine(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultEngineSource(t *testing.T) {
+	tests := []struct {
+		name                            string
+		in                              v1alpha1.EngineSource
+		wantKind                        v1alpha1.EngineSourceKind
+		wantRef, wantPath, wantInterval string
+	}{
+		{name: "git defaults", in: v1alpha1.EngineSource{URL: "https://x"},
+			wantKind: v1alpha1.EngineSourceGit, wantRef: "main", wantPath: "./", wantInterval: "10m"},
+		{name: "oci ref defaults to latest",
+			in:       v1alpha1.EngineSource{Kind: v1alpha1.EngineSourceOCI, URL: "oci://x"},
+			wantKind: v1alpha1.EngineSourceOCI, wantRef: "latest", wantPath: "./", wantInterval: "10m"},
+		{name: "set fields untouched (idempotent)",
+			in: v1alpha1.EngineSource{Kind: v1alpha1.EngineSourceGit, URL: "https://x",
+				Ref: "release", Path: "clusters/prod", Interval: "1m"},
+			wantKind: v1alpha1.EngineSourceGit, wantRef: "release", wantPath: "clusters/prod", wantInterval: "1m"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := tt.in
+			c := v1alpha1.Config{Spec: v1alpha1.ConfigSpec{Engine: &v1alpha1.EngineSpec{Source: &src}}}
+			c.Default()
+			got := c.Spec.Engine.Source
+			if got.Kind != tt.wantKind || got.Ref != tt.wantRef || got.Path != tt.wantPath || got.Interval != tt.wantInterval {
+				t.Fatalf("defaulted = %+v, want kind=%s ref=%s path=%s interval=%s",
+					got, tt.wantKind, tt.wantRef, tt.wantPath, tt.wantInterval)
+			}
+		})
+	}
+}

@@ -24,9 +24,11 @@ var (
 // hand-rolled function-field structs) — the client-go fake dynamic client
 // cannot model server-side apply for unstructured objects.
 type fakeCluster struct {
-	store    map[string]*unstructured.Unstructured
-	calls    []string
-	applyErr error
+	store         map[string]*unstructured.Unstructured
+	calls         []string
+	applyErr      error
+	failApplyKind string // if set, apply of this kind fails (partial-apply tests)
+	readyApply    bool   // store kind-set objects with ready status (for wait paths)
 }
 
 func newFakeCluster(seed ...*unstructured.Unstructured) *fakeCluster {
@@ -46,8 +48,54 @@ func (f *fakeCluster) apply(_ context.Context, obj *unstructured.Unstructured) e
 	if f.applyErr != nil {
 		return f.applyErr
 	}
-	f.store[objKey(obj)] = obj
+	if f.failApplyKind != "" && obj.GetKind() == f.failApplyKind {
+		return newApplyError(obj, errors.New("simulated apply failure"))
+	}
+	stored := obj
+	if f.readyApply {
+		stored = readied(obj)
+	}
+	f.store[objKey(obj)] = stored
 	return nil
+}
+
+// readied returns a copy of a kind-set object stamped with ready status, so a
+// fake with readyApply lets WaitReady pass over just-applied objects.
+func readied(o *unstructured.Unstructured) *unstructured.Unstructured {
+	c := o.DeepCopy()
+	switch c.GetKind() {
+	case "Namespace":
+		_ = unstructured.SetNestedField(c.Object, "Active", "status", "phase")
+	case "CustomResourceDefinition":
+		_ = unstructured.SetNestedSlice(c.Object,
+			[]any{map[string]any{"type": "Established", "status": "True"}}, "status", "conditions")
+	case "Deployment", "StatefulSet":
+		_ = unstructured.SetNestedField(c.Object, c.GetGeneration(), "status", "observedGeneration")
+		replicas, _, _ := unstructured.NestedInt64(c.Object, "spec", "replicas")
+		if replicas == 0 {
+			replicas = 1
+		}
+		_ = unstructured.SetNestedField(c.Object, replicas, "status", "readyReplicas")
+	}
+	return c
+}
+
+func firstCallWithPrefix(calls []string, prefix string) int {
+	for i, c := range calls {
+		if strings.HasPrefix(c, prefix) {
+			return i
+		}
+	}
+	return -1
+}
+
+func callIndex(calls []string, want string) int {
+	for i, c := range calls {
+		if c == want {
+			return i
+		}
+	}
+	return -1
 }
 
 func (f *fakeCluster) get(_ context.Context, obj *unstructured.Unstructured) (*unstructured.Unstructured, error) {

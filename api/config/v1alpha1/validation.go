@@ -3,6 +3,8 @@ package v1alpha1
 import (
 	"fmt"
 	"regexp"
+	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
@@ -31,10 +33,46 @@ func (c *Config) Validate() field.ErrorList {
 			field.NewPath("spec", "cluster", "provider"),
 			string(c.Spec.Cluster.Provider), []string{string(ClusterProviderKind)}))
 	}
-	if c.Spec.Engine != nil && c.Spec.Engine.Provider != EngineProviderFlux {
-		errs = append(errs, field.NotSupported(
-			field.NewPath("spec", "engine", "provider"),
-			string(c.Spec.Engine.Provider), []string{string(EngineProviderFlux)}))
+	if c.Spec.Engine != nil {
+		if c.Spec.Engine.Provider != EngineProviderFlux {
+			errs = append(errs, field.NotSupported(
+				field.NewPath("spec", "engine", "provider"),
+				string(c.Spec.Engine.Provider), []string{string(EngineProviderFlux)}))
+		}
+		if c.Spec.Engine.Source != nil {
+			errs = append(errs, validateEngineSource(c.Spec.Engine.Source)...)
+		}
+	}
+	return errs
+}
+
+// validateEngineSource checks the discriminated engine source: a known kind, a
+// URL whose scheme matches the kind, and a parseable interval.
+func validateEngineSource(s *EngineSource) field.ErrorList {
+	var errs field.ErrorList
+	base := field.NewPath("spec", "engine", "source")
+
+	switch s.Kind {
+	case EngineSourceGit, EngineSourceOCI:
+	default:
+		errs = append(errs, field.NotSupported(base.Child("kind"), string(s.Kind),
+			[]string{string(EngineSourceGit), string(EngineSourceOCI)}))
+	}
+
+	switch {
+	case s.URL == "":
+		errs = append(errs, field.Required(base.Child("url"), "a source URL is required"))
+	case s.Kind == EngineSourceOCI && !strings.HasPrefix(s.URL, "oci://"):
+		errs = append(errs, field.Invalid(base.Child("url"), s.URL, `kind "oci" requires an oci:// URL`))
+	case s.Kind == EngineSourceGit && strings.HasPrefix(s.URL, "oci://"):
+		errs = append(errs, field.Invalid(base.Child("url"), s.URL, `kind "git" must not use an oci:// URL`))
+	}
+
+	if s.Interval != "" {
+		if _, err := time.ParseDuration(s.Interval); err != nil {
+			errs = append(errs, field.Invalid(base.Child("interval"), s.Interval,
+				"must be a valid duration (e.g. 10m, 1h)"))
+		}
 	}
 	return errs
 }

@@ -58,11 +58,50 @@ func TestDynamicClusterGetResolvesScope(t *testing.T) {
 }
 
 // TestDynamicClusterMappingError pins CUBE-BST-003 for a kind the cluster's
-// REST mapper does not know.
+// REST mapper does not know (and never learns — no Reset support).
 func TestDynamicClusterMappingError(t *testing.T) {
 	c := testDynamicCluster()
 	unknown := &unstructured.Unstructured{}
 	unknown.SetGroupVersionKind(schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"})
 	unknown.SetName("w")
 	assertCode(t, c.apply(t.Context(), unknown), CodeRESTMapping)
+}
+
+// resettableMapper models a discovery-cache RESTMapper primed before a CRD was
+// installed: RESTMapping misses until Reset() rediscovers (as client-go's
+// DeferredDiscoveryRESTMapper does after invalidation).
+type resettableMapper struct {
+	meta.RESTMapper
+	ready  bool
+	resets int
+}
+
+func (m *resettableMapper) RESTMapping(gk schema.GroupKind, versions ...string) (*meta.RESTMapping, error) {
+	if !m.ready {
+		return nil, &meta.NoKindMatchError{GroupKind: gk}
+	}
+	return m.RESTMapper.RESTMapping(gk, versions...)
+}
+
+func (m *resettableMapper) Reset() { m.resets++; m.ready = true }
+
+// TestDynamicClusterRefreshesMapperOnMiss: a mapping miss on a stale discovery
+// cache triggers exactly one Reset()+retry, so a kind registered after the
+// mapper was primed (e.g. a Flux CR just after its CRD) still resolves.
+func TestDynamicClusterRefreshesMapperOnMiss(t *testing.T) {
+	ns := newNamespace("flux-system", "Active")
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
+		runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{gvrOf(gvkNamespace): "NamespaceList"},
+		ns,
+	)
+	m := &resettableMapper{RESTMapper: testMapper()} // ready == false
+	c := &dynamicCluster{dyn: dyn, mapper: m}
+
+	if _, err := c.get(t.Context(), ns); err != nil {
+		t.Fatalf("get() error = %v — reset-retry did not recover the mapping", err)
+	}
+	if m.resets != 1 {
+		t.Errorf("mapper reset %d times, want exactly 1", m.resets)
+	}
 }

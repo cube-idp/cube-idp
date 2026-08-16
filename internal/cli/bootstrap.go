@@ -57,19 +57,26 @@ func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	if err != nil {
 		return err
 	}
-	objs, err := bootstrap.FluxObjects()
-	if err != nil {
-		return err
-	}
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
-	if err := applier.Install(ctx, objs); err != nil {
+	if err := applier.InstallEngine(ctx, cfg.Spec.Engine); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(),
-		"flux %s installed — %d objects applied, inventory recorded\n", bootstrap.FluxVersion, len(objs))
+	renderBootstrapResult(cmd, cfg.Spec.Engine)
 	return nil
+}
+
+// renderBootstrapResult reports what bootstrap installed: Flux, and the sync
+// source when one is configured.
+func renderBootstrapResult(cmd *cobra.Command, engine *v1alpha1.EngineSpec) {
+	out := cmd.OutOrStdout()
+	if engine != nil && engine.Source != nil && engine.Source.URL != "" {
+		_, _ = fmt.Fprintf(out, "flux %s installed — syncing from %s (%s)\n",
+			bootstrap.FluxVersion, engine.Source.URL, engine.Source.Kind)
+		return
+	}
+	_, _ = fmt.Fprintf(out, "flux %s installed\n", bootstrap.FluxVersion)
 }
 
 // bootstrapApplier resolves the cube's kubeconfig target and context via the
