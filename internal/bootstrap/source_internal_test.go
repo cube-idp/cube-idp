@@ -143,3 +143,56 @@ func TestInstallEngineNoSource(t *testing.T) {
 		}
 	}
 }
+
+// TestInstallEnginePartialSourceApplyRecordsIntent: the inventory records the
+// full owned set BEFORE the source apply, so a half-applied source (here the
+// Kustomization fails after the GitRepository applied) is still in the
+// inventory for `down` to clean, and the apply error propagates.
+func TestInstallEnginePartialSourceApplyRecordsIntent(t *testing.T) {
+	f := &fakeCluster{
+		store:         map[string]*unstructured.Unstructured{},
+		readyApply:    true,
+		failApplyKind: "Kustomization",
+	}
+	a := &Applier{k: f, interval: time.Millisecond}
+	engine := &v1alpha1.EngineSpec{Source: &v1alpha1.EngineSource{
+		Kind: v1alpha1.EngineSourceGit, URL: "https://github.com/org/fleet",
+		Ref: "main", Path: "./", Interval: "10m",
+	}}
+
+	if err := a.InstallEngine(t.Context(), engine); err == nil {
+		t.Fatal("InstallEngine() = nil, want the source apply failure")
+	}
+
+	inv := f.store["ConfigMap/"+InventoryNamespace+"/"+InventoryName]
+	if inv == nil {
+		t.Fatal("no inventory recorded")
+	}
+	data := nested(t, inv, "data", inventoryKey)
+	for _, want := range []string{"GitRepository", "Kustomization"} {
+		if !strings.Contains(data, want) {
+			t.Errorf("inventory (recorded as intent) missing %s — down could not clean a partial apply:\n%s", want, data)
+		}
+	}
+}
+
+// TestInstallEngineVersion asserts spec.engine.version against the embedded
+// FluxVersion: a match proceeds, a mismatch is CUBE-BST-008 (before any apply).
+func TestInstallEngineVersion(t *testing.T) {
+	t.Run("matching version proceeds", func(t *testing.T) {
+		f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
+		a := &Applier{k: f, interval: time.Millisecond}
+		if err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{Version: FluxVersion}); err != nil {
+			t.Fatalf("InstallEngine(version=%s) error = %v, want nil", FluxVersion, err)
+		}
+	})
+	t.Run("mismatched version is rejected before apply", func(t *testing.T) {
+		f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
+		a := &Applier{k: f, interval: time.Millisecond}
+		err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{Version: "v0.0.0-nope"})
+		assertCode(t, err, CodeVersionMismatch)
+		if len(f.calls) != 0 {
+			t.Errorf("version mismatch touched the cluster (%v); it must fail before any apply", f.calls)
+		}
+	})
+}

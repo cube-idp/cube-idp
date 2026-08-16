@@ -16,8 +16,11 @@ type EngineSpec struct {
 	// supported value.
 	Provider EngineProvider `json:"provider,omitempty"`
 
-	// Version pins the embedded Flux distribution; empty selects the
-	// version vendored into the binary at build time.
+	// Version, when set, is asserted against this binary's embedded Flux
+	// distribution: a value that differs from the embedded version is
+	// rejected (CUBE-BST-008). Empty selects the embedded version. It does
+	// not select or fetch a different Flux — the embedded asset is
+	// authoritative in M7.
 	Version string `json:"version,omitempty"`
 
 	// Source points the engine's sync at a location. When set, bootstrap

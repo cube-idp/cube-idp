@@ -9,12 +9,17 @@ import (
 )
 
 // InstallEngine bootstraps the configured gitops engine: install and wait for
-// Flux, then — when a source is configured — apply its Flux source +
-// Kustomization CRs and re-record the inventory with them. The source CRs are
-// applied only after the Flux CRDs are established (Install's readiness wait),
-// so their kinds map. Bootstrap does NOT wait on engine-CR reconciliation —
-// that is the M9 seam's job; it applies and records, then hands over.
+// Flux, then — when a source is configured — record the full owned set and
+// apply the Flux source + Kustomization CRs. The source CRs are applied only
+// after the Flux CRDs are established (Install's readiness wait), so their
+// kinds map; the inventory is recorded BEFORE the source apply, so a
+// half-applied source is still visible to a future `down`. Bootstrap does NOT
+// wait on engine-CR reconciliation — that is the M9 seam's job; it applies and
+// records, then hands over.
 func (a *Applier) InstallEngine(ctx context.Context, engine *v1alpha1.EngineSpec) error {
+	if err := checkEngineVersion(engine); err != nil {
+		return err
+	}
 	fluxObjs, err := FluxObjects()
 	if err != nil {
 		return err
@@ -30,10 +35,21 @@ func (a *Applier) InstallEngine(ctx context.Context, engine *v1alpha1.EngineSpec
 	if err != nil {
 		return err
 	}
-	if err := a.Apply(ctx, srcObjs); err != nil {
+	if err := a.RecordInventory(ctx, append(fluxObjs, srcObjs...)); err != nil {
 		return err
 	}
-	return a.RecordInventory(ctx, append(fluxObjs, srcObjs...))
+	return a.Apply(ctx, srcObjs)
+}
+
+// checkEngineVersion asserts a requested engine version against the embedded
+// Flux distribution: bootstrap installs the pinned embedded asset, so a
+// non-empty Version that differs from FluxVersion is a mismatch (CUBE-BST-008);
+// an empty Version selects the embedded version.
+func checkEngineVersion(engine *v1alpha1.EngineSpec) error {
+	if engine != nil && engine.Version != "" && engine.Version != FluxVersion {
+		return newVersionMismatchError(engine.Version)
+	}
+	return nil
 }
 
 // configuredSource returns the engine source to wire, or nil when none is set.

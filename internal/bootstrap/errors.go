@@ -37,6 +37,9 @@ const (
 	// CodeSourceKind reports an engine source kind the bootstrapper cannot turn
 	// into a Flux source CR (guarded upstream by config validation).
 	CodeSourceKind cubeerr.Code = "CUBE-BST-007"
+	// CodeVersionMismatch reports a requested engine version that differs from
+	// this binary's embedded Flux distribution.
+	CodeVersionMismatch cubeerr.Code = "CUBE-BST-008"
 )
 
 func newAssetIntegrityError(got string) error {
@@ -65,6 +68,13 @@ func newApplyError(obj *unstructured.Unstructured, cause error) error {
 		fmt.Sprintf("server-side apply failed for %s", describe(obj)),
 		"check cluster connectivity and RBAC for the cube-idp field manager",
 		cause)
+}
+
+func newVersionMismatchError(requested string) error {
+	return cubeerr.Wrap(CodeVersionMismatch,
+		fmt.Sprintf("engine version %q does not match this binary's embedded Flux %s", requested, FluxVersion),
+		"leave spec.engine.version empty to use the embedded version, or run a cube-idp build whose embedded Flux matches",
+		nil)
 }
 
 func newSourceKindError(kind string) error {

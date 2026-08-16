@@ -24,10 +24,11 @@ var (
 // hand-rolled function-field structs) — the client-go fake dynamic client
 // cannot model server-side apply for unstructured objects.
 type fakeCluster struct {
-	store      map[string]*unstructured.Unstructured
-	calls      []string
-	applyErr   error
-	readyApply bool // store kind-set objects with ready status (for wait paths)
+	store         map[string]*unstructured.Unstructured
+	calls         []string
+	applyErr      error
+	failApplyKind string // if set, apply of this kind fails (partial-apply tests)
+	readyApply    bool   // store kind-set objects with ready status (for wait paths)
 }
 
 func newFakeCluster(seed ...*unstructured.Unstructured) *fakeCluster {
@@ -46,6 +47,9 @@ func (f *fakeCluster) apply(_ context.Context, obj *unstructured.Unstructured) e
 	f.calls = append(f.calls, "apply:"+objKey(obj))
 	if f.applyErr != nil {
 		return f.applyErr
+	}
+	if f.failApplyKind != "" && obj.GetKind() == f.failApplyKind {
+		return newApplyError(obj, errors.New("simulated apply failure"))
 	}
 	stored := obj
 	if f.readyApply {
