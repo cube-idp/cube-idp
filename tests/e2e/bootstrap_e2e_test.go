@@ -44,7 +44,7 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("kind.New: %v", err)
 	}
-	t.Cleanup(func() { _ = p.Delete(ctx, name) })
+	t.Cleanup(func() { deleteCluster(t, p, name) })
 	if err := p.Ensure(ctx, cluster.Spec{Name: name}); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
