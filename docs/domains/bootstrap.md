@@ -29,9 +29,10 @@ type EngineSpec struct {
     // "flux" is the only value in M7.
     Provider EngineProvider `json:"provider,omitempty"`
 
-    // Version is reserved/advisory in M7 — bootstrap installs the pinned
-    // embedded distribution (FluxVersion) regardless; reconciling a
-    // requested version against the embedded one is future work.
+    // Version, when set, is asserted against the embedded FluxVersion — a
+    // mismatch is rejected (CUBE-BST-008) before any apply; empty selects
+    // the embedded version. It never selects or fetches a different Flux;
+    // the embedded asset is authoritative in M7.
     Version string `json:"version,omitempty"`
 
     // Source points the engine's sync at a location; absent means Flux is
@@ -165,6 +166,7 @@ function-field structs. Argo CD, if it ever returns, arrives as an engine
 | `CUBE-BST-005` | bootstrap kind-set readiness wait timed out (names the pending objects) |
 | `CUBE-BST-006` | inventory encode failed before recording |
 | `CUBE-BST-007` | unsupported engine source kind (defensive; config validation is the primary gate) |
+| `CUBE-BST-008` | requested `spec.engine.version` differs from this binary's embedded Flux |
 
 `spec.engine` *document* validation errors are config-domain
 `CUBE-CFG-*`/`field.ErrorList` at load time — codes are never re-tagged
