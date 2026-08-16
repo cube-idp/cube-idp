@@ -5,9 +5,11 @@
 package e2e
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -16,6 +18,18 @@ import (
 	"github.com/cube-idp/cube-idp/internal/cluster/kind"
 	"github.com/cube-idp/cube-idp/internal/kube"
 )
+
+// deleteCluster tears down a cluster with a fresh, bounded context. t.Context()
+// is cancelled before t.Cleanup runs, so a ctx-honoring provider could skip
+// teardown and leak the cluster; cleanup must not depend on it.
+func deleteCluster(t *testing.T, p cluster.Provisioner, name string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := p.Delete(ctx, name); err != nil {
+		t.Errorf("cleanup: delete cluster %q: %v", name, err)
+	}
+}
 
 // TestKubeClientRoundTrip provisions a kind cluster through the seam,
 // injects the seam's kubeconfig bytes into the kube domain, and exercises
@@ -34,7 +48,7 @@ func TestKubeClientRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("kind.New: %v", err)
 	}
-	t.Cleanup(func() { _ = p.Delete(ctx, name) }) // safety net; the real Delete asserts below
+	t.Cleanup(func() { deleteCluster(t, p, name) }) // safety net; the real Delete asserts below
 	if err := p.Ensure(ctx, cluster.Spec{Name: name}); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
