@@ -246,3 +246,16 @@ Flux-as-conforming-pack + the Argo question → M10 bus (git vs OCI; air-gap
 answer due) → M11 thin `up`/`down` finisher. Rationale: M7 makes the product
 demo-able (up → gitops-managed cluster) and M8 iterates against real
 substrate. Living contract: `docs/domains/bootstrap.md`.
+
+**2026-08-16 — M7 demo-source resolved: `spec.engine.source` is git|oci,
+explicit `kind`.** The deferred Q6 (git-vs-OCI pre-M8 sync source) is
+settled: bootstrap supports **both**, discriminated by an **explicit
+`kind: git|oci` field** rather than URL scheme-sniffing — k8s-idiomatic and
+mirroring `spec.cluster.provider`; the URL scheme still guards the kind
+(`oci` requires `oci://`, `git` rejects it), so the two can never disagree.
+The `EngineSource` shape (`kind`/`url`/`ref`/`path`/`interval`) is now
+**finalized**, not provisional. git ⇒ `GitRepository` + `Kustomization`,
+oci ⇒ `OCIRepository` (`provider: generic`) + `Kustomization`, both
+`…/v1`. **Public URLs only** in M7; credential Secrets return with a real
+consumer. Bootstrap applies + records the source CRs but does not wait on
+their reconciliation (M9). Recorded in `docs/domains/bootstrap.md`.
