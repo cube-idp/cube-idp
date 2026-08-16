@@ -87,7 +87,16 @@ func (c *dynamicCluster) resourceFor(obj *unstructured.Unstructured) (dynamic.Re
 	gvk := obj.GroupVersionKind()
 	mapping, err := c.mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
-		return nil, newMappingError(obj, err)
+		// The mapper is a discovery cache that may have been primed before the
+		// Flux CRDs were installed; force a refresh and retry once so kinds
+		// registered by just-applied CRDs (GitRepository, Kustomization, …) map.
+		if r, ok := c.mapper.(interface{ Reset() }); ok {
+			r.Reset()
+			mapping, err = c.mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+		}
+		if err != nil {
+			return nil, newMappingError(obj, err)
+		}
 	}
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
 		return c.dyn.Resource(mapping.Resource).Namespace(obj.GetNamespace()), nil
