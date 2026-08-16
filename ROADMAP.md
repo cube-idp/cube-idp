@@ -60,23 +60,28 @@ it in the PR that completes or reorders a milestone.
   `tests/e2e` package. Design gate: `docs/DECISIONS.md` 2026-08-04;
   living contract: `docs/domains/kube.md`.
 
+- **M7 — bootstrap** (epic #92; PR stack #108, 2026-08-16): new domain
+  `internal/bootstrap` (`CUBE-BST-*`) — the **micro-bootstrap applier**.
+  It hand-rolls SSA on `k8s.io/client-go` to install the embedded, pinned
+  **Flux** manifests (`go:embed` of `flux install --export` v2.9.2,
+  provenance-pinned by sha256), waits the bootstrap kind-set (CRD
+  Established, Deployment/StatefulSet ready, Job complete, Namespace
+  Active), records a ConfigMap inventory (seed of `down`), then applies the
+  source + sync CRs from `spec.engine.source` and hands over — the engine
+  owns steady state. New `spec.engine` sub-struct: `provider` (defaulted
+  flux) + a finalized **git|oci** discriminated `EngineSource`
+  (`kind`/`url`/`ref`/`path`/`interval`), validated in `api/`. New verb
+  `cube-idp bootstrap`; the reserved `apply` domain/verb retired. **No new
+  runtime dependency** (embedded data + client-go/apimachinery already in
+  the set). Real Flux round-trip behind `make test-e2e`. Design gate:
+  `docs/DECISIONS.md` 2026-08-06; living contract:
+  `docs/domains/bootstrap.md`.
+
 ## Queue
 
-- **M7 — bootstrap** (epic #92; design gate: `docs/DECISIONS.md`
-  2026-08-06): new domain `internal/bootstrap` (`CUBE-BST-*`) — the
-  **micro-bootstrap applier**. It SSA-applies the embedded, pinned **Flux**
-  install manifests (the mandatory default gitops engine, installed before
-  all packs) plus the source/sync CRs derived from a new `spec.engine`
-  sub-struct, waits on the bootstrap kind-set (CRD Established,
-  Deployment/StatefulSet ready, Job complete, Namespace Active), records a
-  bootstrap inventory (seed of `down`), then hands over permanently — the
-  engine owns steady state; no-engine operation is not supported. SSA is
-  hand-rolled on `k8s.io/client-go` (no new dependency; measured rejection
-  of `fluxcd/pkg/ssa` in the design gate); Flux manifests are embedded data
-  (`go:embed`, pinned + sha256). New verb `cube-idp bootstrap`. The
-  git-vs-OCI demo source is deferred to a mid-milestone `M7-demo-source`
-  checkpoint (tasks T5/T8 sequenced last). Supersedes ADR-0045's
-  "prerequisites before the engine" ordering.
+- *(empty — the next milestone is **M8 pack**, picked from the continuation
+  below; the git-vs-OCI demo source landed as the explicit `spec.engine.source`
+  `kind` in M7.)*
 
 ## Continuation after M7 (directional, not committed)
 

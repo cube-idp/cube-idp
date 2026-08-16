@@ -4,18 +4,31 @@
 
 M7 bootstrap (epic #92; design gate: `docs/DECISIONS.md` 2026-08-06):
 
-- Design gate for the new `internal/bootstrap` domain (`CUBE-BST-*`, tag
-  `BST`): a micro-bootstrap applier that SSA-applies embedded, pinned Flux
-  install manifests plus source/sync CRs from a new `spec.engine`
-  sub-struct, waits the bootstrap kind-set, records an inventory, then
-  hands over to the engine. SSA hand-rolled on `k8s.io/client-go` — no new
-  runtime dependency; Flux manifests embedded as data. New verb
-  `cube-idp bootstrap` (behavior lands in later M7 PRs).
+- New leaf-ish domain `internal/bootstrap` (`CUBE-BST-*`, tag `BST`): the
+  micro-bootstrap applier. It installs the embedded, pinned **Flux**
+  distribution (`go:embed` of `flux install --export` v2.9.2, provenance
+  verified by sha256), hand-rolling server-side apply on `k8s.io/client-go`
+  (field manager `cube-idp`) and a readiness wait over the bootstrap
+  kind-set (CRD Established, Deployment/StatefulSet ready, Job complete,
+  Namespace Active) read off `unstructured` status — no `fluxcd/pkg/ssa`,
+  no kstatus/controller-runtime, **no new runtime dependency**.
+- `spec.engine` config sub-struct: `provider` (defaults to `flux`) and a
+  **git|oci** discriminated `EngineSource` (`kind`/`url`/`ref`/`path`/
+  `interval`), defaulted and validated in `api/` (unknown kind, URL/scheme
+  mismatch, and bad interval are `CUBE-CFG-*` document errors).
+- New `cube-idp bootstrap` verb: installs Flux, applies the `GitRepository`
+  or `OCIRepository` + `Kustomization` CRs from `spec.engine.source`, and
+  records a ConfigMap inventory (the seed of a future `down`) — composed at
+  the CLI edge, injecting the kube client's `dynamic.Interface` +
+  `RESTMapper`. `internal/bootstrap` never imports `internal/kube`. The
+  reserved `apply` domain/verb is retired.
 - Direction recorded: the gitops engine is mandatory (Flux default,
   installed before all packs) — superseding ADR-0045's ordering — and the
   ROADMAP is re-sequenced M7 bootstrap → M8 pack (delivery-through-engine)
-  → M9 engine seam → M10 bus → M11 `up`/`down`. The reserved `apply`
-  domain/verb is retired.
+  → M9 engine seam → M10 bus → M11 `up`/`down`.
+- `make test-e2e` gains a real Flux round-trip: install + source CRs
+  against a kind cluster and a public git source, `GitRepository`
+  reconciled `Ready`; the green gate stays hermetic.
 
 M6 kube client access (epic #81; design gate: `docs/DECISIONS.md`
 2026-08-04):

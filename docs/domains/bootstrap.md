@@ -29,12 +29,23 @@ type EngineSpec struct {
     // "flux" is the only value in M7.
     Provider EngineProvider `json:"provider,omitempty"`
 
-    // Version pins the embedded Flux distribution (must match the
-    // vendored manifests' recorded version; see "Flux acquisition").
+    // Version is reserved/advisory in M7 — bootstrap installs the pinned
+    // embedded distribution (FluxVersion) regardless; reconciling a
+    // requested version against the embedded one is future work.
     Version string `json:"version,omitempty"`
 
-    // Source points the engine's sync at a location (git URL / OCI ref).
+    // Source points the engine's sync at a location; absent means Flux is
+    // installed without a sync.
     Source *EngineSource `json:"source,omitempty"`
+}
+
+// EngineSource is the finalized (M7) git|oci discriminated contract.
+type EngineSource struct {
+    Kind     EngineSourceKind `json:"kind,omitempty"` // "git" (default) | "oci"
+    URL      string           `json:"url"`            // git URL, or oci:// ref for kind oci
+    Ref      string           `json:"ref,omitempty"`  // git branch / oci tag (default main / latest)
+    Path     string           `json:"path,omitempty"` // Kustomization path (default "./")
+    Interval string           `json:"interval,omitempty"` // reconcile interval (default "10m")
 }
 ```
 
@@ -43,10 +54,17 @@ type EngineSpec struct {
   validatable in `api/` today. When M9 formalizes the engine seam,
   migrating `spec.engine` to the cluster-style `provider` + opaque
   `forProvider` pattern is a **design-gate event**, not a drive-by edit.
+  The `EngineSource` shape below is **finalized**, not provisional.
 - Absent `spec.engine` defaults to Flux (the engine is mandatory).
-- The exact `EngineSource` field set (URL/path/branch/interval, git vs
-  OCI) is settled by the **`M7-demo-source` checkpoint** — deferred
-  operator call (Q6); source/sync generation (T5) waits on it.
+- **`EngineSource` is discriminated by an explicit `kind`** (git or oci),
+  not URL sniffing — mirroring `spec.cluster.provider`. `Default()` fills
+  `kind`→git, `ref`→main (git) / latest (oci), `path`→`./`, `interval`→10m.
+  `Validate()` rejects an unknown `kind` (`spec.engine.source.kind`), a
+  missing URL or a URL whose scheme contradicts the kind — `oci` requires
+  an `oci://` URL, `git` rejects one (`spec.engine.source.url`) — and an
+  unparseable `interval` (`spec.engine.source.interval`). All are
+  config-domain `CUBE-CFG-*` document errors (exit 2). M7 uses **public
+  URLs only**; credential Secrets return with a real consumer.
 
 ## The injection contract
 
@@ -96,6 +114,29 @@ DECISIONS 2026-08-06). Readiness predicates read off `unstructured` status.
 Engine-CR readiness (GitRepository/Kustomization *reconciled*) is **out of
 scope** — it belongs to the M9 engine seam.
 
+## Source + sync CRs, and the install sequence
+
+When `spec.engine.source` is set, bootstrap generates a Flux source CR —
+`GitRepository` or `OCIRepository` (`source.toolkit.fluxcd.io/v1`, the
+latter with `provider: generic`) by `kind` — plus a `Kustomization`
+(`kustomize.toolkit.fluxcd.io/v1`) that applies `path` on `interval`, both
+named `flux-system` in the Flux namespace.
+
+`Applier.InstallEngine` sequences the whole bootstrap in the one order that
+is correct and recoverable:
+
+1. apply the embedded Flux objects,
+2. record the inventory (a partial install is already visible to `down`),
+3. wait for the bootstrap kind-set (this establishes the Flux CRDs),
+4. **then** apply the source + Kustomization CRs — they are CRs of the Flux
+   CRDs, so they can only be applied once those CRDs are established,
+5. re-record the inventory with the source CRs included.
+
+Because the injected `RESTMapper` is a discovery cache primed *before* the
+Flux CRDs existed, the adapter **resets it and retries once** on a mapping
+miss, so the just-installed CR kinds resolve. Bootstrap applies and records
+the engine CRs but **does not wait on their reconciliation** (M9).
+
 ## Inventory (seed of `down`)
 
 `bootstrap` records what it applied (a ConfigMap inventory) so a future
@@ -115,15 +156,15 @@ function-field structs. Argo CD, if it ever returns, arrives as an engine
 
 ## Error codes (`CUBE-BST-*`, exit 1)
 
-Illustrative catalog; the implementing task fixes exact numbers:
-
 | Code | Meaning |
 |---|---|
-| `CUBE-BST-001` | embedded Flux manifests failed to decode (build/asset integrity) |
-| `CUBE-BST-002` | SSA apply of a bootstrap object failed (wrapped cause) |
-| `CUBE-BST-003` | bootstrap kind-set readiness wait timed out |
-| `CUBE-BST-004` | `spec.engine.source` invalid / unsupported for this build |
-| `CUBE-BST-005` | inventory record write failed |
+| `CUBE-BST-001` | embedded Flux manifests failed their sha256 provenance check (build/asset integrity) |
+| `CUBE-BST-002` | embedded Flux manifests failed to parse into objects |
+| `CUBE-BST-003` | no REST mapping for an object's kind (even after a discovery refresh) |
+| `CUBE-BST-004` | server-side apply of a bootstrap object failed (wrapped cause) |
+| `CUBE-BST-005` | bootstrap kind-set readiness wait timed out (names the pending objects) |
+| `CUBE-BST-006` | inventory encode failed before recording |
+| `CUBE-BST-007` | unsupported engine source kind (defensive; config validation is the primary gate) |
 
 `spec.engine` *document* validation errors are config-domain
 `CUBE-CFG-*`/`field.ErrorList` at load time — codes are never re-tagged
@@ -131,18 +172,24 @@ across domains.
 
 ## Testing
 
-Hermetic gate tests drive the SSA + wait machinery against a **fake
-dynamic client** (apply outcomes and status transitions scripted as
-table rows — timeout, not-ready-then-ready, apply-conflict) — no live
-cluster, no Docker. The real Flux round-trip (install → kind-set ready
-against a kind cluster, worktree-local KUBECONFIG per CLAUDE.md §7) runs
-only behind `make test-e2e` and is never part of the green gate.
+Hermetic gate tests drive the apply/wait/inventory/source machinery against
+a **hand-rolled function-field fake** of the narrow `cluster` seam (the
+client-go fake dynamic client cannot model server-side apply on unstructured
+objects); the real GVK→resource scope resolution and the mapper reset-retry
+are covered against the client-go dynamic fake. No live cluster, no Docker.
+The real Flux round-trip (install → kind-set ready → source CRs applied →
+`GitRepository` reconciled `Ready` against a kind cluster and a public git
+source, worktree-local KUBECONFIG per CLAUDE.md §7) runs only behind
+`make test-e2e` and is never part of the green gate.
 
 ## CLI surface
 
-`cube-idp bootstrap` — cobra wiring only: load config → build the kube
-client → inject `dynamic.Interface` + `meta.RESTMapper` into
-`internal/bootstrap`. The verb makes the product demo-able (up →
+`cube-idp bootstrap` — cobra wiring only: load config → resolve the cube's
+kubeconfig target + context via `cluster.Status` → read the bytes at the
+edge → build the kube client → inject `dynamic.Interface` +
+`meta.RESTMapper` into `internal/bootstrap`, then call `InstallEngine` and
+render. Flags: `--kubeconfig`, `--kubeconfig-context-name`, `--timeout`
+(default 5m, bounds readiness). The verb makes the product demo-able (up →
 gitops-managed cluster). The `apply` verb reserved on 2026-08-03 is
 superseded and stays retired.
 
