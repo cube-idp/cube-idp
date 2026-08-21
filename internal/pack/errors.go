@@ -24,6 +24,24 @@ const (
 	// CodePayloadMismatch reports a payload that does not match the type the
 	// pack declares.
 	CodePayloadMismatch cubeerr.Code = "CUBE-PKG-004"
+	// CodeManifestParse reports a manifest file that is not valid YAML.
+	CodeManifestParse cubeerr.Code = "CUBE-PKG-005"
+	// CodeEmptyRender reports a pack that rendered no objects at all.
+	CodeEmptyRender cubeerr.Code = "CUBE-PKG-007"
+	// CodeNamespaceConflict reports an object whose own namespace contradicts
+	// the namespace the pack forces every namespaced object into.
+	CodeNamespaceConflict cubeerr.Code = "CUBE-PKG-008"
+	// CodeValuesOnRawPack reports values supplied to a raw pack, which has no
+	// values surface.
+	CodeValuesOnRawPack cubeerr.Code = "CUBE-PKG-009"
+	// CodeValuesRejected reports values that the pack's #Values definition
+	// rejects: an undeclared field, a type mismatch, or a missing required
+	// value.
+	CodeValuesRejected cubeerr.Code = "CUBE-PKG-010"
+	// CodeRenderTypeUnsupported reports a pack whose declared type this build
+	// cannot render. The summary names the type and the milestone that
+	// implements it.
+	CodeRenderTypeUnsupported cubeerr.Code = "CUBE-PKG-020"
 )
 
 func newSourceUnreadableError(ref string, cause error) error {
@@ -42,6 +60,12 @@ func NewRefUnsupportedError(ref, scheme string) error {
 		"this build resolves local paths only (./dir, /abs/dir, file:///abs/dir); remote schemes land with the reference resolver", nil)
 }
 
+func newFileUnreadableError(name string, cause error) error {
+	return cubeerr.Wrap(CodeSourceUnreadable,
+		fmt.Sprintf("cannot read %s from the pack source", name),
+		"check the file's permissions and that the pack source is intact", cause)
+}
+
 func newMetadataCompileError(cause error) error {
 	return cubeerr.Wrap(CodeMetadataCompile,
 		fmt.Sprintf("%s does not compile as CUE", MetadataFile),
@@ -58,4 +82,40 @@ func newPayloadMismatchError(t Type, want string) error {
 	return cubeerr.Wrap(CodePayloadMismatch,
 		fmt.Sprintf("pack declares type %q but its payload has no %s", t, want),
 		fmt.Sprintf("add %s, or declare the type the payload actually is", want), nil)
+}
+
+func newManifestParseError(name string, cause error) error {
+	return cubeerr.Wrap(CodeManifestParse,
+		fmt.Sprintf("cannot parse manifest %s", name),
+		fmt.Sprintf("fix the YAML at %s and re-run", name), cause)
+}
+
+func newEmptyRenderError(name string) error {
+	return cubeerr.Wrap(CodeEmptyRender,
+		fmt.Sprintf("pack %q rendered no objects", name),
+		fmt.Sprintf("add at least one Kubernetes object under %s/", ManifestsDir), nil)
+}
+
+func newNamespaceConflictError(kind, name, got, want string) error {
+	return cubeerr.Wrap(CodeNamespaceConflict,
+		fmt.Sprintf("%s %q declares namespace %q, but the pack forces namespace %q", kind, name, got, want),
+		fmt.Sprintf("drop the namespace from the manifest, set it to %q, or remove namespace from %s", want, MetadataFile), nil)
+}
+
+func newValuesOnRawPackError() error {
+	return cubeerr.Wrap(CodeValuesOnRawPack,
+		"values supplied to a raw pack",
+		"raw packs have no values surface — drop the values, or declare type helm or kustomize", nil)
+}
+
+func newValuesRejectedError(cause error) error {
+	return cubeerr.Wrap(CodeValuesRejected,
+		"values rejected by the pack's #Values definition",
+		fmt.Sprintf("supply only the fields #Values declares in %s, with their declared types", MetadataFile), cause)
+}
+
+func newRenderTypeUnsupportedError(t Type, milestone string) error {
+	return cubeerr.Wrap(CodeRenderTypeUnsupported,
+		fmt.Sprintf("rendering type %q is not implemented in this build", t),
+		fmt.Sprintf("%s rendering lands in %s; use type raw until then", t, milestone), nil)
 }
