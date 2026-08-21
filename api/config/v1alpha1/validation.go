@@ -43,6 +43,7 @@ func (c *Config) Validate() field.ErrorList {
 			errs = append(errs, validateEngineSource(c.Spec.Engine.Source)...)
 		}
 	}
+	errs = append(errs, validatePacks(c.Spec.Packs)...)
 	return errs
 }
 

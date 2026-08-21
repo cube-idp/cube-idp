@@ -27,4 +27,9 @@ type ConfigSpec struct {
 	// the Flux default (the engine is mandatory). When present it selects
 	// or pins the gitops engine cube-idp bootstraps.
 	Engine *EngineSpec `json:"engine,omitempty"`
+
+	// Packs are the pack instances in the setup; absent means none are
+	// managed. A slice rather than a pointer: an empty list and an absent
+	// list mean the same thing here, so there is nothing to distinguish.
+	Packs []PackSpec `json:"packs,omitempty"`
 }

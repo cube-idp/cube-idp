@@ -147,9 +147,18 @@ and dependency rules **cannot be decided locally** — they need each
 
 | Layer | Where | Codes | Checks |
 |---|---|---|---|
-| **Document** (no I/O, ever) | `api/config/v1alpha1` `Validate()` | `CUBE-CFG-*` | required fields; `lifecycle` enum; `ref` XOR `manifest`; inline object carries `apiVersion`+`kind`; `id` is a DNS-label; **duplicate *explicit* ids**; `dependsOn` self-reference by explicit id; ref *syntax* (grammar only, nothing fetched) |
+| **Document** (no I/O, ever) | `api/config/v1alpha1` `Validate()` | `CUBE-CFG-*` | required fields; `lifecycle` enum; `ref` XOR `manifest`; inline object carries `apiVersion`+`kind`; `id` is a DNS-label; **duplicate *explicit* ids**; `dependsOn` self-reference by explicit id; each ref is a **well-formed reference token** (non-empty, no whitespace or control characters) |
 | **Pack** (after resolution) | `internal/pack` | `CUBE-PKG-*` | `pack.cue` compiles and satisfies the schema; payload matches the declared `type`; values satisfy `#Values`; render output is valid and non-empty |
 | **Setup** (after every pack is resolved) | `internal/pack` | `CUBE-PKG-*` | effective-id derivation; "id required because this name repeats"; effective-id uniqueness; unknown / ambiguous `dependsOn`; cycles |
+
+**Scheme grammar is not a document-layer concern.** Which schemes exist and
+how each is spelled belongs to `internal/ref`, and `api/` can never import
+it — restating a scheme table there would put a second grammar on the far
+side of a boundary that cannot be closed, which is exactly the duplicated
+reference handling this design set out to remove. So `config validate`
+accepts `packRef: oci//typo`; the missing colon surfaces at resolution as
+`CUBE-REF-*`. That is the layering working, not a gap: the document layer
+is local-only and could not resolve the reference to check it anyway.
 
 `config validate` runs the **document layer only** and never touches the
 network or the filesystem beyond the document itself. `pack validate <ref>`
