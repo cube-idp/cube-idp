@@ -47,6 +47,20 @@ const (
 	// CodeSubstitutionMissing reports a ${VAR} reference in the built output
 	// that no value resolves.
 	CodeSubstitutionMissing cubeerr.Code = "CUBE-PKG-012"
+	// CodeInstanceIDRequired reports a pack name used by more than one
+	// instance, where neither instance gave an explicit id to tell them apart.
+	CodeInstanceIDRequired cubeerr.Code = "CUBE-PKG-015"
+	// CodeDuplicateInstanceID reports two instances resolving to one identity.
+	CodeDuplicateInstanceID cubeerr.Code = "CUBE-PKG-016"
+	// CodeUnknownDependency reports a dependsOn target that names no instance
+	// in the setup.
+	CodeUnknownDependency cubeerr.Code = "CUBE-PKG-017"
+	// CodeAmbiguousDependency reports a dependsOn target naming a pack that
+	// more than one instance installs.
+	CodeAmbiguousDependency cubeerr.Code = "CUBE-PKG-018"
+	// CodeDependencyCycle reports a dependsOn cycle, including an instance
+	// depending on itself.
+	CodeDependencyCycle cubeerr.Code = "CUBE-PKG-019"
 	// CodeRenderTypeUnsupported reports a pack whose declared type this build
 	// cannot render. The summary names the type and the milestone that
 	// implements it.
@@ -149,6 +163,42 @@ func newRemoteRefError(file, ref string) error {
 	return cubeerr.Wrap(CodeRemoteRef,
 		fmt.Sprintf("%s references the remote resource %q", file, ref),
 		"a pack payload is self-contained — vendor the base into the pack; rendering never fetches over the network", nil)
+}
+
+func newInstanceIDRequiredError(name string, count int) error {
+	return cubeerr.Wrap(CodeInstanceIDRequired,
+		fmt.Sprintf("%d packs are named %q, so neither can take that name as its identity", count, name),
+		fmt.Sprintf("give each entry an explicit id in spec.packs (for example %s-prod and %s-staging)", name, name), nil)
+}
+
+func newDuplicateInstanceIDError(id string, first, second int) error {
+	return cubeerr.Wrap(CodeDuplicateInstanceID,
+		fmt.Sprintf("spec.packs[%d] and spec.packs[%d] both resolve to the identity %q", first, second, id),
+		"give each pack instance a distinct id in spec.packs", nil)
+}
+
+func newUnknownDependencyError(from, target string) error {
+	return cubeerr.Wrap(CodeUnknownDependency,
+		fmt.Sprintf("%q depends on %q, which no pack in this setup provides", from, target),
+		fmt.Sprintf("add a pack whose id or name is %q, or drop the dependency", target), nil)
+}
+
+func newAmbiguousDependencyError(from, target string, candidates []string) error {
+	return cubeerr.Wrap(CodeAmbiguousDependency,
+		fmt.Sprintf("%q depends on the pack name %q, which %d instances install: %s",
+			from, target, len(candidates), strings.Join(candidates, ", ")),
+		fmt.Sprintf("depend on one of those ids instead of the name %q", target), nil)
+}
+
+func newDependencyCycleError(members []string) error {
+	if len(members) == 1 {
+		return cubeerr.Wrap(CodeDependencyCycle,
+			fmt.Sprintf("%q depends on itself", members[0]),
+			"remove the self-dependency from spec.packs", nil)
+	}
+	return cubeerr.Wrap(CodeDependencyCycle,
+		fmt.Sprintf("dependsOn forms a cycle between %s", strings.Join(members, ", ")),
+		"break the cycle: dependencies must form a directed acyclic graph", nil)
 }
 
 func newRenderTypeUnsupportedError(t Type, milestone string) error {
