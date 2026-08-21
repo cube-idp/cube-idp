@@ -165,11 +165,21 @@ func TestPackErrorsAreCodedOnStderr(t *testing.T) {
 			wantErr: "CUBE-PKG-020",
 		},
 		{
-			name:    "kustomize render is not implemented in this build",
+			// kustomize resolves remote references over the network and offers
+			// no switch to stop it, so the payload is scanned and rejected
+			// first — this row reaches no network.
+			name:    "kustomize payload referencing a remote base",
 			verb:    "render",
 			packCUE: "name: \"k\"\nversion: \"1\"\ntype: \"kustomize\"\n",
-			files:   map[string]string{"kustomization.yaml": "resources: []\n"},
-			wantErr: "CUBE-PKG-020",
+			files:   map[string]string{"kustomization.yaml": "resources:\n- github.com/org/repo//base\n"},
+			wantErr: "CUBE-PKG-021",
+		},
+		{
+			name:    "kustomize build failure",
+			verb:    "render",
+			packCUE: "name: \"k\"\nversion: \"1\"\ntype: \"kustomize\"\n",
+			files:   map[string]string{"kustomization.yaml": "resources:\n- missing.yaml\n"},
+			wantErr: "CUBE-PKG-006",
 		},
 		{
 			name:    "pack.cue that does not compile",

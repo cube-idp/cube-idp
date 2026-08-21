@@ -2,6 +2,7 @@ package pack
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cube-idp/cube-idp/internal/cubeerr"
 )
@@ -26,6 +27,8 @@ const (
 	CodePayloadMismatch cubeerr.Code = "CUBE-PKG-004"
 	// CodeManifestParse reports a manifest file that is not valid YAML.
 	CodeManifestParse cubeerr.Code = "CUBE-PKG-005"
+	// CodeKustomizeBuild reports a kustomization that failed to build.
+	CodeKustomizeBuild cubeerr.Code = "CUBE-PKG-006"
 	// CodeEmptyRender reports a pack that rendered no objects at all.
 	CodeEmptyRender cubeerr.Code = "CUBE-PKG-007"
 	// CodeNamespaceConflict reports an object whose own namespace contradicts
@@ -38,10 +41,19 @@ const (
 	// rejects: an undeclared field, a type mismatch, or a missing required
 	// value.
 	CodeValuesRejected cubeerr.Code = "CUBE-PKG-010"
+	// CodeValuesNotFlat reports a kustomize pack whose validated values are not
+	// a flat map of strings.
+	CodeValuesNotFlat cubeerr.Code = "CUBE-PKG-011"
+	// CodeSubstitutionMissing reports a ${VAR} reference in the built output
+	// that no value resolves.
+	CodeSubstitutionMissing cubeerr.Code = "CUBE-PKG-012"
 	// CodeRenderTypeUnsupported reports a pack whose declared type this build
 	// cannot render. The summary names the type and the milestone that
 	// implements it.
 	CodeRenderTypeUnsupported cubeerr.Code = "CUBE-PKG-020"
+	// CodeRemoteRef reports a kustomize payload that references a remote
+	// resource, which a hermetic renderer refuses to fetch.
+	CodeRemoteRef cubeerr.Code = "CUBE-PKG-021"
 )
 
 func newSourceUnreadableError(ref string, cause error) error {
@@ -112,6 +124,31 @@ func newValuesRejectedError(cause error) error {
 	return cubeerr.Wrap(CodeValuesRejected,
 		"values rejected by the pack's #Values definition",
 		fmt.Sprintf("supply only the fields #Values declares in %s, with their declared types", MetadataFile), cause)
+}
+
+func newKustomizeBuildError(cause error) error {
+	return cubeerr.Wrap(CodeKustomizeBuild,
+		"kustomize build failed",
+		"fix the kustomization reported below; `kustomize build` on the pack directory reproduces it", cause)
+}
+
+func newValuesNotFlatError(name string, value any) error {
+	return cubeerr.Wrap(CodeValuesNotFlat,
+		fmt.Sprintf("value %q is %T, but kustomize values must be a flat map of strings", name, value),
+		fmt.Sprintf("quote %s as a string, or move the structure into an overlay in the pack payload", name), nil)
+}
+
+func newSubstitutionError(names []string) error {
+	return cubeerr.Wrap(CodeSubstitutionMissing,
+		fmt.Sprintf("no value for ${%s} in the rendered output", strings.Join(names, "}, ${")),
+		fmt.Sprintf("supply %s in values, or escape the reference as $${...} to keep it literal",
+			strings.Join(names, ", ")), nil)
+}
+
+func newRemoteRefError(file, ref string) error {
+	return cubeerr.Wrap(CodeRemoteRef,
+		fmt.Sprintf("%s references the remote resource %q", file, ref),
+		"a pack payload is self-contained — vendor the base into the pack; rendering never fetches over the network", nil)
 }
 
 func newRenderTypeUnsupportedError(t Type, milestone string) error {

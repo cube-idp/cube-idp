@@ -13,12 +13,9 @@ import (
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 )
 
-// kustomizeMilestone and helmMilestone name where each unimplemented render
-// type lands, so the not-implemented error points somewhere real.
-const (
-	kustomizeMilestone = "M8, alongside the kustomize dependency (#117)"
-	helmMilestone      = "a milestone of its own, with the helm dependency"
-)
+// helmMilestone names where the one still-unimplemented render type lands, so
+// the not-implemented error points somewhere real.
+const helmMilestone = "a milestone of its own, with the helm dependency"
 
 // RenderOptions carries the render inputs that come from the setup rather
 // than from the pack itself.
@@ -52,25 +49,57 @@ func (p *Pack) Render(ctx context.Context, opts RenderOptions) (RenderPlan, erro
 	}
 	// Values are resolved before the type dispatch so that bad values are
 	// reported for every pack type, not only the ones this build can render.
-	if _, err := p.resolveValues(maps.Clone(opts.Values)); err != nil {
+	values, err := p.resolveValues(maps.Clone(opts.Values))
+	if err != nil {
 		return RenderPlan{}, err
 	}
 
 	switch p.meta.Type {
 	case TypeRaw:
-		objs, err := p.renderRaw(ctx)
-		if err != nil {
-			return RenderPlan{}, err
-		}
-		if err := applyNamespace(objs, p.meta.Namespace); err != nil {
-			return RenderPlan{}, err
-		}
-		return RenderPlan{Objects: objs}, nil
+		return p.planRaw(ctx)
 	case TypeKustomize:
-		return RenderPlan{}, newRenderTypeUnsupportedError(p.meta.Type, kustomizeMilestone)
+		return p.planKustomize(ctx, values)
 	default:
 		return RenderPlan{}, newRenderTypeUnsupportedError(p.meta.Type, helmMilestone)
 	}
+}
+
+// planRaw renders a raw pack: its manifests, in the namespace the pack forces.
+// Raw packs have no templating step, so no substitution applies — values are
+// already rejected for them at resolveValues.
+func (p *Pack) planRaw(ctx context.Context) (RenderPlan, error) {
+	objs, err := p.renderRaw(ctx)
+	if err != nil {
+		return RenderPlan{}, err
+	}
+	if err := applyNamespace(objs, p.meta.Namespace); err != nil {
+		return RenderPlan{}, err
+	}
+	return RenderPlan{Objects: objs}, nil
+}
+
+// planKustomize builds the kustomization, then applies the pack's own
+// semantics on top of the result: the same namespace transform raw packs get,
+// followed by ${VAR} substitution.
+//
+// The values are narrowed to flat strings first, so a values mistake is
+// reported before the build runs rather than after it.
+func (p *Pack) planKustomize(ctx context.Context, values map[string]any) (RenderPlan, error) {
+	vars, err := flatStringValues(values)
+	if err != nil {
+		return RenderPlan{}, err
+	}
+	objs, err := p.renderKustomize(ctx)
+	if err != nil {
+		return RenderPlan{}, err
+	}
+	if err := applyNamespace(objs, p.meta.Namespace); err != nil {
+		return RenderPlan{}, err
+	}
+	if err := substitute(objs, vars); err != nil {
+		return RenderPlan{}, err
+	}
+	return RenderPlan{Objects: objs}, nil
 }
 
 // renderRaw walks the pack's manifests directory and parses every manifest

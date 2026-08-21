@@ -216,6 +216,32 @@ application.
   art, and with `#Values` in front of it kustomize packs gain a schema with
   lockdown and defaults that Flux itself does not offer.
 
+### A pack payload is self-contained
+
+**A kustomize pack may not reference anything remote** — no `https://` or
+`http://` resource, no `github.com/org/repo` base, no `git@`/`git::`/`oci::`
+form. Remote references are rejected before the build starts
+(`CUBE-PKG-021`); bases are vendored into the pack instead.
+
+This is not style, it is the hermeticity invariant. **kustomize resolves
+remote references over the network unconditionally**, and there is no way
+to configure it out: `krusty.Options` exposes only `Reorder`,
+`AddManagedbyLabel`, `LoadRestrictions` and `PluginConfig`, none of which
+governs remote loading — `LoadRestrictionsRootOnly` restricts *local* path
+escape only — and a remote fetch bypasses the in-memory filesystem for the
+real one. Left alone, `cube-idp pack render` would silently reach the
+network and rendering would stop being a function of its inputs.
+
+So `internal/pack` scans every kustomization in the payload
+(`resources`, `components`, `crds`, `configurations`, patch paths, and the
+deprecated-but-still-honored `bases`) and rejects remote-looking entries
+before invoking kustomize. The scan reimplements kustomize's own unexported
+heuristic and therefore **fails closed**: a local path wrongly rejected is a
+clear coded error an author fixes by renaming or vendoring, while a remote
+reference wrongly allowed would break the invariant silently. Helm and exec
+plugins are already off — kustomize disables them by default — so
+references are the only hole.
+
 ### `${VAR}` substitution grammar *(design-gate proposal)*
 
 - **Grammar:** `${NAME}` only, `NAME` matching `[A-Za-z_][A-Za-z0-9_]*`.
@@ -460,6 +486,7 @@ options wait for a real optional constructor setting.
 | `CUBE-PKG-018` | `dependsOn`: ambiguous name (remediation: depend on an id) |
 | `CUBE-PKG-019` | `dependsOn`: cycle or self-dependency |
 | `CUBE-PKG-020` | render for this pack type is not implemented in this build (the summary names the type and its milestone) |
+| `CUBE-PKG-021` | a kustomize payload references a remote resource; the hermetic renderer rejects it rather than fetching (vendor the base into the pack) |
 
 ## Error codes (`CUBE-REF-*`, exit 1)
 
@@ -545,13 +572,16 @@ stdout** on failure, and that output parses as valid multi-document YAML.
 
 ## Dependencies
 
-`cuelang.org/go` joins the closed runtime set at this gate (ARCHITECTURE
-§8), confined to the metadata/values files of `internal/pack`.
+`cuelang.org/go` joins the closed runtime set at the design gate
+(ARCHITECTURE §8), confined to the metadata/values files of
+`internal/pack`. `sigs.k8s.io/kustomize/api` + `kyaml` join it with
+kustomize rendering, **confined to `kustomize.go`** — that file is the only
+importer of the SDK, so the heavy dependency stays out of every other build
+path in the domain.
 
-**Owed at their own gates, not now:** `sigs.k8s.io/kustomize/api` + `kyaml`
-(due at C2, confined to `kustomize.go` — do not add the import before that
-gate); `go-git/v5`, `oras-go/v2`, the AWS SDK, and `helm.sh/helm/v4` each
-with their own milestone. Exec-ing `kubectl kustomize` stays rejected.
+**Owed at their own gates, not now:** `go-git/v5`, `oras-go/v2`, the AWS
+SDK, and `helm.sh/helm/v4`, each with its own milestone. Exec-ing
+`kubectl kustomize` stays rejected.
 
 ## Design-gate proposals (pending operator confirmation)
 

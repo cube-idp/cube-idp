@@ -8,19 +8,20 @@ import (
 	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
-// kustomizePack builds a kustomize pack around a pack.cue body. Values are
-// validated for every pack type, so this is the vehicle for exercising
-// #Values without depending on a render backend that has not landed.
-func kustomizePack(cue string) fstest.MapFS {
+// helmPack builds a helm pack around a pack.cue body. Values are validated
+// for every pack type, before the render dispatch — helm is the type this
+// build still cannot render, so it isolates the values layer from any render
+// backend. Kustomize would now render and report render-stage errors instead.
+func helmPack(cue string) fstest.MapFS {
 	return fstest.MapFS{
-		"pack.cue":           &fstest.MapFile{Data: []byte(cue)},
-		"kustomization.yaml": &fstest.MapFile{Data: []byte("resources: []\n")},
+		"pack.cue":   &fstest.MapFile{Data: []byte(cue)},
+		"Chart.yaml": &fstest.MapFile{Data: []byte("name: v\n")},
 	}
 }
 
 const valuesCUE = `name:    "v"
 version: "1"
-type:    "kustomize"
+type:    "helm"
 #Values: {
 	replicas: int | *1
 	image!:   string
@@ -64,7 +65,7 @@ func TestValuesValidatedBeforeRenderDispatch(t *testing.T) {
 		},
 		{
 			name:   "a pack without #Values passes values through",
-			cue:    "name: \"v\"\nversion: \"1\"\ntype: \"kustomize\"\n",
+			cue:    "name: \"v\"\nversion: \"1\"\ntype: \"helm\"\n",
 			values: map[string]any{"anything": "goes"},
 			want:   pack.CodeRenderTypeUnsupported,
 		},
@@ -72,7 +73,7 @@ func TestValuesValidatedBeforeRenderDispatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := pack.Load(t.Context(), kustomizePack(tt.cue), "./p")
+			p, err := pack.Load(t.Context(), helmPack(tt.cue), "./p")
 			if err != nil {
 				t.Fatalf("Load() = error %v, want a pack", err)
 			}
@@ -103,7 +104,7 @@ func TestValuesOnRawPack(t *testing.T) {
 // A #Values whose required fields are unsatisfiable with no user values is
 // reported when the pack is rendered without any, not silently accepted.
 func TestValuesDefaultsMustBeSatisfiable(t *testing.T) {
-	p, err := pack.Load(t.Context(), kustomizePack(valuesCUE), "./p")
+	p, err := pack.Load(t.Context(), helmPack(valuesCUE), "./p")
 	if err != nil {
 		t.Fatalf("Load() = error %v, want a pack", err)
 	}
@@ -113,7 +114,7 @@ func TestValuesDefaultsMustBeSatisfiable(t *testing.T) {
 
 // Render must not retain or mutate the caller's values map.
 func TestRenderDoesNotMutateCallerValues(t *testing.T) {
-	p, err := pack.Load(t.Context(), kustomizePack(valuesCUE), "./p")
+	p, err := pack.Load(t.Context(), helmPack(valuesCUE), "./p")
 	if err != nil {
 		t.Fatalf("Load() = error %v, want a pack", err)
 	}
