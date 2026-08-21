@@ -1,5 +1,29 @@
 # Pack groundwork — research + shaping input for the M8 design doc
 
+> **Superseded in part by the M8 pack design gate (2026-08-21 —
+> `docs/DECISIONS.md`, epic #113). The binding contract is now
+> `docs/domains/pack.md`; where this file disagrees with it, the contract
+> wins. This file is deleted in the M8 closeout PR.**
+>
+> - **`uuid` is gone (§2.3, §2.4, and every mention below).** Artifact
+>   identity is `name`+`version`; instance identity is an optional
+>   human-readable `spec.packs[].id` (DNS-label) that defaults to the pack
+>   name when unique and is required when a name repeats. There is no
+>   `spec.packs[].uuid` override and no scaffold-generated uuid.
+> - **`pack.cue` has no `dependsOn` (§2.3, §2.8).** `dependsOn` lives at
+>   `spec.packs` only, resolves id-or-name, and the pack.cue-vs-`cube.yaml`
+>   union and its provenance apparatus are dropped with it.
+> - **§2.10's error numbering was illustrative and is superseded** by the
+>   `CUBE-PKG-*` / `CUBE-REF-*` tables in `docs/domains/pack.md` — including
+>   the `CUBE-PKG-014` "ambiguous name" row, which moved.
+> - **§2.9's `pack install` is not in M8**, and `pack render`/`pack
+>   validate` take a `<ref>`, not a `<dir>`. `pack new` is real when it
+>   lands; there is no stub verb.
+> - Kept unchanged: CUE as the metadata language and `#Values` as the
+>   lockdown, explicit `type`, `category` as identification-only,
+>   `internal/ref` placement, the values pipeline, and the
+>   externalManifests shape.
+
 > **Superseded in part by the M7 bootstrap design gate (2026-08-06 —
 > `docs/DECISIONS.md`, epic #92). Read this banner before acting on any
 > `internal/apply` / "M7 applier" reference below.**

@@ -48,18 +48,33 @@ owner-approved before code, exactly as before.
 cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/config/v1alpha1
                       │      ├──▶ internal/cluster   ──▶ api/config/v1alpha1
                       │      │        │  └── cluster/kind (driver subpackage)
-                      │      ├──▶ internal/kube  (M6 leaf: injected kubeconfig
-                      │      │        bytes + context name → clients)
+                      │      ├──▶ internal/kube  (M6 shared-infra leaf: injected
+                      │      │        kubeconfig bytes + context name → clients)
                       │      ├──▶ internal/bootstrap (M7: SSA-applies embedded Flux
                       │      │        via injected client-go ifaces → api/config)
-                      └──────┴──▶ internal/cubeerr ◀── (config, cluster, kube, bootstrap)
+                      │      ├──▶ internal/pack (M8: load/validate/render packs
+                      │      │        │  → api/config; renders, never applies)
+                      │      │        └──▶ internal/ref (M8 shared-infra leaf:
+                      │      │               ref grammar → tree/file)
+                      └──────┴──▶ internal/cubeerr ◀── (every package above)
 ```
 
 - Imports flow strictly left to right. `api/` and `internal/cubeerr` are
   leaves: they import nothing from `internal/` — ever. Domains never import
   each other (`internal/config` ↔ `internal/cluster` in particular).
+- **Shared-infrastructure leaves are the one sanctioned exception** to
+  that rule (2026-08-21), and they are a **closed, listed** set:
+  `internal/ref` and `internal/kube`. A component domain MAY import a
+  listed leaf; a leaf MAY NOT import a component domain or `api/config` —
+  it imports only `internal/cubeerr` and its own backend SDKs. Adding to
+  the list is a design-gate event, never an inference from shape. MAY is
+  not SHOULD: injection at the CLI edge stays preferred where the value
+  crossing is already an interface (`internal/bootstrap` deliberately does
+  not import `internal/kube`). Full rule: `docs/ARCHITECTURE.md` §2.
 - One component domain = one package under `internal/`. New components add
-  a package; they do not grow existing ones.
+  a package; they do not grow existing ones. A shared-infrastructure leaf
+  is not a component domain and is documented inside its consumer's
+  contract until a second consumer earns it a file.
 - Driver subpackages (e.g. `internal/cluster/kind`) are the ONLY importers
   of their backend SDK; nothing else may touch `sigs.k8s.io/kind`.
 - Factories and composition live at the CLI/orchestrator edge, never inside

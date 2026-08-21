@@ -22,18 +22,49 @@ separated from per-domain error catalogs; a thin phase-runner orchestrator
 cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/config/v1alpha1
                       │      ├──▶ internal/cluster   ──▶ api/config/v1alpha1
                       │      │        │  └── cluster/kind (driver subpackage)
-                      │      ├──▶ internal/kube  (M6 leaf: injected kubeconfig
-                      │      │        bytes + context name → clients)
+                      │      ├──▶ internal/kube  (M6 shared-infra leaf: injected
+                      │      │        kubeconfig bytes + context name → clients)
                       │      ├──▶ internal/bootstrap (M7: SSA-applies embedded Flux
                       │      │        via injected client-go ifaces → api/config)
-                      └──────┴──▶ internal/cubeerr ◀── (config, cluster, kube, bootstrap)
+                      │      ├──▶ internal/pack (M8: load/validate/render packs
+                      │      │        │  → api/config; renders, never applies)
+                      │      │        └──▶ internal/ref (M8 shared-infra leaf:
+                      │      │               ref grammar → tree/file)
+                      └──────┴──▶ internal/cubeerr ◀── (every package above)
 ```
 
-- Imports flow strictly left to right. `api/` and `internal/cubeerr` are
-  leaves: they import nothing from `internal/` — ever.
-- `internal/kube` is a shared leaf (M6): it imports only `internal/cubeerr`,
-  `k8s.io/client-go`, and `k8s.io/apimachinery` — never `api/` or any
-  domain. Kubeconfig bytes and the context name are injected by the
+Three package categories, and only these:
+
+1. **`api/` and `internal/cubeerr`** — pure leaves: they import nothing
+   from `internal/` — ever.
+2. **Component domains** (`config`, `cluster`, `bootstrap`, `pack`) — one
+   domain = one package = one `docs/domains/` file. **Domains never import
+   each other.**
+3. **Shared-infrastructure leaves** — a closed, listed set:
+   **`internal/ref`** and **`internal/kube`** (the latter documented in
+   `docs/domains/kube.md` since M6, which predates this category and does
+   not make it a component domain). A component domain **MAY**
+   import a listed leaf directly. A leaf **MAY NOT** import a component
+   domain or `api/config`; it imports only `internal/cubeerr` and its own
+   backend SDKs. Adding a package to this list is a design-gate event
+   (2026-08-21), never an inference from shape: a package qualifies only
+   when it is genuinely shared infrastructure with no domain concepts,
+   and the alternative — re-implementing it per domain, or making one
+   domain the accidental home of shared machinery — is worse.
+
+   **MAY is not SHOULD.** Injection at the CLI/orchestrator edge remains
+   the preferred crossing wherever the value is already an interface:
+   `internal/bootstrap` deliberately does **not** import `internal/kube`,
+   and the M7 contract stands unchanged. `internal/pack` imports
+   `internal/ref` directly because what crosses is a concrete resolver
+   with no second implementation, and a `Resolver` interface would be
+   premature under the doctrine in §4.
+
+- Imports flow strictly left to right.
+- `internal/kube` is a shared-infrastructure leaf (M6): it imports only
+  `internal/cubeerr`, `k8s.io/client-go`, and `k8s.io/apimachinery` —
+  never `api/` or any domain. Kubeconfig bytes and the context name are
+  injected by the
   CLI/orchestrator edge; the domain never reads files and never derives
   the `cube-idp.dev/<name>` context name itself.
 - `internal/bootstrap` (M7) is the **micro-bootstrap applier**: it
@@ -50,11 +81,22 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/c
   domain's contract). SSA is hand-rolled on client-go; readiness predicates
   read off `unstructured` status (no kstatus/`cli-utils`, no
   controller-runtime).
+- `internal/pack` (M8) **defines, loads, validates, and renders** packs —
+  it never applies anything. Under delivery-through-engine, packs reach a
+  cluster by being written into the source Flux watches (M10); rendering
+  is a pure function of its inputs, so the domain is hermetic and has no
+  e2e. It imports `api/config` (the `spec.packs` sub-struct),
+  `internal/cubeerr`, apimachinery/yaml, `cuelang.org/go`, and the
+  `internal/ref` leaf.
 - Domains never import each other. Values cross domains by injection at
-  the CLI/orchestrator edge, where factories and composition live.
+  the CLI/orchestrator edge, where factories and composition live. The
+  one sanctioned exception is a listed shared-infrastructure leaf, above.
 - One component domain = one package under `internal/` = one file under
   `docs/domains/`. New components add a package; they never grow an
-  existing one.
+  existing one. A shared-infrastructure leaf is not a component domain:
+  it is documented inside its consumer's contract until a second consumer
+  makes a file of its own worth having (`internal/ref` lives in
+  `docs/domains/pack.md` today; `internal/kube` has its own file from M6).
 - Driver subpackages (`internal/cluster/kind`) are the only importers of
   their backend SDK.
 
@@ -115,12 +157,19 @@ Tag registry (a new component adds a row; nothing renumbers):
 | `KUB` | kube client access | `internal/kube` | active (M6) |
 | `BST` | bootstrap (Flux install + wait + inventory) | `internal/bootstrap` | active (M7) |
 | `ENG` | gitops engine (seam + Flux-as-pack) | `internal/engine` | reserved (M9) |
-| `PKG` | packs (fetch/render/deps) | `internal/pack` | reserved |
-| `REG` | registry / OCI artifacts | `internal/registry` | reserved |
+| `PKG` | pack contract, values, render, identity + deps | `internal/pack` | active (M8) |
+| `REF` | reference resolution (grammar → tree/file) | `internal/ref` | active (M8) |
+| `REG` | registry / OCI **publish** side | `internal/registry` | reserved |
 | `APP` | apply / SSA / inventory | `internal/apply` | superseded (M7 — SSA absorbed privately by `internal/bootstrap`; no standalone apply domain, see 2026-08-06) |
 | `TLS` | trust / certificates / CA | `internal/trust` | reserved |
 | `SPK` | spokes | `internal/spoke` | reserved |
 | `ORC` | orchestrator (phases) | `internal/orchestrator` | reserved |
+
+`REF` and `REG` split OCI cleanly and must stay split: `ref` is the
+**read** side (resolve a reference to a tree or a file, for any backend);
+`registry` is the **publish** side (pushing pack artifacts). Neither owns
+the other's errors. `PKG` no longer covers fetching — that moved to `REF` —
+nor delivery, which is M10's.
 
 ## 6. Orchestration guard (future)
 
@@ -161,6 +210,7 @@ owner-approved architecture/decision update, never a plan footnote:
 | `github.com/spf13/cobra` | CLI framework (K8s ecosystem norm) | `internal/cli` |
 | `sigs.k8s.io/kind` | library-first cluster provisioning (M3) | `internal/cluster/kind` only |
 | `k8s.io/client-go` | Kubernetes client construction — REST config from kubeconfig bytes, discovery, RESTMapper, dynamic client (M6); everything downstream (apply, engine, doctor) builds on it | construction confined to `internal/kube` (see below) |
+| `cuelang.org/go` | the pack metadata language (M8) — `#Values` is a **closed** definition, so a pack author can lock down, expose, and default their values surface; no cheaper format offers that | `internal/pack` metadata/values files only |
 
 Build-only: `sigs.k8s.io/controller-tools` (controller-gen, pinned Go tool
 dependency). Heavy SDKs adopted later are confined to a single importing
@@ -171,6 +221,16 @@ reference its stable interface types (e.g. `dynamic.Interface`,
 `meta.RESTMapper`) in signatures rather than mirror-wrapping them;
 client-go sits closer to apimachinery's status than to kind's. Its version
 is pinned to the apimachinery minor.
+
+**M8 (pack) adds exactly one runtime dependency, `cuelang.org/go`** —
+gated 2026-08-21. Everything else M8 could plausibly want is deferred to
+its own gate, and none of it may be imported before that gate opens:
+`sigs.k8s.io/kustomize/api` + `kyaml` (due with kustomize rendering,
+confined to one file), `go-git/v5` (git backend), `oras-go/v2` (OCI
+backend, aligned with M10), the AWS SDK (S3 backend, on demand), and
+`helm.sh/helm/v4` (helm rendering, its own milestone). `internal/ref`'s
+M8 backends — local tree/file and HTTPS file — are **stdlib-only**.
+Exec-ing `kubectl kustomize` stays rejected.
 
 **M7 (bootstrap) adds no runtime dependency** — a deliberate, load-bearing
 outcome of two M7 decisions (2026-08-06). The Flux install manifests are
