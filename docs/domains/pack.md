@@ -244,13 +244,44 @@ is real and documented — a typo in values is silently accepted, because
 there is no schema to reject it against. Revisit if it bites; making
 `#Values` mandatory is a contract break better made deliberately than now.
 
-### Namespace conflict *(design-gate proposal)*
+### Namespace injection and conflict
 
-When `pack.namespace` is set and a rendered namespaced object declares a
-**different** namespace, that is a coded error. Same namespace is fine;
-absent namespace is filled in; cluster-scoped objects are untouched.
-Silently overriding an author's explicit namespace is a new instance of
-exactly the silent-takeover class this contract exists to remove.
+`pack.namespace` is applied as a **post-render transform over the rendered
+objects**, identical for every pack type. It is not delegated to a render
+backend's own namespace transformer: the semantics belong to this contract,
+so one implementation serves `raw` and `kustomize` alike.
+
+Per object, when `pack.namespace` is set:
+
+| Object | Result |
+|---|---|
+| cluster-scoped kind | untouched |
+| namespaced, no `metadata.namespace` | `pack.namespace` injected |
+| namespaced, same namespace | already correct |
+| namespaced, **different** namespace | `CUBE-PKG-008` |
+
+The conflict is an error, not an override: silently replacing an author's
+explicit namespace is exactly the silent-takeover class this contract
+exists to remove. Absent `pack.namespace`, objects keep their own.
+
+**Scope is decided from a static kind set, and that is the sharp edge.**
+Asking a live API server which kinds are namespaced would need discovery —
+cluster access this domain must never have, since rendering is a pure
+function of its inputs. So `internal/pack` carries one static
+cluster-scoped-kind set, seeded from the well-known list kustomize keeps
+for the same reason (`Namespace`, `CustomResourceDefinition`,
+`ClusterRole`, `ClusterRoleBinding`, `PersistentVolume`, `StorageClass`,
+`APIService`, `PriorityClass`, `CSIDriver`, `CSINode`, the validating and
+mutating webhook configurations, `IngressClass`, `RuntimeClass`,
+`VolumeAttachment`, `Node`, `ComponentStatus`, and the cluster-scoped
+RBAC / certificates / apiregistration / flowcontrol kinds).
+
+The consequence, documented rather than hidden: **a cluster-scoped custom
+resource whose kind is not in that set is treated as namespaced** and gets
+`pack.namespace` injected. Every core cluster-scoped kind is covered and a
+pack author controls their own manifests, so the tradeoff is accepted. The
+set is maintained in one place (`internal/pack`), and a kind added to it is
+an ordinary change, not a contract event.
 
 ## externalManifests
 
@@ -428,7 +459,7 @@ options wait for a real optional constructor setting.
 | `CUBE-PKG-017` | `dependsOn`: unknown target |
 | `CUBE-PKG-018` | `dependsOn`: ambiguous name (remediation: depend on an id) |
 | `CUBE-PKG-019` | `dependsOn`: cycle or self-dependency |
-| `CUBE-PKG-020` | helm rendering not implemented in this build (names its milestone) |
+| `CUBE-PKG-020` | render for this pack type is not implemented in this build (the summary names the type and its milestone) |
 
 ## Error codes (`CUBE-REF-*`, exit 1)
 
@@ -457,7 +488,7 @@ record — is superseded by the tables above.)*
 
 ```
 cube-idp pack render   <ref>          # pure; no cluster, no config file needed
-cube-idp pack validate <ref>          # resolve + load + validate one pack
+cube-idp pack validate <ref>          # resolve + load + render-check one pack
 cube-idp pack new      <dir> [--type raw|kustomize] [--name <n>] [--from <ref>]
 ```
 
@@ -466,6 +497,13 @@ cube-idp pack new      <dir> [--type raw|kustomize] [--name <n>] [--from <ref>]
   immediately and the syntax does not change when git or OCI land. C1
   ships the local-path form of exactly this grammar before `internal/ref`
   exists in C3; C3 replaces the implementation, not the contract.
+- **`pack validate` renders and discards the output.** Loading alone would
+  let it call a pack valid that `render` then refuses — the pack layer's
+  checks include "render output is valid and non-empty", so an unparseable
+  manifest, an empty result, a namespace conflict, and values the pack
+  rejects all surface here. The one exception: a pack whose type this build
+  cannot render still validates, because its metadata and payload are sound
+  and only the render backend is missing.
 - **stdout purity for `render`:** rendered YAML only on stdout, all
   diagnostics on stderr, no success banner, stable object order,
   deterministic document separators, a final newline, and **no partial
@@ -524,7 +562,9 @@ closeout PR delete this section.
 1. **`${VAR}` grammar** — strict: `${NAME}` only, `$${NAME}` escapes,
    missing variable is an error, no shell-style defaults, scalar values
    only, results are always strings.
-2. **Namespace conflict** — error, not silent override.
+2. **Namespace conflict** — error, not silent override. *(Confirmed; the
+   mechanism — a post-render transform over a static cluster-scoped-kind
+   set — is specified above.)*
 3. **No-`#Values` packs** — pass-through preserved, sharp edge documented.
 4. **`pack render` with prerequisites** — one stream, prerequisites first;
    grouping lives in the Go type, not the YAML.
