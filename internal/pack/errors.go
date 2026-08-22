@@ -47,6 +47,12 @@ const (
 	// CodeSubstitutionMissing reports a ${VAR} reference in the built output
 	// that no value resolves.
 	CodeSubstitutionMissing cubeerr.Code = "CUBE-PKG-012"
+	// CodeValuesDocument reports a values document that is not exactly one YAML
+	// mapping.
+	CodeValuesDocument cubeerr.Code = "CUBE-PKG-013"
+	// CodeExternalManifest reports a resolved externalManifests ref that is not
+	// exactly one Kubernetes object.
+	CodeExternalManifest cubeerr.Code = "CUBE-PKG-014"
 	// CodeInstanceIDRequired reports a pack name used by more than one
 	// instance, where neither instance gave an explicit id to tell them apart.
 	CodeInstanceIDRequired cubeerr.Code = "CUBE-PKG-015"
@@ -157,6 +163,46 @@ func newSubstitutionError(names []string) error {
 		fmt.Sprintf("no value for ${%s} in the rendered output", strings.Join(names, "}, ${")),
 		fmt.Sprintf("supply %s in values, or escape the reference as $${...} to keep it literal",
 			strings.Join(names, ", ")), nil)
+}
+
+// newValuesDocumentError reports a valuesRef that does not hold exactly one
+// YAML mapping. count is how many documents were decoded; cause is set when
+// the stream did not decode at all.
+func newValuesDocumentError(ref string, count int, cause error) error {
+	detail := fmt.Sprintf("holds %d documents", count)
+	if cause != nil {
+		detail = "is not a YAML mapping"
+	}
+	return cubeerr.Wrap(CodeValuesDocument,
+		fmt.Sprintf("values document %q %s, want exactly one YAML mapping", ref, detail),
+		"point valuesRef at a file holding one YAML mapping of values", cause)
+}
+
+// newInlineValuesError reports inline values that are not a mapping. RFC 7386
+// would have such a patch replace the document wholesale, which cannot be a
+// values map — so it is refused here rather than carried into #Values, where it
+// would be reported as a schema failure the author never caused.
+func newInlineValuesError(cause error) error {
+	return cubeerr.Wrap(CodeValuesDocument,
+		"inline values are not a YAML mapping, want exactly one",
+		"write values as a mapping of names to values; a list or a scalar cannot be merged over a values document",
+		cause)
+}
+
+// newExternalManifestError reports a resolved externalManifests ref that is not
+// exactly one Kubernetes object: several documents, none, a stream that did not
+// decode, or a single document carrying no apiVersion and kind.
+func newExternalManifestError(ref string, count int, cause error) error {
+	detail := "has no apiVersion or kind"
+	switch {
+	case cause != nil:
+		detail = "is not a YAML mapping"
+	case count != 1:
+		detail = fmt.Sprintf("holds %d documents", count)
+	}
+	return cubeerr.Wrap(CodeExternalManifest,
+		fmt.Sprintf("external manifest %q %s, want exactly one Kubernetes object", ref, detail),
+		"point the ref at a file holding a single object; several objects are several externalManifests entries", cause)
 }
 
 func newRemoteRefError(file, ref string) error {
