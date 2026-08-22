@@ -255,7 +255,7 @@ reference wrongly allowed would break the invariant silently. Helm and exec
 plugins are already off — kustomize disables them by default — so
 references are the only hole.
 
-### `${VAR}` substitution grammar *(design-gate proposal)*
+### `${VAR}` substitution grammar
 
 - **Grammar:** `${NAME}` only, `NAME` matching `[A-Za-z_][A-Za-z0-9_]*`.
   The bare `$NAME` form is not recognized (it collides with shell habits
@@ -275,7 +275,7 @@ references are the only hole.
 - **Unused values are not an error** — a value may be consumed by one
   overlay and not another.
 
-### No-`#Values` packs *(design-gate proposal)*
+### No-`#Values` packs
 
 A pack without `#Values` keeps v1 pass-through: supplied values are
 accepted as-is (still flat-string-checked for `kustomize`). The sharp edge
@@ -449,9 +449,11 @@ exported — so the M10 air-gap door (an optional CTF+signature transport
 backend) stays open.
 
 `CUBE-REF-*` is documented here, inside its only consumer's contract,
-because `ref` is a leaf and not a component domain. When a second consumer
-lands (the CLI `-f` edge, cluster refs, registry), it earns its own
-`docs/domains/ref.md` — that move is a docs-map event, not a drive-by.
+because `ref` is a leaf and not a component domain — and `internal/pack`
+is still its only importer. When a second consumer lands (the CLI `<ref>`
+edge, cluster refs, registry), it earns its own `docs/domains/ref.md`:
+that move is a docs-map event, not a drive-by, and it is scheduled with
+the CLI→`ref` rewiring in **#136**.
 
 ## Package shape and import direction
 
@@ -546,9 +548,9 @@ options wait for a real optional constructor setting.
 found during document validation stay `CUBE-CFG-*` (exit 2); resolution and
 render failures are exit 1.
 
-*(The illustrative numbering in `docs/work/pack-groundwork.md` §2.10 —
-including the `CUBE-PKG-014` "ambiguous name" row cited in the M8 planning
-record — is superseded by the tables above.)*
+The tables above are the catalog: the illustrative numbering that circulated
+in the pre-M8 shaping notes — including a `CUBE-PKG-014` "ambiguous name"
+row — never shipped.
 
 ## CLI surface
 
@@ -594,9 +596,9 @@ cube-idp pack new      <dir> [--type raw|kustomize] [--name <n>] [--from <ref>]
   and `externalManifests` refs through the leaf, while the CLI edge still
   carries C1's own local-path resolution for the `packRef`/`<ref>`
   positional. Moving that last one onto the leaf is its own scheduled
-  change — it makes the CLI a second `ref` consumer, which is the
-  docs-map event this contract records below — and not a drive-by inside
-  a feature chunk.
+  change (**#136**) — it makes the CLI a second `ref` consumer, which is
+  the docs-map event this contract records below — and not a drive-by
+  inside a feature chunk.
 - **`pack validate` renders and discards the output.** Loading alone would
   let it call a pack valid that `render` then refuses — the pack layer's
   checks include "render output is valid and non-empty", so an unparseable
@@ -641,7 +643,7 @@ cube-idp pack new      <dir> [--type raw|kustomize] [--name <n>] [--from <ref>]
   adding it before M10 would mislead users and pressure the design back
   toward direct apply. The retired `apply` verb stays retired.
 
-### `pack render` output when prerequisites exist *(design-gate proposal)*
+### `pack render` output when prerequisites exist
 
 `RenderPlan` has two groups but stdout is one YAML stream. Proposal: print
 **one deterministic stream — `Prerequisites` first, then `Objects`** — so
@@ -676,22 +678,6 @@ path in the domain.
 **Owed at their own gates, not now:** `go-git/v5`, `oras-go/v2`, the AWS
 SDK, and `helm.sh/helm/v4`, each with its own milestone. Exec-ing
 `kubectl kustomize` stays rejected.
-
-## Design-gate proposals (pending operator confirmation)
-
-Four details this gate proposes with a lean rather than decides. They are
-written into the contract above as the rule; confirming them here lets the
-closeout PR delete this section.
-
-1. **`${VAR}` grammar** — strict: `${NAME}` only, `$${NAME}` escapes,
-   missing variable is an error, no shell-style defaults, scalar values
-   only, results are always strings.
-2. **Namespace conflict** — error, not silent override. *(Confirmed; the
-   mechanism — a post-render transform over a static cluster-scoped-kind
-   set — is specified above.)*
-3. **No-`#Values` packs** — pass-through preserved, sharp edge documented.
-4. **`pack render` with prerequisites** — one stream, prerequisites first;
-   grouping lives in the Go type, not the YAML.
 
 ## Contracts for future domains
 

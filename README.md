@@ -3,14 +3,16 @@
 `cube-idp` is a single Go binary for standing up an internal developer
 platform from one declarative config document.
 
-**Status: greenfield rebuild — config, cluster, and kube domains.** The
-repository was reset to a greenfield baseline on 2026-07-27 and grows in
-small milestones; today it holds the config domain
+**Status: greenfield rebuild — config, cluster, kube, bootstrap, and pack
+domains.** The repository was reset to a greenfield baseline on 2026-07-27
+and grows in small milestones; today it holds the config domain
 (validate/show/scaffold), the cluster domain with a full kind lifecycle
-(`init`/`create`/`status`/`delete`), and the kube domain (Kubernetes
-client access — powering `status`'s API-reachability line). The previous
-implementation is preserved in git history on `main`. Structure and
-rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+(`init`/`create`/`status`/`delete`), the kube domain (Kubernetes client
+access — powering `status`'s API-reachability line), `bootstrap`
+(installs Flux and hands over), and the pack domain (define, validate, and
+render packs). The previous implementation is preserved in git history on
+`main`. Structure and rationale:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 What's next: [ROADMAP.md](ROADMAP.md). Decision history:
 [docs/DECISIONS.md](docs/DECISIONS.md).
 
@@ -63,6 +65,11 @@ the cube from the config document and never scaffold it. Each takes
 `--kubeconfig <path>` to target a standalone file instead of the default
 location, and `--kubeconfig-context-name` to override the context name.
 
+`cube-idp bootstrap` installs the gitops engine (Flux) declared in
+`spec.engine` into the cluster, waits for it to be ready, and applies the
+source and sync resources it should watch — after which the engine owns
+steady state.
+
 ```
 $ cube-idp config validate -f examples/cube.yaml
 config "dev" is valid
@@ -92,6 +99,44 @@ spec:
       nodes:
         - role: control-plane
 ```
+
+## Packs
+
+A **pack** is a self-contained, versioned directory of platform content: a
+`pack.cue` declaring `name`, `version`, and an explicit `type` (`raw` or
+`kustomize`), plus its manifests. cube-idp **renders** packs — the gitops
+engine applies them.
+
+```
+$ cube-idp pack new ./hello              # a pack that renders as written
+created pack hello 0.1.0 (raw) in ./hello
+run "cube-idp pack render ./hello" to see what it produces
+
+$ cube-idp pack render ./hello | kubectl apply -f -
+$ cube-idp pack validate ./hello         # loads, renders, and discards
+pack hello 0.1.0 (raw) is valid
+```
+
+Only rendered YAML reaches stdout — diagnostics go to stderr and nothing is
+written when rendering fails — so the pipe above is safe.
+
+Packs are installed by listing them in `spec.packs`, each entry naming the
+pack and the values for *this* copy of it:
+
+```yaml
+spec:
+  packs:
+    - packRef: ./packs/traefik
+      values:
+        replicas: 2
+```
+
+`cube-idp pack render -f cube.yaml --id traefik` renders that entry as
+configured — values merged, external manifests attached — which is what a
+later milestone delivers to the cluster. Full contract, including
+`#Values` lockdown, `dependsOn`, and the reference grammar:
+[docs/domains/pack.md](docs/domains/pack.md).
+
 
 ## Development
 
