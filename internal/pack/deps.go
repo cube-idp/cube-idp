@@ -38,7 +38,7 @@ type ResolvedGraph struct {
 // pack's category, its kinds, or anything else — an implicit edge is an
 // ordering an operator never wrote and cannot find.
 func ResolveOrder(instances []Instance) (ResolvedGraph, error) {
-	ids, err := effectiveIDs(instances)
+	ids, err := EffectiveIDs(instances)
 	if err != nil {
 		return ResolvedGraph{}, err
 	}
@@ -53,12 +53,19 @@ func ResolveOrder(instances []Instance) (ResolvedGraph, error) {
 	return ResolvedGraph{Order: order, Dependencies: deps}, nil
 }
 
-// effectiveIDs derives each instance's identity, positionally.
+// EffectiveIDs derives each instance's identity, positionally: the returned
+// slice is index-aligned with instances, so a caller can pair an ID back with
+// the setup entry it came from.
 //
 // An explicit ID always wins. Otherwise the pack's own name serves, but only
 // while it is unambiguous: once a name appears twice, neither copy can claim
 // it, and the operator must say which is which.
-func effectiveIDs(instances []Instance) ([]InstanceID, error) {
+//
+// It is exported because addressing one instance — `pack render --id` today,
+// delivery later — needs the same derivation the dependency graph uses, and a
+// second implementation of an identity rule is how two answers to "which pack
+// is this?" get into one program.
+func EffectiveIDs(instances []Instance) ([]InstanceID, error) {
 	byName := map[string]int{}
 	for _, inst := range instances {
 		byName[inst.Name]++

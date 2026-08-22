@@ -346,3 +346,22 @@ its `uuid` model (§2.4), its `pack.cue` `dependsOn` union (§2.8), its
 `internal/apply`/`Applier` assumptions (already superseded 2026-08-06), and
 its illustrative error numbering (§2.10). It stays until the M8 closeout PR
 deletes it. Living contract: `docs/domains/pack.md`.
+
+**2026-08-22 — Namespace scope reads a pack's bundled CRDs (M8, epic #113).**
+The namespace transform decides scope in three layers: the static built-in
+cluster-scoped set (unchanged, authoritative for core kinds), then the
+`spec.scope` of any `CustomResourceDefinition` the pack itself renders,
+matched by `(spec.group, spec.names.kind)`, then the namespaced default. A
+self-contained pack already ships the definition of its own resources, so
+the authoritative scope is in the payload — reading it is a fact, not a
+heuristic, and it needs no cluster, which keeps rendering a pure function of
+its inputs. The index is built from the pack's own rendered objects and used
+for the external-manifest groups too, so one instance gives one consistent
+answer; a definition delivered *as* an external manifest does not feed it,
+because the payload is the artifact and what is delivered beside it is not.
+A CRD with no `spec.scope`, or one this contract does not recognise, is
+skipped rather than guessed at — no new error code. The sharp edge narrows
+to **foreign** cluster-scoped CRs, whose definition the pack does not
+bundle: nothing offline can know their scope, and the engine resolves them
+correctly at apply. Contract: `docs/domains/pack.md`, "Namespace injection
+and conflict".
