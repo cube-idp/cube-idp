@@ -210,7 +210,11 @@ deletes, arrays replace) → `#Values` (lockdown + defaults) → type-specific
 application.
 
 - `valuesRef` resolves through `internal/ref` in **single-document mode**
-  and must be exactly one YAML mapping.
+  and must be exactly one YAML mapping. Inline `values` must be a mapping
+  too: RFC 7386 would have a list or a scalar replace the document
+  wholesale, which is not a values map, so it is `CUBE-PKG-013` — raised
+  before `#Values` is consulted, since it is not a schema failure and must
+  fire on a pack that declares no `#Values` at all.
 - Both fields are valid on `type: helm` and `type: kustomize` only. On
   `type: raw` they are a coded error — and because `type` is declared, that
   error fires as soon as `pack.cue` loads, not after a fetch.
@@ -487,7 +491,7 @@ options wait for a real optional constructor setting.
 | `CUBE-PKG-010` | values rejected by `#Values` (undeclared field, type mismatch, missing required) |
 | `CUBE-PKG-011` | `type: kustomize` values are not a flat `map[string]string` |
 | `CUBE-PKG-012` | `${VAR}` in the built output has no value |
-| `CUBE-PKG-013` | `valuesRef` document is not exactly one YAML mapping |
+| `CUBE-PKG-013` | a values document is not exactly one YAML mapping (`valuesRef`, or inline `values` that decode to a non-mapping) |
 | `CUBE-PKG-014` | a resolved `externalManifests` `ref` is not exactly one Kubernetes object (several documents, or no `apiVersion`/`kind`) |
 | `CUBE-PKG-015` | instance `id` required — this pack name occurs more than once |
 | `CUBE-PKG-016` | duplicate effective instance id |

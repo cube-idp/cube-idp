@@ -11,6 +11,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
+
+	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
+	"github.com/cube-idp/cube-idp/internal/ref"
 )
 
 // helmMilestone names where the one still-unimplemented render type lands, so
@@ -37,6 +40,90 @@ type RenderPlan struct {
 	Prerequisites []*unstructured.Unstructured
 	// Objects are the pack's own rendered objects.
 	Objects []*unstructured.Unstructured
+}
+
+// resolveDocumentFunc resolves a reference to the bytes of a single document.
+//
+// It is this package's seam onto internal/ref: production passes
+// resolveDocument, a test passes its own. The seam is a parameter rather than
+// package state, so nothing is saved and restored around a test (CLAUDE.md §2)
+// and rendering stays a function of its inputs.
+type resolveDocumentFunc func(ctx context.Context, reference string) ([]byte, error)
+
+// resolveDocument is the production resolver: internal/ref in single-document
+// mode. The Pin that resolution records is dropped here because nothing
+// consumes pins yet; recording them belongs to the milestone that delivers.
+func resolveDocument(ctx context.Context, reference string) ([]byte, error) {
+	file, err := ref.ResolveFile(ctx, reference)
+	if err != nil {
+		return nil, err
+	}
+	return file.Bytes(), nil
+}
+
+// RenderInstance renders one pack instance: the setup's values applied to the
+// pack, and the external manifests declared beside it attached to the plan.
+//
+// It is the whole of what a setup entry means for one already-loaded pack, and
+// it is what the CLI edge and the later delivery milestones call. Resolution of
+// valuesRef and of external refs goes through internal/ref; the pack's own
+// payload was resolved before Load.
+func RenderInstance(ctx context.Context, p *Pack, spec v1alpha1.PackSpec) (RenderPlan, error) {
+	return renderInstance(ctx, p, spec, resolveDocument)
+}
+
+// renderInstance is RenderInstance with the resolver injected.
+//
+// The raw-pack check reads the spec rather than the merged values, and runs
+// before anything is resolved: type is declared, so "values on a raw pack" is
+// knowable without a fetch. Checking the merged map instead would fetch first
+// and then miss the case entirely, because a valuesRef holding an empty mapping
+// merges to no values at all.
+func renderInstance(ctx context.Context, p *Pack, spec v1alpha1.PackSpec, resolve resolveDocumentFunc) (RenderPlan, error) {
+	if err := ctx.Err(); err != nil {
+		return RenderPlan{}, err
+	}
+	if p.meta.Type == TypeRaw && (spec.ValuesRef != "" || spec.Values != nil) {
+		return RenderPlan{}, newValuesOnRawPackError()
+	}
+
+	values, err := instanceValues(ctx, spec, resolve)
+	if err != nil {
+		return RenderPlan{}, err
+	}
+	plan, err := p.Render(ctx, RenderOptions{Values: values})
+	if err != nil {
+		return RenderPlan{}, err
+	}
+	return p.attachExternal(ctx, plan, spec.ExternalManifests, resolve)
+}
+
+// attachExternal resolves the external manifests and places them in the plan:
+// prerequisites in their own group, the rest after the pack's own objects.
+//
+// They get the same namespace transform the pack's objects got, per group and
+// before they join the plan. An external manifest is delivered as part of this
+// instance, so a pack that forces a namespace forces it over everything it
+// delivers — and an object insisting on a different namespace is the same
+// CUBE-PKG-008 conflict, not a silent override.
+func (p *Pack) attachExternal(
+	ctx context.Context,
+	plan RenderPlan,
+	entries []v1alpha1.ExternalManifest,
+	resolve resolveDocumentFunc,
+) (RenderPlan, error) {
+	groups, err := resolveExternalManifests(ctx, entries, resolve)
+	if err != nil {
+		return RenderPlan{}, err
+	}
+	for _, group := range [][]*unstructured.Unstructured{groups.pre, groups.with} {
+		if err := applyNamespace(group, p.meta.Namespace); err != nil {
+			return RenderPlan{}, err
+		}
+	}
+	plan.Prerequisites = groups.pre
+	plan.Objects = append(plan.Objects, groups.with...)
+	return plan, nil
 }
 
 // Render turns the pack into a RenderPlan. It is deterministic and
@@ -151,22 +238,40 @@ func isManifest(name string) bool {
 	}
 }
 
-// parseManifest splits one multi-document YAML file into objects, skipping
-// empty documents (a trailing separator is not an error).
+// parseManifest splits one multi-document YAML file into objects.
 func parseManifest(name string, data []byte) ([]*unstructured.Unstructured, error) {
+	docs, err := decodeDocuments(data)
+	if err != nil {
+		return nil, newManifestParseError(name, err)
+	}
+	objs := make([]*unstructured.Unstructured, 0, len(docs))
+	for _, doc := range docs {
+		objs = append(objs, &unstructured.Unstructured{Object: doc})
+	}
+	return objs, nil
+}
+
+// decodeDocuments splits one multi-document YAML stream into mappings,
+// skipping empty documents (a trailing separator is not an error).
+//
+// The error returned is the decoder's own, deliberately uncoded: the same
+// stream means different things to the layers that read it — a manifest file,
+// a values document, an external manifest — and each wraps this in the code it
+// owns rather than inheriting one from here.
+func decodeDocuments(data []byte) ([]map[string]any, error) {
 	dec := utilyaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), 4096)
-	var objs []*unstructured.Unstructured
+	var docs []map[string]any
 	for {
-		obj := map[string]any{}
-		if err := dec.Decode(&obj); err != nil {
+		doc := map[string]any{}
+		if err := dec.Decode(&doc); err != nil {
 			if errors.Is(err, io.EOF) {
-				return objs, nil
+				return docs, nil
 			}
-			return nil, newManifestParseError(name, err)
+			return nil, err
 		}
-		if len(obj) == 0 {
+		if len(doc) == 0 {
 			continue
 		}
-		objs = append(objs, &unstructured.Unstructured{Object: obj})
+		docs = append(docs, doc)
 	}
 }
