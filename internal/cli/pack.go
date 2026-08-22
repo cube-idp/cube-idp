@@ -27,8 +27,69 @@ func newPackCmd() *cobra.Command {
 		Use:   "pack",
 		Short: "Define, validate, and render packs",
 	}
-	cmd.AddCommand(newPackRenderCmd(), newPackValidateCmd())
+	cmd.AddCommand(newPackRenderCmd(), newPackValidateCmd(), newPackNewCmd())
 	return cmd
+}
+
+func newPackNewCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "new <dir>",
+		Short: "Create a new pack that renders as written",
+		Long: "Create a new pack in a directory that does not exist yet.\n\n" +
+			"The result is a complete pack — pack.cue plus a payload matching its type — " +
+			"so `cube-idp pack render <dir>` works on it immediately. With --from, an " +
+			"existing pack is copied instead of scaffolded, and keeps the type it declares.",
+		Args: cobra.ExactArgs(1),
+		RunE: runPackNew,
+	}
+	cmd.Flags().String("type", string(pack.TypeRaw), "pack type to scaffold: raw or kustomize")
+	cmd.Flags().String("name", "", "pack name (default: the directory's base name)")
+	cmd.Flags().String("from", "", "reference to an existing pack to fork instead of scaffolding")
+	return cmd
+}
+
+// runPackNew maps the flags and reports what was created. The pack is loaded
+// back afterwards: it is the cheapest possible check that the command made
+// something this tool can actually read, and it is what supplies the type for
+// a fork, which the flags never named.
+func runPackNew(cmd *cobra.Command, args []string) error {
+	opts, err := packNewOptions(cmd, args[0])
+	if err != nil {
+		return err
+	}
+	if err := pack.New(cmd.Context(), opts); err != nil {
+		return err
+	}
+
+	p, err := loadPack(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	meta := p.Metadata()
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "created pack %s %s (%s) in %s\n",
+		meta.Name, meta.Version, meta.Type, args[0])
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "run \"cube-idp pack render %s\" to see what it produces\n", args[0])
+	return nil
+}
+
+// packNewOptions maps the flags, refusing the one combination that cannot mean
+// anything: a fork takes the type its source declares, so asking for a
+// different one is not a conversion this command could perform. --type carries
+// a default, so only an explicitly given one is a request.
+func packNewOptions(cmd *cobra.Command, dir string) (pack.NewOptions, error) {
+	name, _ := cmd.Flags().GetString("name")
+	from, _ := cmd.Flags().GetString("from")
+	packType, _ := cmd.Flags().GetString("type")
+
+	if from != "" {
+		if cmd.Flags().Changed("type") {
+			return pack.NewOptions{}, fmt.Errorf(
+				"--from copies a pack with the type it already declares, so --type %s cannot apply: drop --type to fork, or drop --from to scaffold a new %s pack",
+				packType, packType)
+		}
+		return pack.NewOptions{Dir: dir, Name: name, From: from}, nil
+	}
+	return pack.NewOptions{Dir: dir, Name: name, Type: pack.Type(packType)}, nil
 }
 
 func newPackRenderCmd() *cobra.Command {

@@ -476,7 +476,7 @@ internal/pack/
 ├── kustomize.go # sole importer of the kustomize library
 ├── deps.go      # effective ids + dependsOn graph over the setup
 ├── external.go  # externalManifests → RenderPlan groups
-├── new.go       # pack new (real when it lands)
+├── new.go       # pack new: scaffold templates, fork, tree write
 ├── errors.go    # CUBE-PKG-* catalog
 └── *_test.go
 
@@ -524,6 +524,8 @@ options wait for a real optional constructor setting.
 | `CUBE-PKG-019` | `dependsOn`: cycle or self-dependency |
 | `CUBE-PKG-020` | render for this pack type is not implemented in this build (the summary names the type and its milestone) |
 | `CUBE-PKG-021` | a kustomize payload references a remote resource; the hermetic renderer rejects it rather than fetching (vendor the base into the pack) |
+| `CUBE-PKG-022` | `pack new`: the target directory already exists — a pack is created, never merged into one |
+| `CUBE-PKG-023` | `pack new`: the pack could not be created (unwritable target, unreadable `--from` source, an unscaffoldable type, or a forked `pack.cue` whose name cannot be rewritten) |
 
 ## Error codes (`CUBE-REF-*`, exit 1)
 
@@ -607,12 +609,34 @@ cube-idp pack new      <dir> [--type raw|kustomize] [--name <n>] [--from <ref>]
   deterministic document separators, a final newline, and **no partial
   stdout when rendering fails** — so `cube-idp pack render ./d | kubectl
   apply -f -` is safe.
-- **`pack new` is real when it lands** (C6) — it creates a fresh directory
-  (never overwriting), a valid `pack.cue`, a type-appropriate payload
-  skeleton, and a pack that immediately renders. There is no stub verb:
-  registering a command that only returns not-implemented misleads users.
-  (`type: helm` remains a recognized *type*, which is a schema-stability
-  concern, not a user-facing no-op.)
+- **`pack new` is real** — it creates a fresh directory (never
+  overwriting), a valid `pack.cue`, a type-appropriate payload skeleton,
+  and a pack that immediately renders. There is no stub verb: registering
+  a command that only returns not-implemented misleads users. (`type:
+  helm` remains a recognized *type*, which is a schema-stability concern,
+  not a user-facing no-op — and for the same reason it is **not
+  scaffoldable**: this build could not render what it wrote.) The target
+  must not exist at all (`CUBE-PKG-022`); everything is assembled and
+  validated in memory first, so a rejected name leaves no directory
+  behind. `--name` defaults to the directory's base name.
+- **`--from <ref>` forks, and a fork copies.** The source resolves through
+  `internal/ref` as a tree, is loaded to confirm it is a pack, and is then
+  copied wholesale. What that does and does not mean:
+  - The copy **keeps the type its source declares**, so `--from` and
+    `--type` are mutually exclusive: a conversion is not something this
+    command could perform, and refusing is clearer than accepting the flag
+    when it happens to agree.
+  - **Without `--name` the copy keeps the name its source has** — the
+    target directory is not a rename request. With `--name`, the rewrite
+    touches **the `name` field of `pack.cue`** and nothing else. Names
+    inside the payload are the author's content, so a forked manifest
+    keeps whatever it said. A `pack.cue`
+    that does not spell its name as a plain string cannot be rewritten
+    safely; that fork is refused (`CUBE-PKG-023`) rather than delivered
+    under the source's name, because two packs sharing a name is an
+    identity collision in the setup that installs them.
+  - Unimplemented backends surface `internal/ref`'s own codes, naming the
+    backend and its milestone — a fork from `oci://` is not a broken path.
 - **No `pack install` in M8.** It implies mutation and engine delivery;
   adding it before M10 would mislead users and pressure the design back
   toward direct apply. The retired `apply` verb stays retired.
