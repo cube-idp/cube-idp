@@ -106,6 +106,13 @@ func renderInstance(ctx context.Context, p *Pack, spec v1alpha1.PackSpec, resolv
 // instance, so a pack that forces a namespace forces it over everything it
 // delivers — and an object insisting on a different namespace is the same
 // CUBE-PKG-008 conflict, not a silent override.
+//
+// Scope comes from the same index the pack's own objects were judged by,
+// rebuilt from those objects: the pack's payload is the self-contained
+// artifact, and a definition bundled beside it as an external manifest is not
+// part of it. Rebuilding rather than threading the index through RenderPlan
+// keeps that type the contract's shape; the input is identical, so the answer
+// is too.
 func (p *Pack) attachExternal(
 	ctx context.Context,
 	plan RenderPlan,
@@ -116,8 +123,9 @@ func (p *Pack) attachExternal(
 	if err != nil {
 		return RenderPlan{}, err
 	}
+	scopes := indexCRDScopes(plan.Objects)
 	for _, group := range [][]*unstructured.Unstructured{groups.pre, groups.with} {
-		if err := applyNamespace(group, p.meta.Namespace); err != nil {
+		if err := applyNamespace(group, p.meta.Namespace, scopes); err != nil {
 			return RenderPlan{}, err
 		}
 	}
@@ -159,7 +167,7 @@ func (p *Pack) planRaw(ctx context.Context) (RenderPlan, error) {
 	if err != nil {
 		return RenderPlan{}, err
 	}
-	if err := applyNamespace(objs, p.meta.Namespace); err != nil {
+	if err := applyNamespace(objs, p.meta.Namespace, indexCRDScopes(objs)); err != nil {
 		return RenderPlan{}, err
 	}
 	return RenderPlan{Objects: objs}, nil
@@ -180,7 +188,7 @@ func (p *Pack) planKustomize(ctx context.Context, values map[string]any) (Render
 	if err != nil {
 		return RenderPlan{}, err
 	}
-	if err := applyNamespace(objs, p.meta.Namespace); err != nil {
+	if err := applyNamespace(objs, p.meta.Namespace, indexCRDScopes(objs)); err != nil {
 		return RenderPlan{}, err
 	}
 	if err := substitute(objs, vars); err != nil {

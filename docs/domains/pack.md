@@ -303,24 +303,48 @@ The conflict is an error, not an override: silently replacing an author's
 explicit namespace is exactly the silent-takeover class this contract
 exists to remove. Absent `pack.namespace`, objects keep their own.
 
-**Scope is decided from a static kind set, and that is the sharp edge.**
+**Scope is decided in three layers, and only the last one is a guess.**
 Asking a live API server which kinds are namespaced would need discovery —
 cluster access this domain must never have, since rendering is a pure
-function of its inputs. So `internal/pack` carries one static
-cluster-scoped-kind set, seeded from the well-known list kustomize keeps
-for the same reason (`Namespace`, `CustomResourceDefinition`,
-`ClusterRole`, `ClusterRoleBinding`, `PersistentVolume`, `StorageClass`,
-`APIService`, `PriorityClass`, `CSIDriver`, `CSINode`, the validating and
-mutating webhook configurations, `IngressClass`, `RuntimeClass`,
-`VolumeAttachment`, `Node`, `ComponentStatus`, and the cluster-scoped
-RBAC / certificates / apiregistration / flowcontrol kinds).
+function of its inputs. So scope is decided offline, in this order:
 
-The consequence, documented rather than hidden: **a cluster-scoped custom
-resource whose kind is not in that set is treated as namespaced** and gets
-`pack.namespace` injected. Every core cluster-scoped kind is covered and a
-pack author controls their own manifests, so the tradeoff is accepted. The
-set is maintained in one place (`internal/pack`), and a kind added to it is
-an ordinary change, not a contract event.
+1. **The static built-in set.** `internal/pack` carries one
+   cluster-scoped-kind set, seeded from the well-known list kustomize keeps
+   for the same reason (`Namespace`, `CustomResourceDefinition`,
+   `ClusterRole`, `ClusterRoleBinding`, `PersistentVolume`, `StorageClass`,
+   `APIService`, `PriorityClass`, `CSIDriver`, `CSINode`, the validating and
+   mutating webhook configurations, `IngressClass`, `RuntimeClass`,
+   `VolumeAttachment`, `Node`, `ComponentStatus`, and the cluster-scoped
+   RBAC / certificates / apiregistration / flowcontrol kinds). It stays
+   authoritative for core kinds; a kind added to it is an ordinary change,
+   not a contract event.
+2. **A `CustomResourceDefinition` the pack itself renders.** Every CRD in
+   the pack's own output is indexed by `(spec.group, spec.names.kind)` →
+   `spec.scope`, and a custom resource matching one takes that definition's
+   answer — `Cluster` leaves it untouched, `Namespaced` injects. This is a
+   fact, not a heuristic: a self-contained pack ships the definition of its
+   own resources, so the authoritative scope is already in the payload and
+   reading it needs no cluster. A definition that declares no `spec.scope`,
+   or one this contract does not recognise, is skipped rather than guessed
+   at — it is not an error, it just leaves the resource on the default.
+   Group and kind together are the match: two groups may define one kind,
+   and a definition governs only its own group.
+3. **The default: namespaced.**
+
+The index is built from the **pack's own rendered objects** and is then used
+for the external manifests too, so one instance gives one consistent answer.
+A definition delivered *as* an external manifest does not feed it: the pack
+payload is the self-contained artifact, and what is delivered beside it is
+not part of that artifact.
+
+The consequence that remains, documented rather than hidden: **a
+cluster-scoped custom resource whose definition the pack does not bundle —
+a *foreign* CR — is treated as namespaced** and gets `pack.namespace`
+injected into a field the API server ignores for a cluster-scoped resource.
+Nothing offline can know better, since the definition is not here; the
+engine resolves it correctly at apply, against a cluster that has the CRD.
+Bundling the CRD, which a self-contained pack does anyway, removes the edge
+entirely.
 
 ## externalManifests
 
