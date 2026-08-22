@@ -77,32 +77,62 @@ it in the PR that completes or reorders a milestone.
   `docs/DECISIONS.md` 2026-08-06; living contract:
   `docs/domains/bootstrap.md`.
 
+- **M8 — pack** (epic #113; PR stack #132/#134/#137, 2026-08-22): the
+  **pack** domain (`internal/pack`, `CUBE-PKG-*`) — the self-contained,
+  versioned unit of platform content every later milestone consumes. It
+  **defines, loads, validates, and renders** packs and stops there: under
+  delivery-through-engine, packs reach a cluster by being written into the
+  source Flux watches (M10), so M8 touches no cluster and has **no e2e**.
+  A pack is a directory with a `pack.cue` carrying `name`/`version`/an
+  explicit `type` (`raw|helm|kustomize`, never sniffed) and the
+  differentiator, a **closed `#Values` definition** that locks down,
+  exposes, and defaults its values surface. `Render` returns a
+  `RenderPlan{Prerequisites, Objects}`; namespace injection is a
+  post-render transform whose scope reads the **`spec.scope` of CRDs the
+  pack itself bundles** before falling back to a static kind set;
+  kustomize builds hermetically, rejecting remote references
+  (`CUBE-PKG-021`) rather than fetching. New verbs: `pack render <ref>`
+  (pure, stdout-clean), `pack render -f <config> --id <id>` (the
+  configured instance), `pack validate <ref>` (renders and discards), and
+  `pack new` (a real scaffold that renders as written, with `--from`
+  forking). New shared-infrastructure leaf `internal/ref` (`CUBE-REF-*`) —
+  one reference grammar resolving to a tree or a file (local + https now;
+  git/oci/s3 recognized with their own not-implemented codes). New
+  `spec.packs` sub-struct with instance identity (`id`, defaulted from the
+  pack name when unambiguous) and a `dependsOn` graph resolved to a
+  deterministic order for M11. Two runtime dependencies at their own
+  gates: `cuelang.org/go` and `sigs.k8s.io/kustomize/api`+`kyaml`. Design
+  gate: `docs/DECISIONS.md` 2026-08-21 (plus 2026-08-22, bundled-CRD
+  scope); living contract: `docs/domains/pack.md`.
+
 ## Queue
 
-- *(empty — the next milestone is **M8 pack**, picked from the continuation
-  below; the git-vs-OCI demo source landed as the explicit `spec.engine.source`
-  `kind` in M7.)*
+- **M9 — engine**: formalize the gitops driver seam and re-express Flux as
+  a conforming pack, consuming the M8 pack contract unchanged; the
+  Argo replace-vs-layer question is due at its design gate.
 
-## Continuation after M7 (directional, not committed)
+Deferred from M8 with issues of their own: the CLI edge resolving
+`<ref>`/`packRef` through `internal/ref` (**#136**, carrying the
+`docs/domains/ref.md` move), and the git/oci/s3 `ref` backends, which land
+with the milestones that need them.
+
+## Continuation after M9 (directional, not committed)
 
 Re-sequenced by operator direction (2026-08-05, recorded in the M7 design
 gate). Decision record, alternatives, risk table, and prior open questions:
-`docs/archived/plans/2026-08-01-roadmap-direction.md`; the pack unit's
-shaping and 18-task breakdown: `docs/work/pack-groundwork.md`.
+`docs/archived/plans/2026-08-01-roadmap-direction.md`. (The pack unit's
+pre-M8 shaping notes were absorbed into `docs/domains/pack.md` and
+`docs/DECISIONS.md`, and deleted with the M8 closeout.)
 
-M8 pack (done properly against the **live Flux loop** —
-**delivery-through-engine**: packs are delivered by writing to the Flux
-source, not through a cube-idp applier; groundwork's 18 tasks, contract
-designed against recorded consumer requirements) → M9 engine (gitops driver
-seam formalized + **Flux re-expressed as a conforming pack** + the Argo
-replace-vs-layer question) → M10 bus (OCI/git delivery; Flux does both; the
-air-gap answer is due by then) → M11 thin `up`/`down` finisher (ordering
-lives in the engine) → periphery in pull order (doctor, diff, trust,
-lock/vendor, spokes, …).
+M9 is the committed next milestone (Queue above). After it: M10 bus
+(OCI/git delivery; Flux does both; the real `pre` semantics and the
+air-gap answer are due by then) → M11 thin `up`/`down` finisher (it
+consumes M8's `ResolvedGraph` as data and executes the order) → periphery
+in pull order (doctor, diff, trust, lock/vendor, spokes, …).
 
 Rationale: M7 makes the product demo-able (up → gitops-managed cluster) and
-M8 iterates against real substrate. Carried-forward hard rules: Argo CD
-never a compile-time dependency; any post-M8 pack-contract change is a
-design-gate event, never a drive-by edit inside a consumer milestone. Still
-open for the M9/M10 design gates: the Argo scope and the air-gap commitment
-(direction doc §5).
+M8 gives the later milestones the content unit they deliver.
+Carried-forward hard rules: Argo CD never a compile-time dependency; any
+post-M8 pack-contract change is a design-gate event, never a drive-by edit
+inside a consumer milestone. Still open for the M9/M10 design gates: the
+Argo scope and the air-gap commitment (direction doc §5).

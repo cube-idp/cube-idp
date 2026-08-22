@@ -15,7 +15,15 @@ driver seam, kind provider, full lifecycle CLI), **kube** (M6: leaf
 client access from injected kubeconfig bytes + context name), and
 **bootstrap** (M7: micro-bootstrap applier — SSA-installs embedded Flux
 from `spec.engine` over injected client-go interfaces, waits the bootstrap
-kind-set, records an inventory, then hands over to the engine). Per-domain
+kind-set, records an inventory, then hands over to the engine), and
+finally **pack** (M8: the self-contained, versioned content unit —
+`pack.cue` with a closed `#Values`, `spec.packs` instances with a
+`dependsOn` graph,
+`pack render|validate|new`; it renders, never applies). M8 also added the
+shared-infrastructure leaf **`internal/ref`** (one reference grammar →
+tree/file), which is documented inside its only consumer's contract
+(`docs/domains/pack.md`) rather than a file of its own — it earns
+`docs/domains/ref.md` when a second consumer lands (#136). Per-domain
 contracts: `docs/domains/<name>.md`.
 
 ### Documentation map (the complete, closed set)
