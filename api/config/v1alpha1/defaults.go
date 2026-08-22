@@ -14,6 +14,20 @@ func (c *Config) Default() {
 			defaultEngineSource(c.Spec.Engine.Source)
 		}
 	}
+	for i := range c.Spec.Packs {
+		defaultPack(&c.Spec.Packs[i])
+	}
+}
+
+// defaultPack fills a pack entry's optional fields. The effective ID is NOT
+// defaulted here: it falls back to the pack's own name, which is only known
+// once the pack is resolved — internal/pack derives it.
+func defaultPack(p *PackSpec) {
+	for i := range p.ExternalManifests {
+		if p.ExternalManifests[i].Lifecycle == "" {
+			p.ExternalManifests[i].Lifecycle = LifecycleWith
+		}
+	}
 }
 
 // defaultEngineSource fills the engine source's optional fields, choosing the
