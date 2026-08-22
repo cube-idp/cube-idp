@@ -74,6 +74,11 @@ const (
 	// CodeRemoteRef reports a kustomize payload that references a remote
 	// resource, which a hermetic renderer refuses to fetch.
 	CodeRemoteRef cubeerr.Code = "CUBE-PKG-021"
+	// CodeTargetExists reports a pack directory that already exists, which a
+	// scaffold refuses to write into.
+	CodeTargetExists cubeerr.Code = "CUBE-PKG-022"
+	// CodeScaffoldFailed reports a new pack that could not be written.
+	CodeScaffoldFailed cubeerr.Code = "CUBE-PKG-023"
 )
 
 func newSourceUnreadableError(ref string, cause error) error {
@@ -209,6 +214,40 @@ func newRemoteRefError(file, ref string) error {
 	return cubeerr.Wrap(CodeRemoteRef,
 		fmt.Sprintf("%s references the remote resource %q", file, ref),
 		"a pack payload is self-contained — vendor the base into the pack; rendering never fetches over the network", nil)
+}
+
+func newTargetExistsError(dir string) error {
+	return cubeerr.Wrap(CodeTargetExists,
+		fmt.Sprintf("%s already exists", dir),
+		"pack new creates a pack, it never writes into one that is already there — pick a new directory, or remove that one yourself", nil)
+}
+
+func newScaffoldFailedError(dir string, cause error) error {
+	return cubeerr.Wrap(CodeScaffoldFailed,
+		fmt.Sprintf("cannot create the pack at %s", dir),
+		"check that the parent directory exists and is writable", cause)
+}
+
+func newForkFailedError(from string, cause error) error {
+	return cubeerr.Wrap(CodeScaffoldFailed,
+		fmt.Sprintf("cannot read the pack at %s", from),
+		"check the reference points at a readable pack directory", cause)
+}
+
+// newForkRenameError reports a forked pack.cue whose name this cannot safely
+// rewrite. The copy is refused rather than delivered under the source's name,
+// because two packs sharing a name is an identity collision in the setup that
+// installs them.
+func newForkRenameError(from, name string) error {
+	return cubeerr.Wrap(CodeScaffoldFailed,
+		fmt.Sprintf("cannot rename the pack forked from %s to %q", from, name),
+		fmt.Sprintf("that pack.cue does not spell name as a plain string — fork it without --name, then set name: %q by hand", name), nil)
+}
+
+func newScaffoldTypeUnsupportedError(t Type) error {
+	return cubeerr.Wrap(CodeScaffoldFailed,
+		fmt.Sprintf("cannot scaffold a pack of type %q", t),
+		fmt.Sprintf("scaffold a %s or %s pack, or fork an existing one with --from", TypeRaw, TypeKustomize), nil)
 }
 
 func newInstanceIDRequiredError(name string, count int) error {
