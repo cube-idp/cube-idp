@@ -32,26 +32,29 @@ func newPackCmd() *cobra.Command {
 }
 
 func newPackRenderCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "render <ref>",
-		Short: "Render a pack to Kubernetes YAML on stdout",
+	cmd := &cobra.Command{
+		Use:   "render [<ref>]",
+		Short: "Render a pack, or a configured pack instance, to Kubernetes YAML on stdout",
 		Long: "Render a pack to Kubernetes YAML on stdout.\n\n" +
+			"`pack render <ref>` renders a pack as its author wrote it. " +
+			"`pack render -f <config> --id <id>` renders one instance of that pack as a " +
+			"Config document configures it: its values, its external manifests, and the " +
+			"namespace its pack forces. The two forms are mutually exclusive.\n\n" +
 			"Only rendered YAML reaches stdout — diagnostics go to stderr — so the " +
 			"output pipes straight into `kubectl apply -f -`. Nothing is written when " +
 			"rendering fails.",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p, err := loadPack(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-			plan, err := p.Render(cmd.Context(), pack.RenderOptions{})
+			plan, err := renderTarget(cmd, args)
 			if err != nil {
 				return err
 			}
 			return writePlan(cmd.OutOrStdout(), plan)
 		},
 	}
+	cmd.Flags().String("id", "",
+		"render this pack instance from the Config document given with -f")
+	return cmd
 }
 
 func newPackValidateCmd() *cobra.Command {

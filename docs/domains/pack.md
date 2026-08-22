@@ -551,16 +551,50 @@ record — is superseded by the tables above.)*
 ## CLI surface
 
 ```
-cube-idp pack render   <ref>          # pure; no cluster, no config file needed
-cube-idp pack validate <ref>          # resolve + load + render-check one pack
+cube-idp pack render   <ref>                    # artifact: the pack as authored
+cube-idp pack render   -f <config> --id <id>    # instance: as the setup configures it
+cube-idp pack validate <ref>                    # resolve + load + render-check one pack
 cube-idp pack new      <dir> [--type raw|kustomize] [--name <n>] [--from <ref>]
 ```
 
+- **`render` has two forms, and they are mutually exclusive.** A `<ref>`
+  renders the pack as its author wrote it, with no setup around it.
+  `-f <config> --id <id>` renders one `spec.packs` entry as that document
+  configures it: values merged, external manifests attached to their
+  groups, the pack's namespace applied to everything it delivers — the
+  whole `RenderPlan` an instance means. The forms answer different
+  questions and produce different output, so mixing them is an error
+  naming which argument to drop rather than a silent preference for one.
+  `-f` carries a repo-wide default, so only an explicitly given one asks
+  for instance mode; `--id` without `-f` and `-f` without `--id` are both
+  errors, because each alone names half of a target.
+- **Instance mode resolves real sources; it is not offline-pure.** An
+  instance is only defined by what its references resolve to, so rendering
+  one reads the pack, its `valuesRef`, and its external refs. It reads
+  **every** pack in the setup, not just the requested one: an effective id
+  is a property of the whole setup — a pack's name serves as its id only
+  while no other entry shares it — so one entry's identity cannot be
+  decided without the others. The consequence, accepted rather than
+  hidden: **an entry whose `packRef` cannot be read fails the preview of
+  any other instance**, and the error names that entry's reference, not
+  the one the user asked for. Identity derivation is the domain's
+  (`CUBE-PKG-015`/`016` surface here unchanged); a `--id` matching no
+  instance is a CLI-level error that lists the ids the document does
+  declare, since a defaulted id is the one a user is likeliest to get
+  wrong. Artifact mode stays pure, and **`config validate` is unchanged
+  and stays local-only, no I/O**.
 - The positional is `<ref>` from day one, not `<dir>` — a local directory
   is one reference kind, so `cube-idp pack render ./hello` works
   immediately and the syntax does not change when git or OCI land. C1
   ships the local-path form of exactly this grammar before `internal/ref`
-  exists in C3; C3 replaces the implementation, not the contract.
+  exists in C3; whichever implementation serves it, the contract is the
+  same. **Where that stands today:** `internal/pack` resolves `valuesRef`
+  and `externalManifests` refs through the leaf, while the CLI edge still
+  carries C1's own local-path resolution for the `packRef`/`<ref>`
+  positional. Moving that last one onto the leaf is its own scheduled
+  change — it makes the CLI a second `ref` consumer, which is the
+  docs-map event this contract records below — and not a drive-by inside
+  a feature chunk.
 - **`pack validate` renders and discards the output.** Loading alone would
   let it call a pack valid that `render` then refuses — the pack layer's
   checks include "render output is valid and non-empty", so an unparseable
@@ -582,7 +616,6 @@ cube-idp pack new      <dir> [--type raw|kustomize] [--name <n>] [--from <ref>]
 - **No `pack install` in M8.** It implies mutation and engine delivery;
   adding it before M10 would mislead users and pressure the design back
   toward direct apply. The retired `apply` verb stays retired.
-- `config validate` is unchanged and stays **local-only, no I/O**.
 
 ### `pack render` output when prerequisites exist *(design-gate proposal)*
 
