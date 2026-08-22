@@ -259,3 +259,90 @@ oci ⇒ `OCIRepository` (`provider: generic`) + `Kustomization`, both
 `…/v1`. **Public URLs only** in M7; credential Secrets return with a real
 consumer. Bootstrap applies + records the source CRs but does not wait on
 their reconciliation (M9). Recorded in `docs/domains/bootstrap.md`.
+
+**2026-08-21 — M8 pack design gate (new domain + new shared-infrastructure
+leaf).** `internal/pack` (tag `PKG`) **defines, loads, validates, and
+renders** packs; `internal/ref` (tag `REF`) resolves references. Under the
+2026-08-06 delivery-through-engine reshape, **M8 renders and M10 delivers**
+— cube-idp writes rendered content into the source Flux watches and never
+applies. Corollary: M8 touches no cluster, so it is pure, hermetic, and
+**has no e2e**. `cuelang.org/go` joins the closed runtime set, confined to
+`internal/pack`'s metadata/values files; every other candidate (kustomize,
+go-git, oras-go, AWS SDK, helm) is explicitly deferred to its own gate.
+Positions:
+
+1. **Identity: no `uuid`.** Artifact identity is `name`+`version` (plus a
+   content digest when OCI lands); instance identity is an optional
+   human-readable `spec.packs[].id` (DNS-label) that defaults to the pack
+   name when unique and is **required when a name repeats**. `dependsOn`
+   targets ids. This reverses the 2026-08-01 pack-direction call, which
+   conflated artifact/lineage identity with installed-instance identity and
+   let the CR override the artifact's own uuid — making it non-authoritative
+   exactly where it mattered. Under delivery-through-engine each instance
+   becomes a Flux `Kustomization` whose name must be stable and legible; a
+   uuid yields `kustomization/b2c1-…` in every event and every error.
+2. **Third package category: shared-infrastructure leaf.** `internal/ref`
+   and `internal/kube` are a **closed, listed** set. A component domain MAY
+   import a listed leaf; a leaf MAY NOT import a component domain or
+   `api/config`. `pack` imports `ref` directly. Rejected: parking the
+   resolver under `pack` (making one domain the accidental home of shared
+   machinery — the `authclient`/`IsLocalRegistryHost` misplacement class),
+   re-implementing per domain (the v1 triplication, now *across* domains),
+   and an exported `Resolver` interface injected at the edge (premature by
+   this repo's own "interface only at a real second consumer" rule).
+   **MAY is not SHOULD:** injection at the edge stays preferred wherever
+   the crossing value is already an interface, and the M7 rule that
+   `bootstrap` does not import `kube` is unchanged.
+3. **`pre` lifecycle: contract now, delivery later.** The CR keeps
+   `lifecycle: pre|with`; `Render` returns `RenderPlan{Prerequisites,
+   Objects}`; `with` is fully handled in M8, and `pre` is carried as data
+   only. Real `pre` semantics need a separate Flux `Kustomization`, a
+   `dependsOn` edge, a health gate, and stable names for both delivery
+   units — all M10's contract. Joining `pre` documents ahead of the pack
+   would look like ordering while providing no readiness, and M8 cannot
+   verify readiness because it does not deliver. Rejected: dropping `pre`
+   from the contract (churns the CR later) and faking it in document order.
+4. **`pack new` is real when it lands; no stub verb.** The verb registers
+   only once it creates a fresh directory (never overwriting), a valid
+   `pack.cue`, a type-appropriate payload skeleton, and a pack that
+   immediately renders. The internal `type: helm` **type**-stub stays —
+   recognizing a type stabilizes the artifact schema, which is a different
+   thing from shipping a user-facing command that only says
+   not-implemented. `pack install` is likewise **not** added in M8.
+5. **`dependsOn` lives at `spec.packs` only** — dropped from `pack.cue`.
+   A pack-level `dependsOn` can only speak names, because an author cannot
+   know installer-side ids; under position 1 it would resolve to a concrete
+   edge only in the single-instance case and punt otherwise — conditional
+   name-magic, crosswise to the identity decision itself. Entries are
+   id-or-name; unknown, ambiguous, self, and cycle are each coded errors;
+   **no implicit edges, ever**; executing the resolved order is M11's.
+   This also removes the pack.cue-vs-`cube.yaml` union and its provenance
+   apparatus — there is one source now. *Parked for its own future
+   decision:* a `pack.cue` `requires:` capability expectation, checked at
+   plan time and never auto-wired into ordering.
+
+Adopted without reversal, from the independent design review: explicit ref
+schemes only (no bare-git heuristics) with split `ResolveTree`/`ResolveFile`
+(no invalid either/or result); three validation layers with `config
+validate` staying **local-only, no I/O**, a new `pack validate <ref>`, and
+a setup layer for everything that needs resolution; `pack render <ref>`
+positional from day one with pure stdout (YAML only, diagnostics to stderr,
+deterministic order, no partial output on failure); `category` in
+`pack.cue` only, an open string with well-known spellings, identification
+never behavior; distinct not-implemented codes per backend; `ResolvedGraph`
+keyed by human instance ids; and kustomize values restricted to a flat
+`map[string]string` feeding a defined `${VAR}` post-build substitution.
+
+Four detail-level proposals carry a lean pending confirmation and are
+recorded in `docs/domains/pack.md`: the strict `${VAR}` grammar (escape
+`$${…}`, missing variable is an error, no shell-style defaults, scalar
+values only); namespace conflict is an error rather than a silent
+override; no-`#Values` packs keep pass-through; and `pack render` prints
+prerequisites and objects as one deterministic stream, with the group
+boundary living in the Go type rather than the YAML.
+
+`docs/work/pack-groundwork.md` is **partially superseded** by this entry —
+its `uuid` model (§2.4), its `pack.cue` `dependsOn` union (§2.8), its
+`internal/apply`/`Applier` assumptions (already superseded 2026-08-06), and
+its illustrative error numbering (§2.10). It stays until the M8 closeout PR
+deletes it. Living contract: `docs/domains/pack.md`.
