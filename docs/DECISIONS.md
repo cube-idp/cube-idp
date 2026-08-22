@@ -365,3 +365,22 @@ to **foreign** cluster-scoped CRs, whose definition the pack does not
 bundle: nothing offline can know their scope, and the engine resolves them
 correctly at apply. Contract: `docs/domains/pack.md`, "Namespace injection
 and conflict".
+
+**2026-08-22 — M8 closeout: `docs/work/pack-groundwork.md` deleted.** The
+pack unit's pre-M8 shaping notes have been absorbed and are removed with
+the milestone that consumed them, per the `docs/work/` rule (CLAUDE.md §1:
+ephemeral, deleted in the closing PR). Where its content now lives: the
+pack contract in `docs/domains/pack.md`, and everything it got wrong or
+that was later overruled — the `uuid` identity model, the `pack.cue`
+`dependsOn` union, the `internal/apply`/`Applier` assumptions, and its
+illustrative `CUBE-PKG-*` numbering — in the 2026-08-06 and 2026-08-21
+entries above, which already recorded those supersessions. **Earlier
+entries in this file still point at the deleted path**; they are left as
+written because this log is append-only, and this entry is the answer for
+anyone who follows one. M8 shipped: `internal/pack` (`PKG`) and the
+shared-infrastructure leaf `internal/ref` (`REF`), `spec.packs` with
+instance identity and a `dependsOn` graph, and the `pack
+render|validate|new` verbs. `internal/ref` remains **single-consumer**
+(only `internal/pack` imports it), so `CUBE-REF-*` stays documented inside
+`docs/domains/pack.md`; the `docs/domains/ref.md` split is scheduled with
+the CLI→`ref` rewiring in #136.

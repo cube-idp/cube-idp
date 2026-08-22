@@ -272,7 +272,8 @@ System context — who and what surrounds the cube-idp binary:
 
 ![SystemContext view](architecture/structurizr-SystemContext.svg)
 
-Containers — the binary and the two files it owns on the operator's machine:
+Containers — the binary and the content it owns, shares, or reads on
+the operator's machine:
 
 ![Containers view](architecture/structurizr-Containers.svg)
 

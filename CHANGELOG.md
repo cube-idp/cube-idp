@@ -2,6 +2,55 @@
 
 ## Unreleased
 
+M8 pack (epic #113; design gate: `docs/DECISIONS.md` 2026-08-21):
+
+- New domain `internal/pack` (`CUBE-PKG-*`, tag `PKG`): a **pack** is a
+  self-contained, versioned directory of platform content — a `pack.cue`
+  declaring `name`, `version`, and an explicit `type` (`raw|helm|
+  kustomize`, **never sniffed** from the payload), plus an optional
+  **closed `#Values` definition** that locks down, exposes, and defaults
+  the pack's values surface. cube-idp **renders packs; it never applies
+  them** — delivery is the engine's, so this domain touches no cluster and
+  rendering is a pure function of its inputs.
+- New verbs:
+  - `cube-idp pack render <ref>` — renders the pack as authored. Only YAML
+    reaches stdout (diagnostics go to stderr, no banner, stable order, no
+    partial output on failure), so it pipes straight into
+    `kubectl apply -f -`.
+  - `cube-idp pack render -f <config> --id <id>` — renders one configured
+    instance: values merged, external manifests attached, namespace
+    applied.
+  - `cube-idp pack validate <ref>` — resolves, loads, and **renders and
+    discards**, so anything `render` would refuse is reported here.
+  - `cube-idp pack new <dir> [--type raw|kustomize] [--name <n>]
+    [--from <ref>]` — a real scaffold that renders as written, never
+    overwriting an existing directory; `--from` forks an existing pack.
+- `spec.packs` config sub-struct: one entry per pack instance with
+  `packRef`, `valuesRef`, inline `values` (an RFC 7386 merge patch over the
+  referenced document), `externalManifests` (grouped `pre`/`with`), and
+  `dependsOn`. Instance identity is a human-readable `id` that defaults to
+  the pack's name when unambiguous; `dependsOn` resolves to a deterministic
+  install order for a later milestone to execute.
+- Namespace injection is one post-render transform for every pack type. A
+  pack that forces a namespace forces it over everything it delivers, and
+  an object declaring a different one is an error rather than a silent
+  override. Scope is decided offline: built-in kinds first, then the
+  `spec.scope` of any **CRD the pack itself bundles**, then the default.
+- kustomize packs render through the kustomize library and stay hermetic:
+  a payload referencing a remote resource is **rejected rather than
+  fetched** (`CUBE-PKG-021`), because kustomize resolves remote references
+  unconditionally and rendering must remain a function of its inputs.
+  `${VAR}` substitution fills values into the built output, and a missing
+  variable is an error, never an empty string.
+- New shared-infrastructure leaf `internal/ref` (`CUBE-REF-*`, tag `REF`):
+  one reference grammar, resolving to a tree or a single file, with
+  explicit schemes only (no bare-git guessing). Local paths and `https`
+  work today; `git+https`, `oci`, and `s3` are recognized and return their
+  own not-implemented codes naming the backend and where it lands.
+- Two runtime dependencies join the closed set, each at its own gate and
+  each confined: `cuelang.org/go` (pack metadata and values) and
+  `sigs.k8s.io/kustomize/api` + `kyaml` (imported by one file).
+
 M7 bootstrap (epic #92; design gate: `docs/DECISIONS.md` 2026-08-06):
 
 - New leaf-ish domain `internal/bootstrap` (`CUBE-BST-*`, tag `BST`): the
