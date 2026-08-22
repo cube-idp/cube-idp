@@ -235,37 +235,19 @@ func TestRenderIsDeterministic(t *testing.T) {
 	}
 }
 
-// Types this build cannot render report one code whose summary names the type
-// and its milestone, rather than rendering something wrong.
+// helm is the one type this build still cannot render: it reports a code
+// whose summary names the type and its milestone, rather than rendering
+// something wrong. Kustomize left this list when its backend landed.
 func TestRenderUnsupportedTypes(t *testing.T) {
-	tests := []struct {
-		name  string
-		files fstest.MapFS
-	}{
-		{
-			name: "helm",
-			files: fstest.MapFS{
-				"pack.cue":   &fstest.MapFile{Data: []byte("name: \"h\"\nversion: \"1\"\ntype: \"helm\"\n")},
-				"Chart.yaml": &fstest.MapFile{Data: []byte("name: h\n")},
-			},
-		},
-		{
-			name: "kustomize",
-			files: fstest.MapFS{
-				"pack.cue":           &fstest.MapFile{Data: []byte("name: \"k\"\nversion: \"1\"\ntype: \"kustomize\"\n")},
-				"kustomization.yaml": &fstest.MapFile{Data: []byte("resources: []\n")},
-			},
-		},
+	files := fstest.MapFS{
+		"pack.cue":   &fstest.MapFile{Data: []byte("name: \"h\"\nversion: \"1\"\ntype: \"helm\"\n")},
+		"Chart.yaml": &fstest.MapFile{Data: []byte("name: h\n")},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p, err := pack.Load(t.Context(), tt.files, "./p")
-			if err != nil {
-				t.Fatalf("Load(%s) = error %v, want a pack", tt.name, err)
-			}
-			_, err = p.Render(t.Context(), pack.RenderOptions{})
-			wantCode(t, err, pack.CodeRenderTypeUnsupported)
-		})
+	p, err := pack.Load(t.Context(), files, "./p")
+	if err != nil {
+		t.Fatalf("Load() = error %v, want a pack", err)
 	}
+	_, err = p.Render(t.Context(), pack.RenderOptions{})
+	wantCode(t, err, pack.CodeRenderTypeUnsupported)
 }

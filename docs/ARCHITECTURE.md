@@ -211,6 +211,7 @@ owner-approved architecture/decision update, never a plan footnote:
 | `sigs.k8s.io/kind` | library-first cluster provisioning (M3) | `internal/cluster/kind` only |
 | `k8s.io/client-go` | Kubernetes client construction — REST config from kubeconfig bytes, discovery, RESTMapper, dynamic client (M6); everything downstream (apply, engine, doctor) builds on it | construction confined to `internal/kube` (see below) |
 | `cuelang.org/go` | the pack metadata language (M8) — `#Values` is a **closed** definition, so a pack author can lock down, expose, and default their values surface; no cheaper format offers that | `internal/pack` metadata/values files only |
+| `sigs.k8s.io/kustomize/api` + `kyaml` | kustomize rendering (M8) — building a kustomization is the tool's own job; exec-ing `kubectl kustomize` was rejected (no runtime dependency on a binary we do not ship) | `internal/pack/kustomize.go` only |
 
 Build-only: `sigs.k8s.io/controller-tools` (controller-gen, pinned Go tool
 dependency). Heavy SDKs adopted later are confined to a single importing
@@ -222,15 +223,26 @@ reference its stable interface types (e.g. `dynamic.Interface`,
 client-go sits closer to apimachinery's status than to kind's. Its version
 is pinned to the apimachinery minor.
 
-**M8 (pack) adds exactly one runtime dependency, `cuelang.org/go`** —
-gated 2026-08-21. Everything else M8 could plausibly want is deferred to
-its own gate, and none of it may be imported before that gate opens:
-`sigs.k8s.io/kustomize/api` + `kyaml` (due with kustomize rendering,
-confined to one file), `go-git/v5` (git backend), `oras-go/v2` (OCI
-backend, aligned with M10), the AWS SDK (S3 backend, on demand), and
-`helm.sh/helm/v4` (helm rendering, its own milestone). `internal/ref`'s
-M8 backends — local tree/file and HTTPS file — are **stdlib-only**.
-Exec-ing `kubectl kustomize` stays rejected.
+**M8 (pack) adds two runtime dependencies, each at its own gate:**
+`cuelang.org/go` (2026-08-21, the design gate) and
+`sigs.k8s.io/kustomize/api` + `kyaml` (with kustomize rendering). Both are
+confined to a single file or file-group inside `internal/pack`; the
+kustomize SDK is imported by `kustomize.go` and nothing else.
+
+Kustomize carries one behaviour worth recording here, because it shapes the
+domain's contract: **it resolves remote references over the network
+unconditionally, and `krusty.Options` has no switch to forbid it.** Since
+rendering is defined as a pure function of its inputs, `internal/pack`
+rejects remote references in a pack payload before invoking kustomize
+(`CUBE-PKG-021`) rather than letting a render reach the network. See
+`docs/domains/pack.md`.
+
+Still deferred to their own gates, and not importable before then:
+`go-git/v5` (git backend), `oras-go/v2` (OCI backend, aligned with M10),
+the AWS SDK (S3 backend, on demand), and `helm.sh/helm/v4` (helm
+rendering, its own milestone). `internal/ref`'s M8 backends — local
+tree/file and HTTPS file — are **stdlib-only**. Exec-ing
+`kubectl kustomize` stays rejected.
 
 **M7 (bootstrap) adds no runtime dependency** — a deliberate, load-bearing
 outcome of two M7 decisions (2026-08-06). The Flux install manifests are
