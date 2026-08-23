@@ -384,3 +384,126 @@ render|validate|new` verbs. `internal/ref` remains **single-consumer**
 (only `internal/pack` imports it), so `CUBE-REF-*` stays documented inside
 `docs/domains/pack.md`; the `docs/domains/ref.md` split is scheduled with
 the CLI→`ref` rewiring in #136.
+
+**2026-08-23 — Helm packs render to a Flux `HelmRelease`, not via local
+templating (M9, epic #139).** A `type: helm` pack is **thin**: chart
+coordinates + a closed `#Values` overlay in `pack.cue`, and **no bundled
+chart content** — bundled chart files are a payload mismatch
+(`CUBE-PKG-004`), rejected rather than ignored. Rendering emits a Flux
+`HelmRelease` (`helm.toolkit.fluxcd.io/v2`, the validated `#Values` result
+nested verbatim into `spec.values`) plus its source CR
+(`source.toolkit.fluxcd.io/v1` — `HelmRepository` + `spec.chart.spec` for a
+classic repo, `OCIRepository` + `spec.chartRef` for `oci://`); the engine's
+helm-controller pulls and templates the chart in cluster. cube-idp never
+runs Helm.
+
+Consequences, each deliberate:
+
+1. **`helm.sh/helm/v4` is not adopted** — removed from the ARCHITECTURE §8
+   deferred set rather than exercised. Emitting a CR is `unstructured` plus
+   apimachinery, so **M9 adds no runtime dependency**, the same outcome M7
+   reached by embedding Flux instead of importing it.
+2. **Rendering stays hermetic** — no `helm template`, no chart, subchart, or
+   repository fetch at render time. Render remains a pure function of its
+   inputs.
+3. **The `#Values` lockdown applies unchanged**, and helm packs are its
+   clearest showcase: values are the only thing the pack contributes. The
+   kustomize-only rules do not apply — nested values are emitted verbatim,
+   so the flat-`map[string]string` restriction (`CUBE-PKG-011`) and the
+   `${VAR}` substitution grammar are not in this path.
+4. **`pack render` on a helm pack shows the `HelmRelease`, not the expanded
+   chart** — a "delegated pack". Accepted and documented rather than
+   worked around: expanding the chart is precisely what is delegated, and
+   `pack validate` therefore cannot tell you the chart exists or that
+   `#Values` matches the chart's own values.
+5. **`pack.namespace` maps to `HelmRelease.spec.targetNamespace`**, because
+   the workload objects do not exist at render time; the post-render
+   namespace transform is structurally unrepresentable for helm and
+   `CUBE-PKG-008` can never fire on one. It still runs over that pack's
+   `externalManifests`. `install.createNamespace: true` is emitted with it:
+   a thin pack has no payload to bundle a `Namespace` into,
+   `externalManifests` is an operator-side surface whose `pre` lifecycle is
+   deferred to M11, so refusing would leave `pack.namespace` silently
+   requiring an out-of-band `kubectl create ns`. helm-controller does the
+   creating; this domain still only renders.
+6. **No new error codes.** Every helm failure lands on `CUBE-PKG-003`
+   (schema, including the `chart` block), `004` (bundled chart content), or
+   `010` (values). `CUBE-PKG-020` "render not implemented" is **retired**,
+   its row kept and its number never reused.
+7. **`pack new --from-chart <dir>`** scaffolds a thin helm pack from a
+   **local chart directory** — a metadata read of `Chart.yaml` +
+   `values.yaml`, no fetch, no new dependency. It is a separate flag from
+   `--from`, which already means *fork another pack*: one flag meaning both
+   would require sniffing pack-vs-chart, the guess `type` exists to
+   abolish. Repo-index and OCI chart reads defer to the milestone that
+   brings the backend.
+8. **`chart.version` is validated by a real SemVer parser, not by the CUE
+   regex.** `#ExactSemVer` is a shape check that fails obviously-malformed
+   input at compile time; the Go loader is authoritative, applying the
+   canonical round-trip `semver.Canonical("v"+v) == "v"+v` with
+   `golang.org/x/mod/semver` — **already in the module graph** (indirect via
+   k8s/cue), so this is an indirect→direct promotion with no new module and
+   no `go.sum` change, not an §8 dependency event. (`Masterminds/semver/v3`,
+   Helm's own, is the fallback if the round-trip proves too strict, and
+   **that** would be an §8 gate.) Verified against `x/mod v0.37.0`: it
+   accepts `6.5.4` and `1.2.3-rc.1` and rejects ranges, partial versions, a
+   leading `v`, and SemVer build metadata. The last two are deliberate and
+   reversible — accepting a spelling later is additive.
+
+**Scope limit, stated rather than implied: M9 supports public chart sources
+and non-sensitive values only.** There is no way to authenticate to a
+private chart repository or registry (no `secretRef` on the emitted source
+CR) and no way to supply a secret value (no `valuesFrom`). Everything in
+`#Values` and in an instance's `values` is plaintext in four places — the
+operator's `cube.yaml`, `pack render` stdout, the M11 delivery artifact,
+and the `HelmRelease` CR. Private-source authentication and secret-backed
+values are deferred to **#142 — Trust & credential bindings**, which also
+owns source verification and the `lock`/`mirror` question. Credentials cut
+across the source CR, the values surface, and the delivery artifact at
+once: one milestone, one design gate. Relatedly, the **pack/instance
+boundary** is now explicit in the contract — a publishable pack carries
+chart coordinates, safe default `#Values`, and metadata, and never
+environment specifics, credentials, or secret names. `pack.namespace` is
+**unchanged from M8**; whether a fuller boundary eventually moves it is
+#142's remit.
+
+**Reproducibility, corrected (independent review of PR #141, 2026-08-23).**
+The conclusion "no `pack.lock` in M9" stands; the reasoning first given for
+it did not, and is replaced here. **An exact `version` on a `kind: repo`
+chart does not prevent drift and does not identify identical software** —
+a Helm repository index is the repository owner's to rewrite, so the same
+chart version can serve different bytes over time. A repo-backed pack is
+therefore a **mutable reference**, and exactness buys legibility and intent
+(one pack identity names one *intended* release) rather than integrity.
+Only an **OCI digest** pins content, so a digest is **recommended for any
+published or production pack** — recommended, not required, because
+requiring it would ban repo-only charts and every development workflow;
+"required for published packs" is a production-profile rule, and profiles
+do not exist yet. The real remedy is a `lock`/`mirror` operation resolving
+a mutable reference to verified content, which is **#142**, not this
+milestone.
+
+**Requires extending the embedded Flux install** (currently
+`--components=source-controller,kustomize-controller`) with
+**helm-controller** and the `helmreleases.helm.toolkit.fluxcd.io` CRD:
+regenerate `internal/bootstrap/assets/flux.yaml` at the pinned v2.9.2 and
+update the recorded sha256. **The bootstrap kind-set and readiness wait
+need no change** — they filter by *kind*, so the new Deployment and CRD are
+waited on as soon as they are in the asset. This corrects the "the
+readiness wait must cover it" framing in #139/#140.
+
+Supersedes the "helm rendering via `helm.sh/helm/v4`" assumption in
+`docs/domains/pack.md` and the M8 design gate (2026-08-21). **Also
+re-sequences the roadmap**: helm is M9, engine → M10, bus → M11,
+`up`/`down` → M12. Living documents are renumbered; the earlier entries in
+this append-only log and the shipped `CHANGELOG.md` release notes are left
+as written, and `/ROADMAP.md` carries the old→new map for anyone who
+follows one — the same treatment the 2026-08-22 closeout gave to references
+to a deleted path.
+
+**Twenty-five detail-level proposals carry a lean pending confirmation**
+and are recorded in a delimited "Proposals — M9 helm packs" section of
+`docs/domains/pack.md`, deleted by the M9 closeout. Seven of them (the
+lettered rows) and the correction to row 5 came from the independent design
+review of PR #141. Living contract: `docs/domains/pack.md`, "Helm packs
+(`type: helm`) — a delegated pack".
