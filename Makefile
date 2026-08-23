@@ -28,7 +28,7 @@ flux-manifests:
 	if [ "$$have" != "$(FLUX_VERSION)" ]; then \
 		echo "flux CLI is $$have, need $(FLUX_VERSION) — install the pinned version first"; exit 1; \
 	fi
-	flux install --export --components=source-controller,kustomize-controller \
+	flux install --export --components=source-controller,kustomize-controller,helm-controller \
 		> internal/bootstrap/assets/flux.yaml
 	@echo "regenerated internal/bootstrap/assets/flux.yaml — update fluxManifestsSHA256 to:"
 	@shasum -a 256 internal/bootstrap/assets/flux.yaml | awk '{print "  "$$1}'

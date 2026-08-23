@@ -87,14 +87,11 @@ the interfaces — lives in `internal/cli`.
 The Flux install manifests are **embedded** in the binary via `go:embed`
 of vendored `flux install --export` output. The component set
 (`--components=…` in the `make flux-manifests` target) is
-**source-controller + kustomize-controller** as shipped, and
-**+ helm-controller** from M9 — the milestone that regenerates the asset,
-because its helm packs render a `HelmRelease` and are inert without
-helm-controller and its `helmreleases.helm.toolkit.fluxcd.io` CRD. *(Until
-that regeneration lands, the committed asset carries the first two only;
-this paragraph is the target state the M9 design gate approved —
-`docs/DECISIONS.md` 2026-08-23.)* The source-controller CRDs a helm pack's
-source CR needs
+**source-controller + kustomize-controller + helm-controller**: the first
+two since M7, helm-controller added by M9, because its helm packs render a
+`HelmRelease` and are inert without helm-controller and its
+`helmreleases.helm.toolkit.fluxcd.io` CRD. The source-controller CRDs a
+helm pack's source CR needs
 (`HelmRepository`, `OCIRepository`, `HelmChart`) were already in the M7
 asset. Adding a component is an asset regeneration + a new recorded sha256,
 **not** a change to this domain's code: the kind-set below filters by
