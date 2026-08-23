@@ -3,20 +3,25 @@
 // docs/ARCHITECTURE.md §9) from this file via docker, never by hand —
 // the c4-architecture skill's canonical pipeline (C4-PlantUML look:
 // person icons, system boundary, arrow labels with [technology],
-// built-in legend). Quote the glob (zsh); delete the .puml
-// intermediates after rendering; only the DSL and SVGs live here.
+// built-in legend). Run these from this directory; delete the .puml
+// intermediates afterwards, so only the DSL and the SVGs live here.
 //   docker run --rm -v "$PWD:/usr/local/structurizr" structurizr/structurizr \
 //     export -workspace workspace.dsl -format plantuml/c4plantuml
-//   docker run --rm -v "$PWD:/data" plantuml/plantuml -tsvg "/data/*.puml"
+//   docker run --rm -v "$PWD:/data" -w /data plantuml/plantuml -tsvg \
+//     structurizr-SystemContext.puml structurizr-Containers.puml \
+//     structurizr-Components.puml
 //   rm structurizr-*.puml
-workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M7)" {
+// Name the .puml files explicitly, as above: passing a glob instead
+// (`-tsvg "/data/*.puml"`) fails with "No file found" — the container
+// does not expand it. Add a line here when a view is added.
+workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M8)" {
 
     model {
         operator = person "Platform Operator" "Declares a cube in cube.yaml and drives it with the cube-idp CLI"
 
         cubeIdp = softwareSystem "cube-idp" "CLI that provisions and manages the cluster declared in a single Config document; the document is the sole source of truth" {
 
-            cli = container "cube-idp binary" "Single Go binary; cobra CLI with init, create, delete, status, bootstrap and config validate|show commands" "Go 1.26" {
+            cli = container "cube-idp binary" "Single Go binary; cobra CLI with init, create, delete, status, bootstrap, pack render|validate|new and config validate|show commands" "Go 1.26" {
                 mainPkg = component "Entrypoint" "Signal-aware context, delegates to the CLI and exits with the mapped code" "cmd/cube-idp"
                 cliPkg = component "CLI edge" "Cobra wiring only: flag mapping, edge composition (init: scaffold-if-absent → load → report; create/delete/status: load → domain operation with injected provisioner factory, SpecValidator type-assert), sole error renderer with exit codes 0/2/1" "internal/cli"
                 configDomain = component "Config domain" "Strict load pipeline (decode → Default → Validate), config scaffolding with O_EXCL clobber safety, docker-style name generator; owns CUBE-CFG-* codes" "internal/config"
@@ -25,10 +30,16 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
                 kindDriver = component "kind driver" "Sole importer of sigs.k8s.io/kind; implements Provisioner + SpecValidator; container-runtime detection deferred to first provisioning call" "internal/cluster/kind"
                 kubeDomain = component "Kube domain" "Shared leaf (M6): constructs REST config, discovery, RESTMapper and dynamic client from injected kubeconfig bytes + context name; Ping reachability check; sole constructor of clients (client-go construction confinement); owns CUBE-KUB-* codes" "internal/kube"
                 bootstrapDomain = component "Bootstrap domain" "Micro-bootstrap applier (M7): SSA-applies embedded pinned Flux manifests + source/sync CRs from spec.engine over injected client-go interfaces, waits the bootstrap kind-set (CRD Established, Deployment/StatefulSet ready, Job complete, Namespace Active), records an inventory (seed of down); SSA hand-rolled on client-go (no new dependency), does not import internal/kube; owns CUBE-BST-* codes" "internal/bootstrap"
+                packDomain = component "Pack domain" "Defines, loads, validates and renders packs (M8): pack.cue metadata with a closed #Values definition, raw + kustomize rendering into a RenderPlan{Prerequisites, Objects}, RFC 7386 values merge, namespace injection whose scope reads bundled CRDs, hermetic rejection of remote kustomize references, instance identity + dependsOn graph, and the pack new scaffold. Renders, never applies; owns CUBE-PKG-* codes" "internal/pack"
+                refLeaf = component "Reference leaf" "Shared infrastructure (M8): one reference grammar resolved to a tree or a single file, explicit schemes only. Local paths and https today; git+https, oci and s3 are recognized and return their own not-implemented codes. Records a pin and enforces containment; owns CUBE-REF-* codes" "internal/ref"
                 cubeerrPkg = component "Error machinery" "Coded error shape (code, summary, remediation) and exit-code mapping only — no code catalog" "internal/cubeerr"
             }
 
             configDoc = container "Config document" "The declared cube (metadata.name + spec.cluster); scaffolded by init when absent, only ever written by the config domain" "cube.yaml (YAML)" {
+                tags "File"
+            }
+
+            packDir = container "Pack" "A self-contained, versioned directory of platform content: pack.cue (name, version, explicit type, closed #Values) plus its manifests or kustomization. Authored by the operator or scaffolded by pack new; read-only to render" "directory (CUE + YAML)" {
                 tags "File"
             }
 
@@ -45,12 +56,17 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
             tags "External"
         }
 
+        refSource = softwareSystem "Remote Reference Source" "Content addressed by an https reference — a values document or a single manifest fetched at render time. git, oci and s3 sources are recognized by the grammar but land with their own milestones" {
+            tags "External"
+        }
+
         kubectlTool = softwareSystem "kubectl" "Operator's Kubernetes tooling; uses the cube-branded kubeconfig context" {
             tags "External"
         }
 
         # People / system relationships
-        operator -> cli "Runs init, create, delete, status, bootstrap and config validate|show" "shell"
+        operator -> cli "Runs init, create, delete, status, bootstrap, pack render|validate|new and config validate|show" "shell"
+        operator -> packDir "Authors packs, or scaffolds them with pack new"
         operator -> kubectlTool "Operates the cluster with"
         kubectlTool -> kubeconfigFile "Reads contexts from"
         kubectlTool -> kindCluster "Talks to the API server of" "HTTPS"
@@ -59,6 +75,8 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         # Container-level relationships
         cli -> configDoc "Scaffolds when absent (init), reads and validates" "os file I/O"
         cli -> kubeconfigFile "Merges the cube context in losslessly (create), removes it (delete), inspects it (status); always writes atomically, never unlinks" "os file I/O"
+        cli -> packDir "Creates (pack new), reads and renders to stdout (pack render, pack validate)" "os file I/O"
+        cli -> refSource "Fetches values documents and external manifests referenced by a pack instance" "HTTPS"
         cli -> containerRuntime "Creates/inspects/deletes kind clusters through" "sigs.k8s.io/kind"
         cli -> kindCluster "Provisions (create) and tears down (delete) from spec.cluster, idempotent by name; exports the kubeconfig of" "sigs.k8s.io/kind"
         cli -> kindCluster "Probes API-server readiness of (status)" "k8s.io/client-go HTTPS"
@@ -82,6 +100,12 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         bootstrapDomain -> apiPkg "Reads the spec.engine sub-struct"
         bootstrapDomain -> cubeerrPkg "Wraps CUBE-BST-* errors with"
         bootstrapDomain -> kindCluster "SSA-applies embedded Flux + source/sync CRs to and waits the bootstrap kind-set on (injected client-go interfaces; never imports internal/kube)" "k8s.io/client-go HTTPS"
+        cliPkg -> packDomain "Composes pack render|validate|new: resolves the <ref> positional to a filesystem, loads the pack, and renders either the artifact or one spec.packs instance"
+        packDomain -> apiPkg "Reads the spec.packs sub-struct (instances, values, externalManifests, dependsOn)"
+        packDomain -> cubeerrPkg "Wraps CUBE-PKG-* errors with"
+        packDomain -> refLeaf "Resolves valuesRef, externalManifests refs and pack new --from through (shared-infrastructure leaf, imported directly)"
+        refLeaf -> cubeerrPkg "Wraps CUBE-REF-* errors with"
+        refLeaf -> refSource "Fetches a single document from" "HTTPS"
         kindDriver -> clusterDomain "Implements Provisioner + SpecValidator (compile-time asserted)"
         kindDriver -> containerRuntime "DetectNodeProvider + cluster create/list/delete" "sigs.k8s.io/kind"
     }
@@ -92,7 +116,7 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
             autoLayout
         }
 
-        container cubeIdp "Containers" "The binary and the two files it owns/shares" {
+        container cubeIdp "Containers" "The binary and the content it owns, shares, or reads" {
             include *
             autoLayout
         }

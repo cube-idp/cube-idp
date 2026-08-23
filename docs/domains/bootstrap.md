@@ -142,9 +142,9 @@ the engine CRs but **does not wait on their reconciliation** (M9).
 
 `bootstrap` records what it applied (a ConfigMap inventory) so a future
 `down` can find and remove it. In-domain and self-contained — **not** a
-reusable applier seam. (The pack-groundwork §2.1 "inventory-inside-Apply"
-obligation is superseded: M8 delivers packs through the Flux source, not
-through a cube-idp applier — DECISIONS 2026-08-06 / Q1.)
+reusable applier seam. (The pre-M8 "inventory-inside-Apply" obligation is
+superseded: M8 delivers packs through the Flux source, not through a
+cube-idp applier — DECISIONS 2026-08-06 / Q1.)
 
 ## Interface doctrine applied
 
