@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
-	"github.com/cube-idp/cube-idp/internal/cubeerr"
 	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
@@ -153,7 +151,13 @@ func newPackValidateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := validateRenders(cmd.Context(), p); err != nil {
+			// validate renders and discards the output, so it reports
+			// everything render would hit — an unparseable manifest, an
+			// empty result, a namespace conflict, values the pack rejects.
+			// Without this, validate could call a pack valid that render
+			// then refuses. Every declarable type renders, so there is no
+			// type for which this check is skipped.
+			if _, err := p.Render(cmd.Context(), pack.RenderOptions{}); err != nil {
 				return err
 			}
 			meta := p.Metadata()
@@ -162,24 +166,6 @@ func newPackValidateCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// validateRenders renders the pack and discards the output, so validate
-// reports everything render would hit — an unparseable manifest, an empty
-// result, a namespace conflict, values the pack rejects. Without this,
-// validate could call a pack valid that render then refuses.
-//
-// A type this build cannot render still validates: its metadata and payload
-// are sound and only the render backend is missing, which is not the pack's
-// problem to fix.
-func validateRenders(ctx context.Context, p *pack.Pack) error {
-	_, err := p.Render(ctx, pack.RenderOptions{})
-
-	var coded *cubeerr.Coded
-	if errors.As(err, &coded) && coded.Code == pack.CodeRenderTypeUnsupported {
-		return nil
-	}
-	return err
 }
 
 // loadPack resolves a pack reference and loads the pack behind it.

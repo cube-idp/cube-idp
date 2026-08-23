@@ -105,28 +105,39 @@ it in the PR that completes or reorders a milestone.
   gate: `docs/DECISIONS.md` 2026-08-21 (plus 2026-08-22, bundled-CRD
   scope); living contract: `docs/domains/pack.md`.
 
+- **M9 — helm packs** (epic #139; PR stack #147/#149/#150, 2026-08-23):
+  `type: helm` became real by **delegating** it. A helm pack is **thin** —
+  chart coordinates (`repo|oci`, exact SemVer, optional OCI digest) plus a
+  closed `#Values` in `pack.cue`, and **no bundled chart content**, which is
+  a payload mismatch (`CUBE-PKG-004`) rather than something ignored. `Render`
+  emits a Flux `HelmRelease` plus its `HelmRepository`/`OCIRepository` source
+  CR, both named for the effective instance id and carrying no namespace, and
+  the engine's helm-controller pulls and templates the chart in cluster.
+  cube-idp never runs Helm, so rendering stays hermetic and
+  `helm.sh/helm/v4` was **dropped** from the deferred set rather than
+  adopted. `#Pack` became a **type-discriminated disjunction**, so "chart
+  required for helm, forbidden otherwise" is schema-enforced; `chart.version`
+  is validated by `golang.org/x/mod/semver` (a promotion to a direct import,
+  no new module, `go.sum` unchanged). The embedded Flux install gained
+  **helm-controller** + the `helmreleases` CRD — an asset regeneration and a
+  new sha256, with **no readiness-wait change**, because the bootstrap
+  kind-set filters by kind. `pack new` gained `--type helm` and
+  `--from-chart <dir>` (a local `Chart.yaml`+`values.yaml` metadata read that
+  scaffolds a thin pack with a reserved-host placeholder url and a lossy,
+  clearly-labelled `#Values`). `CUBE-PKG-020` retired with **no new error
+  codes**. Trade-off recorded in the contract: `pack render` on a helm pack
+  shows the `HelmRelease`, not the expanded chart — a "delegated pack".
+  **Scoped to public chart sources and non-sensitive values**: no
+  private-source auth, no secret-backed `valuesFrom`, and a `kind: repo`
+  chart is an honestly-labelled *mutable reference* (only an OCI digest pins
+  content) — all of that is #142. Design gate: `docs/DECISIONS.md`
+  2026-08-23; living contract: `docs/domains/pack.md`, "Helm packs".
+
 ## Queue
 
-- **M9 — helm packs** (epic #139): make `type: helm` real by **delegating**
-  it. A helm pack is thin — chart coordinates (`repo|oci`, exact version)
-  plus a closed `#Values` in `pack.cue`, and **no bundled chart content** —
-  and rendering it emits a Flux `HelmRelease` plus its
-  `HelmRepository`/`OCIRepository` source CR, which the engine's
-  helm-controller pulls and templates in cluster. cube-idp never runs Helm,
-  so rendering stays hermetic and **no runtime dependency is added**
-  (`helm.sh/helm/v4` is dropped from the deferred set rather than
-  exercised). Also: the embedded Flux install gains **helm-controller** +
-  the `helmreleases` CRD (the bootstrap kind-set already covers them — it
-  filters by kind), the `CUBE-PKG-020` stub retires with no new codes, and
-  `pack new` gains `--type helm` plus `--from-chart <dir>` (a local
-  `Chart.yaml`+`values.yaml` metadata read). Trade-off recorded in the
-  contract: `pack render` on a helm pack shows the `HelmRelease`, not the
-  expanded chart — a "delegated pack". **Scoped to public chart sources and
-  non-sensitive values** — no private-source auth, no secret-backed
-  `valuesFrom`, and a `kind: repo` chart is an honestly-labelled *mutable
-  reference* (only an OCI digest pins content); all of that is #142. Design
-  gate: `docs/DECISIONS.md` 2026-08-23; living contract:
-  `docs/domains/pack.md`, "Helm packs".
+- **M10 — engine**: formalize the gitops driver seam and re-express Flux as
+  a conforming pack, consuming the M8 pack contract unchanged; the
+  Argo replace-vs-layer question is due at its design gate.
 
 - **#142 — trust & credential bindings** (opened from the independent
   review of the M9 design gate, 2026-08-23): private chart-source
@@ -136,10 +147,6 @@ it in the PR that completes or reorders a milestone.
   repository reference to verified content. Its own design gate; **not**
   sequenced into the M9–M12 chain until it is picked up, because every
   milestone after M9 can proceed without it.
-
-- **M10 — engine**: formalize the gitops driver seam and re-express Flux as
-  a conforming pack, consuming the M8 pack contract unchanged; the
-  Argo replace-vs-layer question is due at its design gate.
 
 ### Milestone renumbering (2026-08-23)
 
@@ -174,18 +181,19 @@ questions: `docs/archived/plans/2026-08-01-roadmap-direction.md`. (The pack
 unit's pre-M8 shaping notes were absorbed into `docs/domains/pack.md` and
 `docs/DECISIONS.md`, and deleted with the M8 closeout.)
 
-M9 helm and M10 engine are the committed next milestones (Queue above).
-After them: M11 bus (OCI/git delivery; Flux does both; the real `pre`
-semantics and the air-gap answer are due by then) → M12 thin `up`/`down`
-finisher (it consumes M8's `ResolvedGraph` as data and executes the order)
-→ periphery in pull order (doctor, diff, trust, lock/vendor, spokes, …).
+M10 engine is the committed next milestone (Queue above). After it: M11
+bus (OCI/git delivery; Flux does both; the real `pre` semantics and the
+air-gap answer are due by then) → M12 thin `up`/`down` finisher (it
+consumes M8's `ResolvedGraph` as data and executes the order) → periphery
+in pull order (doctor, diff, trust, lock/vendor, spokes, …). #142 is queued
+but unsequenced: every milestone after M9 can proceed without it.
 
 Rationale: M7 makes the product demo-able (up → gitops-managed cluster) and
-M8 gives the later milestones the content unit they deliver. M9 goes next
-because helm charts are the bulk of real platform content and delegating
-them to a `HelmRelease` turned out to be *lighter* than the "integrate
-`helm.sh/helm/v4`" plan it replaces — it removes a dependency instead of
-adding one.
+M8 gives the later milestones the content unit they deliver. M9 went ahead
+of the engine because helm charts are the bulk of real platform content,
+and delegating them to a `HelmRelease` turned out to be *lighter* than the
+"integrate `helm.sh/helm/v4`" plan it replaced — it removed a deferred
+dependency instead of adopting one.
 Carried-forward hard rules: Argo CD never a compile-time dependency; any
 post-M8 pack-contract change is a design-gate event, never a drive-by edit
 inside a consumer milestone (M9 is exactly such a gate, taken before its
