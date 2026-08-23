@@ -15,65 +15,6 @@ import (
 	"github.com/cube-idp/cube-idp/internal/ref"
 )
 
-// namePlaceholder is what the templates below carry where the pack's name
-// goes. A placeholder rather than a format verb keeps the templates readable
-// as the files they become.
-const namePlaceholder = "PACKNAME"
-
-// scaffolds is the payload each pack type starts from. Every scaffold renders
-// as written — that is the point of the command, and the tests assert it — so
-// each carries a real object rather than a commented-out example.
-//
-// helm has no entry yet. Its render backend is here, but a helm pack is
-// coordinates — a scaffold would have to invent a chart url and version, and
-// a pack pointing at a chart that does not exist is not something an author
-// can check either. Scaffolding one is --from-chart's job, in its own chunk.
-var scaffolds = map[Type]map[string]string{
-	TypeRaw: {
-		MetadataFile: `// ` + namePlaceholder + ` — scaffolded by cube-idp.
-name:    "` + namePlaceholder + `"
-version: "0.1.0"
-type:    "raw"
-
-// A raw pack renders the manifests under manifests/ as they are written.
-// Values have no meaning for it: supplying any is a coded error, which is
-// why this pack declares no #Values.
-`,
-		ManifestsDir + "/configmap.yaml": `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ` + namePlaceholder + `
-data:
-  greeting: hello from ` + namePlaceholder + `
-`,
-	},
-	TypeKustomize: {
-		MetadataFile: `// ` + namePlaceholder + ` — scaffolded by cube-idp.
-name:    "` + namePlaceholder + `"
-version: "0.1.0"
-type:    "kustomize"
-
-// #Values is a closed definition: only the fields declared here may be
-// supplied, and each one's *default fills in when it is not. A kustomize
-// pack's values must be flat strings — they are substituted into ${...}
-// references in the built output.
-#Values: {
-	greeting: string | *"hello"
-}
-`,
-		"kustomization.yaml": `resources:
-- configmap.yaml
-`,
-		"configmap.yaml": `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ` + namePlaceholder + `
-data:
-  greeting: ${greeting}
-`,
-	},
-}
-
 // NewOptions are the inputs to New.
 type NewOptions struct {
 	// Dir is the directory to create. It must not already exist: a pack is
@@ -90,6 +31,13 @@ type NewOptions struct {
 	// scaffolding a fresh one. It is a reference in the grammar
 	// internal/ref owns, resolved as a tree.
 	From string
+	// FromChart optionally names a local Helm chart directory to scaffold a
+	// thin helm pack from: its Chart.yaml and values.yaml are read, and
+	// nothing is copied or fetched. It is a plain path, not a reference —
+	// reading a chart out of a repository index or an OCI artifact needs a
+	// fetch capability this domain does not have. Mutually exclusive with
+	// From and Type: a chart scaffolds a helm pack and only a helm pack.
+	FromChart string
 }
 
 // New creates a pack directory that is ready to render: either a fresh
@@ -117,8 +65,14 @@ func New(ctx context.Context, opts NewOptions) error {
 // have one, and copying is what --from means — renaming happens only when it
 // was asked for.
 func newPackFiles(ctx context.Context, opts NewOptions) (map[string][]byte, error) {
+	if opts.From != "" && opts.FromChart != "" {
+		return nil, newSourceConflictError()
+	}
 	if opts.From != "" {
 		return forkedFiles(ctx, opts.Name, opts.From)
+	}
+	if opts.FromChart != "" {
+		return chartScaffoldedFiles(opts.Name, opts.Dir, opts.FromChart)
 	}
 	name := opts.Name
 	if name == "" {

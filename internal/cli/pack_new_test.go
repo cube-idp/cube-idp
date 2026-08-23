@@ -155,3 +155,98 @@ func TestPackNewFromRejectsType(t *testing.T) {
 		t.Errorf("stderr = %q, want it to name both flags", stderr)
 	}
 }
+
+// chartDir writes a minimal local Helm chart to scaffold from.
+func chartDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "podinfo")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"Chart.yaml":  "apiVersion: v2\nname: podinfo\nversion: 6.5.4\n",
+		"values.yaml": "replicaCount: 2\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// --from-chart reads a local chart and scaffolds a thin helm pack that renders
+// its delegation immediately. The confirmation says the url is a placeholder,
+// because a local directory cannot say where the chart is published.
+func TestPackNewFromChart(t *testing.T) {
+	dir := targetDir(t, "podinfo-pack")
+
+	code, stdout, stderr := run(t, "pack", "new", dir, "--from-chart", chartDir(t))
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
+	}
+	if !strings.Contains(stdout, "created pack podinfo 0.1.0 (helm)") {
+		t.Errorf("stdout = %q, want the created pack's identity", stdout)
+	}
+	if !strings.Contains(stdout, "placeholder chart url") {
+		t.Errorf("stdout = %q, want the placeholder url called out", stdout)
+	}
+
+	// Thin: the chart is read, never copied.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir(%s) = %v", dir, err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "pack.cue" {
+		t.Errorf("scaffolded pack holds %d entries, want only pack.cue", len(entries))
+	}
+
+	code, stdout, stderr = run(t, "pack", "render", dir)
+	if code != 0 {
+		t.Fatalf("render exit = %d, want 0 (stderr: %s)", code, stderr)
+	}
+	for _, want := range []string{"kind: HelmRepository", "kind: HelmRelease", "version: 6.5.4"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("rendered output missing %q; got:\n%s", want, stdout)
+		}
+	}
+}
+
+// --from-chart names one operation on one kind of input, so it cannot be
+// combined with the flag that forks a pack or with a type it always implies.
+func TestPackNewFromChartConflicts(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		wants []string
+	}{
+		{
+			name:  "with --from",
+			args:  []string{"--from", "./somewhere"},
+			wants: []string{"--from", "--from-chart"},
+		},
+		{
+			name:  "with --type",
+			args:  []string{"--type", "kustomize"},
+			wants: []string{"--type", "--from-chart"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := append([]string{"pack", "new", targetDir(t, "x"), "--from-chart", chartDir(t)}, tt.args...)
+			code, stdout, stderr := run(t, args...)
+			if code != 1 {
+				t.Fatalf("exit = %d, want 1 (stderr: %s)", code, stderr)
+			}
+			if stdout != "" {
+				t.Errorf("stdout = %q, want nothing when the flags conflict", stdout)
+			}
+			for _, want := range tt.wants {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("stderr = %q, want it to name %s", stderr, want)
+				}
+			}
+		})
+	}
+}

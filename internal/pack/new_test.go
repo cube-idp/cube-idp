@@ -122,11 +122,11 @@ func TestNewValidatesBeforeWriting(t *testing.T) {
 	}
 }
 
-// helm renders, but scaffolding one would mean inventing chart coordinates —
-// a pack pointing at a chart that does not exist is no more checkable than an
-// unrenderable one. It is refused until --from-chart can read real ones.
-func TestNewRefusesUnscaffoldableType(t *testing.T) {
-	err := pack.New(t.Context(), pack.NewOptions{Dir: newDir(t, "chart"), Type: pack.TypeHelm})
+// Every type the schema admits is scaffoldable, so the unsupported-type
+// refusal is reachable only by asking for a type that is not one — which the
+// CLI cannot do, but the domain API can.
+func TestNewRefusesUnknownType(t *testing.T) {
+	err := pack.New(t.Context(), pack.NewOptions{Dir: newDir(t, "x"), Type: pack.Type("bogus")})
 	wantCode(t, err, pack.CodeScaffoldFailed)
 }
 
