@@ -3,6 +3,7 @@ package pack_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -82,12 +83,15 @@ category:  "gateway"
 			want: pack.Metadata{Name: "k", Version: "1", Type: pack.TypeKustomize},
 		},
 		{
-			name: "helm payload marker",
+			// A helm pack is thin: the chart block in pack.cue is its
+			// marker, and there is no payload at all.
+			name: "helm chart coordinates",
 			files: fstest.MapFS{
-				"pack.cue":   &fstest.MapFile{Data: []byte("name: \"h\"\nversion: \"1\"\ntype: \"helm\"\n")},
-				"Chart.yaml": &fstest.MapFile{Data: []byte("name: h\n")},
+				"pack.cue": &fstest.MapFile{Data: []byte("name: \"h\"\nversion: \"1\"\ntype: \"helm\"\n" + "chart: {kind: \"repo\", url: \"https://c.example.com\", name: \"c\", version: \"1.0.0\"}\n")},
 			},
-			want: pack.Metadata{Name: "h", Version: "1", Type: pack.TypeHelm},
+			want: pack.Metadata{Name: "h", Version: "1", Type: pack.TypeHelm, Chart: &pack.Chart{
+				Kind: pack.ChartKindRepo, URL: "https://c.example.com", Name: "c", Version: "1.0.0",
+			}},
 		},
 		{
 			name: "declaring #Values does not break the closed schema",
@@ -109,11 +113,38 @@ type:    "kustomize"
 			if err != nil {
 				t.Fatalf("Load(%s) = error %v, want a pack", tt.name, err)
 			}
-			if got := p.Metadata(); got != tt.want {
-				t.Errorf("Load(%s).Metadata() = %+v, want %+v", tt.name, got, tt.want)
+			// Metadata carries a Chart pointer, so compare what it points
+			// at rather than the address a fresh decode happens to give.
+			got := p.Metadata()
+			if !sameMetadata(got, tt.want) {
+				t.Errorf("Load(%s).Metadata() = %s, want %s", tt.name, showMetadata(got), showMetadata(tt.want))
 			}
 		})
 	}
+}
+
+// sameMetadata compares two Metadata values by content, following the Chart
+// pointer instead of comparing addresses.
+func sameMetadata(got, want pack.Metadata) bool {
+	if (got.Chart == nil) != (want.Chart == nil) {
+		return false
+	}
+	if got.Chart != nil && *got.Chart != *want.Chart {
+		return false
+	}
+	got.Chart, want.Chart = nil, nil
+	return got == want
+}
+
+// showMetadata renders Metadata with its chart expanded, so a failure names
+// the fields that differ rather than a pointer.
+func showMetadata(m pack.Metadata) string {
+	chart := "<nil>"
+	if m.Chart != nil {
+		chart = fmt.Sprintf("%+v", *m.Chart)
+	}
+	m.Chart = nil
+	return fmt.Sprintf("%+v chart:%s", m, chart)
 }
 
 func TestLoadErrors(t *testing.T) {
@@ -196,12 +227,13 @@ func TestLoadErrors(t *testing.T) {
 			want: pack.CodePayloadMismatch,
 		},
 		{
-			name: "helm pack without a chart",
+			// The chart block is required by the schema, so its absence is
+			// a schema fault rather than a payload one.
+			name: "helm pack without a chart block",
 			files: fstest.MapFS{
-				"pack.cue":         &fstest.MapFile{Data: []byte("name: \"x\"\nversion: \"1\"\ntype: \"helm\"\n")},
-				"manifests/x.yaml": &fstest.MapFile{Data: []byte("{}")},
+				"pack.cue": &fstest.MapFile{Data: []byte("name: \"x\"\nversion: \"1\"\ntype: \"helm\"\n")},
 			},
-			want: pack.CodePayloadMismatch,
+			want: pack.CodeMetadataSchema,
 		},
 	}
 

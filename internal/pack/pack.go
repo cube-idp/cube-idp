@@ -33,13 +33,48 @@ const valuesPath = "#Values"
 // closed on purpose: an undeclared top-level field is a coded error, not
 // silently ignored metadata. Definitions such as #Values are not regular
 // fields, so a pack may declare them alongside these.
-const packSchema = `#Pack: {
+//
+// #Pack is a disjunction discriminated on type rather than one flat struct,
+// which is what makes "chart is required for helm and forbidden otherwise"
+// a schema failure instead of a hand-written check: a chart on a raw pack has
+// no field to unify with, and a helm pack without one leaves a required field
+// unset. #ExactSemVer is a shape check only — checkChartVersion in helm.go is
+// the authority, and when the two disagree the parser wins.
+//
+// The shared fields live in a hidden _common rather than a #Common definition
+// because a definition is closed: `#Common & {type!: ...}` rejects its own
+// disjuncts' fields and the schema fails to compile at all. Closedness is not
+// lost — #Pack is a definition, so an undeclared top-level field is still an
+// error, and a chart on a raw pack still has no field to unify with.
+const packSchema = `#ExactSemVer: =~"^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+
+#ChartRepo: {
+	kind!:    "repo"
+	url!:     =~"^https?://"
+	name!:    string & !=""
+	version!: #ExactSemVer
+}
+
+#ChartOCI: {
+	kind!:    "oci"
+	url!:     =~"^oci://"
+	version!: #ExactSemVer
+	digest?:  =~"^sha256:[a-f0-9]{64}$"
+}
+
+_common: {
 	name!:      =~"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
 	version!:   string & !=""
-	type!:      "raw" | "helm" | "kustomize"
 	namespace?: =~"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
 	category?:  string & !=""
-}`
+}
+
+#Pack: _common & ({
+	type!: "raw" | "kustomize"
+} | {
+	type!:  "helm"
+	chart!: #ChartRepo | #ChartOCI
+})`
 
 // Type is a pack's render type. It is declared in pack.cue and never sniffed
 // from the payload: a payload that disagrees with the declared type is an
@@ -66,6 +101,9 @@ type Metadata struct {
 	// Category identifies what a pack is (gateway, engine, ...). It is
 	// metadata only and never selects a code path.
 	Category string `json:"category,omitempty"`
+	// Chart is the chart a helm pack delegates to. It is non-nil exactly
+	// when Type is TypeHelm; the schema admits it for no other type.
+	Chart *Chart `json:"chart,omitempty"`
 }
 
 // Pack is a loaded, validated pack: its metadata plus the filesystem its
@@ -124,6 +162,11 @@ func decodeMetadata(src []byte) (Metadata, cue.Value, error) {
 	if err := unified.Decode(&meta); err != nil {
 		return Metadata{}, cue.Value{}, newMetadataSchemaError(cueDetails(err))
 	}
+	if meta.Chart != nil {
+		if err := checkChartVersion(meta.Chart.Version); err != nil {
+			return Metadata{}, cue.Value{}, err
+		}
+	}
 	return meta, v.LookupPath(cue.ParsePath(valuesPath)), nil
 }
 
@@ -153,11 +196,27 @@ func checkPayload(fsys fs.FS, t Type) error {
 			return newPayloadMismatchError(t, "kustomization.yaml")
 		}
 	case TypeHelm:
-		if !anyFileExists(fsys, "Chart.yaml") {
-			return newPayloadMismatchError(t, "Chart.yaml")
+		// Inverted on purpose: a helm pack delegates to a chart it does not
+		// carry, so its marker is the chart block in pack.cue (the schema's
+		// job) plus the *absence* of chart content. Ignoring bundled files
+		// instead would ship content this build silently never uses.
+		if name, found := anyChartContent(fsys); found {
+			return newChartContentError(name)
 		}
 	}
 	return nil
+}
+
+// anyChartContent reports the first Helm chart file or directory present at
+// the root of fsys, if any. These are the names a chart is recognized by, so
+// finding one at a thin pack's root means the author bundled a chart.
+func anyChartContent(fsys fs.FS) (string, bool) {
+	for _, name := range []string{"Chart.yaml", "Chart.yml", "templates", "charts"} {
+		if _, err := fs.Stat(fsys, name); err == nil {
+			return name, true
+		}
+	}
+	return "", false
 }
 
 func dirExists(fsys fs.FS, name string) bool {

@@ -436,19 +436,23 @@ enforceable by the schema rather than by a hand-written check:
 #ChartOCI:  { kind!: "oci",  url!: =~"^oci://",    version!: #ExactSemVer,
               digest?: =~"^sha256:[a-f0-9]{64}$" }
 
-#Common: {
+_common: {
 	name!:      =~"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
 	version!:   string & !=""
 	namespace?: =~"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
 	category?:  string & !=""
 }
 
-#Pack: #Common & ({ type!: "raw" | "kustomize" } |
+#Pack: _common & ({ type!: "raw" | "kustomize" } |
                   { type!: "helm", chart!: #ChartRepo | #ChartOCI })
 ```
 
-`#Pack` stays closed, so `chart` on a `raw` or `kustomize` pack has no
-field to unify with and fails exactly like any other undeclared key.
+The shared fields are a **hidden `_common`, not a `#Common` definition**,
+because a definition is closed: `#Common & {type!: …}` rejects its own
+disjuncts' fields and the schema fails to compile at all. Closedness is not
+lost — `#Pack` is a definition, so an undeclared top-level field is still an
+error, and `chart` on a `raw` or `kustomize` pack has no field to unify with
+and fails exactly like any other undeclared key.
 
 **`#ExactSemVer` is a shape check, not the authority.** A CUE regex is
 cheap to read and cheap to get subtly wrong, and it is the *first* thing to

@@ -235,19 +235,35 @@ func TestRenderIsDeterministic(t *testing.T) {
 	}
 }
 
-// helm is the one type this build still cannot render: it reports a code
-// whose summary names the type and its milestone, rather than rendering
-// something wrong. Kustomize left this list when its backend landed.
-func TestRenderUnsupportedTypes(t *testing.T) {
-	files := fstest.MapFS{
-		"pack.cue":   &fstest.MapFile{Data: []byte("name: \"h\"\nversion: \"1\"\ntype: \"helm\"\n")},
-		"Chart.yaml": &fstest.MapFile{Data: []byte("name: h\n")},
+// Every type the schema admits now renders, so there is no unsupported-type
+// path left to reach: helm was the last one, and CUBE-PKG-020 is retired
+// rather than reachable. This asserts the whole enum, so a type added without
+// a render arm fails here instead of at a user.
+func TestEveryDeclarableTypeRenders(t *testing.T) {
+	packs := map[pack.Type]fstest.MapFS{
+		pack.TypeRaw: rawPackWith(rawCUE, map[string]*fstest.MapFile{"a.yaml": manifest("ConfigMap", "a", "")}),
+		pack.TypeHelm: helmPack("name: \"h\"\nversion: \"1\"\ntype: \"helm\"\n" +
+			"chart: {kind: \"repo\", url: \"https://c.example.com\", name: \"c\", version: \"1.0.0\"}\n"),
+		pack.TypeKustomize: {
+			"pack.cue":           &fstest.MapFile{Data: []byte("name: \"k\"\nversion: \"1\"\ntype: \"kustomize\"\n")},
+			"kustomization.yaml": &fstest.MapFile{Data: []byte("resources:\n- cm.yaml\n")},
+			"cm.yaml":            manifest("ConfigMap", "k", ""),
+		},
 	}
 
-	p, err := pack.Load(t.Context(), files, "./p")
-	if err != nil {
-		t.Fatalf("Load() = error %v, want a pack", err)
+	for typ, files := range packs {
+		t.Run(string(typ), func(t *testing.T) {
+			p, err := pack.Load(t.Context(), files, "./p")
+			if err != nil {
+				t.Fatalf("Load(%s) = error %v, want a pack", typ, err)
+			}
+			plan, err := p.Render(t.Context(), pack.RenderOptions{})
+			if err != nil {
+				t.Fatalf("Render(%s) = error %v, want a plan", typ, err)
+			}
+			if len(plan.Objects) == 0 {
+				t.Errorf("Render(%s) rendered no objects, want at least one", typ)
+			}
+		})
 	}
-	_, err = p.Render(t.Context(), pack.RenderOptions{})
-	wantCode(t, err, pack.CodeRenderTypeUnsupported)
 }

@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	cuelang.org/go v0.17.1
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/mod v0.37.0
 	k8s.io/apimachinery v0.36.2
 	k8s.io/client-go v0.36.2
 	sigs.k8s.io/kind v0.32.0
@@ -61,7 +62,6 @@ require (
 	github.com/xlab/treeprint v1.2.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect

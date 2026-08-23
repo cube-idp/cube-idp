@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"maps"
@@ -16,16 +17,17 @@ import (
 	"github.com/cube-idp/cube-idp/internal/ref"
 )
 
-// helmMilestone names where the one still-unimplemented render type lands, so
-// the not-implemented error points somewhere real.
-const helmMilestone = "a milestone of its own, with the helm dependency"
-
 // RenderOptions carries the render inputs that come from the setup rather
 // than from the pack itself.
 type RenderOptions struct {
 	// Values are validated against the pack's #Values definition. They are
 	// meaningful only to helm and kustomize packs; a raw pack rejects them.
 	Values map[string]any
+	// InstanceID is the effective identity this copy of the pack is called
+	// by, and it becomes the name of every object a helm pack renders.
+	// Empty means artifact mode — no setup — and the pack's own name is
+	// used, which is what an effective id defaults to anyway.
+	InstanceID string
 }
 
 // RenderPlan is the result of rendering one pack: the objects the pack itself
@@ -91,7 +93,7 @@ func renderInstance(ctx context.Context, p *Pack, spec v1alpha1.PackSpec, resolv
 	if err != nil {
 		return RenderPlan{}, err
 	}
-	plan, err := p.Render(ctx, RenderOptions{Values: values})
+	plan, err := p.Render(ctx, RenderOptions{Values: values, InstanceID: spec.ID})
 	if err != nil {
 		return RenderPlan{}, err
 	}
@@ -152,10 +154,15 @@ func (p *Pack) Render(ctx context.Context, opts RenderOptions) (RenderPlan, erro
 	switch p.meta.Type {
 	case TypeRaw:
 		return p.planRaw(ctx)
+	case TypeHelm:
+		return p.planHelm(p.instanceID(opts.InstanceID), values)
 	case TypeKustomize:
 		return p.planKustomize(ctx, values)
 	default:
-		return RenderPlan{}, newRenderTypeUnsupportedError(p.meta.Type, helmMilestone)
+		// Unreachable: #Pack admits three types and a Pack only exists by
+		// way of Load. Kept total and reported as what it would be — the
+		// schema and this switch having drifted apart — not a panic.
+		return RenderPlan{}, newSchemaDriftError(fmt.Sprintf("unknown type %q", p.meta.Type))
 	}
 }
 

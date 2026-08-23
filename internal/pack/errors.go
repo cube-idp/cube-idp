@@ -67,9 +67,11 @@ const (
 	// CodeDependencyCycle reports a dependsOn cycle, including an instance
 	// depending on itself.
 	CodeDependencyCycle cubeerr.Code = "CUBE-PKG-019"
-	// CodeRenderTypeUnsupported reports a pack whose declared type this build
-	// cannot render. The summary names the type and the milestone that
-	// implements it.
+	// CodeRenderTypeUnsupported is RETIRED and unreachable: it reported a
+	// pack whose declared type this build could not render, and helm — its
+	// only subject — now renders. The constant stays so the number is never
+	// reused; a future unimplemented type takes a code of its own, the same
+	// way each ref backend has its own.
 	CodeRenderTypeUnsupported cubeerr.Code = "CUBE-PKG-020"
 	// CodeRemoteRef reports a kustomize payload that references a remote
 	// resource, which a hermetic renderer refuses to fetch.
@@ -112,7 +114,7 @@ func newMetadataCompileError(cause error) error {
 func newMetadataSchemaError(cause error) error {
 	return cubeerr.Wrap(CodeMetadataSchema,
 		fmt.Sprintf("%s does not satisfy the pack schema", MetadataFile),
-		"a pack declares name, version, and type (raw|helm|kustomize), plus optional namespace and category — nothing else", cause)
+		"a pack declares name, version, and type (raw|helm|kustomize), plus optional namespace and category — nothing else; a helm pack also declares chart, and no other type may", cause)
 }
 
 func newPayloadMismatchError(t Type, want string) error {
@@ -284,10 +286,4 @@ func newDependencyCycleError(members []string) error {
 	return cubeerr.Wrap(CodeDependencyCycle,
 		fmt.Sprintf("dependsOn forms a cycle between %s", strings.Join(members, ", ")),
 		"break the cycle: dependencies must form a directed acyclic graph", nil)
-}
-
-func newRenderTypeUnsupportedError(t Type, milestone string) error {
-	return cubeerr.Wrap(CodeRenderTypeUnsupported,
-		fmt.Sprintf("rendering type %q is not implemented in this build", t),
-		fmt.Sprintf("%s rendering lands in %s; use type raw until then", t, milestone), nil)
 }

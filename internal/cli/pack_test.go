@@ -158,11 +158,19 @@ func TestPackErrorsAreCodedOnStderr(t *testing.T) {
 			wantErr: "CUBE-PKG-001",
 		},
 		{
-			name:    "helm render is not implemented in this build",
+			// A helm pack is thin, so a bundled chart is the payload
+			// mismatch — read from the opposite direction to raw.
+			name:    "helm pack bundling a chart",
 			verb:    "render",
-			packCUE: "name: \"h\"\nversion: \"1\"\ntype: \"helm\"\n",
+			packCUE: "name: \"h\"\nversion: \"1\"\ntype: \"helm\"\n" + chartCUE,
 			files:   map[string]string{"Chart.yaml": "name: h\n"},
-			wantErr: "CUBE-PKG-020",
+			wantErr: "CUBE-PKG-004",
+		},
+		{
+			name:    "helm pack whose chart version is a range",
+			verb:    "render",
+			packCUE: "name: \"h\"\nversion: \"1\"\ntype: \"helm\"\nchart: {kind: \"repo\", url: \"https://c.example.com\", name: \"c\", version: \">=1.0.0\"}\n",
+			wantErr: "CUBE-PKG-003",
 		},
 		{
 			// kustomize resolves remote references over the network and offers
