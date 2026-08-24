@@ -32,6 +32,15 @@ type Provisioner interface {
 }
 ```
 
+`Kubeconfig` bytes are stable — identical across calls — while the
+cluster is untouched. That stability is part of the seam contract: it is
+the strongest signal the seam exposes for proving `Ensure` idempotency,
+and the conformance suite relies on it (a second `Ensure` that recreates
+the cluster changes certificates/endpoint and fails the suite). A future
+provider that cannot satisfy it (e.g. rotating exec-token kubeconfigs)
+needs the guarantee relaxed at a design gate — it is never a driver-side
+choice.
+
 `RunClusterConformance(t, factory)` asserts the lifecycle contract; a
 stateful fake runs it in the green gate; the kind driver runs it for real
 behind `make test-e2e` (opt-in, auto-skips without Docker).

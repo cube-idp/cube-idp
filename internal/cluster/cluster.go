@@ -38,5 +38,8 @@ type Provisioner interface {
 	Delete(ctx context.Context, name string) error
 	// Kubeconfig returns the raw admin kubeconfig with provider-native
 	// entry names; rebranding to cube-owned names is the domain's job.
+	// Bytes are stable — identical across calls — while the cluster is
+	// untouched; the conformance suite relies on this to detect an
+	// Ensure that recreates instead of no-opping.
 	Kubeconfig(ctx context.Context, name string) ([]byte, error)
 }
