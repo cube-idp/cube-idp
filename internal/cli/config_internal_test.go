@@ -46,11 +46,14 @@ spec:
 	}
 }
 
-// TestConfigValidateRejectsUnknownEngineProvider pins validate parity for
-// the engine after the ratified no-SpecValidator decision: parity is
-// api-side validation alone, so an unknown spec.engine.provider is a
-// config-domain field error — exit 2, naming the field — with no engine
-// package involved in the validate path.
+// TestConfigValidateRejectsUnknownEngineProvider pins engine validate
+// parity: the engine spec has no driver-private surface (the gate declined
+// an opaque forProvider), so validation is api-side alone and no driver
+// implements the optional SpecValidator capability (decided at the C3
+// checkpoint, https://github.com/cube-idp/cube-idp/pull/173; engine.md
+// alignment lands with the M10 closeout). An unknown spec.engine.provider
+// is thus a config-domain field error — exit 2, naming the field — with
+// no engine package involved in the validate path.
 func TestConfigValidateRejectsUnknownEngineProvider(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
