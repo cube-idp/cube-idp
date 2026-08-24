@@ -14,8 +14,9 @@ seam, and re-express Flux as a **conforming pack**. The domain answers
 three questions the rest of the system needs answered per engine, and
 nothing else:
 
-1. **What installs it** — the pinned install content (for Flux: the
-   embedded engine pack).
+1. **What installs it, and where it lives** — the pinned install content
+   (for Flux: the embedded engine pack) and its install namespace, the
+   placement fact bootstrap's inventory needs.
 2. **What wires its sync** — the source + sync CRs derived from
    `spec.engine.source`.
 3. **What "reconciled" means** — per-kind readiness predicates over the
@@ -51,10 +52,18 @@ type Provider interface {
     SourceObjects(ctx context.Context, spec v1alpha1.EngineSpec) ([]*unstructured.Unstructured, error)
 
     // Reconciled judges one applied source/sync object's status:
-    // reconciled, not yet (with a human-readable reason), or a coded
+    // reconciled, not yet (with a human-readable reason — it feeds the
+    // reconciliation-wait timeout diagnostics, CUBE-BST-009), or a coded
     // error for an object the driver does not recognize. Pure — it reads
     // the unstructured status it is handed, it never fetches.
     Reconciled(obj *unstructured.Unstructured) (bool, string, error)
+
+    // InstallNamespace names the namespace the driver's install content
+    // lives in — where the source/sync CRs land and where bootstrap
+    // records its inventory. Pure and constant per driver (flux:
+    // "flux-system"); it is the engine-neutral channel through which
+    // the edge supplies inventory placement to bootstrap.
+    InstallNamespace() string
 }
 ```
 
@@ -106,7 +115,12 @@ bootstrap` owns today:
   as an embedded **pack directory** — `pack.cue` (`name: "flux"`,
   `version` = the pinned Flux version, `type: raw`,
   `category: "engine"`, no `#Values`, no `namespace`) with the manifests
-  as its `manifests/` payload. The pin discipline is unchanged: version
+  as its `manifests/` payload. **Version spelling is clean SemVer**: the
+  pack's `version` is `2.9.2`, never the upstream `v`-prefixed tag
+  spelling (the repo versioning rule), and `spec.engine.version` accepts
+  the clean spelling; the driver alone maps to and from `v2.9.2` where
+  the vendored asset or upstream tags require it, inside its superseding
+  version check. The pin discipline is unchanged: version
   constant + recorded sha256 + `make flux-manifests` regeneration, never
   fetched at runtime. The asset remains **data, not a dependency**.
 - **Source/sync CR emission** — the `GitRepository`/`OCIRepository` +
@@ -129,9 +143,16 @@ parsing the bootstrap asset already gets — the driver does that itself.
 composition edge (which legitimately imports both domains) loads the
 driver's embedded directory through `internal/pack` and asserts
 `pack.Load` + `Render` succeed and yield exactly the driver's
-`InstallObjects` — the contract's first serious dogfood, including the
-bundled-CRD scope index at real scale. If the pack contract and the
-driver ever disagree, the gate breaks; neither side may drift silently.
+`InstallObjects` — **deep equality of the ordered object lists after
+both parse paths**, not membership or byte comparison, so the raw-render
+semantics (lexical file order, `.yaml|.yml` filtering, empty-document
+skipping, empty-render rejection) are all in scope. It is the contract's
+first serious dogfood: `Load`, the payload check, raw rendering,
+determinism, and **building** the bundled-CRD scope index over the real
+Flux payload (the pack declares no `namespace`, so no scope answer
+affects an object — the index is exercised, not its decisions). If the
+pack contract and the driver ever disagree, the gate breaks; neither
+side may drift silently.
 
 **What the engine pack is not.** It carries no instance state — the
 source/sync CRs are config-derived and driver-emitted, never part of the
@@ -152,7 +173,22 @@ carries the mirror text (`docs/domains/bootstrap.md`, M10 section):
   apply, the by-kind bootstrap kind-set wait, the inventory, and the
   install sequencing — and now also executes the **reconciliation wait**
   after the source CRs are applied, polling with **injected** driver
-  predicates (function values cross the edge; no import).
+  predicates (function values cross the edge; no import). Its timeout is
+  a new machinery code, `CUBE-BST-009`, distinct from the kind-set wait's
+  `-005`, carrying the pending objects **and the driver's pending
+  reasons** — which is where `Reconciled`'s reason string goes. The
+  wait-code pass-through rule applies unchanged: an already-coded cause
+  (including an `ENG`-coded predicate error) keeps its code; the wait
+  code wraps only a deadline with objects still pending. The existing
+  `--timeout` bounds both waits as one total budget, not per phase.
+- **Inventory placement is injected.** Bootstrap's inventory ConfigMap
+  namespace (`flux-system` today) is engine knowledge: post-M10 the
+  namespace is a **string supplied at the composition edge from the
+  driver's `InstallNamespace`**, beside the predicates — the seam
+  carries the fact, the edge passes the string, bootstrap records where
+  it is told. The retained machinery codes' Flux-specific
+  summaries/remediations go engine-neutral in the same narrowing
+  (mirror text: `docs/domains/bootstrap.md`, M10 section).
 - Everything Flux-specific leaves: the embedded asset, the version
   constant + sha256, the source/sync CR shapes. `CUBE-BST-001`, `-002`,
   `-007` and `-008` — the asset-provenance, asset-parse,
@@ -228,6 +264,9 @@ never re-tagged across domains.
     source yields none;
   - `Reconciled` answers correctly over ready / not-ready / unknown
     status fixtures, and unknown objects yield the coded error;
+  - `InstallNamespace` is non-empty and names a `Namespace` object
+    present in the driver's install objects — placement is tied to
+    content, not asserted on faith;
   - the `SpecValidator` sub-test runs iff implemented, with driver-owned
     valid/invalid fixtures;
   - documented semantics are enforced, not just non-nil-checked — the
@@ -254,7 +293,14 @@ import path, not the module graph.
   Its delivery-target facts come from `spec.engine.source` via `api/`
   (the reservation above); the real `pre` semantics and the air-gap
   answer are due there. The air-gap local-manifest override deferred at
-  M7 now lands per-driver (the driver owns its asset).
+  M7 now lands per-driver (the driver owns its asset). Two guardrails
+  the M11 gate must state when it defines its consumer-side input types
+  (recorded here so the §2 edge-mapping rule is not read as license):
+  the mapped delivery type **preserves the `Prerequisites`/`Objects`
+  group boundary** — two delivery units is contractual, and a flattening
+  map would be silent contract erosion; and **effective-id derivation
+  stays single-sourced** — the edge calls `pack.EffectiveIDs`, consumers
+  receive mapped values and never re-derive identity.
 - **M12 (`up`/`down`)** composes bootstrap + engine at the orchestrator
   edge exactly as `cube-idp bootstrap` does at the CLI edge; `down` reads
   bootstrap's inventory, which never moved.

@@ -249,6 +249,37 @@ are updated in place.
   **superseded** by `CUBE-ENG-*` codes at implementation — rows kept,
   numbers never reused, the same discipline as `APP` and `CUBE-PKG-020`.
   The machinery codes `CUBE-BST-003..006` are unchanged.
+- **Inventory placement is supplied, not known.** The inventory ConfigMap
+  today hardcodes the `flux-system` namespace — engine knowledge this
+  narrowing must not leave behind. Post-M10 the inventory **namespace is
+  an injected string**, supplied at the composition edge from the engine
+  driver's `InstallNamespace` accessor (the seam's engine-neutral
+  placement channel; its conformance suite ties the name to a
+  `Namespace` object in the install content), alongside the predicates —
+  a string crosses, no engine type does. The sequencing fact is
+  preserved by the existing order: the namespace is part of the driver's
+  install content, applied before the inventory records into it.
+- **Retained codes lose their Flux-specific voice.** The machinery codes
+  keep their identities, but their user-facing summaries/remediations
+  currently say "Flux CRDs", "inspect the Flux controllers", and
+  `kubectl -n flux-system …`. As part of the same narrowing they go
+  engine-neutral (naming the injected namespace and generic "engine
+  controllers" where needed) — bootstrap's *text* must not know Flux any
+  more than its code does.
+- **The reconciliation-wait timeout is a new machinery code,
+  `CUBE-BST-009`** — not a broadening of `CUBE-BST-005`, whose meaning
+  stays exactly "kind-set wait timed out". The two waits fail for
+  different reasons with different remediations (an install problem vs a
+  source problem), so they get different codes. `CUBE-BST-009` names the
+  pending objects **with the driver's pending reasons** — that is what
+  the `Reconciled` reason string is for. The pass-through rule
+  established for `newWaitError` (an already-coded cause keeps its code;
+  wrapping in the wait code only on deadline with objects still pending)
+  applies to the new wait identically: an `ENG`-coded predicate error
+  surfacing through bootstrap's poll keeps its `ENG` code — codes are
+  never re-tagged, machinery included.
+- **`--timeout` bounds the whole bootstrap** — both waits share one
+  total budget; it is not per phase.
 - **Unchanged, explicitly**: the inventory (still this domain's, still
   the seed of M12 `down`), the no-second-applier rule, the injection
   contract, and delivery-through-engine — bootstrap installs and hands

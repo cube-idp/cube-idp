@@ -552,7 +552,15 @@ order of the post-M9 architecture review's eleven gate questions (epic
    reconciled predicates. `CUBE-BST-001/002/007/008` — every code raised
    by the moving content, the unsupported-source-kind check included —
    follow it and are superseded by `ENG` codes (rows kept, numbers never
-   reused); the machinery codes `003..006` stay. Rejected:
+   reused); the machinery codes `003..006` stay, but their Flux-specific
+   summaries/remediations go engine-neutral in the same narrowing.
+   **Inventory placement is supplied, not known**: the inventory
+   ConfigMap's namespace (`flux-system` today — engine knowledge) becomes
+   a string injected at the composition edge from the driver's
+   `InstallNamespace` accessor — the seam's engine-neutral placement
+   channel, conformance-tied to a `Namespace` object in the install
+   content; the driver's install content still creates that namespace
+   before the inventory records into it. Rejected:
    the seam subsuming bootstrap (retiring a healthy domain to relocate
    machinery that is not engine-specific), and a hollow seam that leaves
    Flux content inside bootstrap (a second driver would then require
@@ -569,7 +577,12 @@ order of the post-M9 architecture review's eleven gate questions (epic
    `ResolvedGraph` to `api/` (they are not config surface; `api/` is the
    document's contract, not an inter-domain type bucket) and a types-only
    shared package (the import-cycle-workaround smell §2 already bans).
-   Recorded as an explicit §2 rule.
+   Recorded as an explicit §2 rule, with two guardrails the M11 gate
+   must state when it defines its consumer types (so the rule is not
+   read as license): the mapped delivery type preserves the
+   `Prerequisites`/`Objects` group boundary, and effective-id derivation
+   stays single-sourced — the edge calls `pack.EffectiveIDs`, consumers
+   never re-derive identity.
 3. **Argo: layer, not replace — Flux is the committed substrate.** The
    constraint is traceable to M9, not taste: `type: helm` packs render
    Flux-specific CRs, so a non-Flux steady-state engine leaves every helm
@@ -584,14 +597,18 @@ order of the post-M9 architecture review's eleven gate questions (epic
    design-gate event that must re-answer the M9 consequence above.
 4. **Flux-as-pack, operationally: the embedded asset becomes an embedded
    pack; day-0 stays cube-idp-applied.** The driver's asset is a pack
-   directory (`name: "flux"`, `version` = the pinned Flux version,
+   directory (`name: "flux"`, `version` = the pinned Flux version in
+   clean SemVer — `2.9.2`, never the upstream `v`-prefixed tag spelling;
+   `spec.engine.version` accepts the clean spelling and the driver alone
+   maps to `v2.9.2` where the vendored asset requires it —
    `type: raw`, `category: "engine"`, no `#Values`, no `namespace`) whose
    payload is the vendored manifests. The driver parses that payload
    itself (a raw, values-free pack renders as a sorted manifest parse) —
    it does **not** import `internal/pack`; conformance is enforced by a
    green-gate test at the composition edge asserting `pack.Load`+`Render`
    over the embedded directory yields exactly the driver's install
-   objects. The pack carries no instance state — source/sync CRs are
+   objects — deep equality of the ordered object lists after both parse
+   paths, not membership. The pack carries no instance state — source/sync CRs are
    config-derived and driver-emitted, never pack content (the M9
    pack/instance boundary). Day-0 bootstrap remains the one sanctioned
    direct apply (no circular "engine delivers the engine"); whether the
@@ -605,12 +622,16 @@ order of the post-M9 architecture review's eleven gate questions (epic
    reopening the seam. The M7 air-gap local-manifest override, deferred
    to the M11 air-gap decision, becomes per-driver (each driver owns its
    asset).
-6. **Seam method set: three pure responsibilities plus one optional
-   capability.** `InstallObjects` (pinned install content; a
-   contradicting `spec.engine.version` is a coded error),
-   `SourceObjects` (source + sync CRs from the spec; nil source → none),
-   `Reconciled` (per-object readiness judgment over handed-in
-   `unstructured` status — the driver never fetches). Optional
+6. **Seam method set: four pure methods plus one optional capability.**
+   `InstallObjects` (pinned install content; a contradicting
+   `spec.engine.version` is a coded error), `SourceObjects` (source +
+   sync CRs from the spec; nil source → none), `Reconciled` (per-object
+   readiness judgment over handed-in `unstructured` status — the driver
+   never fetches; its reason string feeds `CUBE-BST-009` diagnostics),
+   and `InstallNamespace` (the engine-neutral placement channel: where
+   the install content lives and the inventory records —
+   conformance-tied to a `Namespace` object in the install content).
+   Optional
    `SpecValidator` capability mirrors cluster's (M4 pattern): pure
    validation for `config validate` parity. **Every method is pure** —
    §4's "interfaces stay pure where possible" holds completely here,
@@ -631,9 +652,18 @@ order of the post-M9 architecture review's eleven gate questions (epic
    `metadata.generation`, so a stale `Ready` from before a spec change
    never counts — read off `unstructured` status, no kstatus. Bootstrap's
    machinery executes them after the source CRs apply, bounded by the
-   existing `--timeout`; `cube-idp bootstrap` completes only when
-   reconciled. Whether `status` gains an engine line is an
-   implementation-breakdown decision, not gate-fixed.
+   existing `--timeout` (one **total** budget across both waits, not per
+   phase); `cube-idp bootstrap` completes only when reconciled. The
+   reconciliation-wait timeout is a **new machinery code,
+   `CUBE-BST-009`** — `-005` keeps meaning exactly "kind-set wait timed
+   out"; the two waits fail differently and remediate differently — and
+   it carries the pending objects with the driver's pending reasons,
+   which is what `Reconciled`'s reason string exists for. The wait-code
+   pass-through rule extends to it unchanged: an already-coded cause
+   (including an `ENG`-coded predicate error) keeps its code; the wait
+   code wraps only a deadline with objects still pending. Whether
+   `status` gains an engine line is an implementation-breakdown decision,
+   not gate-fixed.
 9. **Conformance shape: hermetic against the real driver, because the
    seam is pure.** `RunEngineConformance(t, factory)` in
    `internal/engine`; no stateful fake is written (a fake of a pure seam

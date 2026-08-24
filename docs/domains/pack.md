@@ -807,7 +807,9 @@ type ResolvedGraph struct {
 ```
 
 Stable instance identities rather than integer indices, because M11 and M12
-consume this across a package boundary.
+consume this across domain boundaries — as values mapped at the
+CLI/orchestrator edge into consumer-declared types, never as an import
+(`docs/ARCHITECTURE.md` §2, M10 gate).
 
 *(Parked, its own future decision: a `pack.cue` `requires:` field expressing
 a validated capability expectation — "expects a cert-manager" — checked at

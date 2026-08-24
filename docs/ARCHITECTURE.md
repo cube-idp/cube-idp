@@ -96,7 +96,8 @@ Three package categories, and only these:
   `internal/ref` leaf.
 - `internal/engine` (M10, gated) formalizes the gitops **driver seam**
   (Kind B, `engine.Provider`): a **pure** seam — install content, source +
-  sync CRs, and per-object reconciled predicates; no method performs I/O.
+  sync CRs, per-object reconciled predicates, and the install-namespace
+  placement fact; no method performs I/O.
   Applying and waiting stay `internal/bootstrap`'s machinery, which M10
   narrows to engine-agnostic (the Flux-specific asset, CR shapes, and
   version pin move to the `engine/flux` driver, which owns them as an
