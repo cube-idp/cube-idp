@@ -28,6 +28,17 @@ type cluster interface {
 	get(ctx context.Context, obj *unstructured.Unstructured) (*unstructured.Unstructured, error)
 }
 
+// resettableRESTMapper is the capability bootstrap expects of the injected
+// meta.RESTMapper beyond mapping: a discovery-cached mapper whose cache can be
+// invalidated with Reset, so kinds registered by CRDs bootstrap has just
+// applied resolve on retry. Declared consumer-side, where it is consumed; the
+// memory-cached RESTMapper internal/kube constructs provides it. A mapper
+// without it degrades loudly, not silently: the retry is skipped and the
+// mapping miss surfaces as CUBE-BST-003.
+type resettableRESTMapper interface {
+	Reset()
+}
+
 // Applier installs objects with server-side apply and waits for the bootstrap
 // kind-set to become ready. It runs against injected client-go interfaces — the
 // CLI edge constructs them (via internal/kube) and passes them in, so this
@@ -37,7 +48,9 @@ type Applier struct {
 	interval time.Duration
 }
 
-// NewApplier builds an Applier over an injected dynamic client and REST mapper.
+// NewApplier builds an Applier over an injected dynamic client and REST
+// mapper. The mapper is expected to additionally implement Reset() so CRs of
+// just-installed CRDs can map after a discovery refresh.
 func NewApplier(dyn dynamic.Interface, mapper meta.RESTMapper) *Applier {
 	return &Applier{k: &dynamicCluster{dyn: dyn, mapper: mapper}, interval: pollInterval}
 }
@@ -90,7 +103,7 @@ func (c *dynamicCluster) resourceFor(obj *unstructured.Unstructured) (dynamic.Re
 		// The mapper is a discovery cache that may have been primed before the
 		// Flux CRDs were installed; force a refresh and retry once so kinds
 		// registered by just-applied CRDs (GitRepository, Kustomization, …) map.
-		if r, ok := c.mapper.(interface{ Reset() }); ok {
+		if r, ok := c.mapper.(resettableRESTMapper); ok {
 			r.Reset()
 			mapping, err = c.mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 		}
