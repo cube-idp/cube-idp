@@ -15,6 +15,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/bootstrap"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/cluster/kind"
+	"github.com/cube-idp/cube-idp/internal/engine/substrate"
 	"github.com/cube-idp/cube-idp/internal/kube"
 )
 
@@ -57,7 +58,7 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 		t.Fatalf("kube.New: %v", err)
 	}
 
-	applier := bootstrap.NewApplier(client.Dynamic(), client.RESTMapper(), bootstrap.InventoryNamespace)
+	applier := bootstrap.NewApplier(client.Dynamic(), client.RESTMapper(), substrate.Namespace)
 	engine := &v1alpha1.EngineSpec{
 		Provider: v1alpha1.EngineProviderFlux,
 		Source: &v1alpha1.EngineSource{
@@ -66,14 +67,18 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 			Ref:  "master", Path: "./kustomize", Interval: "1m",
 		},
 	}
+	substrateObjs, err := substrate.Objects()
+	if err != nil {
+		t.Fatalf("substrate.Objects: %v", err)
+	}
 	installCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
 	defer cancel()
-	if err := applier.InstallEngine(installCtx, engine, bootstrap.EngineWait{}); err != nil {
+	if err := applier.InstallEngine(installCtx, engine, substrateObjs, bootstrap.EngineWait{}); err != nil {
 		t.Fatalf("InstallEngine: %v", err)
 	}
 
 	dyn := client.Dynamic()
-	if _, err := dyn.Resource(configMap).Namespace(bootstrap.InventoryNamespace).
+	if _, err := dyn.Resource(configMap).Namespace(substrate.Namespace).
 		Get(ctx, bootstrap.InventoryName, metav1.GetOptions{}); err != nil {
 		t.Errorf("bootstrap inventory ConfigMap not found: %v", err)
 	}

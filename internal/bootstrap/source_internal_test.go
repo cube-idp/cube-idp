@@ -15,6 +15,16 @@ func nested(t *testing.T, o *unstructured.Unstructured, fields ...string) string
 	return s
 }
 
+// testSubstrateObjs is the injected install content the InstallEngine tests
+// run over: bootstrap applies whatever substrate set the edge hands it, so a
+// minimal kind-set-covered pair stands in for the real payload.
+func testSubstrateObjs() []*unstructured.Unstructured {
+	return []*unstructured.Unstructured{
+		newNamespace("flux-system", "Active"),
+		newDeployment("source-controller", "flux-system", 1, 1, 1),
+	}
+}
+
 // TestSourceObjectsGit builds a GitRepository + Kustomization pointing at it.
 func TestSourceObjectsGit(t *testing.T) {
 	objs, err := sourceObjects(&v1alpha1.EngineSource{
@@ -95,7 +105,7 @@ func TestInstallEngineWithSource(t *testing.T) {
 			Ref: "main", Path: "./", Interval: "10m",
 		},
 	}
-	if err := a.InstallEngine(t.Context(), engine, EngineWait{}); err != nil {
+	if err := a.InstallEngine(t.Context(), engine, testSubstrateObjs(), EngineWait{}); err != nil {
 		t.Fatalf("InstallEngine() error = %v", err)
 	}
 
@@ -134,7 +144,7 @@ func TestInstallEngineNoSource(t *testing.T) {
 	for _, engine := range []*v1alpha1.EngineSpec{nil, {Provider: v1alpha1.EngineProviderFlux}} {
 		f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
 		a := testApplier(f)
-		if err := a.InstallEngine(t.Context(), engine, EngineWait{}); err != nil {
+		if err := a.InstallEngine(t.Context(), engine, testSubstrateObjs(), EngineWait{}); err != nil {
 			t.Fatalf("InstallEngine(%v) error = %v", engine, err)
 		}
 		if _, ok := f.store["GitRepository/flux-system/flux-system"]; ok {
@@ -159,7 +169,7 @@ func TestInstallEnginePartialSourceApplyRecordsIntent(t *testing.T) {
 		Ref: "main", Path: "./", Interval: "10m",
 	}}
 
-	if err := a.InstallEngine(t.Context(), engine, EngineWait{}); err == nil {
+	if err := a.InstallEngine(t.Context(), engine, testSubstrateObjs(), EngineWait{}); err == nil {
 		t.Fatal("InstallEngine() = nil, want the source apply failure")
 	}
 
@@ -173,25 +183,4 @@ func TestInstallEnginePartialSourceApplyRecordsIntent(t *testing.T) {
 			t.Errorf("inventory (recorded as intent) missing %s — down could not clean a partial apply:\n%s", want, data)
 		}
 	}
-}
-
-// TestInstallEngineVersion asserts spec.engine.version against the embedded
-// FluxVersion: a match proceeds, a mismatch is CUBE-BST-008 (before any apply).
-func TestInstallEngineVersion(t *testing.T) {
-	t.Run("matching version proceeds", func(t *testing.T) {
-		f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
-		a := testApplier(f)
-		if err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{Version: FluxVersion}, EngineWait{}); err != nil {
-			t.Fatalf("InstallEngine(version=%s) error = %v, want nil", FluxVersion, err)
-		}
-	})
-	t.Run("mismatched version is rejected before apply", func(t *testing.T) {
-		f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
-		a := testApplier(f)
-		err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{Version: "v0.0.0-nope"}, EngineWait{})
-		assertCode(t, err, CodeVersionMismatch)
-		if len(f.calls) != 0 {
-			t.Errorf("version mismatch touched the cluster (%v); it must fail before any apply", f.calls)
-		}
-	})
 }

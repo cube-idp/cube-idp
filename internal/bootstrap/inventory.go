@@ -12,10 +12,12 @@ const (
 	// InventoryName is the ConfigMap bootstrap records its applied objects in —
 	// the seed a future `down` reads to tear the bootstrap back down.
 	InventoryName = "cube-idp-bootstrap-inventory"
-	// InventoryNamespace is the default inventory placement the CLI edge
-	// injects today — the substrate namespace. It is edge input, not domain
-	// knowledge: the Applier records wherever NewApplier told it to, and this
-	// constant moves to the engine substrate with the M10-C2 asset re-homing.
+	// InventoryNamespace names where the source/sync CRs bootstrap emits are
+	// placed. Inventory placement itself is injected — the Applier records
+	// wherever NewApplier told it to, and the edge passes the substrate
+	// namespace fact (M10-C2) — so this constant survives only as the source
+	// CRs' placement until the M10-C3 wiring move takes the shapes (and it)
+	// to the flux driver.
 	InventoryNamespace = "flux-system"
 	// inventoryKey is the ConfigMap data key holding the JSON object list.
 	inventoryKey = "objects"
