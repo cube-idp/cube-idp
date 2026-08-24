@@ -82,7 +82,7 @@ it in the PR that completes or reorders a milestone.
   versioned unit of platform content every later milestone consumes. It
   **defines, loads, validates, and renders** packs and stops there: under
   delivery-through-engine, packs reach a cluster by being written into the
-  source Flux watches (M11), so M8 touches no cluster and has **no e2e**.
+  source Flux watches (M12), so M8 touches no cluster and has **no e2e**.
   A pack is a directory with a `pack.cue` carrying `name`/`version`/an
   explicit `type` (`raw|helm|kustomize`, never sniffed) and the
   differentiator, a **closed `#Values` definition** that locks down,
@@ -100,7 +100,7 @@ it in the PR that completes or reorders a milestone.
   git/oci/s3 recognized with their own not-implemented codes). New
   `spec.packs` sub-struct with instance identity (`id`, defaulted from the
   pack name when unambiguous) and a `dependsOn` graph resolved to a
-  deterministic order for M12. Two runtime dependencies at their own
+  deterministic order for M13. Two runtime dependencies at their own
   gates: `cuelang.org/go` and `sigs.k8s.io/kustomize/api`+`kyaml`. Design
   gate: `docs/DECISIONS.md` 2026-08-21 (plus 2026-08-22, bundled-CRD
   scope); living contract: `docs/domains/pack.md`.
@@ -135,9 +135,23 @@ it in the PR that completes or reorders a milestone.
 
 ## Queue
 
-- **M10 — engine**: formalize the gitops driver seam and re-express Flux as
-  a conforming pack, consuming the M8 pack contract unchanged; the
-  Argo replace-vs-layer question is due at its design gate.
+- **M10 — engine**: the two-tier model (design gate 2026-08-24, PR #161):
+  the invariant Flux **substrate** (tier 1, re-expressed as a conforming
+  pack) and the tier-2 **engine driver seam** (`engine.Provider`;
+  user-selected via `spec.engine.provider`, immutable per cube; flux is
+  the only — degenerate — driver). Consumes the M8 pack contract
+  unchanged. The former Argo replace-vs-layer question is dissolved by
+  the model: the substrate is never replaceable (M9 pins it), and Argo is
+  a legitimate future tier-2 driver behind its own design gate.
+
+- **M11 — gateway** (inserted at the M10 design gate by operator
+  decision, 2026-08-24, per the founding vision: "we use Flux to deliver
+  the prerequisites and the engine itself … from there the engine takes
+  over"): the trust-fabric prerequisite delivered through tier 1 ahead of
+  ordinary packs — ingress gateway, certificates, hostnames, trust,
+  internal DNS. Own epic and design gate when picked up; its delivery
+  semantics feed the bus milestone's `Prerequisites` handling. No design
+  here — only the queue position.
 
 - **#142 — trust & credential bindings** (opened from the independent
   review of the M9 design gate, 2026-08-23): private chart-source
@@ -145,7 +159,7 @@ it in the PR that completes or reorders a milestone.
   instance-level `valuesFrom` for secret-backed values, source
   verification, and the `lock`/`mirror` operation that resolves a mutable
   repository reference to verified content. Its own design gate; **not**
-  sequenced into the M9–M12 chain until it is picked up, because every
+  sequenced into the M9–M13 chain until it is picked up, because every
   milestone after M9 can proceed without it.
 
 ### Milestone renumbering (2026-08-23)
@@ -160,12 +174,23 @@ Helm was re-sequenced ahead of the engine milestone by operator direction
 | bus (delivery, `pre` semantics, air-gap) | M10 | **M11** |
 | `up`/`down` finisher | M11 | **M12** |
 
+### Milestone renumbering (2026-08-24)
+
+The gateway milestone was inserted after M10 by operator decision at the
+M10 design gate (PR #161), so everything behind it shifts by one again:
+
+| Milestone | Was | Now |
+|---|---|---|
+| gateway (trust fabric) | — (new) | **M11** |
+| bus (delivery, `pre` semantics, air-gap) | M11 | **M12** |
+| `up`/`down` finisher | M12 | **M13** |
+
 Living documents (this file, `docs/ARCHITECTURE.md`, `docs/domains/`) use
 the new numbers. **`docs/DECISIONS.md` and the shipped `CHANGELOG.md`
 release notes are not rewritten** — both record what was true when written,
-and `DECISIONS.md` is append-only. This table is the answer for anyone who
-follows a reference from one of them. `docs/archived/` is read-only and
-untouched.
+and `DECISIONS.md` is append-only. These tables are the answer for anyone
+who follows a reference from one of them (chain them for pre-2026-08-23
+references). `docs/archived/` is read-only and untouched.
 
 Deferred from M8 with issues of their own: the CLI edge resolving
 `<ref>`/`packRef` through `internal/ref` (**#136**, carrying the
@@ -182,11 +207,12 @@ unit's pre-M8 shaping notes were absorbed into `docs/domains/pack.md` and
 `docs/DECISIONS.md`, and deleted with the M8 closeout.)
 
 M10 engine is the committed next milestone (Queue above). After it: M11
-bus (OCI/git delivery; Flux does both; the real `pre` semantics and the
-air-gap answer are due by then) → M12 thin `up`/`down` finisher (it
-consumes M8's `ResolvedGraph` as data and executes the order) → periphery
-in pull order (doctor, diff, trust, lock/vendor, spokes, …). #142 is queued
-but unsequenced: every milestone after M9 can proceed without it.
+gateway (trust fabric, inserted 2026-08-24) → M12 bus (OCI/git delivery;
+the real `pre` semantics and the air-gap answer are due by then) → M13
+thin `up`/`down` finisher (it consumes M8's `ResolvedGraph` as data and
+executes the order) → periphery in pull order (doctor, diff, trust,
+lock/vendor, spokes, …). #142 is queued but unsequenced: every milestone
+after M9 can proceed without it.
 
 Rationale: M7 makes the product demo-able (up → gitops-managed cluster) and
 M8 gives the later milestones the content unit they deliver. M9 went ahead
@@ -197,5 +223,6 @@ dependency instead of adopting one.
 Carried-forward hard rules: Argo CD never a compile-time dependency; any
 post-M8 pack-contract change is a design-gate event, never a drive-by edit
 inside a consumer milestone (M9 is exactly such a gate, taken before its
-code). Still open for the M10/M11 design gates: the Argo scope and the
-air-gap commitment (direction doc §5).
+code). The Argo scope was settled at the M10 gate (two-tier: legitimate
+future tier-2 driver, own design gate); still open for the M12 bus gate:
+the air-gap commitment (direction doc §5).
