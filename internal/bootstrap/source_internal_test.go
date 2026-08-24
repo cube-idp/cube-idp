@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -88,7 +87,7 @@ func TestSourceObjectsUnknownKind(t *testing.T) {
 // CRs are applied (after the readiness wait) and the inventory includes them.
 func TestInstallEngineWithSource(t *testing.T) {
 	f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
-	a := &Applier{k: f, interval: time.Millisecond}
+	a := testApplier(f)
 	engine := &v1alpha1.EngineSpec{
 		Provider: v1alpha1.EngineProviderFlux,
 		Source: &v1alpha1.EngineSource{
@@ -96,7 +95,7 @@ func TestInstallEngineWithSource(t *testing.T) {
 			Ref: "main", Path: "./", Interval: "10m",
 		},
 	}
-	if err := a.InstallEngine(t.Context(), engine); err != nil {
+	if err := a.InstallEngine(t.Context(), engine, EngineWait{}); err != nil {
 		t.Fatalf("InstallEngine() error = %v", err)
 	}
 
@@ -134,8 +133,8 @@ func TestInstallEngineWithSource(t *testing.T) {
 func TestInstallEngineNoSource(t *testing.T) {
 	for _, engine := range []*v1alpha1.EngineSpec{nil, {Provider: v1alpha1.EngineProviderFlux}} {
 		f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
-		a := &Applier{k: f, interval: time.Millisecond}
-		if err := a.InstallEngine(t.Context(), engine); err != nil {
+		a := testApplier(f)
+		if err := a.InstallEngine(t.Context(), engine, EngineWait{}); err != nil {
 			t.Fatalf("InstallEngine(%v) error = %v", engine, err)
 		}
 		if _, ok := f.store["GitRepository/flux-system/flux-system"]; ok {
@@ -154,13 +153,13 @@ func TestInstallEnginePartialSourceApplyRecordsIntent(t *testing.T) {
 		readyApply:    true,
 		failApplyKind: "Kustomization",
 	}
-	a := &Applier{k: f, interval: time.Millisecond}
+	a := testApplier(f)
 	engine := &v1alpha1.EngineSpec{Source: &v1alpha1.EngineSource{
 		Kind: v1alpha1.EngineSourceGit, URL: "https://github.com/org/fleet",
 		Ref: "main", Path: "./", Interval: "10m",
 	}}
 
-	if err := a.InstallEngine(t.Context(), engine); err == nil {
+	if err := a.InstallEngine(t.Context(), engine, EngineWait{}); err == nil {
 		t.Fatal("InstallEngine() = nil, want the source apply failure")
 	}
 
@@ -181,15 +180,15 @@ func TestInstallEnginePartialSourceApplyRecordsIntent(t *testing.T) {
 func TestInstallEngineVersion(t *testing.T) {
 	t.Run("matching version proceeds", func(t *testing.T) {
 		f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
-		a := &Applier{k: f, interval: time.Millisecond}
-		if err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{Version: FluxVersion}); err != nil {
+		a := testApplier(f)
+		if err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{Version: FluxVersion}, EngineWait{}); err != nil {
 			t.Fatalf("InstallEngine(version=%s) error = %v, want nil", FluxVersion, err)
 		}
 	})
 	t.Run("mismatched version is rejected before apply", func(t *testing.T) {
 		f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
-		a := &Applier{k: f, interval: time.Millisecond}
-		err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{Version: "v0.0.0-nope"})
+		a := testApplier(f)
+		err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{Version: "v0.0.0-nope"}, EngineWait{})
 		assertCode(t, err, CodeVersionMismatch)
 		if len(f.calls) != 0 {
 			t.Errorf("version mismatch touched the cluster (%v); it must fail before any apply", f.calls)

@@ -57,7 +57,7 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 		t.Fatalf("kube.New: %v", err)
 	}
 
-	applier := bootstrap.NewApplier(client.Dynamic(), client.RESTMapper())
+	applier := bootstrap.NewApplier(client.Dynamic(), client.RESTMapper(), bootstrap.InventoryNamespace)
 	engine := &v1alpha1.EngineSpec{
 		Provider: v1alpha1.EngineProviderFlux,
 		Source: &v1alpha1.EngineSource{
@@ -68,7 +68,7 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 	}
 	installCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
 	defer cancel()
-	if err := applier.InstallEngine(installCtx, engine); err != nil {
+	if err := applier.InstallEngine(installCtx, engine, bootstrap.EngineWait{}); err != nil {
 		t.Fatalf("InstallEngine: %v", err)
 	}
 

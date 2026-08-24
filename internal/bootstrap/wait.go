@@ -27,7 +27,7 @@ func (a *Applier) WaitReady(ctx context.Context, objs []*unstructured.Unstructur
 		return len(pending) == 0, nil
 	})
 	if err != nil {
-		return newWaitError(pending, err)
+		return newWaitError(a.invNS, pending, err)
 	}
 	return nil
 }
