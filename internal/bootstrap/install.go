@@ -14,7 +14,7 @@ import (
 // after the Flux CRDs are established (Install's readiness wait), so their
 // kinds map; the inventory is recorded BEFORE the source apply, so a
 // half-applied source is still visible to a future `down`. Bootstrap does NOT
-// wait on engine-CR reconciliation — that is the M9 seam's job; it applies and
+// wait on engine-CR reconciliation — that is the M10 seam's job; it applies and
 // records, then hands over.
 func (a *Applier) InstallEngine(ctx context.Context, engine *v1alpha1.EngineSpec) error {
 	if err := checkEngineVersion(engine); err != nil {
