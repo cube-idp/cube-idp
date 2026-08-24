@@ -35,12 +35,15 @@ type RenderOptions struct {
 //
 // The two groups are separate because they become separate delivery units:
 // prerequisites need their own readiness gate before the pack's own objects
-// are reconciled. This build populates Objects only — external manifests, and
-// therefore prerequisites, arrive with the setup surface that declares them.
+// are reconciled. Render fills Objects; RenderInstance adds the external
+// manifests the setup declares beside the pack, splitting them by lifecycle.
 type RenderPlan struct {
-	// Prerequisites are delivered, and must become ready, before Objects.
+	// Prerequisites are the lifecycle:pre external manifests. They are
+	// carried as data only; their delivery semantics are the delivery
+	// milestone's contract.
 	Prerequisites []*unstructured.Unstructured
-	// Objects are the pack's own rendered objects.
+	// Objects are the pack's rendered objects, followed by the
+	// lifecycle:with external manifests when an instance declares any.
 	Objects []*unstructured.Unstructured
 }
 
