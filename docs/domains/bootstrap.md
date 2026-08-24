@@ -50,9 +50,9 @@ type EngineSource struct {
 }
 ```
 
-- **Minimal-typed on purpose.** There is no engine *driver seam* until M9,
+- **Minimal-typed on purpose.** There is no engine *driver seam* until M10,
   so there is no provider to own an opaque payload; a typed shape is
-  validatable in `api/` today. When M9 formalizes the engine seam,
+  validatable in `api/` today. When M10 formalizes the engine seam,
   migrating `spec.engine` to the cluster-style `provider` + opaque
   `forProvider` pattern is a **design-gate event**, not a drive-by edit.
   The `EngineSource` shape below is **finalized**, not provisional.
@@ -85,16 +85,28 @@ the interfaces — lives in `internal/cli`.
 ## Flux acquisition (embedded, pinned)
 
 The Flux install manifests are **embedded** in the binary via `go:embed`
-of vendored `flux install --export` output (source-controller +
-kustomize-controller at minimum — the components the bootstrap kind-set
-waits on). They are **data, not a Go dependency**:
+of vendored `flux install --export` output. The component set
+(`--components=…` in the `make flux-manifests` target) is
+**source-controller + kustomize-controller** as shipped, and
+**+ helm-controller** from M9 — the milestone that regenerates the asset,
+because its helm packs render a `HelmRelease` and are inert without
+helm-controller and its `helmreleases.helm.toolkit.fluxcd.io` CRD. *(Until
+that regeneration lands, the committed asset carries the first two only;
+this paragraph is the target state the M9 design gate approved —
+`docs/DECISIONS.md` 2026-08-23.)* The source-controller CRDs a helm pack's
+source CR needs
+(`HelmRepository`, `OCIRepository`, `HelmChart`) were already in the M7
+asset. Adding a component is an asset regeneration + a new recorded sha256,
+**not** a change to this domain's code: the kind-set below filters by
+*kind*, so a new controller Deployment and a new CRD are waited on the
+moment they are in the asset. They are **data, not a Go dependency**:
 
 - a **version constant** + a recorded **sha256** pin the exact bytes;
 - a `make` target regenerates the asset deliberately (reviewed diff), the
   same discipline as the committed deepcopy and the C4 SVGs;
 - nothing is fetched at runtime — the hermetic gate and the air-gap
   posture are preserved. The air-gap *override* (a local-manifest path) is
-  deferred to the M10 air-gap decision.
+  deferred to the M11 air-gap decision.
 
 ## SSA + readiness (hand-rolled on client-go)
 
@@ -112,8 +124,12 @@ DECISIONS 2026-08-06). Readiness predicates read off `unstructured` status.
 | Job | `Complete` condition true |
 | Namespace | phase `Active` |
 
+The set is **by kind, not by name**, and that is load-bearing: it is why
+M9's helm-controller Deployment and `helmreleases` CRD join the wait with
+no code change here, and why any future component does too.
+
 Engine-CR readiness (GitRepository/Kustomization *reconciled*) is **out of
-scope** — it belongs to the M9 engine seam.
+scope** — it belongs to the M10 engine seam.
 
 ## Source + sync CRs, and the install sequence
 
@@ -136,7 +152,7 @@ is correct and recoverable:
 Because the injected `RESTMapper` is a discovery cache primed *before* the
 Flux CRDs existed, the adapter **resets it and retries once** on a mapping
 miss, so the just-installed CR kinds resolve. Bootstrap applies and records
-the engine CRs but **does not wait on their reconciliation** (M9).
+the engine CRs but **does not wait on their reconciliation** (M10).
 
 ## Inventory (seed of `down`)
 
@@ -149,7 +165,7 @@ cube-idp applier — DECISIONS 2026-08-06 / Q1.)
 ## Interface doctrine applied
 
 **No Kind-B driver seam in M7.** Flux is the only engine; the swappable
-engine seam is an M9 concern. Consumer-side (Kind A) doctrine governs: the
+engine seam is an M10 concern. Consumer-side (Kind A) doctrine governs: the
 CLI edge injects concrete client-go interfaces; `bootstrap` defines any
 narrow interface it needs where it uses it, mocked with hand-rolled
 function-field structs. Argo CD, if it ever returns, arrives as an engine
@@ -200,12 +216,12 @@ superseded and stays retired.
 - **M8 (pack)** delivers packs by writing to the Flux **source** that
   bootstrap wired — *not* through a cube-idp applier. Pack conforms to the
   live Flux loop.
-- **M9 (engine)** formalizes the engine driver seam and re-expresses Flux
+- **M10 (engine)** formalizes the engine driver seam and re-expresses Flux
   as a conforming pack; it consumes the same `spec.engine` sub-struct and
   may migrate its shape (design-gate event). Engine-CR readiness lands here.
-- **M11 (`down`)** reads the bootstrap inventory to tear down what
+- **M12 (`down`)** reads the bootstrap inventory to tear down what
   bootstrap installed, composed with the M5 cluster teardown.
 - Not in this domain, ever on the current horizon: watch
   machinery/informers, controller-runtime, kstatus/`cli-utils`, typed
-  workload clientsets, a second-engine driver seam (M9), engine-CR
+  workload clientsets, a second-engine driver seam (M10), engine-CR
   readiness, arbitrary user-manifest apply (that is the engine's job).
