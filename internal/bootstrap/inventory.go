@@ -12,8 +12,10 @@ const (
 	// InventoryName is the ConfigMap bootstrap records its applied objects in —
 	// the seed a future `down` reads to tear the bootstrap back down.
 	InventoryName = "cube-idp-bootstrap-inventory"
-	// InventoryNamespace is where the inventory ConfigMap lives: the Flux
-	// namespace bootstrap installs into.
+	// InventoryNamespace is the default inventory placement the CLI edge
+	// injects today — the substrate namespace. It is edge input, not domain
+	// knowledge: the Applier records wherever NewApplier told it to, and this
+	// constant moves to the engine substrate with the M10-C2 asset re-homing.
 	InventoryNamespace = "flux-system"
 	// inventoryKey is the ConfigMap data key holding the JSON object list.
 	inventoryKey = "objects"
@@ -27,23 +29,25 @@ type ObjectRef struct {
 	Name       string `json:"name"`
 }
 
-// RecordInventory applies a ConfigMap listing every object bootstrap installed,
-// so a future `down` can find and remove them. It rides the same SSA seam
-// (an apply failure is CUBE-BST-004, naming the inventory ConfigMap) and is
-// idempotent — re-recording overwrites. Record after Apply so the Flux
-// namespace exists, and before waiting so a half-ready install is still
-// recoverable.
+// RecordInventory applies a ConfigMap listing every object bootstrap installed
+// — and only what bootstrap applies; content delivered through the source is
+// deliberately outside it — so a future `down` can find and remove them. It
+// rides the same SSA seam (an apply failure is CUBE-BST-004, naming the
+// inventory ConfigMap) and is idempotent — re-recording overwrites. It records
+// into the injected inventory namespace: record after Apply so that namespace
+// exists, and before waiting so a half-ready install is still recoverable.
 func (a *Applier) RecordInventory(ctx context.Context, objs []*unstructured.Unstructured) error {
-	cm, err := inventoryConfigMap(objs)
+	cm, err := inventoryConfigMap(a.invNS, objs)
 	if err != nil {
 		return err
 	}
 	return a.k.apply(ctx, cm)
 }
 
-// inventoryConfigMap builds the cube-idp-owned inventory ConfigMap from the
-// applied objects, with a deterministic (sorted) object list.
-func inventoryConfigMap(objs []*unstructured.Unstructured) (*unstructured.Unstructured, error) {
+// inventoryConfigMap builds the cube-idp-owned inventory ConfigMap in the
+// given namespace from the applied objects, with a deterministic (sorted)
+// object list.
+func inventoryConfigMap(namespace string, objs []*unstructured.Unstructured) (*unstructured.Unstructured, error) {
 	refs := make([]ObjectRef, 0, len(objs))
 	for _, o := range objs {
 		refs = append(refs, ObjectRef{
@@ -64,7 +68,7 @@ func inventoryConfigMap(objs []*unstructured.Unstructured) (*unstructured.Unstru
 	cm.SetAPIVersion("v1")
 	cm.SetKind("ConfigMap")
 	cm.SetName(InventoryName)
-	cm.SetNamespace(InventoryNamespace)
+	cm.SetNamespace(namespace)
 	cm.SetLabels(map[string]string{"app.kubernetes.io/managed-by": "cube-idp"})
 	if err := unstructured.SetNestedField(cm.Object, map[string]any{inventoryKey: string(data)}, "data"); err != nil {
 		return nil, newInventoryError(err)

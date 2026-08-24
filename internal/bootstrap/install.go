@@ -8,15 +8,16 @@ import (
 	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
 )
 
-// InstallEngine bootstraps the configured gitops engine: install and wait for
-// Flux, then — when a source is configured — record the full owned set and
-// apply the Flux source + Kustomization CRs. The source CRs are applied only
-// after the Flux CRDs are established (Install's readiness wait), so their
-// kinds map; the inventory is recorded BEFORE the source apply, so a
-// half-applied source is still visible to a future `down`. Bootstrap does NOT
-// wait on engine-CR reconciliation — that is the M10 seam's job; it applies and
-// records, then hands over.
-func (a *Applier) InstallEngine(ctx context.Context, engine *v1alpha1.EngineSpec) error {
+// InstallEngine bootstraps the configured gitops engine in three readiness
+// phases sharing one total ctx budget: install Flux and wait the kind-set
+// (phase 1); when a source is configured, record the full owned set, apply
+// the source + Kustomization CRs — only after the CRDs are established, so
+// their kinds map; the inventory is recorded BEFORE the source apply, so a
+// half-applied source is still visible to a future `down` — and wait for
+// them to reconcile with the injected judgment (phase 2); then poll the
+// declared engine objects, content bootstrap did NOT apply, until they
+// reconcile too (phase 3 — an empty list is skipped, the flux case).
+func (a *Applier) InstallEngine(ctx context.Context, engine *v1alpha1.EngineSpec, engineWait EngineWait) error {
 	if err := checkEngineVersion(engine); err != nil {
 		return err
 	}
@@ -27,18 +28,22 @@ func (a *Applier) InstallEngine(ctx context.Context, engine *v1alpha1.EngineSpec
 	if err := a.Install(ctx, fluxObjs); err != nil {
 		return err
 	}
-	src := configuredSource(engine)
-	if src == nil {
-		return nil
+	if src := configuredSource(engine); src != nil {
+		srcObjs, err := sourceObjects(src)
+		if err != nil {
+			return err
+		}
+		if err := a.RecordInventory(ctx, append(fluxObjs, srcObjs...)); err != nil {
+			return err
+		}
+		if err := a.Apply(ctx, srcObjs); err != nil {
+			return err
+		}
+		if err := a.WaitReconciled(ctx, srcObjs, engineWait.Reconciled); err != nil {
+			return err
+		}
 	}
-	srcObjs, err := sourceObjects(src)
-	if err != nil {
-		return err
-	}
-	if err := a.RecordInventory(ctx, append(fluxObjs, srcObjs...)); err != nil {
-		return err
-	}
-	return a.Apply(ctx, srcObjs)
+	return a.WaitReconciled(ctx, engineWait.EngineObjects, engineWait.Reconciled)
 }
 
 // checkEngineVersion asserts a requested engine version against the embedded

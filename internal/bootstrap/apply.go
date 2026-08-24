@@ -22,10 +22,16 @@ const FieldManager = "cube-idp"
 // apply an object, and read one back. Defined consumer-side and satisfied by a
 // thin adapter over the injected client-go dynamic.Interface + RESTMapper — and
 // by a hand-rolled fake in tests, because the client-go fake dynamic client
-// cannot model server-side apply for unstructured objects.
+// cannot model server-side apply for unstructured objects. get serves the
+// apply-path wait (kind-set objects bootstrap just applied, so a mapping miss
+// is coded and terminal); live serves the reconciliation waits, where a miss
+// may mean the kind is still arriving — it re-consults discovery on every call
+// and returns raw errors so the poll loop can classify transient conditions
+// as pending.
 type cluster interface {
 	apply(ctx context.Context, obj *unstructured.Unstructured) error
 	get(ctx context.Context, obj *unstructured.Unstructured) (*unstructured.Unstructured, error)
+	live(ctx context.Context, obj *unstructured.Unstructured) (*unstructured.Unstructured, error)
 }
 
 // resettableRESTMapper is the capability bootstrap expects of the injected
@@ -46,13 +52,20 @@ type resettableRESTMapper interface {
 type Applier struct {
 	k        cluster
 	interval time.Duration
+	invNS    string
 }
 
 // NewApplier builds an Applier over an injected dynamic client and REST
 // mapper. The mapper is expected to additionally implement Reset() so CRs of
-// just-installed CRDs can map after a discovery refresh.
-func NewApplier(dyn dynamic.Interface, mapper meta.RESTMapper) *Applier {
-	return &Applier{k: &dynamicCluster{dyn: dyn, mapper: mapper}, interval: pollInterval}
+// just-installed CRDs can map after a discovery refresh. inventoryNamespace
+// is where the bootstrap inventory ConfigMap records — an injected placement
+// fact (the invariant substrate namespace), not something this domain derives.
+func NewApplier(dyn dynamic.Interface, mapper meta.RESTMapper, inventoryNamespace string) *Applier {
+	return &Applier{
+		k:        &dynamicCluster{dyn: dyn, mapper: mapper},
+		interval: pollInterval,
+		invNS:    inventoryNamespace,
+	}
 }
 
 // Apply server-side-applies each object in order under the cube-idp field
@@ -94,21 +107,45 @@ func (c *dynamicCluster) get(ctx context.Context, obj *unstructured.Unstructured
 	return rc.Get(ctx, obj.GetName(), metav1.GetOptions{})
 }
 
-// resourceFor maps an object's GroupVersionKind to a namespace-scoped (or
-// cluster-scoped) dynamic resource client.
+// live reads an object's current state for the reconciliation waits. Unlike
+// get it returns raw errors: a mapping miss (after the same discovery refresh
+// and retry, re-run on every poll because the kind may still be arriving
+// through the source) or a NotFound is the poll loop's to classify as
+// pending, never a coded terminal error here.
+func (c *dynamicCluster) live(ctx context.Context, obj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+	rc, err := c.rawResourceFor(obj)
+	if err != nil {
+		return nil, err
+	}
+	return rc.Get(ctx, obj.GetName(), metav1.GetOptions{})
+}
+
+// resourceFor maps an object's GroupVersionKind to a scoped dynamic resource
+// client, wrapping an unresolvable kind as CUBE-BST-003 (the apply path's
+// terminal semantics).
 func (c *dynamicCluster) resourceFor(obj *unstructured.Unstructured) (dynamic.ResourceInterface, error) {
+	rc, err := c.rawResourceFor(obj)
+	if err != nil {
+		return nil, newMappingError(obj, err)
+	}
+	return rc, nil
+}
+
+// rawResourceFor maps an object's GroupVersionKind to a namespace-scoped (or
+// cluster-scoped) dynamic resource client, returning the raw mapper error on a
+// miss. The mapper is a discovery cache that may have been primed before the
+// engine CRDs were installed; on a miss it is refreshed and consulted once
+// more so kinds registered by just-applied CRDs map.
+func (c *dynamicCluster) rawResourceFor(obj *unstructured.Unstructured) (dynamic.ResourceInterface, error) {
 	gvk := obj.GroupVersionKind()
 	mapping, err := c.mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
-		// The mapper is a discovery cache that may have been primed before the
-		// Flux CRDs were installed; force a refresh and retry once so kinds
-		// registered by just-applied CRDs (GitRepository, Kustomization, …) map.
 		if r, ok := c.mapper.(resettableRESTMapper); ok {
 			r.Reset()
 			mapping, err = c.mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 		}
 		if err != nil {
-			return nil, newMappingError(obj, err)
+			return nil, err
 		}
 	}
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {

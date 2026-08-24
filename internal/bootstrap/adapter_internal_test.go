@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -8,6 +9,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+
+	"github.com/cube-idp/cube-idp/internal/cubeerr"
 )
 
 func gvrOf(gvk schema.GroupVersionKind) schema.GroupVersionResource {
@@ -84,6 +87,46 @@ func (m *resettableMapper) RESTMapping(gk schema.GroupKind, versions ...string) 
 }
 
 func (m *resettableMapper) Reset() { m.resets++; m.ready = true }
+
+// TestDynamicClusterLiveReturnsRawNoMatch: the wait path's live read returns
+// the raw no-match error (for the poll loop to classify as pending), never a
+// coded CUBE-BST-003 — that is the apply path's terminal semantics.
+func TestDynamicClusterLiveReturnsRawNoMatch(t *testing.T) {
+	c := testDynamicCluster()
+	unknown := &unstructured.Unstructured{}
+	unknown.SetGroupVersionKind(schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"})
+	unknown.SetName("w")
+
+	_, err := c.live(t.Context(), unknown)
+	if !meta.IsNoMatchError(err) {
+		t.Fatalf("live() error = %v, want a raw NoKindMatchError", err)
+	}
+	var coded *cubeerr.Coded
+	if errors.As(err, &coded) {
+		t.Errorf("live() error carries code %s, want uncoded", coded.Code)
+	}
+}
+
+// TestDynamicClusterLiveRefreshesDiscovery: live re-consults discovery on a
+// mapping miss the same way apply does — a kind registered since the cache was
+// primed resolves within the call.
+func TestDynamicClusterLiveRefreshesDiscovery(t *testing.T) {
+	ns := newNamespace("flux-system", "Active")
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
+		runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{gvrOf(gvkNamespace): "NamespaceList"},
+		ns,
+	)
+	m := &resettableMapper{RESTMapper: testMapper()} // ready == false
+	c := &dynamicCluster{dyn: dyn, mapper: m}
+
+	if _, err := c.live(t.Context(), ns); err != nil {
+		t.Fatalf("live() error = %v — discovery refresh did not recover the mapping", err)
+	}
+	if m.resets != 1 {
+		t.Errorf("mapper reset %d times, want exactly 1", m.resets)
+	}
+}
 
 // TestDynamicClusterRefreshesMapperOnMiss: a mapping miss on a stale discovery
 // cache triggers exactly one Reset()+retry, so a kind registered after the

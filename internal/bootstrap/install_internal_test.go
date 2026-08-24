@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -17,7 +16,7 @@ func TestInstallOrder(t *testing.T) {
 		newDeployment("source-controller", "flux-system", 1, 1, 1),
 	}
 	f := newFakeCluster()
-	a := &Applier{k: f, interval: time.Millisecond}
+	a := testApplier(f)
 	if err := a.Install(t.Context(), objs); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
@@ -56,7 +55,7 @@ func TestInstallOrder(t *testing.T) {
 func TestInstallStopsOnApplyFailure(t *testing.T) {
 	f := newFakeCluster()
 	f.applyErr = newManifestParseError(nil) // any error; Apply returns the first failure
-	a := &Applier{k: f, interval: time.Millisecond}
+	a := testApplier(f)
 	err := a.Install(t.Context(), []*unstructured.Unstructured{newNamespace("flux-system", "Active")})
 	if err == nil {
 		t.Fatal("Install() error = nil, want the apply failure")

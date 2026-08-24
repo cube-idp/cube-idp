@@ -1,11 +1,16 @@
 package bootstrap
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/cube-idp/cube-idp/internal/cubeerr"
 )
 
 // TestRecordInventoryWritesConfigMap checks the inventory ConfigMap is applied
@@ -17,7 +22,7 @@ func TestRecordInventoryWritesConfigMap(t *testing.T) {
 		newDeployment("source-controller", "flux-system", 1, 0, 1),
 	}
 	f := newFakeCluster()
-	a := &Applier{k: f, interval: time.Millisecond}
+	a := testApplier(f)
 	if err := a.RecordInventory(t.Context(), objs); err != nil {
 		t.Fatalf("RecordInventory() error = %v", err)
 	}
@@ -45,6 +50,33 @@ func TestRecordInventoryWritesConfigMap(t *testing.T) {
 	}
 }
 
+// TestRecordInventoryInjectedNamespace pins that placement is genuinely
+// injected: the applier records into whatever namespace the edge supplied,
+// and the kind-set wait's remediation names that same namespace — bootstrap
+// carries no placement knowledge of its own.
+func TestRecordInventoryInjectedNamespace(t *testing.T) {
+	f := newFakeCluster()
+	a := &Applier{k: f, interval: time.Millisecond, invNS: "custom-ns"}
+	if err := a.RecordInventory(t.Context(), []*unstructured.Unstructured{newNamespace("custom-ns", "")}); err != nil {
+		t.Fatalf("RecordInventory() error = %v", err)
+	}
+	if _, ok := f.store["ConfigMap/custom-ns/"+InventoryName]; !ok {
+		t.Fatalf("inventory not recorded in the injected namespace; store keys = %v", keysOf(f))
+	}
+
+	notReady := newDeployment("controller", "custom-ns", 1, 0, 1)
+	f.store[objKey(notReady)] = notReady
+	ctx, cancel := context.WithTimeout(t.Context(), 40*time.Millisecond)
+	defer cancel()
+	err := a.WaitReady(ctx, []*unstructured.Unstructured{notReady})
+	assertCode(t, err, CodeWaitTimeout)
+	var coded *cubeerr.Coded
+	_ = errors.As(err, &coded)
+	if !strings.Contains(coded.Remediation, "custom-ns") {
+		t.Errorf("remediation %q should name the injected namespace", coded.Remediation)
+	}
+}
+
 // TestRecordInventoryDeterministic pins a stable, order-independent object list
 // so the recorded ConfigMap is reproducible.
 func TestRecordInventoryDeterministic(t *testing.T) {
@@ -55,11 +87,11 @@ func TestRecordInventoryDeterministic(t *testing.T) {
 	}
 	b := []*unstructured.Unstructured{a[2], a[0], a[1]} // shuffled
 
-	cmA, err := inventoryConfigMap(a)
+	cmA, err := inventoryConfigMap(InventoryNamespace, a)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmB, err := inventoryConfigMap(b)
+	cmB, err := inventoryConfigMap(InventoryNamespace, b)
 	if err != nil {
 		t.Fatal(err)
 	}
