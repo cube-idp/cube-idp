@@ -151,11 +151,14 @@ named `flux-system` in the Flux namespace.
 is correct and recoverable:
 
 1. apply the embedded Flux objects,
-2. record the inventory (a partial install is already visible to `down`),
+2. record the inventory (an applied-but-not-yet-ready install is already
+   visible to `down`; an apply failure mid-stream returns before this
+   step — resolving that gap is an M12 design question),
 3. wait for the bootstrap kind-set (this establishes the Flux CRDs),
-4. **then** apply the source + Kustomization CRs — they are CRs of the Flux
-   CRDs, so they can only be applied once those CRDs are established,
-5. re-record the inventory with the source CRs included.
+4. re-record the inventory with the source CRs included — before they are
+   applied, so a half-applied source is already visible to `down`,
+5. **then** apply the source + Kustomization CRs — they are CRs of the Flux
+   CRDs, so they can only be applied once those CRDs are established.
 
 Because the injected `RESTMapper` is a discovery cache primed *before* the
 Flux CRDs existed, the adapter **resets it and retries once** on a mapping
@@ -167,7 +170,7 @@ the engine CRs but **does not wait on their reconciliation** (M10).
 `bootstrap` records what it applied (a ConfigMap inventory) so a future
 `down` can find and remove it. In-domain and self-contained — **not** a
 reusable applier seam. (The pre-M8 "inventory-inside-Apply" obligation is
-superseded: M8 delivers packs through the Flux source, not through a
+superseded: packs are delivered through the Flux source, not through a
 cube-idp applier — DECISIONS 2026-08-06 / Q1.)
 
 ## Interface doctrine applied
@@ -221,9 +224,10 @@ superseded and stays retired.
 
 ## Contracts for future domains
 
-- **M8 (pack)** delivers packs by writing to the Flux **source** that
-  bootstrap wired — *not* through a cube-idp applier. Pack conforms to the
-  live Flux loop.
+- **Pack delivery (M8 renders, M11 delivers)**: the pack domain (M8,
+  shipped) renders and never applies; packs reach a cluster by being
+  written into the Flux **source** that bootstrap wired (the M11 bus) —
+  *not* through a cube-idp applier. Packs conform to the live Flux loop.
 - **M10 (engine)** formalizes the engine driver seam and re-expresses Flux
   as a conforming pack; it consumes the same `spec.engine` sub-struct and
   may migrate its shape (design-gate event). Engine-CR readiness lands here.

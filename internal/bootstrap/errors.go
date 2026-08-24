@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -91,7 +92,15 @@ func newInventoryError(cause error) error {
 		cause)
 }
 
+// newWaitError wraps a readiness-wait failure in CUBE-BST-005 — unless the
+// cause already carries a cubeerr code (e.g. a CUBE-BST-003 mapping miss
+// surfacing mid-wait), which passes through unchanged: one failure, one code,
+// never retagged.
 func newWaitError(pending []*unstructured.Unstructured, cause error) error {
+	var coded *cubeerr.Coded
+	if errors.As(cause, &coded) {
+		return cause
+	}
 	return cubeerr.Wrap(CodeWaitTimeout,
 		fmt.Sprintf("bootstrap resources did not become ready: %s", describeAll(pending)),
 		"inspect the Flux controllers (`kubectl -n flux-system get pods`) and their events",

@@ -15,7 +15,7 @@ const pollInterval = 2 * time.Second
 // WaitReady blocks until every object in the bootstrap kind-set reports ready —
 // CRD Established, Deployment/StatefulSet available, Job complete, Namespace
 // Active — or ctx is done. Objects outside the kind-set are skipped: their
-// readiness (engine CRs) is the M9 seam's concern, not bootstrap's.
+// readiness (engine CRs) is the M10 seam's concern, not bootstrap's.
 func (a *Applier) WaitReady(ctx context.Context, objs []*unstructured.Unstructured) error {
 	pending := filterKindSet(objs)
 	err := wait.PollUntilContextCancel(ctx, a.interval, true, func(ctx context.Context) (bool, error) {

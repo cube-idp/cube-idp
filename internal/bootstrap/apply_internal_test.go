@@ -27,6 +27,7 @@ type fakeCluster struct {
 	store         map[string]*unstructured.Unstructured
 	calls         []string
 	applyErr      error
+	getErr        error  // if set, get fails with it (wait error-path tests)
 	failApplyKind string // if set, apply of this kind fails (partial-apply tests)
 	readyApply    bool   // store kind-set objects with ready status (for wait paths)
 }
@@ -100,6 +101,9 @@ func callIndex(calls []string, want string) int {
 
 func (f *fakeCluster) get(_ context.Context, obj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
 	f.calls = append(f.calls, "get:"+objKey(obj))
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
 	if o, ok := f.store[objKey(obj)]; ok {
 		return o, nil
 	}
@@ -201,6 +205,35 @@ func TestWaitReadyTimeout(t *testing.T) {
 	if !strings.Contains(err.Error(), "source-controller") {
 		t.Errorf("wait error %q should name the pending object", err)
 	}
+}
+
+// TestWaitReadyPreservesCodedError pins the no-retag rule (#155): an error
+// already carrying a cubeerr code (here a CUBE-BST-003 mapping miss surfacing
+// mid-wait) passes through WaitReady unchanged instead of being rewrapped in
+// CUBE-BST-005.
+func TestWaitReadyPreservesCodedError(t *testing.T) {
+	obj := newDeployment("source-controller", "flux-system", 1, 0, 1)
+	f := newFakeCluster(obj)
+	mappingErr := newMappingError(obj, errors.New("no matches for kind"))
+	f.getErr = mappingErr
+	a := &Applier{k: f, interval: time.Millisecond}
+
+	err := a.WaitReady(t.Context(), []*unstructured.Unstructured{obj})
+	assertCode(t, err, CodeRESTMapping)
+	if !errors.Is(err, mappingErr) {
+		t.Errorf("WaitReady() = %v, want the coded cause passed through unchanged", err)
+	}
+}
+
+// TestWaitReadyWrapsUncodedError pins the other branch: a readiness read that
+// fails with an ordinary (uncoded) error is still wrapped in CUBE-BST-005.
+func TestWaitReadyWrapsUncodedError(t *testing.T) {
+	obj := newDeployment("source-controller", "flux-system", 1, 0, 1)
+	f := newFakeCluster(obj)
+	f.getErr = errors.New("connection refused")
+	a := &Applier{k: f, interval: time.Millisecond}
+
+	assertCode(t, a.WaitReady(t.Context(), []*unstructured.Unstructured{obj}), CodeWaitTimeout)
 }
 
 // TestWaitReadyMissingObjectTimesOut covers the not-yet-created path: an
