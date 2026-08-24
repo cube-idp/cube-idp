@@ -10,7 +10,8 @@ and grows in small milestones; today it holds the config domain
 (`init`/`create`/`status`/`delete`), the kube domain (Kubernetes client
 access — powering `status`'s API-reachability line), `bootstrap`
 (installs Flux and hands over), and the pack domain (define, validate, and
-render packs). The previous implementation is preserved in git history on
+render packs — including helm packs, which delegate to a Flux
+`HelmRelease`). The previous implementation is preserved in git history on
 `main`. Structure and rationale:
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 What's next: [ROADMAP.md](ROADMAP.md). Decision history:
@@ -102,10 +103,16 @@ spec:
 
 ## Packs
 
-A **pack** is a self-contained, versioned directory of platform content: a
-`pack.cue` declaring `name`, `version`, and an explicit `type` (`raw` or
-`kustomize`), plus its manifests. cube-idp **renders** packs — the gitops
-engine applies them.
+A **pack** is a self-contained, versioned unit of platform content: a
+`pack.cue` declaring `name`, `version`, and an explicit `type` — never
+sniffed — plus whatever that type needs. cube-idp **renders** packs; the
+gitops engine applies them.
+
+| `type` | Payload | Renders to |
+|---|---|---|
+| `raw` | manifests under `manifests/` | those manifests |
+| `kustomize` | a kustomization root | the built output, with `${VAR}` substituted |
+| `helm` | **none** — chart coordinates in `pack.cue` | a Flux `HelmRelease` + its source CR |
 
 ```
 $ cube-idp pack new ./hello              # a pack that renders as written
@@ -119,6 +126,35 @@ pack hello 0.1.0 (raw) is valid
 
 Only rendered YAML reaches stdout — diagnostics go to stderr and nothing is
 written when rendering fails — so the pipe above is safe.
+
+### Helm packs delegate
+
+A `type: helm` pack carries the chart's **coordinates**, never the chart.
+Rendering it emits a `HelmRelease` and the source CR it pulls through, and
+**helm-controller templates the chart in the cluster** — cube-idp never
+runs Helm, so rendering stays a pure function of its inputs.
+
+```
+$ cube-idp pack new ./podinfo --from-chart ./charts/podinfo
+created pack podinfo 0.1.0 (helm) in ./podinfo
+replace the placeholder chart url in ./podinfo/pack.cue before installing this pack
+
+$ cube-idp pack render ./podinfo         # the delegation, not the expanded chart
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+...
+```
+
+`--from-chart` reads a local chart's `Chart.yaml` and `values.yaml` — a
+metadata read, nothing fetched — and derives a starting `#Values` you then
+narrow. `--type helm` scaffolds the same skeleton from scratch. Both leave
+the repository url for you to fill in, because a local directory does not
+say where a chart is published.
+
+M9 supports **public chart sources and non-sensitive values only**:
+private-registry credentials and secret-backed values are not implemented
+yet, and a chart addressed by repository + version is a *mutable*
+reference — only an OCI digest pins content.
 
 Packs are installed by listing them in `spec.packs`, each entry naming the
 pack and the values for *this* copy of it:

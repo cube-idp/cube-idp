@@ -14,14 +14,14 @@
 // Name the .puml files explicitly, as above: passing a glob instead
 // (`-tsvg "/data/*.puml"`) fails with "No file found" — the container
 // does not expand it. Add a line here when a view is added.
-workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M8)" {
+workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M9)" {
 
     model {
         operator = person "Platform Operator" "Declares a cube in cube.yaml and drives it with the cube-idp CLI"
 
         cubeIdp = softwareSystem "cube-idp" "CLI that provisions and manages the cluster declared in a single Config document; the document is the sole source of truth" {
 
-            cli = container "cube-idp binary" "Single Go binary; cobra CLI with init, create, delete, status, bootstrap, pack render|validate|new and config validate|show commands" "Go 1.26" {
+            cli = container "cube-idp binary" "Single Go binary; cobra CLI with init, create, delete, status, bootstrap, pack render|validate|new (--from / --from-chart) and config validate|show commands" "Go 1.26" {
                 mainPkg = component "Entrypoint" "Signal-aware context, delegates to the CLI and exits with the mapped code" "cmd/cube-idp"
                 cliPkg = component "CLI edge" "Cobra wiring only: flag mapping, edge composition (init: scaffold-if-absent → load → report; create/delete/status: load → domain operation with injected provisioner factory, SpecValidator type-assert), sole error renderer with exit codes 0/2/1" "internal/cli"
                 configDomain = component "Config domain" "Strict load pipeline (decode → Default → Validate), config scaffolding with O_EXCL clobber safety, docker-style name generator; owns CUBE-CFG-* codes" "internal/config"
@@ -29,8 +29,8 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
                 clusterDomain = component "Cluster domain" "Provisioner driver seam + optional SpecValidator capability, Init/Delete/Status operations, kubeconfig rebrand/lossless-merge/removal/atomic-write machinery; owns CUBE-CLU-* codes; exported conformance suite" "internal/cluster"
                 kindDriver = component "kind driver" "Sole importer of sigs.k8s.io/kind; implements Provisioner + SpecValidator; container-runtime detection deferred to first provisioning call" "internal/cluster/kind"
                 kubeDomain = component "Kube domain" "Shared leaf (M6): constructs REST config, discovery, RESTMapper and dynamic client from injected kubeconfig bytes + context name; Ping reachability check; sole constructor of clients (client-go construction confinement); owns CUBE-KUB-* codes" "internal/kube"
-                bootstrapDomain = component "Bootstrap domain" "Micro-bootstrap applier (M7): SSA-applies embedded pinned Flux manifests + source/sync CRs from spec.engine over injected client-go interfaces, waits the bootstrap kind-set (CRD Established, Deployment/StatefulSet ready, Job complete, Namespace Active), records an inventory (seed of down); SSA hand-rolled on client-go (no new dependency), does not import internal/kube; owns CUBE-BST-* codes" "internal/bootstrap"
-                packDomain = component "Pack domain" "Defines, loads, validates and renders packs (M8): pack.cue metadata with a closed #Values definition, raw + kustomize rendering into a RenderPlan{Prerequisites, Objects}, RFC 7386 values merge, namespace injection whose scope reads bundled CRDs, hermetic rejection of remote kustomize references, instance identity + dependsOn graph, and the pack new scaffold. Renders, never applies; owns CUBE-PKG-* codes" "internal/pack"
+                bootstrapDomain = component "Bootstrap domain" "Micro-bootstrap applier (M7): SSA-applies embedded pinned Flux manifests (source-controller + kustomize-controller + helm-controller, M9) + source/sync CRs from spec.engine over injected client-go interfaces, waits the bootstrap kind-set (CRD Established, Deployment/StatefulSet ready, Job complete, Namespace Active), records an inventory (seed of down); SSA hand-rolled on client-go (no new dependency), does not import internal/kube; owns CUBE-BST-* codes" "internal/bootstrap"
+                packDomain = component "Pack domain" "Defines, loads, validates and renders packs (M8): pack.cue metadata with a closed #Values definition, raw, kustomize and helm rendering into a RenderPlan{Prerequisites, Objects} — a type: helm pack is thin and renders to a Flux HelmRelease + its HelmRepository/OCIRepository source CR rather than to expanded manifests, RFC 7386 values merge, namespace injection whose scope reads bundled CRDs, hermetic rejection of remote kustomize references, instance identity + dependsOn graph, and the pack new scaffold (including --from-chart, a local Chart.yaml/values.yaml metadata read). Renders, never applies; owns CUBE-PKG-* codes" "internal/pack"
                 refLeaf = component "Reference leaf" "Shared infrastructure (M8): one reference grammar resolved to a tree or a single file, explicit schemes only. Local paths and https today; git+https, oci and s3 are recognized and return their own not-implemented codes. Records a pin and enforces containment; owns CUBE-REF-* codes" "internal/ref"
                 cubeerrPkg = component "Error machinery" "Coded error shape (code, summary, remediation) and exit-code mapping only — no code catalog" "internal/cubeerr"
             }
@@ -39,7 +39,7 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
                 tags "File"
             }
 
-            packDir = container "Pack" "A self-contained, versioned directory of platform content: pack.cue (name, version, explicit type, closed #Values) plus its manifests or kustomization. Authored by the operator or scaffolded by pack new; read-only to render" "directory (CUE + YAML)" {
+            packDir = container "Pack" "A self-contained, versioned directory of platform content: pack.cue (name, version, explicit type, closed #Values) plus its manifests or kustomization — or, for a helm pack, chart coordinates and no chart content at all. Authored by the operator or scaffolded by pack new; read-only to render" "directory (CUE + YAML)" {
                 tags "File"
             }
 
@@ -53,6 +53,10 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         }
 
         kindCluster = softwareSystem "kind Kubernetes Cluster" "The local cluster provisioned from spec.cluster; name = the cube's metadata.name" {
+            tags "External"
+        }
+
+        chartSource = softwareSystem "Helm Chart Repository / OCI Registry" "Where a helm pack's chart is published. cube-idp never contacts it: the pack carries only coordinates, and the cluster's helm-controller does the pulling and templating" {
             tags "External"
         }
 
@@ -81,6 +85,7 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         cli -> kindCluster "Provisions (create) and tears down (delete) from spec.cluster, idempotent by name; exports the kubeconfig of" "sigs.k8s.io/kind"
         cli -> kindCluster "Probes API-server readiness of (status)" "k8s.io/client-go HTTPS"
         cli -> kindCluster "Installs embedded Flux + source/sync wiring into and waits the bootstrap kind-set on (bootstrap)" "k8s.io/client-go HTTPS"
+        kindCluster -> chartSource "Pulls and templates the chart named by a rendered HelmRelease (helm-controller) — the delegation a helm pack expresses, and the reason cube-idp never runs Helm" "HTTPS / OCI"
 
         # Component-level relationships (import direction, strictly left to right)
         mainPkg -> cliPkg "Calls Execute; exits with returned code"
@@ -113,11 +118,16 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
     views {
         systemContext cubeIdp "SystemContext" "cube-idp and its environment" {
             include *
+            // Reached only by the cluster, never by cube-idp — `include *`
+            // would drop it, and dropping it would hide where a helm pack's
+            // chart actually comes from.
+            include chartSource
             autoLayout
         }
 
         container cubeIdp "Containers" "The binary and the content it owns, shares, or reads" {
             include *
+            include chartSource
             autoLayout
         }
 

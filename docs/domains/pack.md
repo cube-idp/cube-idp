@@ -473,9 +473,11 @@ which — verified against `golang.org/x/mod v0.37.0` — accepts `6.5.4` and
 `1.2.3-rc.1` and rejects `v6.5.4` (leading `v`), `6.5` and `6` (partial),
 `>=1.0.0` and `6.5.*` (ranges). Two consequences stated rather than
 discovered: **a leading `v` is rejected**, and so is **SemVer build
-metadata** (`1.2.3+meta`), which `Canonical` strips. Both are proposals
-below, and both are the reversible direction — accepting a spelling later
-is additive, un-accepting one is a contract break.
+metadata** (`1.2.3+meta`), which `Canonical` strips. Both were taken
+deliberately as the reversible direction — accepting a spelling later is
+additive, un-accepting one is a contract break. The cost, stated: a chart
+genuinely published as `1.2.3+meta` is unusable until this is relaxed,
+which can only bite `kind: repo` since an OCI tag cannot contain `+`.
 
 **Exact versions, not ranges.** Flux accepts a SemVer *range* in
 `chart.spec.version`, and that is exactly what makes a pack version stop
@@ -1010,14 +1012,14 @@ cube-idp pack new      <dir> [--type raw|helm|kustomize] [--name <n>]
   let it call a pack valid that `render` then refuses — the pack layer's
   checks include "render output is valid and non-empty", so an unparseable
   manifest, an empty result, a namespace conflict, and values the pack
-  rejects all surface here. The one exception: a pack whose type this build
-  cannot render still validates, because its metadata and payload are sound
-  and only the render backend is missing. **That exception is now
-  unreachable** — every declarable type renders from M9 on — and it stays
-  written down only so a future type inherits the rule rather than
-  re-deciding it. For a helm pack, "renders" means the two Flux CRs are
-  well-formed and the values pass `#Values`; it does **not** mean the chart
-  was found (see *Delegated pack preview semantics*).
+  rejects all surface here. **There is no exception**: every declarable type
+  renders, so validate renders every pack and the CLI carries no
+  type-specific escape hatch. (M8 had one — a type whose backend was
+  missing validated anyway — and M9 removed both the case and the code,
+  since `helm` was its only subject.) For a helm pack, "renders" means the
+  two Flux CRs are well-formed and the values pass `#Values`; it does
+  **not** mean the chart was found (see *Delegated pack preview
+  semantics*).
 - **stdout purity for `render`:** rendered YAML only on stdout, all
   diagnostics on stderr, no success banner, stable object order,
   deterministic document separators, a final newline, and **no partial
@@ -1087,7 +1089,7 @@ cube-idp pack new      <dir> [--type raw|helm|kustomize] [--name <n>]
 
 ### `pack render` output when prerequisites exist
 
-`RenderPlan` has two groups but stdout is one YAML stream. Proposal: print
+`RenderPlan` has two groups but stdout is one YAML stream, and it prints
 **one deterministic stream — `Prerequisites` first, then `Objects`** — so
 nothing declared is ever silently dropped from stdout and the `| kubectl
 apply -f -` path keeps working. The group boundary is preserved in the Go
@@ -1175,48 +1177,3 @@ event.
   cluster, an `Applier` seam, inventory (bootstrap owns its own), implicit
   dependency edges, category-driven behavior, version constraint solving,
   and engine- or gateway-aware code paths.
-
----
-
-## Proposals — M9 helm packs (pending operator confirmation)
-
-**This section is temporary.** Every item is a lean taken at the M9 design
-gate (epic #139, task #140) on a question the gate was asked to resolve. On
-approval each lean is already written into the contract above; **the M9
-closeout deletes this section** and nothing else changes. Same pattern as
-the four M8 leans recorded in `DECISIONS.md` 2026-08-21.
-
-Rows lettered `5b`, `6c`… were added by the **independent design review of
-PR #141** (2026-08-23), which found the direction sound but the trust,
-reproducibility, and configuration boundaries imprecise. Row **5**'s
-*rationale* was corrected by that review; its conclusion was not. The
-letters keep the original numbering stable so review comments referring to
-"lean #14" still resolve.
-
-| # | Question | Lean | Because |
-|---|---|---|---|
-| 1 | **Chart addressing** — the `pack.cue` fields | A `chart` block with a `repo\|oci` discriminator: `url`, `name` (repo only), exact `version`, optional `digest` (oci only). Not `internal/ref` grammar. | A chart is addressed by Helm's own coordinates, not by something that resolves to a tree; `ref` must not grow a scheme it cannot hand back as bytes. |
-| 2 | **Reusing `EngineSource`'s shape** | Reuse the **discipline** (explicit discriminator, never URL-sniffing), not the type. No Go type is shared: `EngineSource` lives in `api/config`, the chart block lives in CUE. Discriminator is `repo\|oci`, not `git\|oci`. | The two surfaces have no common consumer and no common language; copying the *rule* is the transferable part. |
-| 3 | **HelmRepository vs OCIRepository** | `kind: repo` → `HelmRepository` + `spec.chart.spec.sourceRef`. `kind: oci` → `OCIRepository` + `spec.chartRef`. One path each; `HelmRepository{type: oci}` is not used. | `chartRef`/`OCIRepository` is Flux's current recommended OCI path and it tracks the artifact digest — which is also the answer to (5). |
-| 4 | **Chart content in the pack** | Reject (`CUBE-PKG-004`), do not ignore. The helm payload marker is inverted: the `chart` block present, chart files absent. | Silently ignoring bundled content is the silent-takeover class `CUBE-PKG-008`/`021` exist to remove. |
-| 5 | **Lock format** | **No lock file this milestone** — the conclusion stands, the original rationale did not. `version` must be an exact SemVer, and `kind: oci` may add `digest: sha256:…` → `OCIRepository.spec.ref.digest`. | A `pack.lock` is its own format, generation command, and staleness contract — a separate gate. **Corrected (2026-08-23, independent review):** exactness does **not** remove drift. `repo` + exact version is a **mutable reference** — the repository owner can republish different bytes at that version — and only an OCI **digest** pins content. A `lock`/`mirror` op that resolves a mutable ref to verified content is tracked in **#142**. |
-| 5b | **Digest: recommend or require?** | **Recommend** an OCI digest for published/production packs, and label repo-backed packs honestly as mutable references. Do **not** require it. | Requiring a digest would ban repo-only charts and every development workflow outright. "Required for published packs" is a **production-profile** rule and profiles do not exist yet — it is the natural home for this, and a future one. |
-| 5c | **M9 scope limit** | **Public chart sources + non-sensitive values only.** No source `secretRef`, no `valuesFrom`. Stated as a limitation in the contract and the DECISIONS entry, not implied. Both deferred to **#142**. | Credentials cut across the source CR, the values surface, and the delivery artifact at once — one milestone, one gate. A half-designed credential path is worse than none, and an *implied* gap is how a password ends up in `cube.yaml`. |
-| 6 | **`#Values` → `spec.values`** | Verbatim and nested. `CUBE-PKG-011` (flat map) and `${VAR}` substitution are kustomize-only. Result must be concrete and JSON-representable, else `CUBE-PKG-010`. | Helm values are nested by nature; the kustomize flat rule exists because kustomize has no values concept. |
-| 6b | **`#Pack` shape** | `#Pack` becomes a **discriminated disjunction on `type`** so "`chart` required for helm, forbidden otherwise" is schema-enforced, not hand-checked. `#ExactSemVer` is declared alongside it. | A flat closed struct cannot express a per-type requirement, and `CUBE-PKG-003` should stay the only code involved. |
-| 6c | **Value precedence** | Lowest→highest: chart `values.yaml` defaults (merged in cluster by helm-controller) → pack `#Values` `*defaults` → instance inline `values`/`valuesRef`. A future `valuesFrom` slots in **after** inline, per Flux's own ordering (#142). | Steps 2–3 resolve to one concrete map before render; step 1 happens elsewhere and later. Without this written down, "leave it to the chart" reads as achievable when a `#Values` default already overrode it. |
-| 6d | **Values are non-sensitive** | Hard boundary: `#Values` and instance `values` appear in `cube.yaml`, `pack render` stdout, the M11 delivery artifact, and the `HelmRelease` CR. Secret-backed values are **#142**. | Four plaintext copies. The contract states the gap rather than letting an operator discover it by leaking something. |
-| 6e | **Pack vs. instance boundary** | A publishable pack carries chart coordinates + safe default `#Values` + metadata, and **no** environment specifics, credentials, or secret names; the instance carries non-sensitive overrides. Test: *a pack that cannot be handed to another operator on another cluster unchanged is carrying instance state.* `pack.namespace` stays **exactly as shipped**; whether a fuller boundary moves it is **#142**'s remit. | Reusability is the whole point of the artifact/instance split, and it only holds if the artifact is environment-free. Re-opening a shipped M8 field here would be a drive-by contract change. |
-| 6f | **SemVer validation authority** | The Go loader validates `chart.version` with a **real parser** and is authoritative; CUE's `#ExactSemVer` is a **shape check only**. Rule: `semver.Canonical("v"+v) == "v"+v` using **`golang.org/x/mod/semver`** — already in the module graph (indirect via k8s/cue), so this is an indirect→direct promotion, **no new module and no `go.sum` change**. Alternative if it proves too strict: `github.com/Masterminds/semver/v3` (Helm's own), which **would** be a new direct dependency and an ARCHITECTURE §8 gate. | A regex is the first thing to drift from the spec it approximates. Verified empirically against `x/mod v0.37.0`: accepts `6.5.4`, `1.2.3-rc.1`; rejects `v6.5.4`, `6.5`, `6`, `>=1.0.0`, `6.5.*`. |
-| 6g | **Leading `v` and build metadata** | **Reject both.** `v6.5.4` and `1.2.3+meta` fail validation — the first by convention (Helm chart versions and OCI tags are unprefixed, so a `v` would emit a wrong `ref.tag`), the second as a side effect of the canonical round-trip. Not normalize-and-strip. | Normalizing would make `pack.cue` say one thing and the emitted CR another, breaking "what you wrote is what ships". Both are the **reversible** direction: accepting a spelling later is additive. Known cost, stated: a chart genuinely published as `1.2.3+meta` is unusable until this is relaxed (OCI tags cannot contain `+`, so this can only bite `kind: repo`). |
-| 7 | **`namespace` → `targetNamespace`** | Map `pack.namespace` to `HelmRelease.spec.targetNamespace`. The post-render transform is structurally unrepresentable for helm; `CUBE-PKG-008` can never fire. The transform still runs over that pack's `externalManifests`. | The workload objects do not exist at render time; transforming what does exist would namespace the CR, which is a delivery decision. |
-| 8 | **`metadata.namespace` on the emitted CRs** | Do not emit it. `sourceRef`/`chartRef` omit `namespace` too (Flux reads that as "same namespace"). | Where a delivery unit lands is M11's contract; a stream that hard-codes `flux-system` cannot be delivered anywhere else. |
-| 9 | **`install.createNamespace`** | Emit `true`, but **only** alongside `targetNamespace`. | The refuse-it instinct leaves no path: a thin pack has no payload to bundle a `Namespace` into, `externalManifests` is a `spec.packs[]` surface only the operator can write, and its `pre` lifecycle is deferred to M11. helm-controller does the creating, so this domain still only renders. |
-| 10 | **`releaseName`** | Always emit it, equal to the effective instance id. | Left unset, helm-controller generates a composed name and SHA-256-shortens it past 53 chars — the opaque-name outcome the identity model exists to prevent. |
-| 11 | **`interval`** | Emit a fixed `10m` on the `HelmRelease` and the source CR. No pack-surface knob; defer an `interval` field to its own gate. | The CRDs *require* it (`HelmRelease.spec.interval`, `OCIRepository.spec.interval`), so render cannot omit it. `10m` matches `spec.engine.source`'s default. |
-| 12 | **Source CR naming and count** | Name both CRs after the effective instance id; accept that two instances of one pack produce two source CRs. | Deduplicating via a URL hash yields `ocirepository/7f3a9c…` in every listing — the trade the identity model already rejected. |
-| 13 | **`dependsOn`** | `ResolvedGraph` unchanged; render emits **no** `dependsOn` on the `HelmRelease`. | How an edge is expressed is the delivery contract's call (M11); pre-empting it here would be a consumer-driven pack-contract change, which the rules forbid. |
-| 14 | **`pack new --from <chart>`** | A **separate flag**, `--from-chart <dir>`, mutually exclusive with `--from` and `--type`. Narrowest first cut: **local chart directory only** — `Chart.yaml` + `values.yaml` via stdlib + `sigs.k8s.io/yaml`, no fetch, no new dependency. Helm-repo index and OCI tarball reads defer to the milestone with the backend. `#Values` derivation is lossy and labelled so: top-level `values.yaml` keys become optional fields of a closed `#Values` with observed defaults, **nested levels open** (`...`) — closed nested structs would forbid every chart knob the defaults omit. | `--from` already means *fork a pack*. One flag meaning both would require sniffing pack-vs-chart — the guess `type` exists to abolish. |
-| 15 | **`CUBE-PKG-020`** | Keep the row, mark it retired, never reuse the number. No new error codes in M9 — every helm failure lands on `003`, `004`, or `010`. | "Nothing renumbers" (`ARCHITECTURE.md` §5); a shared not-implemented code was already rejected for `ref` backends. |
-| 16 | **Bootstrap kind-set** | Regenerate the asset with `--components=source-controller,kustomize-controller,helm-controller` + update `fluxManifestsSHA256`. **No kind-set or `wait.go` change** — the filter is by kind, so the helm-controller Deployment and the `helmreleases` CRD are waited on as soon as they are in the asset. | Corrects #139/#140, which both assert the readiness wait must be extended. It already covers them. |
-| 17 | **Milestone renumbering** | Helm = **M9**; engine → M10, bus → M11, `up`/`down` → M12. Living docs are updated; `DECISIONS.md` entries and shipped `CHANGELOG.md` release notes are **not** rewritten (both are append-only records of what was true when written), and `ROADMAP.md` carries an explicit old→new map so a stale reference resolves. | The operator asked for consistent renumbering. The append-only exception is the same treatment the 2026-08-22 closeout entry gave to references to a deleted path. |

@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+M9 helm packs (epic #139; design gate: `docs/DECISIONS.md` 2026-08-23):
+
+- **`type: helm` renders to a Flux `HelmRelease`, not to expanded
+  manifests.** A helm pack is **thin**: chart coordinates and a closed
+  `#Values` in `pack.cue`, and **no chart content** — bundled chart files
+  are a payload mismatch (`CUBE-PKG-004`), rejected rather than ignored.
+  Rendering emits the chart's source CR (`HelmRepository` for a repository
+  index, `OCIRepository` for `oci://`) followed by a `HelmRelease` carrying
+  the validated values nested verbatim in `spec.values`; the engine's
+  helm-controller pulls and templates the chart in cluster. **cube-idp
+  never runs Helm**, so rendering stays hermetic and `helm.sh/helm/v4` was
+  dropped from the deferred dependency set rather than adopted.
+- The `chart` block is a `repo|oci` discriminated shape — `kind`, `url`,
+  `name` (repo only), an **exact** `version`, and an optional `digest`
+  (oci only). `#Pack` became a **type-discriminated disjunction**, so
+  "chart required for helm, forbidden otherwise" is enforced by the schema
+  rather than by a hand-written check. Versions are validated by a real
+  SemVer parser (`golang.org/x/mod/semver`, a promotion to a direct import
+  — no new module, `go.sum` unchanged): ranges, partial versions, a leading
+  `v`, and build metadata are all rejected.
+- **Bootstrap installs helm-controller.** The embedded, pinned Flux asset
+  is regenerated at v2.9.2 with
+  `--components=source-controller,kustomize-controller,helm-controller`,
+  adding the helm-controller Deployment and the `helmreleases` CRD, and
+  re-pinned by sha256. The readiness wait is unchanged — the bootstrap
+  kind-set filters by kind, so both join it on their own.
+- New scaffold forms: `cube-idp pack new <dir> --from-chart <chartdir>`
+  reads a **local** chart's `Chart.yaml` and `values.yaml` (a metadata
+  read — nothing fetched, nothing copied) and writes a thin helm pack with
+  a reserved-host placeholder url to replace and a lossy, clearly-labelled
+  `#Values` derived from the chart's defaults. `--type helm` scaffolds the
+  same skeleton with nothing to read it from. Both render immediately.
+- **Trade-off, recorded rather than hidden:** `pack render` on a helm pack
+  shows the `HelmRelease` — the delegation — not the workload the chart
+  expands to, and `pack validate` cannot tell you the chart exists.
+- **Scope: public chart sources and non-sensitive values only.** There is
+  no private-source authentication and no secret-backed `valuesFrom`;
+  values are plaintext in `cube.yaml`, in rendered output, in the delivery
+  artifact, and in the CR. A `kind: repo` chart is an honestly-labelled
+  **mutable reference** — a repository owner can republish different bytes
+  at the same version, so only an OCI `digest` pins content. Trust,
+  credentials, and a `lock`/`mirror` operation are deferred to **#142**.
+- No new error codes: helm failures land on `CUBE-PKG-003`, `004`, or
+  `010`. `CUBE-PKG-020` ("render not implemented") is **retired** — every
+  declarable type now renders — with its number never reused.
+
 M8 pack (epic #113; design gate: `docs/DECISIONS.md` 2026-08-21):
 
 - New domain `internal/pack` (`CUBE-PKG-*`, tag `PKG`): a **pack** is a

@@ -157,7 +157,7 @@ Tag registry (a new component adds a row; nothing renumbers):
 | `KUB` | kube client access | `internal/kube` | active (M6) |
 | `BST` | bootstrap (Flux install + wait + inventory) | `internal/bootstrap` | active (M7) |
 | `ENG` | gitops engine (seam + Flux-as-pack) | `internal/engine` | reserved (M10) |
-| `PKG` | pack contract, values, render, identity + deps | `internal/pack` | active (M8) |
+| `PKG` | pack contract, values, render, identity + deps | `internal/pack` | active (M8; M9 helm packs reused it, adding no tag and no code — `020` retired) |
 | `REF` | reference resolution (grammar → tree/file) | `internal/ref` | active (M8) |
 | `REG` | registry / OCI **publish** side | `internal/registry` | reserved |
 | `APP` | apply / SSA / inventory | `internal/apply` | superseded (M7 — SSA absorbed privately by `internal/bootstrap`; no standalone apply domain, see 2026-08-06) |
@@ -212,6 +212,7 @@ owner-approved architecture/decision update, never a plan footnote:
 | `k8s.io/client-go` | Kubernetes client construction — REST config from kubeconfig bytes, discovery, RESTMapper, dynamic client (M6); everything downstream (apply, engine, doctor) builds on it | construction confined to `internal/kube` (see below) |
 | `cuelang.org/go` | the pack metadata language (M8) — `#Values` is a **closed** definition, so a pack author can lock down, expose, and default their values surface; no cheaper format offers that | `internal/pack` metadata/values files only |
 | `sigs.k8s.io/kustomize/api` + `kyaml` | kustomize rendering (M8) — building a kustomization is the tool's own job; exec-ing `kubectl kustomize` was rejected (no runtime dependency on a binary we do not ship) | `internal/pack/kustomize.go` only |
+| `golang.org/x/mod/semver` | exact-SemVer validation of a helm pack's `chart.version` (M9) — a CUE regex is the first thing to drift from the spec it approximates, so the parser is the authority. Already in the module graph transitively, so this row records a **promotion to a direct import**, not a new module | `internal/pack` only |
 
 Build-only: `sigs.k8s.io/controller-tools` (controller-gen, pinned Go tool
 dependency). Heavy SDKs adopted later are confined to a single importing
@@ -248,18 +249,27 @@ local tree/file and HTTPS file — are **stdlib-only**. Exec-ing
 delegate: a `type: helm` pack renders to a Flux `HelmRelease` plus its
 source CR and the engine's helm-controller templates the chart in cluster,
 so cube-idp never runs Helm and emitting the CRs is `unstructured` plus
-apimachinery. **M9 (helm packs) therefore adds no runtime dependency**, the
-same outcome M7 reached by embedding Flux rather than importing it. See
-`docs/domains/pack.md`.
+apimachinery. See `docs/domains/pack.md`.
 
-**M9 promotes one indirect module, which is not a gate event.**
-`chart.version` is validated by a real SemVer parser rather than by a CUE
-regex, using **`golang.org/x/mod/semver`** — already in the module graph
-(indirect, via the k8s/cue/kustomize trees), so importing it directly drops
-an `// indirect` marker and changes neither `go.sum` nor the closed runtime
-set above. Adding a *new* module for this — `Masterminds/semver/v3`, Helm's
+**M9 (helm packs) adds no new module, and promotes one.** The distinction
+is worth keeping straight, because "no new dependency" and "no change to
+the table" are not the same claim:
+
+- **No new module.** Nothing was fetched that the build did not already
+  carry: `go.sum` is byte-identical across the milestone, and the binary
+  gained no third-party code. That is the same outcome M7 reached by
+  embedding Flux rather than importing it.
+- **One promotion, which the table records.**
+  `golang.org/x/mod/semver` was already in the module graph transitively
+  (via the k8s/cue/kustomize trees) and is now a **direct import** of
+  `internal/pack`, so `go.mod` moves it out of the `// indirect` block. It
+  earns a row above rather than a footnote: the closed set is the list of
+  modules this code *imports*, not the list it *downloads*, and a reader
+  auditing imports should find it there.
+
+Adding a genuinely new module for this — `Masterminds/semver/v3`, Helm's
 own, the fallback if the canonical round-trip proves too strict — **would**
-be an §8 event and gets one if it happens. Confined to `internal/pack`.
+be a full §8 gate event, and gets one if it happens.
 
 **M9 extends the embedded Flux asset, not the dependency table.** The
 vendored `flux install --export` output gains **helm-controller** and the

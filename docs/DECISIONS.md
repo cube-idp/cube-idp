@@ -507,3 +507,29 @@ and are recorded in a delimited "Proposals — M9 helm packs" section of
 lettered rows) and the correction to row 5 came from the independent design
 review of PR #141. Living contract: `docs/domains/pack.md`, "Helm packs
 (`type: helm`) — a delegated pack".
+
+**2026-08-23 — M9 closeout: the "Proposals — M9 helm packs" section is
+deleted.** All twenty-five leans were confirmed by the operator and are
+written into the contract they proposed, so the delimited section in
+`docs/domains/pack.md` is removed with the milestone that consumed it —
+the same `docs/work/`-style discipline the M8 closeout applied to its
+groundwork file. **The 2026-08-23 design-gate entry above still points at
+that section**, and is left as written because this log is append-only;
+this entry is the answer for anyone who follows the pointer. Nothing was
+dropped: each lean now reads as ordinary contract text under "Helm packs
+(`type: helm`) — a delegated pack", and the two leans that were still
+labelled proposals inside the contract prose (the SemVer spellings, and
+M8's single-stream `pack render` output) are restated as settled
+behaviour.
+
+M9 shipped: `type: helm` rendering to a Flux `HelmRelease` plus its
+source CR, a type-discriminated `#Pack` schema, exact-SemVer validation
+via `golang.org/x/mod/semver` (a promotion to a direct import — no new
+module, `go.sum` unchanged, recorded as an `ARCHITECTURE.md` §8 table
+row), helm-controller and the `helmreleases` CRD in the embedded Flux
+asset, and `pack new --from-chart <dir>` / `--type helm`. **No new error
+codes and no new tag** — helm reused `CUBE-PKG-*`, and `CUBE-PKG-020`
+retired unreachable. Deferred by design and stated in the contract rather
+than implied: private chart-source authentication, secret-backed
+`valuesFrom`, and the `lock`/`mirror` operation that would turn a mutable
+repository reference into verified content — all **#142**.
