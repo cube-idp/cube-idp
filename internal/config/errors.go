@@ -63,9 +63,6 @@ func newUnreadableConfigError(cause error) error {
 		"check that the path exists and is readable, or point -f/--config at the right file", cause)
 }
 
-// New-convention constructor names (New<Thing>Error / new<thing>Error,
-// rules audit 2026-08-02); the older err*/Err* constructors above are
-// renamed in a separate mechanical PR.
 func newAlreadyExistsError(path string) error {
 	return cubeerr.Wrap(CodeAlreadyExists,
 		fmt.Sprintf("config already exists at %s", path),
