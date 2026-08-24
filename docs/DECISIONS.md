@@ -565,24 +565,47 @@ order of the post-M9 architecture review's eleven gate questions (epic
    machinery that is not engine-specific), and a hollow seam that leaves
    Flux content inside bootstrap (a second driver would then require
    bootstrap changes — the exact failure a Kind-B seam exists to prevent).
-2. **Cross-domain contract types: consumer-side, mapped at the edge —
-   "domains never import each other" gains no exported-types escape
-   hatch.** Naming another domain's type in a signature is an import. A
-   consumer domain (M11 bus, M12 orchestrator, bootstrap executing engine
-   predicates) declares its own narrow input types per the Kind-A
-   doctrine, and the edge maps producer values (`pack.RenderPlan`,
-   `pack.ResolvedGraph`, driver predicates) into them; neutral vocabulary
-   (apimachinery `unstructured`, client-go interface types, function
-   values, strings) crosses freely. Rejected: promoting `RenderPlan`/
-   `ResolvedGraph` to `api/` (they are not config surface; `api/` is the
-   document's contract, not an inter-domain type bucket) and a types-only
-   shared package (the import-cycle-workaround smell §2 already bans).
-   Recorded as an explicit §2 rule, with two guardrails the M11 gate
-   must state when it defines its consumer types (so the rule is not
-   read as license): the mapped delivery type preserves the
-   `Prerequisites`/`Objects` group boundary, and effective-id derivation
-   stays single-sourced — the edge calls `pack.EffectiveIDs`, consumers
-   never re-derive identity.
+2. **Cross-domain contract types: a new shared-infrastructure leaf,
+   `internal/plan` — "domains never import each other" stands with no
+   exported-types escape hatch, and the leaf is how sharing happens
+   instead.** Naming another domain's type in a signature is an import,
+   and stays banned domain-to-domain. The delivery vocabulary —
+   `RenderPlan`, `ResolvedGraph`, instance identity, and the single
+   `EffectiveIDs` derivation — moves to `internal/plan`, third in the
+   §2 listed leaf set (operator decision): pure data plus that minimal
+   derivation logic, importing only `internal/cubeerr` and apimachinery
+   (the neutral KRM vocabulary its types carry). The listing also
+   sharpens the leaf qualification: "no domain concepts" reads as **no
+   concept owned by a single component domain** — `plan` carries
+   contract vocabulary belonging to several domains at once, which is
+   exactly why none of them may own it. `pack` imports the leaf
+   and produces its types; M11 delivery and the M12 orchestrator import
+   it and consume them. The M10-approved member set, by name:
+   `RenderPlan`, `ResolvedGraph`, `InstanceID`, `EffectiveIDs`, and
+   `InstanceIdentity` — the neutral derivation input (a pack name plus an
+   optional explicit id), required because today's `EffectiveIDs` takes
+   `[]pack.Instance` wrapping `v1alpha1.PackSpec`, neither of which the
+   leaf may see; `pack` maps its instances into it. `ResolveOrder`
+   stays in `pack` (dependency resolution is pack contract) and returns
+   the leaf's `ResolvedGraph`. **Timing: listed at this gate, instantiated by
+   the M11 PR that lands the first real cross-domain consumer** — M10
+   code is unchanged (bootstrap consumes injected function values,
+   already neutral vocabulary). The leaf carries a **closed content
+   rule**: every type or function added is gate-approved by name, never
+   inferred, so it cannot drift into a general types bucket. The two
+   guardrails thereby become **properties of the shared types rather
+   than promises every consumer repeats**: `RenderPlan`'s
+   `Prerequisites`/`Objects` group boundary is preserved because there
+   is only one delivery type and it has the boundary; effective-id
+   derivation is single-sourced because `EffectiveIDs` lives in the leaf
+   and is the only implementation anywhere. Rejected: consumer-side
+   mirror types mapped at the edge (operator: no duplicated shapes — the
+   originally drafted answer, reversed at review); promoting the types
+   to `api/` (not config surface; `api/` is the document's contract);
+   and an *uncurated* types-only package, which remains the
+   import-cycle-workaround smell §2 bans — `internal/plan` differs
+   precisely in being a gate-listed leaf with by-name curated content
+   and real derivation logic, not a bucket anyone can grow.
 3. **Argo: layer, not replace — Flux is the committed substrate.** The
    constraint is traceable to M9, not taste: `type: helm` packs render
    Flux-specific CRs, so a non-Flux steady-state engine leaves every helm

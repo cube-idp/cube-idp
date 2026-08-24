@@ -807,9 +807,10 @@ type ResolvedGraph struct {
 ```
 
 Stable instance identities rather than integer indices, because M11 and M12
-consume this across domain boundaries — as values mapped at the
-CLI/orchestrator edge into consumer-declared types, never as an import
-(`docs/ARCHITECTURE.md` §2, M10 gate).
+consume this across domain boundaries — through the `internal/plan`
+shared-infrastructure leaf (listed at the M10 gate, instantiated at
+M11), which will own this vocabulary; never as a domain-to-domain import
+(`docs/ARCHITECTURE.md` §2).
 
 *(Parked, its own future decision: a `pack.cue` `requires:` field expressing
 a validated capability expectation — "expects a cert-manager" — checked at
@@ -1177,8 +1178,10 @@ event.
   driver does **not** import this domain (a raw, values-free pack renders
   as a sorted manifest parse, which the driver does itself); how
   `RenderPlan`/`ResolvedGraph` cross to M11/M12 consumers is now stated
-  in `docs/ARCHITECTURE.md` §2 — consumer-declared input types mapped at
-  the edge, never an import. Any pack-contract change from a consumer
+  in `docs/ARCHITECTURE.md` §2 — through the `internal/plan`
+  shared-infrastructure leaf (listed at the M10 gate, instantiated by
+  the M11 PR; this domain will import it and produce its types), never a
+  domain-to-domain import. Any pack-contract change from a consumer
   milestone remains a design-gate event, never a drive-by edit.
 - **M11 (bus)** owns **delivery**: writing rendered content into the source
   Flux watches, and the real `pre` semantics — a separate delivery unit for

@@ -293,14 +293,17 @@ import path, not the module graph.
   Its delivery-target facts come from `spec.engine.source` via `api/`
   (the reservation above); the real `pre` semantics and the air-gap
   answer are due there. The air-gap local-manifest override deferred at
-  M7 now lands per-driver (the driver owns its asset). Two guardrails
-  the M11 gate must state when it defines its consumer-side input types
-  (recorded here so the §2 edge-mapping rule is not read as license):
-  the mapped delivery type **preserves the `Prerequisites`/`Objects`
-  group boundary** — two delivery units is contractual, and a flattening
-  map would be silent contract erosion; and **effective-id derivation
-  stays single-sourced** — the edge calls `pack.EffectiveIDs`, consumers
-  receive mapped values and never re-derive identity.
+  M7 now lands per-driver (the driver owns its asset). The M11 PR also
+  **instantiates the `internal/plan` shared-infrastructure leaf** listed
+  at this gate (operator decision, §2): the delivery vocabulary —
+  `RenderPlan`, `ResolvedGraph`, instance identity, `EffectiveIDs` —
+  moves there, `pack` produces its types, delivery and the M12
+  orchestrator consume them. The two delivery guardrails are thereby
+  **properties of the shared types, not promises each consumer
+  repeats**: the `Prerequisites`/`Objects` group boundary is preserved
+  because the one delivery type has it, and effective-id derivation is
+  single-sourced because the leaf's `EffectiveIDs` is the only
+  implementation anywhere.
 - **M12 (`up`/`down`)** composes bootstrap + engine at the orchestrator
   edge exactly as `cube-idp bootstrap` does at the CLI edge; `down` reads
   bootstrap's inventory, which never moved.

@@ -47,16 +47,35 @@ Three package categories, and only these:
    domain = one package = one `docs/domains/` file. **Domains never import
    each other.**
 3. **Shared-infrastructure leaves** — a closed, listed set:
-   **`internal/ref`** and **`internal/kube`** (the latter documented in
+   **`internal/ref`**, **`internal/kube`** (the latter documented in
    `docs/domains/kube.md` since M6, which predates this category and does
-   not make it a component domain). A component domain **MAY**
+   not make it a component domain), and **`internal/plan`** (**listed**
+   at the M10 design gate, 2026-08-24; **instantiated** by the M11 PR
+   that lands the first real cross-domain consumer — the delivery
+   vocabulary: `RenderPlan`, `ResolvedGraph`, instance identity, and the
+   single `EffectiveIDs` derivation; closed content rule below). A
+   component domain **MAY**
    import a listed leaf directly. A leaf **MAY NOT** import a component
    domain or `api/config`; it imports only `internal/cubeerr` and its own
-   backend SDKs. Adding a package to this list is a design-gate event
+   backend SDKs (for `plan`: apimachinery, the neutral KRM vocabulary its
+   types carry — nothing else). Adding a package to this list is a
+   design-gate event
    (2026-08-21), never an inference from shape: a package qualifies only
-   when it is genuinely shared infrastructure with no domain concepts,
-   and the alternative — re-implementing it per domain, or making one
-   domain the accidental home of shared machinery — is worse.
+   when it is genuinely shared infrastructure carrying **no concept owned
+   by a single component domain** (2026-08-24 precision — `ref`/`kube`
+   carry backend-neutral machinery; `plan` carries contract vocabulary
+   that belongs to several domains at once, which is exactly why no one
+   domain may own it), and the alternative — re-implementing it per
+   domain, or making one domain the accidental home of shared machinery —
+   is worse.
+   `internal/plan` additionally carries a **closed content rule**: every
+   type or function added to it is gate-approved by name, so the leaf can
+   never drift into a general types bucket. Its M10-approved member set:
+   `RenderPlan`, `ResolvedGraph`, `InstanceID`, `EffectiveIDs`, and
+   `InstanceIdentity` — the neutral input `EffectiveIDs` derives from,
+   carrying exactly a pack name and an optional explicit id, so the
+   derivation is implementable without the leaf seeing `internal/pack`
+   or `api/config` (`pack` maps its instances into it).
 
    **MAY is not SHOULD.** Injection at the CLI/orchestrator edge remains
    the preferred crossing wherever the value is already an interface:
@@ -109,16 +128,22 @@ Three package categories, and only these:
   one sanctioned exception is a listed shared-infrastructure leaf, above.
   **This rule has no exported-types escape hatch** (stated at the M10
   gate, 2026-08-24): naming another domain's type in a signature is an
-  import. When one domain's output is another's input — `pack`'s
-  `RenderPlan`/`ResolvedGraph` consumed by M11 delivery and the M12
-  orchestrator, `engine` predicates executed by `bootstrap` — the
-  consumer declares its **own** narrow input types (consumer-side
-  doctrine, §4) and the edge maps the producer's values into them;
-  neutral vocabulary types (apimachinery `unstructured`, client-go
-  interface types, function values, strings) cross freely. Promoting a
-  shape to `api/` is reserved for actual config surface; a types-only
-  shared package is the import-cycle-workaround smell by another name and
-  stays banned.
+  import, and stays banned domain-to-domain. When one domain's output is
+  another's input, the crossing is one of exactly three sanctioned
+  forms — **neutral vocabulary** (apimachinery `unstructured`, client-go
+  interface types, function values, strings) injected at the edge, which
+  is how M10's `engine` predicates reach `bootstrap`; **a listed
+  shared-infrastructure leaf** owning the shared shapes, which is how the
+  delivery vocabulary reaches M11/M12 — `internal/plan` (listed at this
+  gate, instantiated at M11) will own `RenderPlan`, `ResolvedGraph`,
+  instance identity, and the `EffectiveIDs` derivation, with `pack`
+  producing its types and delivery/orchestration consuming them; or
+  **promotion to `api/`**, reserved for actual config surface.
+  Consumer-side mirror types were rejected at the gate (operator
+  decision: no duplicated shapes), and an *uncurated* types-only package
+  remains the import-cycle-workaround smell §2 bans — `internal/plan` is
+  neither: it is a gate-listed leaf whose every member is approved by
+  name and which carries real derivation logic, not a bucket.
 - One component domain = one package under `internal/` = one file under
   `docs/domains/`. New components add a package; they never grow an
   existing one. A shared-infrastructure leaf is not a component domain:
