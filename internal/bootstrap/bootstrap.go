@@ -23,7 +23,7 @@ var fluxManifests []byte
 
 // fluxManifestsSHA256 pins the vendored asset's content. A mismatch means
 // the embedded manifests drifted from their recorded provenance.
-const fluxManifestsSHA256 = "78ceeb5aed8f1620191215f17f9afd8b782aa5342e39ef7091f414dc6649d2f8"
+const fluxManifestsSHA256 = "f229fa8ace1655b04ccb2566fa3169681061b48c8e1b7a4e72b7d2413915bb84"
 
 // Manifests returns a copy of the embedded, pinned Flux install manifests
 // (multi-document YAML) after verifying they match the recorded sha256
