@@ -222,6 +222,38 @@ render. Flags: `--kubeconfig`, `--kubeconfig-context-name`, `--timeout`
 gitops-managed cluster). The `apply` verb reserved on 2026-08-03 is
 superseded and stays retired.
 
+## M10 (gated 2026-08-24) — the engine seam narrows this domain
+
+Decided at the M10 design gate (`docs/DECISIONS.md` 2026-08-24; living
+seam contract: `docs/domains/engine.md`). Everything in this section is
+the M10 target state, approved ahead of code; the sections above describe
+the shipped M7/M9 behavior until the milestone lands, at which point they
+are updated in place.
+
+- **Bootstrap keeps the engine-agnostic machinery** — SSA apply, the
+  by-kind bootstrap kind-set wait, the inventory, the install
+  sequencing — and gains one duty: after the source + sync CRs are
+  applied, it executes the **reconciliation wait**, polling with
+  **injected** per-object reconciled predicates supplied by the engine
+  driver (function values cross the CLI/orchestrator edge; bootstrap
+  imports nothing new). Engine-CR readiness thereby moves from "out of
+  scope" to delivered, bounded by the existing `--timeout`.
+- **Everything Flux-specific leaves**: the embedded asset (re-homed in
+  `internal/engine/flux` as an embedded *pack*, same version-constant +
+  sha256 + `make` regeneration discipline), and the source/sync CR
+  shapes. Bootstrap applies objects it is handed; it no longer knows they
+  are Flux.
+- **`CUBE-BST-001`, `-002`, `-007`, `-008`** (asset provenance, asset
+  parse, unsupported engine source kind, embedded-version mismatch) are
+  all raised by content that moves — they follow it to the driver and are
+  **superseded** by `CUBE-ENG-*` codes at implementation — rows kept,
+  numbers never reused, the same discipline as `APP` and `CUBE-PKG-020`.
+  The machinery codes `CUBE-BST-003..006` are unchanged.
+- **Unchanged, explicitly**: the inventory (still this domain's, still
+  the seed of M12 `down`), the no-second-applier rule, the injection
+  contract, and delivery-through-engine — bootstrap installs and hands
+  over, exactly as before; it just stops owning what it installs.
+
 ## Contracts for future domains
 
 - **Pack delivery (M8 renders, M11 delivers)**: the pack domain (M8,
@@ -229,8 +261,10 @@ superseded and stays retired.
   written into the Flux **source** that bootstrap wired (the M11 bus) —
   *not* through a cube-idp applier. Packs conform to the live Flux loop.
 - **M10 (engine)** formalizes the engine driver seam and re-expresses Flux
-  as a conforming pack; it consumes the same `spec.engine` sub-struct and
-  may migrate its shape (design-gate event). Engine-CR readiness lands here.
+  as a conforming pack; the reshape of this domain is the delimited M10
+  section above. The `spec.engine` `provider`+`forProvider` migration was
+  weighed at the gate and **not taken** (no second provider on the
+  horizon; `docs/domains/engine.md`).
 - **M12 (`down`)** reads the bootstrap inventory to tear down what
   bootstrap installed, composed with the M5 cluster teardown.
 - Not in this domain, ever on the current horizon: watch

@@ -1165,8 +1165,19 @@ event.
   milestone permitted to revisit the pack/instance boundary sketched above
   — through its own design gate, like any other contract change.
 - **M10 (engine)** re-expresses Flux as a conforming pack and consumes this
-  contract unchanged. Any pack-contract change from a consumer milestone is
-  a design-gate event, never a drive-by edit.
+  contract unchanged — confirmed at its design gate (2026-08-24): the
+  engine pack is `type: raw` with no `#Values` and no `namespace`,
+  `category: "engine"` becomes the first *used* well-known spelling
+  (identification only — the discipline holds; no engine code path keys
+  on it), and conformance is **enforced** by a green-gate test at the
+  composition edge asserting `pack.Load`+`Render` over the driver's
+  embedded pack yields exactly the driver's install objects. The engine
+  driver does **not** import this domain (a raw, values-free pack renders
+  as a sorted manifest parse, which the driver does itself); how
+  `RenderPlan`/`ResolvedGraph` cross to M11/M12 consumers is now stated
+  in `docs/ARCHITECTURE.md` §2 — consumer-declared input types mapped at
+  the edge, never an import. Any pack-contract change from a consumer
+  milestone remains a design-gate event, never a drive-by edit.
 - **M11 (bus)** owns **delivery**: writing rendered content into the source
   Flux watches, and the real `pre` semantics — a separate delivery unit for
   `RenderPlan.Prerequisites`, its `dependsOn` edge, its health gate, and

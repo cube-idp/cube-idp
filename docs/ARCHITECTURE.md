@@ -24,8 +24,13 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/c
                       │      │        │  └── cluster/kind (driver subpackage)
                       │      ├──▶ internal/kube  (M6 shared-infra leaf: injected
                       │      │        kubeconfig bytes + context name → clients)
-                      │      ├──▶ internal/bootstrap (M7: SSA-applies embedded Flux
-                      │      │        via injected client-go ifaces → api/config)
+                      │      ├──▶ internal/bootstrap (M7: SSA/wait/inventory
+                      │      │        machinery via injected client-go ifaces →
+                      │      │        api/config; engine-agnostic from M10)
+                      │      ├──▶ internal/engine (M10, gated: gitops driver seam —
+                      │      │        │  pure content + predicates → api/config)
+                      │      │        └── engine/flux (driver subpackage: embedded
+                      │      │               engine pack, source CRs, predicates)
                       │      ├──▶ internal/pack (M8: load/validate/render packs
                       │      │        │  → api/config; renders, never applies)
                       │      │        └──▶ internal/ref (M8 shared-infra leaf:
@@ -37,7 +42,8 @@ Three package categories, and only these:
 
 1. **`api/` and `internal/cubeerr`** — pure leaves: they import nothing
    from `internal/` — ever.
-2. **Component domains** (`config`, `cluster`, `bootstrap`, `pack`) — one
+2. **Component domains** (`config`, `cluster`, `bootstrap`, `pack`,
+   `engine` — the last gated at the M10 design gate, 2026-08-24) — one
    domain = one package = one `docs/domains/` file. **Domains never import
    each other.**
 3. **Shared-infrastructure leaves** — a closed, listed set:
@@ -88,9 +94,30 @@ Three package categories, and only these:
   e2e. It imports `api/config` (the `spec.packs` sub-struct),
   `internal/cubeerr`, apimachinery/yaml, `cuelang.org/go`, and the
   `internal/ref` leaf.
+- `internal/engine` (M10, gated) formalizes the gitops **driver seam**
+  (Kind B, `engine.Provider`): a **pure** seam — install content, source +
+  sync CRs, and per-object reconciled predicates; no method performs I/O.
+  Applying and waiting stay `internal/bootstrap`'s machinery, which M10
+  narrows to engine-agnostic (the Flux-specific asset, CR shapes, and
+  version pin move to the `engine/flux` driver, which owns them as an
+  embedded **pack**). Composition — driver selection, handing driver
+  content and predicates to bootstrap — lives at the CLI/orchestrator
+  edge. Living contract: `docs/domains/engine.md`.
 - Domains never import each other. Values cross domains by injection at
   the CLI/orchestrator edge, where factories and composition live. The
   one sanctioned exception is a listed shared-infrastructure leaf, above.
+  **This rule has no exported-types escape hatch** (stated at the M10
+  gate, 2026-08-24): naming another domain's type in a signature is an
+  import. When one domain's output is another's input — `pack`'s
+  `RenderPlan`/`ResolvedGraph` consumed by M11 delivery and the M12
+  orchestrator, `engine` predicates executed by `bootstrap` — the
+  consumer declares its **own** narrow input types (consumer-side
+  doctrine, §4) and the edge maps the producer's values into them;
+  neutral vocabulary types (apimachinery `unstructured`, client-go
+  interface types, function values, strings) cross freely. Promoting a
+  shape to `api/` is reserved for actual config surface; a types-only
+  shared package is the import-cycle-workaround smell by another name and
+  stays banned.
 - One component domain = one package under `internal/` = one file under
   `docs/domains/`. New components add a package; they never grow an
   existing one. A shared-infrastructure leaf is not a component domain:
@@ -131,7 +158,14 @@ Two kinds of seams, bright line between them:
   applies); optional capabilities are separate small type-asserted
   interfaces; seams narrow over time, never widen casually.
 
-Current seams: `cluster.Provisioner` (Kind B, kind driver).
+Current seams: `cluster.Provisioner` (Kind B, kind driver);
+`engine.Provider` (Kind B, flux driver — M10, gated 2026-08-24). The
+engine seam is deliberately **pure** (content + predicates only, the
+caller applies), which lets its conformance suite run hermetically
+against the real driver — no stateful fake needed, and none is written.
+The seam exists for content/machinery separation and testability, not as
+a second-engine invitation: Argo was decided as *layer*, and no Argo
+driver is anticipated (see `docs/domains/engine.md`, the Argo decision).
 
 ## 5. Error architecture
 
@@ -152,11 +186,11 @@ Tag registry (a new component adds a row; nothing renumbers):
 | Tag | Component | Package | Status |
 |---|---|---|---|
 | `CFG` | config (api types + loader) | `internal/config` | active |
-| `CLI` | cli / output | `internal/cli` | active |
+| `CLI` | cli / output | `internal/cli` | active (no codes yet — the edge renders and composes; it has not yet originated one) |
 | `CLU` | cluster provider | `internal/cluster` | active (M3) |
 | `KUB` | kube client access | `internal/kube` | active (M6) |
-| `BST` | bootstrap (Flux install + wait + inventory) | `internal/bootstrap` | active (M7) |
-| `ENG` | gitops engine (seam + Flux-as-pack) | `internal/engine` | reserved (M10) |
+| `BST` | bootstrap (SSA/wait/inventory machinery) | `internal/bootstrap` | active (M7; M10 supersedes `001`/`002`/`007`/`008` — the asset-provenance, asset-parse, unsupported-source-kind and embedded-version checks follow the moving content to the engine driver as `ENG` codes; rows kept, numbers never reused) |
+| `ENG` | gitops engine (seam + Flux-as-pack) | `internal/engine` | gated (M10 design gate 2026-08-24; activates with the code) |
 | `PKG` | pack contract, values, render, identity + deps | `internal/pack` | active (M8; M9 helm packs reused it, adding no tag and no code — `020` retired) |
 | `REF` | reference resolution (grammar → tree/file) | `internal/ref` | active (M8) |
 | `REG` | registry / OCI **publish** side | `internal/registry` | reserved |
@@ -210,7 +244,7 @@ owner-approved architecture/decision update, never a plan footnote:
 | `github.com/spf13/cobra` | CLI framework (K8s ecosystem norm) | `internal/cli` |
 | `sigs.k8s.io/kind` | library-first cluster provisioning (M3) | `internal/cluster/kind` only |
 | `k8s.io/client-go` | Kubernetes client construction — REST config from kubeconfig bytes, discovery, RESTMapper, dynamic client (M6); everything downstream (apply, engine, doctor) builds on it | construction confined to `internal/kube` (see below) |
-| `cuelang.org/go` | the pack metadata language (M8) — `#Values` is a **closed** definition, so a pack author can lock down, expose, and default their values surface; no cheaper format offers that | `internal/pack` metadata/values files only |
+| `cuelang.org/go` | the pack metadata language (M8) — `#Values` is a **closed** definition, so a pack author can lock down, expose, and default their values surface; no cheaper format offers that | `internal/pack` only (the metadata/values files, plus the `pack new` scaffold's `cue/format` use) |
 | `sigs.k8s.io/kustomize/api` + `kyaml` | kustomize rendering (M8) — building a kustomization is the tool's own job; exec-ing `kubectl kustomize` was rejected (no runtime dependency on a binary we do not ship) | `internal/pack/kustomize.go` only |
 | `golang.org/x/mod/semver` | exact-SemVer validation of a helm pack's `chart.version` (M9) — a CUE regex is the first thing to drift from the spec it approximates, so the parser is the authority. Already in the module graph transitively, so this row records a **promotion to a direct import**, not a new module | `internal/pack` only |
 
@@ -278,6 +312,16 @@ v2.9.2 with `--components=source-controller,kustomize-controller,helm-controller
 and re-pinned by sha256. It stays what it already was: external data with
 recorded provenance, regenerated by a `make` target, never fetched at
 runtime. The bootstrap kind-set needs no change (it filters by kind).
+
+**M10 (engine) adds no runtime dependency** — stated at its design gate
+(2026-08-24) so the closed set stays closed by decision rather than by
+accident. The seam is client-go interface types, apimachinery
+`unstructured`, and function values; the flux driver is embedded data
+plus the stdlib. The embedded Flux asset **moves** to
+`internal/engine/flux` and is re-homed as an embedded *pack* — an import
+path and layout change, not a module-graph change; the pin discipline
+(version constant, recorded sha256, `make` regeneration, nothing fetched
+at runtime) transfers with it unchanged.
 
 **M7 (bootstrap) adds no runtime dependency** — a deliberate, load-bearing
 outcome of two M7 decisions (2026-08-06). The Flux install manifests are

@@ -533,3 +533,129 @@ retired unreachable. Deferred by design and stated in the contract rather
 than implied: private chart-source authentication, secret-backed
 `valuesFrom`, and the `lock`/`mirror` operation that would turn a mutable
 repository reference into verified content — all **#142**.
+
+**2026-08-24 — M10 engine design gate (new domain, second Kind-B seam,
+the Argo decision).** New domain `internal/engine` (tag `ENG`, gated —
+activates with the code), formalizing the gitops driver seam as
+**`engine.Provider`**, with the flux driver in `internal/engine/flux`;
+Flux re-expressed as a **conforming pack**. Positions, in the ranked
+order of the post-M9 architecture review's eleven gate questions (epic
+#152):
+
+1. **Seam boundary with bootstrap: split content from machinery; both
+   domains stay.** `internal/bootstrap` narrows to the engine-agnostic
+   machinery it already is underneath — SSA apply, the by-kind kind-set
+   wait, the inventory, install sequencing — and additionally *executes*
+   the new reconciliation wait. `internal/engine/flux` takes everything
+   Flux-specific: the embedded asset (with its version-constant + sha256 +
+   `make`-regeneration discipline), the source/sync CR shapes, and the
+   reconciled predicates. `CUBE-BST-001/002/007/008` — every code raised
+   by the moving content, the unsupported-source-kind check included —
+   follow it and are superseded by `ENG` codes (rows kept, numbers never
+   reused); the machinery codes `003..006` stay. Rejected:
+   the seam subsuming bootstrap (retiring a healthy domain to relocate
+   machinery that is not engine-specific), and a hollow seam that leaves
+   Flux content inside bootstrap (a second driver would then require
+   bootstrap changes — the exact failure a Kind-B seam exists to prevent).
+2. **Cross-domain contract types: consumer-side, mapped at the edge —
+   "domains never import each other" gains no exported-types escape
+   hatch.** Naming another domain's type in a signature is an import. A
+   consumer domain (M11 bus, M12 orchestrator, bootstrap executing engine
+   predicates) declares its own narrow input types per the Kind-A
+   doctrine, and the edge maps producer values (`pack.RenderPlan`,
+   `pack.ResolvedGraph`, driver predicates) into them; neutral vocabulary
+   (apimachinery `unstructured`, client-go interface types, function
+   values, strings) crosses freely. Rejected: promoting `RenderPlan`/
+   `ResolvedGraph` to `api/` (they are not config surface; `api/` is the
+   document's contract, not an inter-domain type bucket) and a types-only
+   shared package (the import-cycle-workaround smell §2 already bans).
+   Recorded as an explicit §2 rule.
+3. **Argo: layer, not replace — Flux is the committed substrate.** The
+   constraint is traceable to M9, not taste: `type: helm` packs render
+   Flux-specific CRs, so a non-Flux steady-state engine leaves every helm
+   pack inert unless helm packs are re-rendered per engine (a
+   pack-contract break), Flux's helm-controller ships anyway (which *is*
+   layering), or pack output is made engine-portable (a different
+   product). Argo, if it ever returns, returns as an ordinary pack Flux
+   delivers; it is not a second driver on any current horizon, and the
+   seam must not be read as half a promise of one — it exists for
+   content/machinery separation and hermetic testability. "Argo is never
+   a compile-time dependency" stands. Reversing "layer" later is a
+   design-gate event that must re-answer the M9 consequence above.
+4. **Flux-as-pack, operationally: the embedded asset becomes an embedded
+   pack; day-0 stays cube-idp-applied.** The driver's asset is a pack
+   directory (`name: "flux"`, `version` = the pinned Flux version,
+   `type: raw`, `category: "engine"`, no `#Values`, no `namespace`) whose
+   payload is the vendored manifests. The driver parses that payload
+   itself (a raw, values-free pack renders as a sorted manifest parse) —
+   it does **not** import `internal/pack`; conformance is enforced by a
+   green-gate test at the composition edge asserting `pack.Load`+`Render`
+   over the embedded directory yields exactly the driver's install
+   objects. The pack carries no instance state — source/sync CRs are
+   config-derived and driver-emitted, never pack content (the M9
+   pack/instance boundary). Day-0 bootstrap remains the one sanctioned
+   direct apply (no circular "engine delivers the engine"); whether the
+   running engine later reconciles its own upgrades is left open for
+   M11+.
+5. **Delivery-target ownership: M11's contract; M10 records one
+   reservation.** Every fact needed to locate the delivery target (URL,
+   ref, path) is and must remain fully derivable from
+   `spec.engine.source` in `api/`; the seam may never make engine-domain
+   private state necessary to locate it. M11 therefore lands without
+   reopening the seam. The M7 air-gap local-manifest override, deferred
+   to the M11 air-gap decision, becomes per-driver (each driver owns its
+   asset).
+6. **Seam method set: three pure responsibilities plus one optional
+   capability.** `InstallObjects` (pinned install content; a
+   contradicting `spec.engine.version` is a coded error),
+   `SourceObjects` (source + sync CRs from the spec; nil source → none),
+   `Reconciled` (per-object readiness judgment over handed-in
+   `unstructured` status — the driver never fetches). Optional
+   `SpecValidator` capability mirrors cluster's (M4 pattern): pure
+   validation for `config validate` parity. **Every method is pure** —
+   §4's "interfaces stay pure where possible" holds completely here,
+   because the only I/O an engine needs is bootstrap's machinery, which
+   is not duplicated (no-second-applier, 2026-08-06). Exact signatures
+   fix at implementation within the contract (`docs/domains/engine.md`).
+7. **`spec.engine` does not migrate to `provider` + opaque `forProvider`.**
+   The migration exists to house provider-specific knobs opaquely; with
+   Argo settled as layer there is no second provider on the horizon, so
+   the opaque payload would carry exactly the already-finalized typed
+   `EngineSource` — ceremony without a consumer, the same instinct the
+   interface doctrine defers until a real second implementation exists.
+   The typed shape is also the friendlier base for #142's additive
+   `secretRef`. Migration stays a reserved design-gate event.
+8. **Engine-CR readiness, concretely:** the flux driver's predicates —
+   for all three kinds (`GitRepository`/`OCIRepository`/`Kustomization`):
+   `Ready` condition true **and** `status.observedGeneration` equal to
+   `metadata.generation`, so a stale `Ready` from before a spec change
+   never counts — read off `unstructured` status, no kstatus. Bootstrap's
+   machinery executes them after the source CRs apply, bounded by the
+   existing `--timeout`; `cube-idp bootstrap` completes only when
+   reconciled. Whether `status` gains an engine line is an
+   implementation-breakdown decision, not gate-fixed.
+9. **Conformance shape: hermetic against the real driver, because the
+   seam is pure.** `RunEngineConformance(t, factory)` in
+   `internal/engine`; no stateful fake is written (a fake of a pure seam
+   tests the fake). Fixtures are driver-supplied (the cluster suite's
+   lesson: no hardcoded "universally invalid" payloads); coded-error
+   identity is asserted via `errors.As` + code equality; documented
+   semantics are enforced rather than non-nil-checked. The real
+   reconciliation round-trip extends `make test-e2e`; never the gate.
+10. **#142 hook points, reserved not implemented:** a future `secretRef`
+    is an additive `EngineSource` field (`api/`) flowing through
+    `SourceObjects` unchanged; #142 designs it together with the pack
+    domain's helm source-CR authentication — two emitters, one gate.
+11. **M10 adds no runtime dependency** — client-go interface types,
+    apimachinery, function values, embedded data; the asset move is an
+    import-path change, not a module-graph change. Recorded in §8 so the
+    closed set stays closed by decision.
+
+Folded into the same diff, from the post-M9 architecture review's drift
+list: the §5 `CLI` row now states its status honestly (active, no codes
+yet); the §8 `cuelang.org/go` confinement cell names the scaffold
+formatter (`new_chart.go`) the M9 `--from-chart` work added. The
+bootstrap.md sequence-order and "M8 delivers packs" corrections ride a
+parallel cleanup PR, not this gate. Living contracts:
+`docs/domains/engine.md` (new), `docs/domains/bootstrap.md` (delimited
+M10 section), `docs/domains/pack.md` (M10 bullet).
