@@ -11,7 +11,7 @@ import "context"
 // dependency gate (docs/ARCHITECTURE.md §8).
 const (
 	gitLandsIn = "its own milestone, behind the go-git/v5 dependency gate"
-	ociLandsIn = "M10, behind the oras-go/v2 dependency gate"
+	ociLandsIn = "M11 (bus), behind the oras-go/v2 dependency gate"
 	s3LandsIn  = "its own milestone, behind the AWS SDK dependency gate"
 )
 
