@@ -54,7 +54,7 @@ func installContext(t *testing.T, dir string, p cluster.Provisioner) {
 	t.Helper()
 	root := newRootCmd(func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
 		return p, nil
-	})
+	}, defaultEngine)
 	var out, errBuf bytes.Buffer
 	code := execute(t.Context(), root, []string{
 		"create", "-f", filepath.Join(dir, "cube.yaml"),
@@ -80,7 +80,7 @@ func execStatus(t *testing.T, dir string, p cluster.Provisioner) (code int, stdo
 	t.Helper()
 	root := newRootCmd(func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
 		return p, nil
-	})
+	}, defaultEngine)
 	var out, errBuf bytes.Buffer
 	code = execute(t.Context(), root, []string{
 		"status", "-f", filepath.Join(dir, "cube.yaml"),

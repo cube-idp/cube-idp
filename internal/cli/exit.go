@@ -15,11 +15,11 @@ import (
 // place errors are rendered: coded errors print code, summary, cause
 // detail, and remediation to stderr.
 func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	return execute(ctx, newRootCmd(defaultProvisioner), args, stdout, stderr)
+	return execute(ctx, newRootCmd(defaultProvisioner, defaultEngine), args, stdout, stderr)
 }
 
 // execute is Execute minus composition, so tests run a command tree
-// built with an injected provisioner factory.
+// built with injected provisioner and engine factories.
 func execute(ctx context.Context, root *cobra.Command, args []string, stdout, stderr io.Writer) int {
 	root.SetArgs(args)
 	root.SetOut(stdout)

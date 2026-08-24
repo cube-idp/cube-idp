@@ -14,21 +14,40 @@ import (
 	"github.com/cube-idp/cube-idp/internal/bootstrap"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/engine"
 	"github.com/cube-idp/cube-idp/internal/engine/flux"
 	"github.com/cube-idp/cube-idp/internal/engine/substrate"
 	"github.com/cube-idp/cube-idp/internal/kube"
 )
 
+// engineFactory maps a validated engine provider to its tier-2 driver.
+// Same doctrine as provisionerFactory: driver selection is edge
+// composition, injected as a parameter so tests pass a seam instead of
+// mutating package state.
+type engineFactory func(p v1alpha1.EngineProvider) (engine.Provider, error)
+
+// defaultEngine is the production engine factory: flux is the only
+// driver today — adding one is a design-gate event. An unknown provider
+// is the defensive CUBE-ENG-001; config validation is the primary gate.
+func defaultEngine(p v1alpha1.EngineProvider) (engine.Provider, error) {
+	switch p {
+	case v1alpha1.EngineProviderFlux:
+		return flux.New(), nil
+	default:
+		return nil, engine.NewUnsupportedProviderError(string(p))
+	}
+}
+
 // defaultBootstrapTimeout bounds how long bootstrap waits for the kind-set to
 // become ready (images pull, controllers start) before giving up.
 const defaultBootstrapTimeout = 5 * time.Minute
 
-func newBootstrapCmd(newProvisioner provisionerFactory) *cobra.Command {
+func newBootstrapCmd(newProvisioner provisionerFactory, newEngine engineFactory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "Install the gitops engine (Flux) into the cluster and wait for it to be ready",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runBootstrap(cmd, newProvisioner)
+			return runBootstrap(cmd, newProvisioner, newEngine)
 		},
 	}
 	cmd.Flags().String("kubeconfig", "",
@@ -46,7 +65,7 @@ func newBootstrapCmd(newProvisioner provisionerFactory) *cobra.Command {
 // Applier, then hands it the substrate's install objects, the engine driver's
 // sync wiring, and the driver's reconciliation judgment. bootstrap stays
 // kube-free and engine-free — the edge injects content and judgment alike.
-func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
+func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory, newEngine engineFactory) error {
 	path, _ := cmd.Flags().GetString("config")
 	kubeconfigPath, _ := cmd.Flags().GetString("kubeconfig")
 	contextName, _ := cmd.Flags().GetString("kubeconfig-context-name")
@@ -66,7 +85,7 @@ func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	if err != nil {
 		return err
 	}
-	wiringObjs, engineWait, err := engineInputs(cmd.Context(), cfg.Spec.Engine)
+	wiringObjs, engineWait, err := engineInputs(cmd.Context(), newEngine, cfg.Spec.Engine)
 	if err != nil {
 		return err
 	}
@@ -85,15 +104,17 @@ func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 }
 
 // engineInputs composes the engine driver's contribution to bootstrap: the
+// injected factory selects the driver from the validated provider (an
+// absent spec.engine means the flux default), then the driver supplies the
 // sync wiring to apply and the reconciliation inputs for the phased waits.
-// The flux driver is constructed directly — the only driver today; the
-// provider selection factory (and CUBE-ENG-001) arrives with the CLI wiring
-// task of this milestone.
-func engineInputs(ctx context.Context, engine *v1alpha1.EngineSpec) ([]*unstructured.Unstructured, bootstrap.EngineWait, error) {
-	drv := flux.New()
-	spec := v1alpha1.EngineSpec{}
-	if engine != nil {
-		spec = *engine
+func engineInputs(ctx context.Context, newEngine engineFactory, engineSpec *v1alpha1.EngineSpec) ([]*unstructured.Unstructured, bootstrap.EngineWait, error) {
+	spec := v1alpha1.EngineSpec{Provider: v1alpha1.EngineProviderFlux}
+	if engineSpec != nil {
+		spec = *engineSpec
+	}
+	drv, err := newEngine(spec.Provider)
+	if err != nil {
+		return nil, bootstrap.EngineWait{}, err
 	}
 	wiring, err := drv.SourceObjects(ctx, spec)
 	if err != nil {
