@@ -82,6 +82,17 @@ types in signatures). It never reads files and never constructs clients
 itself. Composition — reading config, building the kube client, injecting
 the interfaces — lives in `internal/cli`.
 
+One capability expectation rides on the injected mapper and is contract,
+not implementation detail: bootstrap expects a **resettable
+discovery-cached mapper**. Because it installs CRDs and then applies CRs
+of those CRDs, on a mapping miss it asserts the narrow consumer-side
+`resettableRESTMapper` interface (`Reset()`, declared in `apply.go` where
+it is consumed) to invalidate the discovery cache and retry once. The
+memory-cached `RESTMapper` that `internal/kube` currently constructs
+(client-go's `DeferredDiscoveryRESTMapper`) satisfies this capability; a
+mapper without it degrades loudly, not silently — the retry is skipped
+and the miss surfaces as `CUBE-BST-003`.
+
 ## Flux acquisition (embedded, pinned)
 
 The Flux install manifests are **embedded** in the binary via `go:embed`
