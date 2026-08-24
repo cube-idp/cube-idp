@@ -122,8 +122,9 @@ func TestNewValidatesBeforeWriting(t *testing.T) {
 	}
 }
 
-// helm is a recognised pack type with no render backend in this build, so
-// scaffolding one would hand an author a pack they cannot check.
+// helm renders, but scaffolding one would mean inventing chart coordinates —
+// a pack pointing at a chart that does not exist is no more checkable than an
+// unrenderable one. It is refused until --from-chart can read real ones.
 func TestNewRefusesUnscaffoldableType(t *testing.T) {
 	err := pack.New(t.Context(), pack.NewOptions{Dir: newDir(t, "chart"), Type: pack.TypeHelm})
 	wantCode(t, err, pack.CodeScaffoldFailed)

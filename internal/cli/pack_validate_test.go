@@ -6,13 +6,35 @@ import (
 	"testing"
 )
 
-// helm is the one type this build cannot render, and it still validates: its
-// metadata and payload are sound, and only the render backend is missing.
-func TestPackValidateUnrenderableType(t *testing.T) {
-	dir := writePack(t, "name: \"h\"\nversion: \"1\"\ntype: \"helm\"\n",
-		map[string]string{"Chart.yaml": "name: h\n"})
+// chartCUE is the chart block a thin helm pack must carry.
+const chartCUE = "chart: {kind: \"repo\", url: \"https://charts.example.com\", name: \"h\", version: \"1.2.3\"}\n"
 
-	code, stdout, stderr := run(t, "pack", "validate", dir)
+// A helm pack renders through the CLI to the delegation itself — the
+// HelmRelease and its source — not to the workload the chart expands to. That
+// is the "delegated pack" preview, and it is what validate checks too.
+func TestPackRenderHelmEmitsDelegation(t *testing.T) {
+	dir := writePack(t, "name: \"h\"\nversion: \"1\"\ntype: \"helm\"\n"+chartCUE, nil)
+
+	code, stdout, stderr := run(t, "pack", "render", dir)
+	if code != 0 {
+		t.Fatalf("pack render (helm) exit = %d, want 0 (stderr: %s)", code, stderr)
+	}
+	if stderr != "" {
+		t.Errorf("pack render (helm) wrote %q to stderr, want nothing on success", stderr)
+	}
+	for _, want := range []string{
+		"kind: HelmRepository",
+		"kind: HelmRelease",
+		"url: https://charts.example.com",
+		"releaseName: h",
+		"version: 1.2.3",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("rendered output missing %q; got:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = run(t, "pack", "validate", dir)
 	if code != 0 {
 		t.Fatalf("pack validate (helm) exit = %d, want 0 (stderr: %s)", code, stderr)
 	}

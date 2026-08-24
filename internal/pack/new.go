@@ -24,9 +24,10 @@ const namePlaceholder = "PACKNAME"
 // as written — that is the point of the command, and the tests assert it — so
 // each carries a real object rather than a commented-out example.
 //
-// helm has no entry: its render backend is not in this build, and scaffolding
-// a pack that cannot be rendered would hand an author something they cannot
-// check.
+// helm has no entry yet. Its render backend is here, but a helm pack is
+// coordinates — a scaffold would have to invent a chart url and version, and
+// a pack pointing at a chart that does not exist is not something an author
+// can check either. Scaffolding one is --from-chart's job, in its own chunk.
 var scaffolds = map[Type]map[string]string{
 	TypeRaw: {
 		MetadataFile: `// ` + namePlaceholder + ` — scaffolded by cube-idp.

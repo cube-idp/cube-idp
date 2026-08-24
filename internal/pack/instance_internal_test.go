@@ -232,14 +232,13 @@ func TestRenderInstanceValuesOnRawPack(t *testing.T) {
 }
 
 // Both values sources decode through JSON, where every number is a float — so
-// an integer written by an author must still satisfy an `int` field. Reaching
-// the render dispatch is the proof: #Values accepted the values, and only the
-// render backend for this type is missing.
+// an integer written by an author must still satisfy an `int` field. Rendering
+// without a values error is the proof that #Values accepted them.
 func TestRenderInstanceNumbersSatisfyValuesDefinition(t *testing.T) {
 	files := fstest.MapFS{
 		"pack.cue": &fstest.MapFile{Data: []byte("name: \"v\"\nversion: \"1\"\ntype: \"helm\"\n" +
+			"chart: {kind: \"repo\", url: \"https://c.example.com\", name: \"c\", version: \"1.0.0\"}\n" +
 			"#Values: {\n\treplicas: int | *1\n\tratio:    number | *1.0\n}\n")},
-		"Chart.yaml": &fstest.MapFile{Data: []byte("name: v\n")},
 	}
 	p, err := Load(t.Context(), files, "./p")
 	if err != nil {
@@ -273,7 +272,9 @@ func TestRenderInstanceNumbersSatisfyValuesDefinition(t *testing.T) {
 			resolver := &stubResolver{docs: map[string]string{"./values.yaml": "replicas: 3\n"}}
 
 			_, err := renderInstance(t.Context(), p, tt.spec, resolver.resolve)
-			wantCoded(t, err, CodeRenderTypeUnsupported)
+			if err != nil {
+				t.Errorf("renderInstance(%s) = error %v, want a plan", tt.name, err)
+			}
 		})
 	}
 }

@@ -8,21 +8,27 @@ import (
 	"github.com/cube-idp/cube-idp/internal/pack"
 )
 
-// helmPack builds a helm pack around a pack.cue body. Values are validated
-// for every pack type, before the render dispatch — helm is the type this
-// build still cannot render, so it isolates the values layer from any render
-// backend. Kustomize would now render and report render-stage errors instead.
+// helmPack builds a helm pack around a pack.cue body. A helm pack is thin, so
+// the metadata file is the whole payload: it isolates the values layer from
+// any payload-reading render backend, which is what makes it the type these
+// values tests use.
 func helmPack(cue string) fstest.MapFS {
-	return fstest.MapFS{
-		"pack.cue":   &fstest.MapFile{Data: []byte(cue)},
-		"Chart.yaml": &fstest.MapFile{Data: []byte("name: v\n")},
-	}
+	return fstest.MapFS{"pack.cue": &fstest.MapFile{Data: []byte(cue)}}
 }
+
+// chartCUE is the chart block a thin helm pack must carry.
+const chartCUE = `chart: {
+	kind:    "repo"
+	url:     "https://charts.example.com"
+	name:    "v"
+	version: "1.2.3"
+}
+`
 
 const valuesCUE = `name:    "v"
 version: "1"
 type:    "helm"
-#Values: {
+` + chartCUE + `#Values: {
 	replicas: int | *1
 	image!:   string
 	tls?:     bool
@@ -30,8 +36,9 @@ type:    "helm"
 `
 
 // Values are validated before the render dispatch, so a #Values violation is
-// reported even for a type this build cannot yet render. The unsupported-type
-// code appearing instead means validation was skipped.
+// reported as a values fault rather than as whatever the render backend would
+// have made of it. An empty want means the values are accepted and the pack
+// renders.
 func TestValuesValidatedBeforeRenderDispatch(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -61,13 +68,11 @@ func TestValuesValidatedBeforeRenderDispatch(t *testing.T) {
 			name:   "values satisfying #Values reach the render dispatch",
 			cue:    valuesCUE,
 			values: map[string]any{"image": "nginx"},
-			want:   pack.CodeRenderTypeUnsupported,
 		},
 		{
 			name:   "a pack without #Values passes values through",
-			cue:    "name: \"v\"\nversion: \"1\"\ntype: \"helm\"\n",
+			cue:    "name: \"v\"\nversion: \"1\"\ntype: \"helm\"\n" + chartCUE,
 			values: map[string]any{"anything": "goes"},
-			want:   pack.CodeRenderTypeUnsupported,
 		},
 	}
 
@@ -78,6 +83,12 @@ func TestValuesValidatedBeforeRenderDispatch(t *testing.T) {
 				t.Fatalf("Load() = error %v, want a pack", err)
 			}
 			_, err = p.Render(t.Context(), pack.RenderOptions{Values: tt.values})
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("Render(%v) = error %v, want a plan", tt.values, err)
+				}
+				return
+			}
 			wantCode(t, err, tt.want)
 		})
 	}
