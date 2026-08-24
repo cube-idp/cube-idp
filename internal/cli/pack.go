@@ -38,13 +38,17 @@ func newPackNewCmd() *cobra.Command {
 		Long: "Create a new pack in a directory that does not exist yet.\n\n" +
 			"The result is a complete pack — pack.cue plus a payload matching its type — " +
 			"so `cube-idp pack render <dir>` works on it immediately. With --from, an " +
-			"existing pack is copied instead of scaffolded, and keeps the type it declares.",
+			"existing pack is copied instead of scaffolded, and keeps the type it declares. " +
+			"With --from-chart, a local Helm chart directory is read (Chart.yaml and " +
+			"values.yaml only, never fetched or copied) and a thin helm pack is scaffolded " +
+			"from it, with a placeholder repository URL to replace.",
 		Args: cobra.ExactArgs(1),
 		RunE: runPackNew,
 	}
-	cmd.Flags().String("type", string(pack.TypeRaw), "pack type to scaffold: raw or kustomize")
+	cmd.Flags().String("type", string(pack.TypeRaw), "pack type to scaffold: raw, helm, or kustomize")
 	cmd.Flags().String("name", "", "pack name (default: the directory's base name)")
 	cmd.Flags().String("from", "", "reference to an existing pack to fork instead of scaffolding")
+	cmd.Flags().String("from-chart", "", "local Helm chart directory to scaffold a thin helm pack from")
 	return cmd
 }
 
@@ -68,26 +72,47 @@ func runPackNew(cmd *cobra.Command, args []string) error {
 	meta := p.Metadata()
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "created pack %s %s (%s) in %s\n",
 		meta.Name, meta.Version, meta.Type, args[0])
+	if opts.FromChart != "" {
+		// A local chart directory does not say where the chart is published,
+		// so the scaffold carries a placeholder URL. Saying so here as well as
+		// in the file is the difference between a TODO someone reads and one
+		// they discover from a failing HelmRelease.
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(),
+			"replace the placeholder chart url in %s before installing this pack\n",
+			filepath.Join(args[0], "pack.cue"))
+	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "run \"cube-idp pack render %s\" to see what it produces\n", args[0])
 	return nil
 }
 
-// packNewOptions maps the flags, refusing the one combination that cannot mean
-// anything: a fork takes the type its source declares, so asking for a
-// different one is not a conversion this command could perform. --type carries
-// a default, so only an explicitly given one is a request.
+// packNewOptions maps the flags, refusing the combinations that cannot mean
+// anything: a fork takes the type its source declares and a chart scaffolds a
+// helm pack, so asking for a different --type is not a conversion this command
+// could perform, and asking for both sources names two different operations on
+// two different kinds of input. --type carries a default, so only an
+// explicitly given one is a request.
 func packNewOptions(cmd *cobra.Command, dir string) (pack.NewOptions, error) {
 	name, _ := cmd.Flags().GetString("name")
 	from, _ := cmd.Flags().GetString("from")
+	fromChart, _ := cmd.Flags().GetString("from-chart")
 	packType, _ := cmd.Flags().GetString("type")
 
-	if from != "" {
-		if cmd.Flags().Changed("type") {
-			return pack.NewOptions{}, fmt.Errorf(
-				"--from copies a pack with the type it already declares, so --type %s cannot apply: drop --type to fork, or drop --from to scaffold a new %s pack",
-				packType, packType)
-		}
+	switch {
+	case from != "" && fromChart != "":
+		return pack.NewOptions{}, fmt.Errorf(
+			"--from forks an existing pack and --from-chart scaffolds one from a Helm chart: give exactly one")
+	case from != "" && cmd.Flags().Changed("type"):
+		return pack.NewOptions{}, fmt.Errorf(
+			"--from copies a pack with the type it already declares, so --type %s cannot apply: drop --type to fork, or drop --from to scaffold a new %s pack",
+			packType, packType)
+	case fromChart != "" && cmd.Flags().Changed("type"):
+		return pack.NewOptions{}, fmt.Errorf(
+			"--from-chart always scaffolds a helm pack, so --type %s cannot apply: drop --type, or drop --from-chart to scaffold a %s pack",
+			packType, packType)
+	case from != "":
 		return pack.NewOptions{Dir: dir, Name: name, From: from}, nil
+	case fromChart != "":
+		return pack.NewOptions{Dir: dir, Name: name, FromChart: fromChart}, nil
 	}
 	return pack.NewOptions{Dir: dir, Name: name, Type: pack.Type(packType)}, nil
 }
