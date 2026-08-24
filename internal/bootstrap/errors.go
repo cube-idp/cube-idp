@@ -26,11 +26,12 @@ const (
 	// CodeRESTMapping reports an object whose kind the cluster does not map
 	// to a resource (e.g. a CR applied before its CRD is established).
 	CodeRESTMapping cubeerr.Code = "CUBE-BST-003"
-	// CodeApplyFailed reports a server-side apply (or readiness read) that
-	// the API server rejected.
+	// CodeApplyFailed reports a server-side apply that the API server
+	// rejected.
 	CodeApplyFailed cubeerr.Code = "CUBE-BST-004"
 	// CodeWaitTimeout reports bootstrap resources that did not reach the
-	// ready kind-set before the context was done.
+	// ready kind-set before the context was done. It covers the kind-set
+	// wait only; the reconciliation waits time out as CUBE-BST-009.
 	CodeWaitTimeout cubeerr.Code = "CUBE-BST-005"
 	// CodeInventory reports a failure to encode the bootstrap inventory (the
 	// seed of down) before recording it.
@@ -41,6 +42,16 @@ const (
 	// CodeVersionMismatch reports a requested engine version that differs from
 	// this binary's embedded Flux distribution.
 	CodeVersionMismatch cubeerr.Code = "CUBE-BST-008"
+	// CodeReconcileTimeout reports polled objects — applied sync wiring or
+	// declared engine content — that the injected judgment did not report
+	// reconciled before the context was done. It names the pending objects
+	// with the judgment's reasons.
+	CodeReconcileTimeout cubeerr.Code = "CUBE-BST-009"
+	// CodePollFailed reports a permanent failure while polling an object for
+	// reconciliation — a read the API server rejected for a reason waiting
+	// cannot fix, or a judgment failure carrying no code of its own. It is
+	// coded at the failure point and never retagged as a timeout.
+	CodePollFailed cubeerr.Code = "CUBE-BST-010"
 )
 
 func newAssetIntegrityError(got string) error {
@@ -60,7 +71,7 @@ func newManifestParseError(cause error) error {
 func newMappingError(obj *unstructured.Unstructured, cause error) error {
 	return cubeerr.Wrap(CodeRESTMapping,
 		fmt.Sprintf("no REST mapping for %s", describe(obj)),
-		"ensure the cluster serves this API — Flux CRDs are applied and established before their custom resources",
+		"ensure the cluster serves this API — CRDs must be applied and established before their custom resources",
 		cause)
 }
 
@@ -92,18 +103,45 @@ func newInventoryError(cause error) error {
 		cause)
 }
 
-// newWaitError wraps a readiness-wait failure in CUBE-BST-005 — unless the
-// cause already carries a cubeerr code (e.g. a CUBE-BST-003 mapping miss
-// surfacing mid-wait), which passes through unchanged: one failure, one code,
-// never retagged.
-func newWaitError(pending []*unstructured.Unstructured, cause error) error {
+// newWaitError wraps a kind-set readiness-wait failure in CUBE-BST-005 —
+// unless the cause already carries a cubeerr code (e.g. a CUBE-BST-003
+// mapping miss surfacing mid-wait), which passes through unchanged: one
+// failure, one code, never retagged. namespace is the injected install
+// namespace, named so the remediation points somewhere real without this
+// domain knowing the engine.
+func newWaitError(namespace string, pending []*unstructured.Unstructured, cause error) error {
 	var coded *cubeerr.Coded
 	if errors.As(cause, &coded) {
 		return cause
 	}
 	return cubeerr.Wrap(CodeWaitTimeout,
 		fmt.Sprintf("bootstrap resources did not become ready: %s", describeAll(pending)),
-		"inspect the Flux controllers (`kubectl -n flux-system get pods`) and their events",
+		fmt.Sprintf("inspect the engine controllers (`kubectl -n %s get pods`) and their events", namespace),
+		cause)
+}
+
+// newReconcileWaitError wraps a reconciliation-wait failure in CUBE-BST-009,
+// naming the pending objects with the judgment's reasons — unless the cause
+// already carries a cubeerr code (a permanent CUBE-BST-010 poll failure or
+// the judgment's own coded error surfacing mid-wait), which passes through
+// unchanged: one failure, one code, never retagged.
+func newReconcileWaitError(pending []pendingObject, cause error) error {
+	var coded *cubeerr.Coded
+	if errors.As(cause, &coded) {
+		return cause
+	}
+	return cubeerr.Wrap(CodeReconcileTimeout,
+		fmt.Sprintf("engine resources did not reconcile: %s", describePending(pending)),
+		"inspect the named objects and their controllers' logs; check that the configured source is reachable",
+		cause)
+}
+
+// newPollError wraps a permanent reconciliation-polling failure in
+// CUBE-BST-010 — coded at the failure point, never retagged as a timeout.
+func newPollError(obj *unstructured.Unstructured, cause error) error {
+	return cubeerr.Wrap(CodePollFailed,
+		fmt.Sprintf("polling %s for reconciliation failed", describe(obj)),
+		"check cluster connectivity and RBAC for reading the named object",
 		cause)
 }
 
@@ -121,6 +159,16 @@ func describeAll(objs []*unstructured.Unstructured) string {
 	parts := make([]string, 0, len(objs))
 	for _, o := range objs {
 		parts = append(parts, describe(o))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// describePending renders pending objects with their reasons, e.g.
+// "GitRepository flux-system/flux-system (artifact not ready)".
+func describePending(pending []pendingObject) string {
+	parts := make([]string, 0, len(pending))
+	for _, p := range pending {
+		parts = append(parts, fmt.Sprintf("%s (%s)", describe(p.obj), p.reason))
 	}
 	return strings.Join(parts, ", ")
 }

@@ -60,7 +60,10 @@ func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
-	if err := applier.InstallEngine(ctx, cfg.Spec.Engine); err != nil {
+	// No reconciliation judgment is injected yet: the flux driver that
+	// supplies it lands with the M10-C3 wiring move, and until then the
+	// post-apply wait phases are skipped — the shipped M7/M9 behavior.
+	if err := applier.InstallEngine(ctx, cfg.Spec.Engine, bootstrap.EngineWait{}); err != nil {
 		return err
 	}
 	renderBootstrapResult(cmd, cfg.Spec.Engine)
@@ -103,5 +106,7 @@ func bootstrapApplier(ctx context.Context, cfg *v1alpha1.Config, newProvisioner 
 	if err != nil {
 		return nil, err
 	}
-	return bootstrap.NewApplier(client.Dynamic(), client.RESTMapper()), nil
+	// Inventory placement is injected at the edge; until the M10-C2 substrate
+	// home exports the fact, the existing constant is the value passed.
+	return bootstrap.NewApplier(client.Dynamic(), client.RESTMapper(), bootstrap.InventoryNamespace), nil
 }
