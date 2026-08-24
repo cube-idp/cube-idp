@@ -220,7 +220,7 @@ Tag registry (a new component adds a row; nothing renumbers):
 | `CLU` | cluster provider | `internal/cluster` | active (M3) |
 | `KUB` | kube client access | `internal/kube` | active (M6) |
 | `BST` | bootstrap (SSA/wait/inventory machinery) | `internal/bootstrap` | active (M7; M10 supersedes `001`/`002`/`007`/`008` — the asset-provenance, asset-parse, unsupported-source-kind and embedded-version checks follow the moving content into the engine domain (substrate + driver) as `ENG` codes; rows kept, numbers never reused) |
-| `ENG` | gitops engine (invariant substrate + tier-2 driver seam) | `internal/engine` | gated (M10 design gate 2026-08-24; activates with the code) |
+| `ENG` | gitops engine (invariant substrate + tier-2 driver seam) | `internal/engine` | active (M10; seam + conformance first — the substrate home and flux driver land in the same milestone's stack) |
 | `PKG` | pack contract, values, render, identity + deps | `internal/pack` | active (M8; M9 helm packs reused it, adding no tag and no code — `020` retired) |
 | `REF` | reference resolution (grammar → tree/file) | `internal/ref` | active (M8) |
 | `REG` | registry / OCI **publish** side | `internal/registry` | reserved |
