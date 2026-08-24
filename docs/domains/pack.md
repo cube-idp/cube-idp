@@ -13,8 +13,12 @@ later milestone consumes. This domain **defines, loads, validates, and
 renders** packs — and stops there.
 
 It does **not** deliver them. Under delivery-through-engine (DECISIONS
-2026-08-06) Flux owns steady state, and packs reach a cluster by being
-**written into the source Flux watches**; that write path is M11.
+2026-08-06, restructured two-tier 2026-08-24) the selected tier-2
+**engine** owns steady-state pack coordination — while the invariant
+tier-1 Flux substrate reconciles Flux-shaped output such as helm packs'
+CRs whatever the engine is — and packs reach a cluster by being
+**written into the source the sync wiring established**; that write path is
+the bus milestone (M12, after the M11 gateway insertion — see ROADMAP).
 cube-idp renders, never applies. Consequently M8 touches no cluster: the
 domain is pure and hermetic, and **has no e2e** — rendering is a function
 of its inputs, not of a live API server.
@@ -170,10 +174,10 @@ across layers.
 
 **The setup layer is library-only in M8.** It needs every `packRef`
 resolved, and M8 exposes no command that resolves a whole setup — `pack
-install` is not in M8, and `plan`/`up --dry-run` are M11/M12. So
+install` is not in M8, and `plan`/`up --dry-run` are M12/M13. So
 `CUBE-PKG-015`…`019` are reachable through the domain API and its tests,
 not through the CLI, until the command that consumes `ResolvedGraph`
-lands. This is deliberate: the graph is built now because M11 and M12
+lands. This is deliberate: the graph is built now because M12 and M13
 consume it, not because M8 has a verb for it. Adding a whole-setup form to
 `pack validate` is a CLI-surface decision for that milestone, not a
 drive-by.
@@ -185,7 +189,7 @@ drive-by.
 // pack itself produces, plus the prerequisite objects declared beside it.
 type RenderPlan struct {
     // Prerequisites are the lifecycle:pre external manifests. M8 carries
-    // them as data only; delivery semantics are M11's.
+    // them as data only; delivery semantics are M12's.
     Prerequisites []*unstructured.Unstructured
 
     // Objects are the pack's rendered objects followed by the
@@ -198,7 +202,7 @@ type RenderPlan struct {
 `pre` semantics under delivery-through-engine need a separate Flux
 `Kustomization` for the prerequisite group, a `dependsOn` edge to the pack's
 own, a defined health gate, and stable names for both delivery units —
-all of which are M11's contract. Joining `pre` documents ahead of the pack
+all of which are M12's contract. Joining `pre` documents ahead of the pack
 in one YAML stream would *look* like ordering without providing readiness,
 and M8 cannot verify readiness because it does not deliver. So the group is
 preserved structurally and honestly labelled deferred.
@@ -623,7 +627,7 @@ configurable:
   characters. A generated, sometimes-hashed release name would undo the
   legibility the whole identity model exists for.
 - **The emitted CRs carry no `metadata.namespace`.** Which namespace a
-  delivery unit lands in is the delivery contract's decision (M11), not
+  delivery unit lands in is the delivery contract's decision (M12), not
   the renderer's, and a rendered stream that hard-codes `flux-system`
   cannot be delivered anywhere else. `sourceRef`/`chartRef` therefore omit
   `namespace` too, which Flux reads as "same namespace as the
@@ -635,7 +639,7 @@ configurable:
   no path at all: a thin pack has no payload to bundle a `Namespace` into,
   `externalManifests` is a `spec.packs[]` surface only the *operator* can
   write, and its `pre` lifecycle — the correct one for a namespace — is
-  carried-not-implemented until M11. So refusing would mean `pack.namespace`
+  carried-not-implemented until M12. So refusing would mean `pack.namespace`
   on a helm pack silently requires an out-of-band `kubectl create ns`. The
   flag is emitted by helm-controller's own install, not by cube-idp, which
   keeps this domain rendering; without `pack.namespace` there is no
@@ -644,7 +648,7 @@ configurable:
   resolves into `ResolvedGraph` exactly as before, unchanged. Whether an
   edge becomes a `HelmRelease.spec.dependsOn`, a
   `Kustomization.spec.dependsOn`, or an ordering the orchestrator
-  executes is the **delivery** contract's call (M11) — and a pack-contract
+  executes is the **delivery** contract's call (M12) — and a pack-contract
   change driven by a consumer milestone is a design-gate event, not
   something this gate should pre-empt.
 
@@ -672,7 +676,7 @@ overrides the chart's.
 > **Values are NON-SENSITIVE. This is a hard boundary, not a guideline.**
 > Everything in `#Values` and in an instance's inline `values` is written
 > in plaintext to **four** places: the operator's `cube.yaml`, `pack
-> render`'s stdout, the git or OCI delivery artifact M11 writes, and the
+> render`'s stdout, the git or OCI delivery artifact M12 writes, and the
 > `HelmRelease` CR in cluster — where it is readable by anyone with `get
 > helmreleases`. A password put here is a password published four times.
 >
@@ -795,7 +799,7 @@ Resolution over the instances in the setup:
    declared — no category-derived edges, no gateway-derived edges.
 
 Resolution produces data; **executing** the order is the orchestrator's job
-(M12):
+(M13):
 
 ```go
 type InstanceID string
@@ -806,13 +810,16 @@ type ResolvedGraph struct {
 }
 ```
 
-Stable instance identities rather than integer indices, because M11 and M12
-consume this across a package boundary.
+Stable instance identities rather than integer indices, because M12 and M13
+consume this across domain boundaries — through the `internal/plan`
+shared-infrastructure leaf (listed at the M10 gate, instantiated at
+the M12 bus), which will own this vocabulary; never as a domain-to-domain import
+(`docs/ARCHITECTURE.md` §2).
 
 *(Parked, its own future decision: a `pack.cue` `requires:` field expressing
 a validated capability expectation — "expects a cert-manager" — checked at
 plan time and **never** auto-wired into ordering. It recovers the
-portability value without the name-expansion behavior. Revisit when M12
+portability value without the name-expansion behavior. Revisit when M13
 makes it concrete.)*
 
 ## `internal/ref` — the shared-infrastructure leaf
@@ -843,7 +850,7 @@ local paths, host-like directories, and future registry syntax):
 | `./path`, `../path`, `file:///abs/path` | tree or file | M8 (stdlib) |
 | `https://host/path` | file | M8 (stdlib) |
 | `git+https://host/org/repo.git?ref=<rev>&path=<sub>` | tree | own gate — `go-git/v5` |
-| `oci://host/repo:tag` or `…@sha256:…` | tree | own gate — `oras-go/v2`, aligned with M11 |
+| `oci://host/repo:tag` or `…@sha256:…` | tree | own gate — `oras-go/v2`, aligned with the M12 bus |
 | `s3://bucket/key` | tree or file | own gate — AWS SDK, on demand |
 
 Unimplemented backends are recognized by the parser and return their **own
@@ -852,7 +859,7 @@ milestone. Resolution records a pin, enforces containment (no path
 traversal, no symlink escape), and honors cancellation.
 
 `ref` is kept **OCM-agnostic** — the one obligation the OCM evaluation
-exported — so the M11 air-gap door (an optional CTF+signature transport
+exported — so the M12 air-gap door (an optional CTF+signature transport
 backend) stays open.
 
 `CUBE-REF-*` is documented here, inside its only consumer's contract,
@@ -1084,7 +1091,7 @@ cube-idp pack new      <dir> [--type raw|helm|kustomize] [--name <n>]
     tightening types, deleting what the pack does not expose — is the
     author's job, and the scaffold's header comment says exactly that.
 - **No `pack install` in M8.** It implies mutation and engine delivery;
-  adding it before M11 would mislead users and pressure the design back
+  adding it before the M12 bus would mislead users and pressure the design back
   toward direct apply. The retired `apply` verb stays retired.
 
 ### `pack render` output when prerequisites exist
@@ -1093,7 +1100,7 @@ cube-idp pack new      <dir> [--type raw|helm|kustomize] [--name <n>]
 **one deterministic stream — `Prerequisites` first, then `Objects`** — so
 nothing declared is ever silently dropped from stdout and the `| kubectl
 apply -f -` path keeps working. The group boundary is preserved in the Go
-`RenderPlan` type, which is what M11 consumes; it is *not* encoded in the
+`RenderPlan` type, which is what M12 consumes; it is *not* encoded in the
 YAML (a comment marker is not semantics). If a machine-readable plan format
 is ever wanted, it arrives as an explicit flag with its own decision.
 
@@ -1164,14 +1171,36 @@ event.
   mutable repository reference into verified content. It is the one
   milestone permitted to revisit the pack/instance boundary sketched above
   — through its own design gate, like any other contract change.
-- **M10 (engine)** re-expresses Flux as a conforming pack and consumes this
-  contract unchanged. Any pack-contract change from a consumer milestone is
-  a design-gate event, never a drive-by edit.
-- **M11 (bus)** owns **delivery**: writing rendered content into the source
-  Flux watches, and the real `pre` semantics — a separate delivery unit for
+- **M10 (engine)** establishes the two-tier model and re-expresses the
+  invariant Flux **substrate** as a conforming pack, consuming this
+  contract unchanged — confirmed at its design gate (2026-08-24): the
+  substrate pack is `type: raw` with no `#Values` and no `namespace`,
+  `category: "engine"` becomes the first *used* well-known spelling
+  (identification only — the discipline holds; no engine code path keys
+  on it), and conformance is **enforced** by a green-gate test at the
+  composition edge asserting `pack.Load`+`Render` over the embedded
+  substrate pack yields exactly the substrate's parsed objects (deep
+  ordered equality). The substrate home does **not** import this domain
+  (a raw, values-free pack renders as a sorted manifest parse, which it
+  does itself). The two-tier model is also what anchors helm packs
+  permanently: their Flux CRs bind **tier 1**, which is invariant, so
+  they are never inert under any tier-2 engine. How
+  `RenderPlan`/`ResolvedGraph` cross to M12/M13 consumers is stated
+  in `docs/ARCHITECTURE.md` §2 — through the `internal/plan`
+  shared-infrastructure leaf (listed at the M10 gate, instantiated by
+  the M12 bus PR; this domain will import it and produce its types), never a
+  domain-to-domain import. Any pack-contract change from a consumer
+  milestone remains a design-gate event, never a drive-by edit.
+- **M11 (gateway)** is the trust-fabric prerequisite (ingress gateway:
+  certs, hostnames, trust, internal DNS) inserted at the M10 gate per the
+  founding vision; its own design gate defines it, and its delivery
+  semantics feed the bus milestone's `Prerequisites` handling. Nothing in
+  this contract changes for it ahead of that gate.
+- **M12 (bus)** owns **delivery**: writing rendered content into the
+  source the sync wiring established, and the real `pre` semantics — a separate delivery unit for
   `RenderPlan.Prerequisites`, its `dependsOn` edge, its health gate, and
   stable names for both units. The air-gap answer is due there too.
-- **M12 (`up`/`down`)** consumes `ResolvedGraph` as data and executes the
+- **M13 (`up`/`down`)** consumes `ResolvedGraph` as data and executes the
   order; resolution stays here.
 - Not in this domain, ever on the current horizon: applying anything to a
   cluster, an `Applier` seam, inventory (bootstrap owns its own), implicit

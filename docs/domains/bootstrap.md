@@ -114,7 +114,7 @@ moment they are in the asset. They are **data, not a Go dependency**:
   same discipline as the committed deepcopy and the C4 SVGs;
 - nothing is fetched at runtime — the hermetic gate and the air-gap
   posture are preserved. The air-gap *override* (a local-manifest path) is
-  deferred to the M11 air-gap decision.
+  deferred to the bus milestone's (M12) air-gap decision.
 
 ## SSA + readiness (hand-rolled on client-go)
 
@@ -153,7 +153,7 @@ is correct and recoverable:
 1. apply the embedded Flux objects,
 2. record the inventory (an applied-but-not-yet-ready install is already
    visible to `down`; an apply failure mid-stream returns before this
-   step — resolving that gap is an M12 design question),
+   step — resolving that gap is an up/down-milestone (M13) design question),
 3. wait for the bootstrap kind-set (this establishes the Flux CRDs),
 4. re-record the inventory with the source CRs included — before they are
    applied, so a half-applied source is already visible to `down`,
@@ -222,18 +222,121 @@ render. Flags: `--kubeconfig`, `--kubeconfig-context-name`, `--timeout`
 gitops-managed cluster). The `apply` verb reserved on 2026-08-03 is
 superseded and stays retired.
 
+## M10 (gated 2026-08-24) — two tiers: the substrate leaves, the seam covers the engine
+
+Decided at the M10 design gate (`docs/DECISIONS.md` 2026-08-24; living
+contract of both tiers: `docs/domains/engine.md`). Everything in this
+section is the M10 target state, approved ahead of code; the sections
+above describe the shipped M7/M9 behavior until the milestone lands, at
+which point they are updated in place. The model: **tier 1** is the
+invariant Flux substrate (not driver-selected), **tier 2** is the engine,
+user-selected via `spec.engine.provider` and immutable per cube — flux
+today, the degenerate case where the substrate doubles as the engine.
+
+- **Bootstrap keeps the engine-agnostic machinery** — SSA apply, the
+  by-kind bootstrap kind-set wait, the inventory, the install
+  sequencing. What it applies day-0 is **injected**: the substrate
+  objects (from `internal/engine/substrate`, which owns the embedded
+  asset re-homed as a *pack*, same version-constant + sha256 + `make`
+  regeneration discipline) and the driver's sync wiring
+  (`SourceObjects`). Bootstrap no longer embeds or knows Flux; the
+  substrate home and the driver supply content, the edge composes.
+- **Phased readiness, one `--timeout` total budget (never per phase):**
+  1. the **kind-set wait** over what its SSA applied — unchanged;
+  2. the **reconciliation wait** over the driver's sync wiring, polling
+     with injected per-object predicates (function values cross the
+     edge; bootstrap imports nothing new) — engine-CR readiness thereby
+     moves from "out of scope" to delivered;
+  3. the **engine-readiness wait** over the driver's declared
+     `EngineObjects` — content bootstrap did **not** apply (it arrives
+     through the tier-1 source), polled by declared identity with the
+     same predicate machinery. **Empty and skipped for flux**; the phase
+     contract exists so a second driver's gate fills it without a new
+     seam method.
+- **Transient discovery is pending, never terminal, in phases 2–3.**
+  Declared content may not exist yet by design — a tier-1-delivered
+  engine CRD may still be establishing when phase 3 first polls — so
+  within these phases, *no REST mapping yet* and *object not yet
+  created* (NotFound) are **pending states, retried until the shared
+  deadline**; permanent errors — forbidden, malformed declared identity,
+  any non-transient retrieval failure — fail immediately as a new
+  machinery code, **`CUBE-BST-010`** (readiness polling failed on a
+  permanent error, wrapped cause), coded at the point of failure so it
+  is already-coded before the pass-through boundary and neither timeout
+  code ever retags it. This departs deliberately from the apply path's one-shot
+  mapper reset-and-retry, which stays one-shot where it serves applying:
+  the wait path re-consults discovery on each poll rather than
+  converting a mapping miss into a terminal `CUBE-BST-003`.
+  NotFound-as-pending matches today's wait behavior; no-mapping-as-
+  pending is the genuinely new polling semantic, stated at the gate so
+  "the same machinery" holds when implementation starts.
+- **The reconciliation/engine-wait timeout is a new machinery code,
+  `CUBE-BST-009`** — not a broadening of `CUBE-BST-005`, whose meaning
+  stays exactly "kind-set wait timed out". The two codes cut along the
+  polling contract — **kind-set rollout polling vs driver-declared
+  reconciliation polling** — which fail and remediate differently, so
+  they get different codes. `CUBE-BST-009` names the
+  pending objects **with the driver's pending reasons** — that is what
+  the `Reconciled` reason string is for. The pass-through rule landed
+  with PR #159 (an already-coded **permanent** cause keeps its code;
+  transient discovery conditions are pending states, not causes;
+  wrapping in the wait code only on deadline with objects still
+  pending) applies to the new waits identically: an `ENG`-coded
+  predicate error surfacing through bootstrap's poll keeps its `ENG`
+  code — codes are never re-tagged, machinery included.
+- **Inventory: bootstrap records exactly what bootstrap applies** —
+  substrate + sync wiring — into the **substrate namespace**, an
+  invariant fact exported by the substrate home and injected as a
+  string at the composition edge (a green-gate test in the substrate
+  ties the name to a `Namespace` object in its payload; bootstrap
+  records where it is told). Content delivered through the tier-1
+  source — a future engine bundle, every ordinary pack — is
+  **deliberately not** in this inventory: it lives under the
+  `prune: true` sync, so its teardown is source-level. The `down`
+  composition order — (a) source-level teardown, (b) tier-1 teardown
+  from the inventory, (c) cluster teardown — is published as a
+  **requirement on the up/down milestone (M13)**, its real semantics
+  owed at that gate, not promised here.
+- **`CUBE-BST-001`, `-002`, `-007`, `-008`** (asset provenance, asset
+  parse, unsupported engine source kind, embedded-version mismatch) are
+  all raised by content that moves — they follow it (asset checks to the
+  substrate home, source-kind and version checks per the engine
+  contract) and are **superseded** by `CUBE-ENG-*` codes at
+  implementation — rows kept, numbers never reused, the same discipline
+  as `APP` and `CUBE-PKG-020`. The machinery codes `CUBE-BST-003..006`
+  (plus the new `-009` and `-010`) stay.
+- **Retained codes lose their Flux-specific voice.** The machinery codes
+  keep their identities, but their user-facing summaries/remediations
+  currently say "Flux CRDs", "inspect the Flux controllers", and
+  `kubectl -n flux-system …`. As part of the same narrowing they go
+  engine-neutral (naming the injected namespace and generic "engine
+  controllers" where needed) — bootstrap's *text* must not know Flux any
+  more than its code does.
+- **Unchanged, explicitly**: the inventory (still this domain's, still
+  the seed of `down`), the no-second-applier rule, the injection
+  contract, and delivery-through-engine — bootstrap installs and hands
+  over, exactly as before; it just stops owning what it installs.
+
 ## Contracts for future domains
 
-- **Pack delivery (M8 renders, M11 delivers)**: the pack domain (M8,
+- **Pack delivery (M8 renders, the bus delivers)**: the pack domain (M8,
   shipped) renders and never applies; packs reach a cluster by being
-  written into the Flux **source** that bootstrap wired (the M11 bus) —
+  written into the Flux **source** that bootstrap wired (the M12 bus) —
   *not* through a cube-idp applier. Packs conform to the live Flux loop.
-- **M10 (engine)** formalizes the engine driver seam and re-expresses Flux
-  as a conforming pack; it consumes the same `spec.engine` sub-struct and
-  may migrate its shape (design-gate event). Engine-CR readiness lands here.
-- **M12 (`down`)** reads the bootstrap inventory to tear down what
-  bootstrap installed, composed with the M5 cluster teardown.
+- **M10 (engine)** establishes the two-tier model — invariant substrate,
+  driver-selected engine — and the reshape of this domain is the
+  delimited M10 section above. The `spec.engine` `provider`+`forProvider`
+  migration was weighed at the gate and **not taken** — no longer for
+  "no second provider on the horizon" (void under the recorded vision of
+  user engine choice) but because `EngineSource` is shared sync-wiring
+  vocabulary every driver consumes and no driver-specific knob exists
+  yet (`docs/domains/engine.md`).
+- **M11 (gateway)** is the trust-fabric prerequisite delivered through
+  the substrate ahead of ordinary packs; its own design gate defines it.
+- **M13 (`down`)** reads the bootstrap inventory to tear down what
+  bootstrap installed, composed with the M5 cluster teardown and the
+  source-level teardown phase recorded in the M10 section above.
 - Not in this domain, ever on the current horizon: watch
   machinery/informers, controller-runtime, kstatus/`cli-utils`, typed
-  workload clientsets, a second-engine driver seam (M10), engine-CR
-  readiness, arbitrary user-manifest apply (that is the engine's job).
+  workload clientsets, a second applier, arbitrary user-manifest apply
+  (that is the engine's job).

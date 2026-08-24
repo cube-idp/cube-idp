@@ -533,3 +533,256 @@ retired unreachable. Deferred by design and stated in the contract rather
 than implied: private chart-source authentication, secret-backed
 `valuesFrom`, and the `lock`/`mirror` operation that would turn a mutable
 repository reference into verified content — all **#142**.
+
+**2026-08-24 — M10 engine design gate (two-tier model: invariant
+substrate + tier-2 driver seam; the gateway milestone inserted).** New
+domain `internal/engine` (tag `ENG`, gated — activates with the code),
+structured by the founding vision, recorded verbatim: *"we use Flux to
+deliver the prerequisites and the engine itself (that being Flux or
+ArgoCD) — from there the engine takes over installation and coordination
+of packs."* Two tiers: **tier 1**, the invariant Flux substrate
+(`internal/engine/substrate` — embedded, pinned, never driver-selected);
+**tier 2**, the engine (`engine.Provider`, a Kind-B seam;
+`internal/engine/flux` the only driver today — the degenerate case where
+the substrate doubles as the engine). Positions, in the ranked order of
+the post-M9 architecture review's eleven gate questions (epic #152),
+reworked to the two-tier model by operator decision:
+
+1. **Boundaries: substrate is invariant; the seam covers the engine
+   only; bootstrap keeps tier-agnostic machinery.**
+   `internal/engine/substrate` owns the embedded Flux asset (re-homed as
+   a *pack*: version constant + sha256 + `make` regeneration unchanged)
+   and the substrate-namespace fact (`flux-system` — where bootstrap's
+   inventory records, injected as a string at the edge and
+   conformance-tied to a `Namespace` object in the payload).
+   `internal/engine/flux` owns the sync-wiring shapes and the reconciled
+   predicates. `internal/bootstrap` keeps SSA, the by-kind kind-set
+   wait, the inventory, sequencing — and executes the new phased waits —
+   applying only injected content; it no longer embeds or knows Flux,
+   and its retained codes' Flux-specific text goes engine-neutral.
+   `CUBE-BST-001/002/007/008` — every code raised by moving content —
+   are superseded by `ENG` codes (rows kept, numbers never reused); the
+   machinery codes `003..006` plus the new `-009` and `-010` stay. Rejected: the
+   substrate behind the seam (it would make helm packs conditional on
+   provider choice — the exact inertness PR 161's first draft
+   manufactured); the seam subsuming bootstrap; a hollow seam leaving
+   engine content in bootstrap.
+2. **Cross-domain contract types: a new shared-infrastructure leaf,
+   `internal/plan` — "domains never import each other" stands with no
+   exported-types escape hatch, and the leaf is how sharing happens
+   instead.** Naming another domain's type in a signature is an import,
+   and stays banned domain-to-domain. The delivery vocabulary —
+   `RenderPlan`, `ResolvedGraph`, instance identity, and the single
+   `EffectiveIDs` derivation — moves to `internal/plan`, third in the
+   §2 listed leaf set (operator decision): pure data plus that minimal
+   derivation logic, importing only `internal/cubeerr` and apimachinery
+   (the neutral KRM vocabulary its types carry). The listing also
+   sharpens the leaf qualification: "no domain concepts" reads as **no
+   concept owned by a single component domain** — `plan` carries
+   contract vocabulary belonging to several domains at once, which is
+   exactly why none of them may own it. `pack` imports the leaf and
+   produces its types; the M12 bus and the M13 orchestrator import it
+   and consume them. **Timing: listed at this gate, instantiated by the
+   M12 bus PR that lands the first real cross-domain consumer** — M10
+   code is unchanged (bootstrap consumes injected function values,
+   already neutral vocabulary). The leaf carries a **closed content
+   rule**: every type or function added is gate-approved by name, never
+   inferred, so it cannot drift into a general types bucket. The
+   M10-approved member set, by name: `RenderPlan`, `ResolvedGraph`,
+   `InstanceID`, `EffectiveIDs`, and `InstanceIdentity` — the neutral
+   derivation input (a pack name plus an optional explicit id), required
+   because today's `EffectiveIDs` takes `[]pack.Instance` wrapping
+   `v1alpha1.PackSpec`, neither of which the leaf may see; `pack` maps
+   its instances into it. `ResolveOrder` stays in `pack` (dependency
+   resolution is pack contract) and returns the leaf's `ResolvedGraph`.
+   The two guardrails thereby become **properties of the shared types
+   rather than promises every consumer repeats**: `RenderPlan`'s
+   `Prerequisites`/`Objects` group boundary is preserved because there
+   is only one delivery type and it has the boundary; effective-id
+   derivation is single-sourced because `EffectiveIDs` lives in the leaf
+   and is the only implementation anywhere. Rejected: consumer-side
+   mirror types mapped at the edge (operator: no duplicated shapes — the
+   originally drafted answer, reversed at review); promoting the types
+   to `api/` (not config surface); and an *uncurated* types-only
+   package, which remains the import-cycle-workaround smell §2 bans —
+   `internal/plan` differs precisely in being a gate-listed leaf with
+   by-name curated content and real derivation logic, not a bucket
+   anyone can grow.
+3. **Argo: a legitimate future tier-2 driver; the replace-vs-layer
+   dichotomy is dissolved, not answered.** What M9 actually forces is
+   that **tier 1 is permanently Flux**: helm packs render Flux CRs
+   (`HelmRelease` + source CR) that tier-1 controllers reconcile
+   whatever coordinates packs — so "replace the substrate" stays
+   foreclosed, and under an invariant substrate helm packs are **never
+   inert under any tier-2 engine** (the first draft's inertness argument
+   was manufactured by putting the substrate behind provider selection,
+   and is withdrawn with that model). The engine choice — Flux or, in
+   the future, Argo — is the user's at day 0 via
+   `spec.engine.provider`, **immutable for the cube's lifetime: no
+   handover, migration, or engine-switching semantics exist, ever.** An
+   Argo driver arrives via **its own design gate**, whose recorded
+   first-class design inputs are the two-tier analyses' findings:
+   false-green Application health over CR kinds with no registered
+   health check (the driver must ship checks for the Flux CR kinds);
+   prune/finalizer coupling to tier-1 liveness and the
+   finalizer-window orphan race; the per-driver sync-topology mapping
+   at the M12 bus; the two-bundle delivery/provenance story; the day-0
+   bundle path (requires the bus); source topology beyond the one
+   configured source; tier-1 self-management under a non-Flux engine;
+   and an Argo-vocabulary staleness rule (no Flux-style
+   `observedGeneration` contract on Application CRs). "Argo is never a
+   compile-time dependency" stands unchanged. Every categorical
+   exclusion ("not an Argo invitation", "not a second driver on any
+   current horizon") from the earlier draft of this entry is removed.
+4. **Substrate-as-pack, operationally: the embedded asset becomes an
+   embedded pack; day-0 stays cube-idp-applied.** The substrate's asset
+   is a pack directory (`name: "flux"`, `version` = the pinned Flux
+   version in clean SemVer — `2.9.2`, never the upstream `v`-prefixed
+   tag spelling; `spec.engine.version` accepts the clean spelling and
+   the substrate alone maps to `v2.9.2` where the vendored asset
+   requires it — `type: raw`, `category: "engine"`, no `#Values`, no
+   `namespace`) whose payload is the vendored manifests. The substrate
+   parses its own payload (a raw, values-free pack renders as a sorted
+   manifest parse) — it does **not** import `internal/pack`; conformance
+   is enforced by a green-gate test at the composition edge asserting
+   `pack.Load`+`Render` over the embedded directory yields exactly the
+   substrate's parsed objects — deep equality of the ordered object
+   lists after both parse paths, not membership. The pack carries no
+   instance state — sync wiring is config-derived and driver-emitted,
+   never pack content (the M9 pack/instance boundary). **Day-0 direct
+   apply is sanctioned for the substrate because nothing exists yet to
+   deliver it; a tier-2 engine's bundle is not circular to deliver
+   through the running substrate — that is the vision's normal path.**
+   Whether the running system later reconciles the substrate's own
+   upgrades through the source is left open for the bus and beyond.
+5. **Delivery-target ownership: the M12 bus's contract; M10 records one
+   reservation.** Every fact needed to locate the delivery target (URL,
+   ref, path) is and must remain fully derivable from
+   `spec.engine.source` in `api/`; the seam may never make engine-domain
+   private state necessary to locate it. The bus therefore lands without
+   reopening the seam. Source-topology questions beyond the one
+   configured source (substrate source vs engine revision vs
+   pack-delivery target) are the second-driver gate's. The M7 air-gap
+   local-manifest override lands with the substrate, which owns the
+   asset.
+6. **Seam method set: four pure methods plus one optional capability,
+   covering tier 2 only.** `SourceObjects` (the engine's sync wiring
+   from `spec.engine.source`; nil source → none; flux: the
+   GitRepository|OCIRepository + Kustomization pair — substrate
+   vocabulary, because the substrate doubles as the engine),
+   `EngineObjects` (the engine's own install bundle, pack-shaped,
+   delivered **through tier 1**, never by bootstrap's SSA; flux:
+   empty — no second install occurs), `Reconciled` (per-object readiness
+   judgment over handed-in `unstructured` status covering the driver's
+   declared objects; its reason string feeds `CUBE-BST-009`
+   diagnostics; the driver never fetches), and `EngineNamespace` (where
+   tier-2 engine content lives; flux: the substrate namespace).
+   Optional `SpecValidator` capability mirrors cluster's (M4 pattern).
+   **Every method is pure** — §4's "interfaces stay pure where possible"
+   holds completely, because the only I/O an engine needs is bootstrap's
+   machinery, which is not duplicated (no-second-applier, 2026-08-06) —
+   and purity makes the seam **apply-path-agnostic**: it does not care
+   whether its objects are SSA-applied at day 0 or delivered through
+   the source, which is what lets a second driver land without
+   reopening it. The previous draft's `InstallObjects` (substrate
+   content) leaves the seam — the substrate is not selectable — and its
+   `InstallNamespace` **splits**: inventory placement is the invariant
+   substrate-namespace fact; engine placement is the driver's
+   `EngineNamespace`. Exact signatures fix at implementation within the
+   contract (`docs/domains/engine.md`).
+7. **`spec.engine`: the existing `provider` field is re-scoped to select
+   the tier-2 engine only; the opaque-`forProvider` migration is still
+   not taken — for a new reason.** The substrate is never selectable.
+   `"flux"` (the default) remains the only accepted value in M10; adding
+   `"argo"` is the second driver's gate event, additive. **The choice is
+   immutable per cube** — recorded as contract now; mechanical
+   enforcement lands with the second driver, since today there is
+   nothing to switch to. `version` asserts the *engine* version (flux:
+   the substrate version — degenerate). The old no-migration rationale
+   ("no second provider on the horizon") is **void** under the recorded
+   vision of user engine choice; the standing reason is concrete: the
+   typed `EngineSource` is shared sync-wiring vocabulary every driver
+   consumes (the source through which tier 1 delivers is not
+   driver-private), and no driver-specific knob exists yet — an empty
+   `forProvider` is ceremony. The second-driver gate, which knows Argo's
+   actual knobs and source-topology needs, migrates the shape if and as
+   needed; `EngineSource` (M7-finalized) must cross any migration
+   losslessly or be superseded on the record.
+8. **Readiness: three phases, one budget, two codes.** Bootstrap
+   executes (1) the kind-set wait over what its SSA applied; (2) the
+   reconciliation wait over the driver's `SourceObjects`; (3) the
+   engine-readiness wait over the driver's declared `EngineObjects` —
+   content bootstrap did **not** apply, polled by declared identity with
+   the same predicate machinery; **empty and skipped for flux**, and the
+   phase contract exists now precisely so a second driver's gate fills
+   it without a new seam method. All phases share the existing
+   `--timeout` as one **total** budget, never per phase. **In phases
+   2–3, transient discovery is pending, never terminal**: declared
+   content may not exist yet by design (a tier-1-delivered engine CRD
+   still establishing when phase 3 first polls), so *no REST mapping
+   yet* and *NotFound* are pending states retried until the shared
+   deadline, while permanent errors (forbidden, malformed declared
+   identity, any non-transient retrieval failure) fail immediately as a
+   new machinery code, **`CUBE-BST-010`** — readiness polling failed on
+   a permanent error, wrapped cause — coded at the point of failure so
+   it is already-coded before the pass-through boundary and neither
+   timeout code ever retags it; a stated departure from the apply path's one-shot
+   mapper reset-and-retry, which stays one-shot where it serves
+   applying; the wait path re-consults discovery per poll rather than
+   converting a mapping miss into a terminal `CUBE-BST-003`. Phases 2–3
+   time out as the new machinery code **`CUBE-BST-009`** — `-005` keeps
+   meaning exactly "kind-set wait timed out"; the two codes cut along
+   the polling contract, kind-set rollout polling vs driver-declared
+   reconciliation polling — carrying the pending objects with the
+   driver's pending reasons, which is what `Reconciled`'s reason string
+   exists for. The wait-code pass-through rule (landed with PR #159)
+   extends to both unchanged: an already-coded **permanent** cause
+   (including an `ENG`-coded predicate error) keeps its code; transient
+   discovery conditions are pending states, not causes; the wait code
+   wraps only a deadline with objects still pending. The flux driver's predicates:
+   for `GitRepository`/`OCIRepository`/`Kustomization`, `Ready`
+   condition true **and** `status.observedGeneration` equal to
+   `metadata.generation` — and the driver-neutral seam principle behind
+   it, a documented conformance semantic: **no stale success may count
+   as reconciled; each driver rejects staleness in its own CRs'
+   freshness vocabulary.** Whether `status` gains an engine line is an
+   implementation-breakdown decision, not gate-fixed.
+9. **Conformance shape: hermetic against the real driver, because the
+   seam is pure.** `RunEngineConformance(t, factory)` in
+   `internal/engine`; no stateful fake is written (a fake of a pure seam
+   tests the fake). Fixtures are driver-supplied (the cluster suite's
+   lesson: no hardcoded "universally invalid" payloads); coded-error
+   identity is asserted via `errors.As` + code equality; documented
+   semantics — including the no-stale-success principle and
+   `EngineObjects`/`EngineNamespace` consistency (empty for the
+   degenerate driver, or a bundle in which the namespace names a
+   `Namespace` object) — are enforced rather than non-nil-checked. The
+   substrate carries its own green-gate checks (sha256, parse, the
+   namespace-fact-to-content tie, the edge dogfood test). The real
+   round-trip extends `make test-e2e`; never the gate.
+10. **#142 hook points, reserved not implemented:** a future `secretRef`
+    is an additive `EngineSource` field (`api/`) flowing through
+    `SourceObjects` unchanged; #142 designs it together with the pack
+    domain's helm source-CR authentication — two emitters, one gate.
+11. **M10 adds no runtime dependency** — client-go interface types,
+    apimachinery, function values, embedded data; the asset move (to the
+    substrate home) is an import-path change, not a module-graph change.
+    Recorded in §8 so the closed set stays closed by decision.
+
+**The gateway milestone is inserted into the queue** (operator decision
+at this gate): the trust-fabric prerequisite — ingress gateway,
+certificates, hostnames, trust, internal DNS — delivered through tier 1
+ahead of ordinary packs, per the founding vision. It becomes **M11**;
+bus → **M12**, `up`/`down` → **M13** (renumbering table extended in
+`/ROADMAP.md`, the same treatment as 2026-08-23; living documents use the
+new numbers, this append-only log and shipped release notes are not
+rewritten). Only the queue position is decided here — the gateway gets
+its own epic and design gate.
+
+Folded into the same diff, from the post-M9 architecture review's drift
+list: the §5 `CLI` row now states its status honestly (active, no codes
+yet); the §8 `cuelang.org/go` confinement cell names the scaffold
+formatter (`new_chart.go`) the M9 `--from-chart` work added. Living
+contracts: `docs/domains/engine.md` (new — both tiers),
+`docs/domains/bootstrap.md` (delimited M10 section),
+`docs/domains/pack.md` (M10 bullet).
