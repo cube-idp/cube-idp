@@ -82,7 +82,7 @@ it in the PR that completes or reorders a milestone.
   versioned unit of platform content every later milestone consumes. It
   **defines, loads, validates, and renders** packs and stops there: under
   delivery-through-engine, packs reach a cluster by being written into the
-  source Flux watches (M12), so M8 touches no cluster and has **no e2e**.
+  source the sync wiring established (M12), so M8 touches no cluster and has **no e2e**.
   A pack is a directory with a `pack.cue` carrying `name`/`version`/an
   explicit `type` (`raw|helm|kustomize`, never sniffed) and the
   differentiator, a **closed `#Values` definition** that locks down,

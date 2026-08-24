@@ -253,18 +253,37 @@ today, the degenerate case where the substrate doubles as the engine.
      same predicate machinery. **Empty and skipped for flux**; the phase
      contract exists so a second driver's gate fills it without a new
      seam method.
+- **Transient discovery is pending, never terminal, in phases 2–3.**
+  Declared content may not exist yet by design — a tier-1-delivered
+  engine CRD may still be establishing when phase 3 first polls — so
+  within these phases, *no REST mapping yet* and *object not yet
+  created* (NotFound) are **pending states, retried until the shared
+  deadline**; permanent errors — forbidden, malformed declared identity,
+  any non-transient retrieval failure — fail immediately as a new
+  machinery code, **`CUBE-BST-010`** (readiness polling failed on a
+  permanent error, wrapped cause), coded at the point of failure so it
+  is already-coded before the pass-through boundary and neither timeout
+  code ever retags it. This departs deliberately from the apply path's one-shot
+  mapper reset-and-retry, which stays one-shot where it serves applying:
+  the wait path re-consults discovery on each poll rather than
+  converting a mapping miss into a terminal `CUBE-BST-003`.
+  NotFound-as-pending matches today's wait behavior; no-mapping-as-
+  pending is the genuinely new polling semantic, stated at the gate so
+  "the same machinery" holds when implementation starts.
 - **The reconciliation/engine-wait timeout is a new machinery code,
   `CUBE-BST-009`** — not a broadening of `CUBE-BST-005`, whose meaning
-  stays exactly "kind-set wait timed out". The two waits fail for
-  different reasons with different remediations (an install problem vs a
-  source problem), so they get different codes. `CUBE-BST-009` names the
+  stays exactly "kind-set wait timed out". The two codes cut along the
+  polling contract — **kind-set rollout polling vs driver-declared
+  reconciliation polling** — which fail and remediate differently, so
+  they get different codes. `CUBE-BST-009` names the
   pending objects **with the driver's pending reasons** — that is what
   the `Reconciled` reason string is for. The pass-through rule landed
-  with PR #159 (an already-coded cause keeps its code; wrapping in the
-  wait code only on deadline with objects still pending) applies to the
-  new waits identically: an `ENG`-coded predicate error surfacing
-  through bootstrap's poll keeps its `ENG` code — codes are never
-  re-tagged, machinery included.
+  with PR #159 (an already-coded **permanent** cause keeps its code;
+  transient discovery conditions are pending states, not causes;
+  wrapping in the wait code only on deadline with objects still
+  pending) applies to the new waits identically: an `ENG`-coded
+  predicate error surfacing through bootstrap's poll keeps its `ENG`
+  code — codes are never re-tagged, machinery included.
 - **Inventory: bootstrap records exactly what bootstrap applies** —
   substrate + sync wiring — into the **substrate namespace**, an
   invariant fact exported by the substrate home and injected as a
@@ -285,7 +304,7 @@ today, the degenerate case where the substrate doubles as the engine.
   contract) and are **superseded** by `CUBE-ENG-*` codes at
   implementation — rows kept, numbers never reused, the same discipline
   as `APP` and `CUBE-PKG-020`. The machinery codes `CUBE-BST-003..006`
-  (plus the new `-009`) stay.
+  (plus the new `-009` and `-010`) stay.
 - **Retained codes lose their Flux-specific voice.** The machinery codes
   keep their identities, but their user-facing summaries/remediations
   currently say "Flux CRDs", "inspect the Flux controllers", and

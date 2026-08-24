@@ -562,7 +562,7 @@ reworked to the two-tier model by operator decision:
    and its retained codes' Flux-specific text goes engine-neutral.
    `CUBE-BST-001/002/007/008` — every code raised by moving content —
    are superseded by `ENG` codes (rows kept, numbers never reused); the
-   machinery codes `003..006` plus the new `-009` stay. Rejected: the
+   machinery codes `003..006` plus the new `-009` and `-010` stay. Rejected: the
    substrate behind the seam (it would make helm packs conditional on
    provider choice — the exact inertness PR 161's first draft
    manufactured); the seam subsuming bootstrap; a hollow seam leaving
@@ -716,15 +716,30 @@ reworked to the two-tier model by operator decision:
    the same predicate machinery; **empty and skipped for flux**, and the
    phase contract exists now precisely so a second driver's gate fills
    it without a new seam method. All phases share the existing
-   `--timeout` as one **total** budget, never per phase. Phases 2–3
+   `--timeout` as one **total** budget, never per phase. **In phases
+   2–3, transient discovery is pending, never terminal**: declared
+   content may not exist yet by design (a tier-1-delivered engine CRD
+   still establishing when phase 3 first polls), so *no REST mapping
+   yet* and *NotFound* are pending states retried until the shared
+   deadline, while permanent errors (forbidden, malformed declared
+   identity, any non-transient retrieval failure) fail immediately as a
+   new machinery code, **`CUBE-BST-010`** — readiness polling failed on
+   a permanent error, wrapped cause — coded at the point of failure so
+   it is already-coded before the pass-through boundary and neither
+   timeout code ever retags it; a stated departure from the apply path's one-shot
+   mapper reset-and-retry, which stays one-shot where it serves
+   applying; the wait path re-consults discovery per poll rather than
+   converting a mapping miss into a terminal `CUBE-BST-003`. Phases 2–3
    time out as the new machinery code **`CUBE-BST-009`** — `-005` keeps
-   meaning exactly "kind-set wait timed out"; the waits fail differently
-   and remediate differently — carrying the pending objects with the
+   meaning exactly "kind-set wait timed out"; the two codes cut along
+   the polling contract, kind-set rollout polling vs driver-declared
+   reconciliation polling — carrying the pending objects with the
    driver's pending reasons, which is what `Reconciled`'s reason string
    exists for. The wait-code pass-through rule (landed with PR #159)
-   extends to both unchanged: an already-coded cause (including an
-   `ENG`-coded predicate error) keeps its code; the wait code wraps only
-   a deadline with objects still pending. The flux driver's predicates:
+   extends to both unchanged: an already-coded **permanent** cause
+   (including an `ENG`-coded predicate error) keeps its code; transient
+   discovery conditions are pending states, not causes; the wait code
+   wraps only a deadline with objects still pending. The flux driver's predicates:
    for `GitRepository`/`OCIRepository`/`Kustomization`, `Ready`
    condition true **and** `status.observedGeneration` equal to
    `metadata.generation` — and the driver-neutral seam principle behind

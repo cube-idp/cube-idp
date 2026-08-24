@@ -224,8 +224,9 @@ carries the mirror text (`docs/domains/bootstrap.md`, M10 section):
   edge composes.
 - **Phased readiness.** Bootstrap executes waits in three declared
   phases, all sharing the existing `--timeout` as **one total budget**:
-  1. the **kind-set wait** over what its SSA applied (substrate + sync
-     wiring) — unchanged machinery;
+  1. the **kind-set wait** over what its SSA applied — unchanged
+     machinery (the substrate; the sync wiring is applied only *after*
+     this wait establishes the CRDs, per the install sequence);
   2. the **reconciliation wait** over the driver's `SourceObjects`,
      polling with injected driver predicates;
   3. the **engine-readiness wait** over the driver's `EngineObjects` —
@@ -236,12 +237,30 @@ carries the mirror text (`docs/domains/bootstrap.md`, M10 section):
      declared-object list and predicates already flow through the seam;
      no new method is needed. (How a bundle *reaches* the source at day
      0 is that gate's question, together with the bus.)
+  **Transient discovery is pending, never terminal, in phases 2–3.**
+  Declared content may not exist yet by design — a tier-1-delivered
+  engine CRD may still be establishing when phase 3 first polls — so
+  within these phases, *no REST mapping yet* and *object not yet
+  created* (NotFound) are **pending states, retried until the shared
+  deadline**, while permanent errors — forbidden, malformed declared
+  identity, any non-transient retrieval failure — fail immediately as a
+  new machinery code, **`CUBE-BST-010`** (readiness polling failed on a
+  permanent error, wrapped cause), coded at the point of failure so it
+  is already-coded before the pass-through boundary and neither timeout
+  code ever retags it. This is a stated departure from the apply path's
+  one-shot mapper reset-and-retry, which serves applying and stays
+  one-shot there: the wait path re-consults discovery on each poll
+  instead of converting a mapping miss into a terminal `CUBE-BST-003`.
+  NotFound-as-pending matches today's wait behavior; no-mapping-as-
+  pending is the new polling semantic, stated here so "the same
+  machinery" is true when implementation starts.
   Phases 2–3 time out as `CUBE-BST-009`, naming the pending objects
   **with the driver's pending reasons**; `-005` keeps meaning exactly
   "kind-set wait timed out". The wait-code pass-through rule (landed
-  with PR #159) applies to both: an already-coded cause — including an
-  `ENG`-coded predicate error — keeps its code; the wait code wraps only
-  a deadline with objects still pending.
+  with PR #159) applies to both: an already-coded **permanent** cause —
+  including an `ENG`-coded predicate error — keeps its code; transient
+  discovery conditions are pending states, not causes; the wait code
+  wraps only a deadline with objects still pending.
 - **Inventory: bootstrap records exactly what bootstrap applies** —
   substrate + sync wiring — into the **substrate namespace**, injected
   as a string from the substrate fact (the edge passes it; bootstrap
@@ -262,7 +281,7 @@ carries the mirror text (`docs/domains/bootstrap.md`, M10 section):
   content that moves — they follow it and are **superseded** by
   `CUBE-ENG-*` codes at implementation (rows kept, numbers never
   reused, the `APP`/`PKG-020` discipline). The machinery codes
-  (`CUBE-BST-003..006`, plus the new `-009`) stay. The retained codes'
+  (`CUBE-BST-003..006`, plus the new `-009` and `-010`) stay. The retained codes'
   Flux-specific summaries/remediations go engine-neutral in the same
   narrowing (naming the injected namespace and generic "engine
   controllers").

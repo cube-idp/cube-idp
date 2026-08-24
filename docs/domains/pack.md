@@ -17,7 +17,7 @@ It does **not** deliver them. Under delivery-through-engine (DECISIONS
 **engine** owns steady-state pack coordination — while the invariant
 tier-1 Flux substrate reconciles Flux-shaped output such as helm packs'
 CRs whatever the engine is — and packs reach a cluster by being
-**written into the source the substrate watches**; that write path is
+**written into the source the sync wiring established**; that write path is
 the bus milestone (M12, after the M11 gateway insertion — see ROADMAP).
 cube-idp renders, never applies. Consequently M8 touches no cluster: the
 domain is pure and hermetic, and **has no e2e** — rendering is a function
@@ -1196,8 +1196,8 @@ event.
   founding vision; its own design gate defines it, and its delivery
   semantics feed the bus milestone's `Prerequisites` handling. Nothing in
   this contract changes for it ahead of that gate.
-- **M12 (bus)** owns **delivery**: writing rendered content into the source
-  Flux watches, and the real `pre` semantics — a separate delivery unit for
+- **M12 (bus)** owns **delivery**: writing rendered content into the
+  source the sync wiring established, and the real `pre` semantics — a separate delivery unit for
   `RenderPlan.Prerequisites`, its `dependsOn` edge, its health gate, and
   stable names for both units. The air-gap answer is due there too.
 - **M13 (`up`/`down`)** consumes `ResolvedGraph` as data and executes the

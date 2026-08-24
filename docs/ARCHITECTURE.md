@@ -108,7 +108,7 @@ Three package categories, and only these:
   controller-runtime).
 - `internal/pack` (M8) **defines, loads, validates, and renders** packs —
   it never applies anything. Under delivery-through-engine, packs reach a
-  cluster by being written into the source Flux watches (the M12 bus); rendering
+  cluster by being written into the source the sync wiring established (the M12 bus); rendering
   is a pure function of its inputs, so the domain is hermetic and has no
   e2e. It imports `api/config` (the `spec.packs` sub-struct),
   `internal/cubeerr`, apimachinery/yaml, `cuelang.org/go`, and the
