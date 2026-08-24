@@ -15,6 +15,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/bootstrap"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/cluster/kind"
+	"github.com/cube-idp/cube-idp/internal/engine/flux"
 	"github.com/cube-idp/cube-idp/internal/engine/substrate"
 	"github.com/cube-idp/cube-idp/internal/kube"
 )
@@ -71,9 +72,16 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("substrate.Objects: %v", err)
 	}
+	drv := flux.New()
+	wiringObjs, err := drv.SourceObjects(ctx, *engine)
+	if err != nil {
+		t.Fatalf("SourceObjects: %v", err)
+	}
 	installCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
 	defer cancel()
-	if err := applier.InstallEngine(installCtx, engine, substrateObjs, bootstrap.EngineWait{}); err != nil {
+	// Phase 2 runs with the driver's real judgment: InstallEngine returns only
+	// once the wiring reconciles Ready and fresh against the live cluster.
+	if err := applier.InstallEngine(installCtx, substrateObjs, wiringObjs, bootstrap.EngineWait{Reconciled: drv.Reconciled}); err != nil {
 		t.Fatalf("InstallEngine: %v", err)
 	}
 

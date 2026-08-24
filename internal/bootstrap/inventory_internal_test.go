@@ -27,7 +27,7 @@ func TestRecordInventoryWritesConfigMap(t *testing.T) {
 		t.Fatalf("RecordInventory() error = %v", err)
 	}
 
-	cm, ok := f.store["ConfigMap/"+InventoryNamespace+"/"+InventoryName]
+	cm, ok := f.store["ConfigMap/"+testInvNS+"/"+InventoryName]
 	if !ok {
 		t.Fatalf("inventory ConfigMap not applied; store keys = %v", keysOf(f))
 	}
@@ -87,11 +87,11 @@ func TestRecordInventoryDeterministic(t *testing.T) {
 	}
 	b := []*unstructured.Unstructured{a[2], a[0], a[1]} // shuffled
 
-	cmA, err := inventoryConfigMap(InventoryNamespace, a)
+	cmA, err := inventoryConfigMap(testInvNS, a)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmB, err := inventoryConfigMap(InventoryNamespace, b)
+	cmB, err := inventoryConfigMap(testInvNS, b)
 	if err != nil {
 		t.Fatal(err)
 	}

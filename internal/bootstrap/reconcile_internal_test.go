@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
 	"github.com/cube-idp/cube-idp/internal/cubeerr"
 )
 
@@ -177,20 +176,13 @@ func TestInstallEngineThreePhases(t *testing.T) {
 	engObj := newDeployment("argocd-server", "argocd", 1, 1, 1)
 	f := &fakeCluster{store: map[string]*unstructured.Unstructured{objKey(engObj): engObj}, readyApply: true}
 	a := testApplier(f)
-	engine := &v1alpha1.EngineSpec{
-		Provider: v1alpha1.EngineProviderFlux,
-		Source: &v1alpha1.EngineSource{
-			Kind: v1alpha1.EngineSourceGit, URL: "https://github.com/org/fleet",
-			Ref: "main", Path: "./", Interval: "10m",
-		},
-	}
 	w := EngineWait{Reconciled: alwaysReconciled, EngineObjects: []*unstructured.Unstructured{engObj}}
-	if err := a.InstallEngine(t.Context(), engine, testSubstrateObjs(), w); err != nil {
+	if err := a.InstallEngine(t.Context(), testSubstrateObjs(), testWiringObjs(), w); err != nil {
 		t.Fatalf("InstallEngine() error = %v", err)
 	}
 
 	kindSetWait := firstCallWithPrefix(f.calls, "get:")
-	inventoryKeyStr := "apply:ConfigMap/" + InventoryNamespace + "/" + InventoryName
+	inventoryKeyStr := "apply:ConfigMap/" + testInvNS + "/" + InventoryName
 	reRecord := lastCallIndex(f.calls, inventoryKeyStr)
 	gitApply := callIndex(f.calls, "apply:GitRepository/flux-system/flux-system")
 	gitPoll := callIndex(f.calls, "live:GitRepository/flux-system/flux-system")
@@ -232,20 +224,13 @@ func TestInstallEngineSharedTimeoutBudget(t *testing.T) {
 	engObj := newDeployment("argocd-server", "argocd", 1, 1, 1)
 	f := &fakeCluster{store: map[string]*unstructured.Unstructured{objKey(engObj): engObj}, readyApply: true}
 	a := testApplier(f)
-	engine := &v1alpha1.EngineSpec{
-		Provider: v1alpha1.EngineProviderFlux,
-		Source: &v1alpha1.EngineSource{
-			Kind: v1alpha1.EngineSourceGit, URL: "https://github.com/org/fleet",
-			Ref: "main", Path: "./", Interval: "10m",
-		},
-	}
 	neverReconciled := func(*unstructured.Unstructured) (bool, string, error) {
 		return false, "artifact not ready", nil
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 40*time.Millisecond)
 	defer cancel()
 
-	err := a.InstallEngine(ctx, engine, testSubstrateObjs(), EngineWait{
+	err := a.InstallEngine(ctx, testSubstrateObjs(), testWiringObjs(), EngineWait{
 		Reconciled:    neverReconciled,
 		EngineObjects: []*unstructured.Unstructured{engObj},
 	})
@@ -260,7 +245,7 @@ func TestInstallEngineSharedTimeoutBudget(t *testing.T) {
 func TestInstallEngineSkipsEmptyPhases(t *testing.T) {
 	f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
 	a := testApplier(f)
-	if err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{}, testSubstrateObjs(), EngineWait{}); err != nil {
+	if err := a.InstallEngine(t.Context(), testSubstrateObjs(), nil, EngineWait{}); err != nil {
 		t.Fatalf("InstallEngine() error = %v", err)
 	}
 	if n := firstCallWithPrefix(f.calls, "live:"); n != -1 {
