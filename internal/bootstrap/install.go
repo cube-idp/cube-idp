@@ -1,31 +1,36 @@
+// Package bootstrap is the micro-bootstrap applier: it SSA-applies the
+// injected engine-substrate install objects plus the source/sync CRs derived
+// from spec.engine, executes the phased readiness waits, records an inventory
+// into the injected namespace, then hands steady-state ownership to the
+// engine. It runs against injected client-go interfaces and never imports
+// internal/kube or the engine domain (domains never import each other) — the
+// CLI edge injects clients and content alike. Contract:
+// docs/domains/bootstrap.md.
 package bootstrap
 
 import (
 	"context"
+	"slices"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
 )
 
-// InstallEngine bootstraps the configured gitops engine in three readiness
-// phases sharing one total ctx budget: install Flux and wait the kind-set
-// (phase 1); when a source is configured, record the full owned set, apply
-// the source + Kustomization CRs — only after the CRDs are established, so
-// their kinds map; the inventory is recorded BEFORE the source apply, so a
-// half-applied source is still visible to a future `down` — and wait for
-// them to reconcile with the injected judgment (phase 2); then poll the
-// declared engine objects, content bootstrap did NOT apply, until they
-// reconcile too (phase 3 — an empty list is skipped, the flux case).
-func (a *Applier) InstallEngine(ctx context.Context, engine *v1alpha1.EngineSpec, engineWait EngineWait) error {
-	if err := checkEngineVersion(engine); err != nil {
-		return err
-	}
-	fluxObjs, err := FluxObjects()
-	if err != nil {
-		return err
-	}
-	if err := a.Install(ctx, fluxObjs); err != nil {
+// InstallEngine bootstraps the configured gitops engine from injected content,
+// in three readiness phases sharing one total ctx budget: install the
+// substrate objects and wait the kind-set (phase 1); when a source is
+// configured, record the full owned set, apply the source + Kustomization
+// CRs — only after the substrate's CRDs are established, so their kinds map;
+// the inventory is recorded BEFORE the source apply, so a half-applied source
+// is still visible to a future `down` — and wait for them to reconcile with
+// the injected judgment (phase 2); then poll the declared engine objects,
+// content bootstrap did NOT apply, until they reconcile too (phase 3 — an
+// empty list is skipped, the flux case). Version assertion happens at the
+// edge (the substrate owns the pin — CUBE-ENG-005); bootstrap applies what it
+// is handed.
+func (a *Applier) InstallEngine(ctx context.Context, engine *v1alpha1.EngineSpec, substrateObjs []*unstructured.Unstructured, engineWait EngineWait) error {
+	if err := a.Install(ctx, substrateObjs); err != nil {
 		return err
 	}
 	if src := configuredSource(engine); src != nil {
@@ -33,7 +38,7 @@ func (a *Applier) InstallEngine(ctx context.Context, engine *v1alpha1.EngineSpec
 		if err != nil {
 			return err
 		}
-		if err := a.RecordInventory(ctx, append(fluxObjs, srcObjs...)); err != nil {
+		if err := a.RecordInventory(ctx, slices.Concat(substrateObjs, srcObjs)); err != nil {
 			return err
 		}
 		if err := a.Apply(ctx, srcObjs); err != nil {
@@ -44,17 +49,6 @@ func (a *Applier) InstallEngine(ctx context.Context, engine *v1alpha1.EngineSpec
 		}
 	}
 	return a.WaitReconciled(ctx, engineWait.EngineObjects, engineWait.Reconciled)
-}
-
-// checkEngineVersion asserts a requested engine version against the embedded
-// Flux distribution: bootstrap installs the pinned embedded asset, so a
-// non-empty Version that differs from FluxVersion is a mismatch (CUBE-BST-008);
-// an empty Version selects the embedded version.
-func checkEngineVersion(engine *v1alpha1.EngineSpec) error {
-	if engine != nil && engine.Version != "" && engine.Version != FluxVersion {
-		return newVersionMismatchError(engine.Version)
-	}
-	return nil
 }
 
 // configuredSource returns the engine source to wire, or nil when none is set.

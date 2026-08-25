@@ -17,11 +17,14 @@ import (
 // (source/sync, inventory) add their codes beside the constructors that
 // raise them.
 const (
-	// CodeAssetIntegrity reports embedded Flux manifests whose content no
-	// longer matches the recorded sha256 provenance (a build-time drift).
+	// CodeAssetIntegrity is SUPERSEDED by CUBE-ENG-003 (M10): the embedded
+	// substrate asset and its sha256 provenance check moved to
+	// internal/engine/substrate. The constant stays so the number is never
+	// reused.
 	CodeAssetIntegrity cubeerr.Code = "CUBE-BST-001"
-	// CodeManifestParse reports embedded Flux manifests that fail to parse
-	// into Kubernetes objects.
+	// CodeManifestParse is SUPERSEDED by CUBE-ENG-004 (M10): parsing the
+	// embedded substrate payload moved to internal/engine/substrate. The
+	// constant stays so the number is never reused.
 	CodeManifestParse cubeerr.Code = "CUBE-BST-002"
 	// CodeRESTMapping reports an object whose kind the cluster does not map
 	// to a resource (e.g. a CR applied before its CRD is established).
@@ -39,8 +42,10 @@ const (
 	// CodeSourceKind reports an engine source kind the bootstrapper cannot turn
 	// into a Flux source CR (guarded upstream by config validation).
 	CodeSourceKind cubeerr.Code = "CUBE-BST-007"
-	// CodeVersionMismatch reports a requested engine version that differs from
-	// this binary's embedded Flux distribution.
+	// CodeVersionMismatch is SUPERSEDED by CUBE-ENG-005 (M10): the version
+	// pin moved to internal/engine/substrate, which asserts requested
+	// versions at the edge. The constant stays so the number is never
+	// reused.
 	CodeVersionMismatch cubeerr.Code = "CUBE-BST-008"
 	// CodeReconcileTimeout reports polled objects — applied sync wiring or
 	// declared engine content — that the injected judgment did not report
@@ -54,20 +59,6 @@ const (
 	CodePollFailed cubeerr.Code = "CUBE-BST-010"
 )
 
-func newAssetIntegrityError(got string) error {
-	return cubeerr.Wrap(CodeAssetIntegrity,
-		fmt.Sprintf("embedded Flux manifests failed provenance (sha256 %s does not match the pin)", got),
-		"rebuild from a clean checkout; if you regenerated the asset, run `make flux-manifests` and update fluxManifestsSHA256",
-		nil)
-}
-
-func newManifestParseError(cause error) error {
-	return cubeerr.Wrap(CodeManifestParse,
-		"cannot parse the embedded Flux install manifests",
-		"this is a build-integrity problem; rebuild from a clean checkout",
-		cause)
-}
-
 func newMappingError(obj *unstructured.Unstructured, cause error) error {
 	return cubeerr.Wrap(CodeRESTMapping,
 		fmt.Sprintf("no REST mapping for %s", describe(obj)),
@@ -80,13 +71,6 @@ func newApplyError(obj *unstructured.Unstructured, cause error) error {
 		fmt.Sprintf("server-side apply failed for %s", describe(obj)),
 		"check cluster connectivity and RBAC for the cube-idp field manager",
 		cause)
-}
-
-func newVersionMismatchError(requested string) error {
-	return cubeerr.Wrap(CodeVersionMismatch,
-		fmt.Sprintf("engine version %q does not match this binary's embedded Flux %s", requested, FluxVersion),
-		"leave spec.engine.version empty to use the embedded version, or run a cube-idp build whose embedded Flux matches",
-		nil)
 }
 
 func newSourceKindError(kind string) error {

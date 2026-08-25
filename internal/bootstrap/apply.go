@@ -1,16 +1,12 @@
 package bootstrap
 
 import (
-	"bytes"
 	"context"
-	"errors"
-	"io"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/dynamic"
 )
 
@@ -152,35 +148,4 @@ func (c *dynamicCluster) rawResourceFor(obj *unstructured.Unstructured) (dynamic
 		return c.dyn.Resource(mapping.Resource).Namespace(obj.GetNamespace()), nil
 	}
 	return c.dyn.Resource(mapping.Resource), nil
-}
-
-// FluxObjects returns the embedded, pinned Flux install manifests parsed into
-// apply-ready unstructured objects (provenance-verified via Manifests).
-func FluxObjects() ([]*unstructured.Unstructured, error) {
-	data, err := Manifests()
-	if err != nil {
-		return nil, err
-	}
-	return parseManifests(data)
-}
-
-// parseManifests splits a multi-document YAML stream into unstructured objects,
-// skipping empty documents.
-func parseManifests(data []byte) ([]*unstructured.Unstructured, error) {
-	dec := utilyaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), 4096)
-	var objs []*unstructured.Unstructured
-	for {
-		m := map[string]any{}
-		if err := dec.Decode(&m); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return nil, newManifestParseError(err)
-		}
-		if len(m) == 0 {
-			continue
-		}
-		objs = append(objs, &unstructured.Unstructured{Object: m})
-	}
-	return objs, nil
 }

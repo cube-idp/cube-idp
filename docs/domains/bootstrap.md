@@ -29,10 +29,11 @@ type EngineSpec struct {
     // "flux" is the only value in M7.
     Provider EngineProvider `json:"provider,omitempty"`
 
-    // Version, when set, is asserted against the embedded FluxVersion — a
-    // mismatch is rejected (CUBE-BST-008) before any apply; empty selects
-    // the embedded version. It never selects or fetches a different Flux;
-    // the embedded asset is authoritative in M7.
+    // Version, when set, is asserted at the edge against the substrate's
+    // pinned version, in clean SemVer spelling — a mismatch is rejected
+    // (CUBE-ENG-005, superseding CUBE-BST-008 at M10-C2) before any
+    // apply; empty selects the embedded version. It never selects or
+    // fetches a different Flux; the embedded payload is authoritative.
     Version string `json:"version,omitempty"`
 
     // Source points the engine's sync at a location; absent means Flux is

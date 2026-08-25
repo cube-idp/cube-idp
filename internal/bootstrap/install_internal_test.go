@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -54,7 +55,7 @@ func TestInstallOrder(t *testing.T) {
 // object apply fails.
 func TestInstallStopsOnApplyFailure(t *testing.T) {
 	f := newFakeCluster()
-	f.applyErr = newManifestParseError(nil) // any error; Apply returns the first failure
+	f.applyErr = errors.New("apply refused") // any error; Apply returns the first failure
 	a := testApplier(f)
 	err := a.Install(t.Context(), []*unstructured.Unstructured{newNamespace("flux-system", "Active")})
 	if err == nil {

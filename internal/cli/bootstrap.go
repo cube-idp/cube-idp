@@ -12,6 +12,7 @@ import (
 	"github.com/cube-idp/cube-idp/internal/bootstrap"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/engine/substrate"
 	"github.com/cube-idp/cube-idp/internal/kube"
 )
 
@@ -36,10 +37,12 @@ func newBootstrapCmd(newProvisioner provisionerFactory) *cobra.Command {
 	return cmd
 }
 
-// runBootstrap composes the bootstrap at the CLI edge: it builds the kube
-// clients (construction confined to internal/kube) and injects them into a
-// bootstrap Applier, then applies the embedded Flux, records the inventory,
-// and waits for the bootstrap kind-set. bootstrap stays kube-free.
+// runBootstrap composes the bootstrap at the CLI edge: it asserts the
+// requested engine version against the substrate pin, builds the kube clients
+// (construction confined to internal/kube) and injects them into a bootstrap
+// Applier, then hands it the substrate's install objects to apply, record,
+// and wait on. bootstrap stays kube-free and engine-free — the edge injects
+// content.
 func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	path, _ := cmd.Flags().GetString("config")
 	kubeconfigPath, _ := cmd.Flags().GetString("kubeconfig")
@@ -53,6 +56,13 @@ func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	if cfg.Spec.Cluster == nil {
 		return cluster.NewNoClusterConfiguredError()
 	}
+	if err := substrate.CheckVersion(engineVersion(cfg.Spec.Engine)); err != nil {
+		return err
+	}
+	substrateObjs, err := substrate.Objects()
+	if err != nil {
+		return err
+	}
 	applier, err := bootstrapApplier(cmd.Context(), cfg, newProvisioner, kubeconfigPath, contextName)
 	if err != nil {
 		return err
@@ -63,11 +73,20 @@ func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	// No reconciliation judgment is injected yet: the flux driver that
 	// supplies it lands with the M10-C3 wiring move, and until then the
 	// post-apply wait phases are skipped — the shipped M7/M9 behavior.
-	if err := applier.InstallEngine(ctx, cfg.Spec.Engine, bootstrap.EngineWait{}); err != nil {
+	if err := applier.InstallEngine(ctx, cfg.Spec.Engine, substrateObjs, bootstrap.EngineWait{}); err != nil {
 		return err
 	}
 	renderBootstrapResult(cmd, cfg.Spec.Engine)
 	return nil
+}
+
+// engineVersion returns the requested engine version, empty when the spec or
+// its version is absent.
+func engineVersion(engine *v1alpha1.EngineSpec) string {
+	if engine == nil {
+		return ""
+	}
+	return engine.Version
 }
 
 // renderBootstrapResult reports what bootstrap installed: Flux, and the sync
@@ -76,10 +95,10 @@ func renderBootstrapResult(cmd *cobra.Command, engine *v1alpha1.EngineSpec) {
 	out := cmd.OutOrStdout()
 	if engine != nil && engine.Source != nil && engine.Source.URL != "" {
 		_, _ = fmt.Fprintf(out, "flux %s installed — syncing from %s (%s)\n",
-			bootstrap.FluxVersion, engine.Source.URL, engine.Source.Kind)
+			substrate.Version, engine.Source.URL, engine.Source.Kind)
 		return
 	}
-	_, _ = fmt.Fprintf(out, "flux %s installed\n", bootstrap.FluxVersion)
+	_, _ = fmt.Fprintf(out, "flux %s installed\n", substrate.Version)
 }
 
 // bootstrapApplier resolves the cube's kubeconfig target and context via the
@@ -106,7 +125,7 @@ func bootstrapApplier(ctx context.Context, cfg *v1alpha1.Config, newProvisioner 
 	if err != nil {
 		return nil, err
 	}
-	// Inventory placement is injected at the edge; until the M10-C2 substrate
-	// home exports the fact, the existing constant is the value passed.
-	return bootstrap.NewApplier(client.Dynamic(), client.RESTMapper(), bootstrap.InventoryNamespace), nil
+	// Inventory placement is injected at the edge: the invariant substrate
+	// namespace fact, owned by the substrate home.
+	return bootstrap.NewApplier(client.Dynamic(), client.RESTMapper(), substrate.Namespace), nil
 }

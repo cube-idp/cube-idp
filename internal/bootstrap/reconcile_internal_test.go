@@ -185,7 +185,7 @@ func TestInstallEngineThreePhases(t *testing.T) {
 		},
 	}
 	w := EngineWait{Reconciled: alwaysReconciled, EngineObjects: []*unstructured.Unstructured{engObj}}
-	if err := a.InstallEngine(t.Context(), engine, w); err != nil {
+	if err := a.InstallEngine(t.Context(), engine, testSubstrateObjs(), w); err != nil {
 		t.Fatalf("InstallEngine() error = %v", err)
 	}
 
@@ -245,7 +245,7 @@ func TestInstallEngineSharedTimeoutBudget(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 40*time.Millisecond)
 	defer cancel()
 
-	err := a.InstallEngine(ctx, engine, EngineWait{
+	err := a.InstallEngine(ctx, engine, testSubstrateObjs(), EngineWait{
 		Reconciled:    neverReconciled,
 		EngineObjects: []*unstructured.Unstructured{engObj},
 	})
@@ -260,7 +260,7 @@ func TestInstallEngineSharedTimeoutBudget(t *testing.T) {
 func TestInstallEngineSkipsEmptyPhases(t *testing.T) {
 	f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
 	a := testApplier(f)
-	if err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{}, EngineWait{}); err != nil {
+	if err := a.InstallEngine(t.Context(), &v1alpha1.EngineSpec{}, testSubstrateObjs(), EngineWait{}); err != nil {
 		t.Fatalf("InstallEngine() error = %v", err)
 	}
 	if n := firstCallWithPrefix(f.calls, "live:"); n != -1 {
