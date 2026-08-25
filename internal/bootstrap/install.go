@@ -45,10 +45,11 @@ func (a *Applier) InstallEngine(ctx context.Context, substrateObjs, wiringObjs [
 	return a.WaitReconciled(ctx, engineWait.EngineObjects, engineWait.Reconciled)
 }
 
-// Install performs the whole micro-bootstrap in the one order that makes it
+// Install runs phase 1 of the bootstrap in the one order that makes it
 // recoverable: apply the objects, record the inventory (so a partial install
 // is already visible to a future `down`), then wait for the bootstrap kind-set
-// to become ready. Cancel or bound readiness through ctx.
+// to become ready. InstallEngine sequences it ahead of the sync wiring and
+// the reconciliation waits. Cancel or bound readiness through ctx.
 func (a *Applier) Install(ctx context.Context, objs []*unstructured.Unstructured) error {
 	if err := a.Apply(ctx, objs); err != nil {
 		return err

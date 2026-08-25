@@ -10,9 +10,9 @@ import (
 // here and nowhere else; the cross-domain tag registry lives in
 // docs/ARCHITECTURE.md. Constructors are exported because the substrate
 // and driver subpackages and the CLI edge raise these errors. Codes
-// superseding the moving CUBE-BST-* checks land with the content that
-// raises them: 003–005 arrived with the substrate; the successor of
-// CUBE-BST-007 lands with the flux driver.
+// superseding the moved CUBE-BST-* checks live beside the content that
+// raises them: 003–005 with the substrate, 006 with the flux driver's
+// sync wiring.
 const (
 	CodeUnsupportedProvider cubeerr.Code = "CUBE-ENG-001"
 	CodeUnrecognizedObject  cubeerr.Code = "CUBE-ENG-002"

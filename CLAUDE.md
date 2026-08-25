@@ -13,17 +13,24 @@ Current domains: **config** (CRD-ready `Config` type, strict loader,
 `config validate|show`), **cluster** (M3–M5: `spec.cluster`, `Provisioner`
 driver seam, kind provider, full lifecycle CLI), **kube** (M6: leaf
 client access from injected kubeconfig bytes + context name), and
-**bootstrap** (M7: micro-bootstrap applier — SSA-installs embedded Flux
-from `spec.engine` over injected client-go interfaces, waits the bootstrap
-kind-set, records an inventory, then hands over to the engine), and
-finally **pack** (M8: the self-contained, versioned content unit —
+**bootstrap** (M7, narrowed M10: engine-agnostic micro-bootstrap
+machinery — SSA-applies injected substrate + sync wiring over injected
+client-go interfaces, executes three-phase readiness, records an
+inventory into the injected namespace, then hands over to the engine),
+**pack** (M8: the self-contained, versioned content unit —
 `pack.cue` with a closed `#Values`, `spec.packs` instances with a
 `dependsOn` graph,
-`pack render|validate|new`; it renders, never applies). M8 also added the
-shared-infrastructure leaf **`internal/ref`** (one reference grammar →
-tree/file), which is documented inside its only consumer's contract
-(`docs/domains/pack.md`) rather than a file of its own — it earns
-`docs/domains/ref.md` when a second consumer lands (#136). Per-domain
+`pack render|validate|new`; it renders, never applies), and finally
+**engine** (M10: the two-tier model — the invariant Flux **substrate**
+embedded as a conforming pack in `internal/engine/substrate`, plus the
+tier-2 driver seam `engine.Provider` with the degenerate flux driver;
+the engine choice is the user's at day 0 and immutable per cube). M8
+also added the shared-infrastructure leaf **`internal/ref`** (one
+reference grammar → tree/file), documented inside its only consumer's
+contract (`docs/domains/pack.md`) rather than a file of its own — it
+earns `docs/domains/ref.md` when a second consumer lands (#136); the
+M10 gate listed a third leaf, **`internal/plan`** (delivery vocabulary),
+instantiated by the M12 bus PR. Per-domain
 contracts: `docs/domains/<name>.md`.
 
 ### Documentation map (the complete, closed set)
@@ -58,8 +65,13 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/c
                       │      │        │  └── cluster/kind (driver subpackage)
                       │      ├──▶ internal/kube  (M6 shared-infra leaf: injected
                       │      │        kubeconfig bytes + context name → clients)
-                      │      ├──▶ internal/bootstrap (M7: SSA-applies embedded Flux
-                      │      │        via injected client-go ifaces → api/config)
+                      │      ├──▶ internal/bootstrap (M7, narrowed M10: SSA/wait/
+                      │      │        inventory machinery via injected client-go
+                      │      │        ifaces + injected content; engine-agnostic)
+                      │      ├──▶ internal/engine (M10: invariant Flux substrate +
+                      │      │        │  tier-2 driver seam → api/config)
+                      │      │        ├── engine/substrate (embedded substrate pack)
+                      │      │        └── engine/flux (driver: sync wiring, predicates)
                       │      ├──▶ internal/pack (M8: load/validate/render packs
                       │      │        │  → api/config; renders, never applies)
                       │      │        └──▶ internal/ref (M8 shared-infra leaf:
@@ -72,7 +84,8 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/c
   each other (`internal/config` ↔ `internal/cluster` in particular).
 - **Shared-infrastructure leaves are the one sanctioned exception** to
   that rule (2026-08-21), and they are a **closed, listed** set:
-  `internal/ref` and `internal/kube`. A component domain MAY import a
+  `internal/ref`, `internal/kube`, and `internal/plan` (listed at the
+  M10 gate, instantiated by the M12 bus PR). A component domain MAY import a
   listed leaf; a leaf MAY NOT import a component domain or `api/config` —
   it imports only `internal/cubeerr` and its own backend SDKs. Adding to
   the list is a design-gate event, never an inference from shape. MAY is

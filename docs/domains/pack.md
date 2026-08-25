@@ -743,19 +743,20 @@ than exercising it — emitting a CR is ordinary YAML), and makes helm packs
 the clearest showcase of the `#Values` lockdown, since the values are the
 *only* thing the pack contributes.
 
-### Prerequisite in bootstrap
+### Prerequisite in the substrate
 
 A helm pack is inert without **helm-controller** and the
-`helmreleases.helm.toolkit.fluxcd.io` CRD. The embedded Flux install
-(`internal/bootstrap/assets/flux.yaml`, pinned v2.9.2) currently carries
-`--components=source-controller,kustomize-controller` only: the
-source-controller CRDs for `HelmRepository`, `OCIRepository` and
-`HelmChart` are already present, but helm-controller and its CRD are not.
-The milestone regenerates the asset with helm-controller included and
-updates the recorded sha256. **The bootstrap kind-set needs no change** —
-it filters by *kind* (`CustomResourceDefinition`, `Deployment`,
-`StatefulSet`, `Job`, `Namespace`), so the new Deployment and CRD are
-waited on the moment they are in the asset. See `docs/domains/bootstrap.md`.
+`helmreleases.helm.toolkit.fluxcd.io` CRD — both carried by the
+invariant tier-1 substrate since M9 (the embedded pack at
+`internal/engine/substrate/`, payload `manifests/flux.yaml`, pinned
+`2.9.2`, with `--components=source-controller,kustomize-controller,helm-controller`).
+Because the substrate is invariant — never selected by
+`spec.engine.provider` — this prerequisite holds under any tier-2
+engine, which is exactly what keeps helm packs from ever being inert
+(M10 gate). The bootstrap kind-set filters by *kind*, so the
+helm-controller Deployment and its CRD are waited on because they are in
+the payload. See `docs/domains/engine.md` (substrate) and
+`docs/domains/bootstrap.md` (machinery).
 
 ## externalManifests
 

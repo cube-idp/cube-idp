@@ -2,6 +2,55 @@
 
 ## Unreleased
 
+M10 engine (epic #152; design gate: `docs/DECISIONS.md` 2026-08-24):
+
+- **The two-tier model.** Tier 1 is the invariant Flux **substrate** —
+  the embedded, pinned install every cube gets, now re-homed as a
+  conforming pack in `internal/engine/substrate` (same sha256 + `make`
+  regeneration discipline; no behavior change to what gets installed).
+  Tier 2 is the **engine**: the coordinator that owns steady-state pack
+  installation, selected by the user at day 0 and **immutable for the
+  cube's lifetime**. Flux is the only engine today — the degenerate case
+  where the substrate doubles as the engine. Argo CD is a legitimate
+  future engine behind its own design gate; it is never a compile-time
+  dependency.
+- **`spec.engine.provider` now selects the tier-2 engine only** — the
+  substrate is never selectable. `"flux"` stays the default and the only
+  admitted value; the choice is immutable per cube (mechanical
+  enforcement arrives with a second engine, when there is something to
+  switch to).
+- **`spec.engine.version` takes clean SemVer** (`2.9.2`) and is asserted
+  against the embedded substrate **before any cluster contact**: a
+  mismatch — including the previously-accepted `v2.9.2` spelling — is
+  now rejected as `CUBE-ENG-005`. Note `config validate` does not check
+  the version field; the assertion runs at `cube-idp bootstrap`.
+- **`cube-idp bootstrap` output now spells the version clean**:
+  `flux 2.9.2 installed — syncing from <url> (<kind>)` (or without the
+  suffix when no source is configured).
+- **Three-phase readiness.** Bootstrap waits the kind-set (phase 1),
+  then the sync wiring *reconciled* — `Ready` with a current
+  `observedGeneration`, so stale success never counts (phase 2), then
+  any driver-declared engine objects (phase 3; empty for flux) — all
+  within the one `--timeout` budget. Engine-CR reconciliation, out of
+  scope since M7, is thereby delivered: bootstrap now completes only
+  when the sync is actually reconciled. Two new error codes:
+  `CUBE-BST-009` (reconciliation wait timed out, naming the pending
+  objects **with the driver's reasons**) and `CUBE-BST-010` (readiness
+  polling hit a permanent error). Transient conditions — a CRD not yet
+  served, an object not yet created — are pending, never terminal.
+- **Error-code moves, numbers never reused:** `CUBE-BST-001/002/008/007`
+  (asset provenance, asset parse, version mismatch, unsupported source
+  kind) are superseded by `CUBE-ENG-003/004/005/006`; the engine domain
+  also adds `CUBE-ENG-001` (no driver for the provider) and
+  `CUBE-ENG-002` (object outside the driver's coverage).
+- **No new runtime dependency** — the seam is client-go interface types,
+  apimachinery, function values, and embedded data; the asset move is an
+  import-path change only.
+- **Roadmap:** the **gateway** milestone (trust fabric: ingress gateway,
+  certificates, hostnames, trust, internal DNS) was inserted as M11 at
+  the design gate, per the founding two-tier vision; bus → M12,
+  `up`/`down` → M13.
+
 M9 helm packs (epic #139; design gate: `docs/DECISIONS.md` 2026-08-23):
 
 - **`type: helm` renders to a Flux `HelmRelease`, not to expanded
