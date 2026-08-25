@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
 	"github.com/cube-idp/cube-idp/internal/cluster"
+	"github.com/cube-idp/cube-idp/internal/cubeerr"
+	"github.com/cube-idp/cube-idp/internal/engine"
 )
 
 const bootstrapConfigYAML = `apiVersion: cube-idp.dev/v1alpha1
@@ -28,7 +31,7 @@ func execBootstrap(t *testing.T, dir string, p cluster.Provisioner, extraArgs ..
 	t.Helper()
 	root := newRootCmd(func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
 		return p, nil
-	})
+	}, defaultEngine)
 	args := append([]string{
 		"bootstrap", "-f", filepath.Join(dir, "cube.yaml"),
 		"--kubeconfig", filepath.Join(dir, "kubeconfig"),
@@ -88,5 +91,24 @@ func TestBootstrapKubeconfigMissing(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "CUBE-CLU-005") {
 		t.Fatalf("stderr missing CUBE-CLU-005:\n%s", stderr)
+	}
+}
+
+// TestDefaultEngine pins the production engine factory: flux maps to the
+// flux driver, anything else is the defensive CUBE-ENG-001 (config
+// validation is the primary gate).
+func TestDefaultEngine(t *testing.T) {
+	t.Parallel()
+	drv, err := defaultEngine(v1alpha1.EngineProviderFlux)
+	if err != nil || drv == nil {
+		t.Fatalf("defaultEngine(flux) = (%v, %v), want a driver", drv, err)
+	}
+	_, err = defaultEngine("argo")
+	var coded *cubeerr.Coded
+	if !errors.As(err, &coded) {
+		t.Fatalf("defaultEngine(argo) = %v, want *cubeerr.Coded", err)
+	}
+	if coded.Code != engine.CodeUnsupportedProvider {
+		t.Fatalf("code = %s, want %s", coded.Code, engine.CodeUnsupportedProvider)
 	}
 }

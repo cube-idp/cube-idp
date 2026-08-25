@@ -19,7 +19,7 @@ func execDelete(t *testing.T, dir string) (code int, stdout, stderr string) {
 	t.Helper()
 	root := newRootCmd(func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
 		return mockProvisioner{}, nil
-	})
+	}, defaultEngine)
 	var out, errBuf bytes.Buffer
 	code = execute(t.Context(), root, []string{
 		"delete", "-f", filepath.Join(dir, "cube.yaml"),

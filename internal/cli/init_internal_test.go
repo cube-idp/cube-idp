@@ -23,7 +23,7 @@ func execInit(t *testing.T, dir string, extraArgs ...string) (code int, stdout, 
 	t.Helper()
 	root := newRootCmd(func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
 		return mockProvisioner{}, nil
-	})
+	}, defaultEngine)
 	args := append([]string{"init", "-f", filepath.Join(dir, "cube.yaml")}, extraArgs...)
 	var out, errBuf bytes.Buffer
 	code = execute(t.Context(), root, args, &out, &errBuf)

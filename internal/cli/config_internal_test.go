@@ -35,7 +35,7 @@ spec:
 	// mockProvisioner implements Provisioner only — not SpecValidator.
 	root := newRootCmd(func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
 		return mockProvisioner{}, nil
-	})
+	}, defaultEngine)
 	var stdout, stderr bytes.Buffer
 	code := execute(t.Context(), root, []string{"config", "validate", "-f", cfgPath}, &stdout, &stderr)
 	if code != 0 {
@@ -43,5 +43,42 @@ spec:
 	}
 	if !strings.Contains(stdout.String(), "valid") {
 		t.Errorf("stdout %q should confirm validity", stdout.String())
+	}
+}
+
+// TestConfigValidateRejectsUnknownEngineProvider pins engine validate
+// parity: the engine spec has no driver-private surface (the gate declined
+// an opaque forProvider), so validation is api-side alone and no driver
+// implements the optional SpecValidator capability (decided at the C3
+// checkpoint, https://github.com/cube-idp/cube-idp/pull/173; engine.md
+// alignment lands with the M10 closeout). An unknown spec.engine.provider
+// is thus a config-domain field error — exit 2, naming the field — with
+// no engine package involved in the validate path.
+func TestConfigValidateRejectsUnknownEngineProvider(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "cube.yaml")
+	doc := `apiVersion: cube-idp.dev/v1alpha1
+kind: Config
+metadata:
+  name: dev
+spec:
+  engine:
+    provider: argo
+`
+	if err := os.WriteFile(cfgPath, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd(func(v1alpha1.ClusterProvider) (cluster.Provisioner, error) {
+		return mockProvisioner{}, nil
+	}, defaultEngine)
+	var stdout, stderr bytes.Buffer
+	code := execute(t.Context(), root, []string{"config", "validate", "-f", cfgPath}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "spec.engine.provider") {
+		t.Errorf("stderr should name spec.engine.provider:\n%s", stderr.String())
 	}
 }
