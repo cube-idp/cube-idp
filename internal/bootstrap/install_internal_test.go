@@ -22,7 +22,7 @@ func TestInstallOrder(t *testing.T) {
 		t.Fatalf("Install() error = %v", err)
 	}
 
-	inventoryApply := "apply:ConfigMap/" + InventoryNamespace + "/" + InventoryName
+	inventoryApply := "apply:ConfigMap/" + testInvNS + "/" + InventoryName
 	phase := func(c string) int {
 		switch {
 		case strings.HasPrefix(c, "get:"):
@@ -64,6 +64,86 @@ func TestInstallStopsOnApplyFailure(t *testing.T) {
 	for _, c := range f.calls {
 		if strings.HasPrefix(c, "get:") {
 			t.Errorf("Install waited after an apply failure; calls=%v", f.calls)
+		}
+	}
+}
+
+// TestInstallEngineWithWiring: the substrate installs and becomes ready,
+// THEN the injected sync wiring is applied (after the kind-set wait) and the
+// inventory includes it.
+func TestInstallEngineWithWiring(t *testing.T) {
+	f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
+	a := testApplier(f)
+	if err := a.InstallEngine(t.Context(), testSubstrateObjs(), testWiringObjs(), EngineWait{}); err != nil {
+		t.Fatalf("InstallEngine() error = %v", err)
+	}
+
+	for _, key := range []string{
+		"GitRepository/flux-system/flux-system",
+		"Kustomization/flux-system/flux-system",
+	} {
+		if _, ok := f.store[key]; !ok {
+			t.Errorf("wiring object %s not applied", key)
+		}
+	}
+
+	inv := f.store["ConfigMap/"+testInvNS+"/"+InventoryName]
+	if inv == nil {
+		t.Fatal("no inventory recorded")
+	}
+	data := nested(t, inv, "data", inventoryKey)
+	for _, want := range []string{"GitRepository", "Kustomization"} {
+		if !strings.Contains(data, want) {
+			t.Errorf("inventory missing %s:\n%s", want, data)
+		}
+	}
+
+	// Wiring is applied only AFTER the kind-set wait (a get precedes the
+	// GitRepository apply) — the CRDs-established prerequisite.
+	gitApply := callIndex(f.calls, "apply:GitRepository/flux-system/flux-system")
+	firstGet := firstCallWithPrefix(f.calls, "get:")
+	if firstGet < 0 || gitApply < firstGet {
+		t.Errorf("wiring applied before the kind-set wait; calls=%v", f.calls)
+	}
+}
+
+// TestInstallEngineNoWiring installs only the substrate when the driver
+// emitted no sync wiring (the no-source case, decided at the edge).
+func TestInstallEngineNoWiring(t *testing.T) {
+	f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
+	a := testApplier(f)
+	if err := a.InstallEngine(t.Context(), testSubstrateObjs(), nil, EngineWait{}); err != nil {
+		t.Fatalf("InstallEngine() error = %v", err)
+	}
+	if _, ok := f.store["GitRepository/flux-system/flux-system"]; ok {
+		t.Errorf("wiring applied without any injected; calls=%v", f.calls)
+	}
+}
+
+// TestInstallEnginePartialWiringApplyRecordsIntent: the inventory records the
+// full owned set BEFORE the wiring apply, so a half-applied wiring (here the
+// Kustomization fails after the GitRepository applied) is still in the
+// inventory for `down` to clean, and the apply error propagates.
+func TestInstallEnginePartialWiringApplyRecordsIntent(t *testing.T) {
+	f := &fakeCluster{
+		store:         map[string]*unstructured.Unstructured{},
+		readyApply:    true,
+		failApplyKind: "Kustomization",
+	}
+	a := testApplier(f)
+
+	if err := a.InstallEngine(t.Context(), testSubstrateObjs(), testWiringObjs(), EngineWait{}); err == nil {
+		t.Fatal("InstallEngine() = nil, want the wiring apply failure")
+	}
+
+	inv := f.store["ConfigMap/"+testInvNS+"/"+InventoryName]
+	if inv == nil {
+		t.Fatal("no inventory recorded")
+	}
+	data := nested(t, inv, "data", inventoryKey)
+	for _, want := range []string{"GitRepository", "Kustomization"} {
+		if !strings.Contains(data, want) {
+			t.Errorf("inventory (recorded as intent) missing %s — down could not clean a partial apply:\n%s", want, data)
 		}
 	}
 }

@@ -39,8 +39,10 @@ const (
 	// CodeInventory reports a failure to encode the bootstrap inventory (the
 	// seed of down) before recording it.
 	CodeInventory cubeerr.Code = "CUBE-BST-006"
-	// CodeSourceKind reports an engine source kind the bootstrapper cannot turn
-	// into a Flux source CR (guarded upstream by config validation).
+	// CodeSourceKind is SUPERSEDED by CUBE-ENG-006 (M10): the sync-wiring
+	// shapes and their source-kind check moved to the flux engine driver
+	// (internal/engine/flux). The constant stays so the number is never
+	// reused.
 	CodeSourceKind cubeerr.Code = "CUBE-BST-007"
 	// CodeVersionMismatch is SUPERSEDED by CUBE-ENG-005 (M10): the version
 	// pin moved to internal/engine/substrate, which asserts requested
@@ -71,13 +73,6 @@ func newApplyError(obj *unstructured.Unstructured, cause error) error {
 		fmt.Sprintf("server-side apply failed for %s", describe(obj)),
 		"check cluster connectivity and RBAC for the cube-idp field manager",
 		cause)
-}
-
-func newSourceKindError(kind string) error {
-	return cubeerr.Wrap(CodeSourceKind,
-		fmt.Sprintf("unsupported engine source kind %q", kind),
-		"set spec.engine.source.kind to git or oci",
-		nil)
 }
 
 func newInventoryError(cause error) error {

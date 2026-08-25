@@ -25,6 +25,9 @@ const (
 	// CodeVersionMismatch supersedes CUBE-BST-008 (M10): a requested
 	// engine version differs from the pinned substrate.
 	CodeVersionMismatch cubeerr.Code = "CUBE-ENG-005"
+	// CodeUnsupportedSourceKind supersedes CUBE-BST-007 (M10): an engine
+	// source kind the driver cannot turn into sync wiring.
+	CodeUnsupportedSourceKind cubeerr.Code = "CUBE-ENG-006"
 )
 
 // NewUnsupportedProviderError reports a spec.engine.provider no
@@ -61,6 +64,15 @@ func NewSubstrateParseError(cause error) error {
 		"cannot parse the embedded substrate manifests",
 		"this is a build-integrity problem; rebuild from a clean checkout",
 		cause)
+}
+
+// NewUnsupportedSourceKindError reports a spec.engine.source.kind the
+// driver cannot turn into sync wiring (guarded upstream by config
+// validation; this is the driver's defensive check).
+func NewUnsupportedSourceKindError(kind string) error {
+	return cubeerr.Wrap(CodeUnsupportedSourceKind,
+		fmt.Sprintf("unsupported engine source kind %q", kind),
+		"set spec.engine.source.kind to git or oci", nil)
 }
 
 // NewVersionMismatchError reports a requested engine version that

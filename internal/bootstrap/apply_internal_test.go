@@ -42,14 +42,52 @@ func newFakeCluster(seed ...*unstructured.Unstructured) *fakeCluster {
 	return f
 }
 
+// testInvNS is the inventory namespace the tests inject — the Applier
+// records wherever it is told; the fact itself lives with the substrate.
+const testInvNS = "flux-system"
+
 // testApplier builds an Applier over a fake cluster with the fast test poll
-// interval and the standard inventory namespace injected.
+// interval and the test inventory namespace injected.
 func testApplier(k cluster) *Applier {
-	return &Applier{k: k, interval: time.Millisecond, invNS: InventoryNamespace}
+	return &Applier{k: k, interval: time.Millisecond, invNS: testInvNS}
 }
 
 func objKey(o *unstructured.Unstructured) string {
 	return o.GetKind() + "/" + o.GetNamespace() + "/" + o.GetName()
+}
+
+func nested(t *testing.T, o *unstructured.Unstructured, fields ...string) string {
+	t.Helper()
+	s, _, _ := unstructured.NestedString(o.Object, fields...)
+	return s
+}
+
+// testSubstrateObjs is the injected install content the InstallEngine tests
+// run over: bootstrap applies whatever substrate set the edge hands it, so a
+// minimal kind-set-covered pair stands in for the real payload.
+func testSubstrateObjs() []*unstructured.Unstructured {
+	return []*unstructured.Unstructured{
+		newNamespace("flux-system", "Active"),
+		newDeployment("source-controller", "flux-system", 1, 1, 1),
+	}
+}
+
+// testWiringObjs is hand-rolled sync wiring the InstallEngine tests inject —
+// bootstrap applies whatever wiring the edge's driver emitted, and knows
+// nothing about its shape.
+func testWiringObjs() []*unstructured.Unstructured {
+	wiring := func(apiVersion, kind string) *unstructured.Unstructured {
+		o := &unstructured.Unstructured{}
+		o.SetAPIVersion(apiVersion)
+		o.SetKind(kind)
+		o.SetNamespace("flux-system")
+		o.SetName("flux-system")
+		return o
+	}
+	return []*unstructured.Unstructured{
+		wiring("source.toolkit.fluxcd.io/v1", "GitRepository"),
+		wiring("kustomize.toolkit.fluxcd.io/v1", "Kustomization"),
+	}
 }
 
 func (f *fakeCluster) apply(_ context.Context, obj *unstructured.Unstructured) error {

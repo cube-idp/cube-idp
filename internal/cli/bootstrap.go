@@ -8,10 +8,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
 	"github.com/cube-idp/cube-idp/internal/bootstrap"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
+	"github.com/cube-idp/cube-idp/internal/engine/flux"
 	"github.com/cube-idp/cube-idp/internal/engine/substrate"
 	"github.com/cube-idp/cube-idp/internal/kube"
 )
@@ -40,9 +43,9 @@ func newBootstrapCmd(newProvisioner provisionerFactory) *cobra.Command {
 // runBootstrap composes the bootstrap at the CLI edge: it asserts the
 // requested engine version against the substrate pin, builds the kube clients
 // (construction confined to internal/kube) and injects them into a bootstrap
-// Applier, then hands it the substrate's install objects to apply, record,
-// and wait on. bootstrap stays kube-free and engine-free — the edge injects
-// content.
+// Applier, then hands it the substrate's install objects, the engine driver's
+// sync wiring, and the driver's reconciliation judgment. bootstrap stays
+// kube-free and engine-free — the edge injects content and judgment alike.
 func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	path, _ := cmd.Flags().GetString("config")
 	kubeconfigPath, _ := cmd.Flags().GetString("kubeconfig")
@@ -63,6 +66,10 @@ func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 	if err != nil {
 		return err
 	}
+	wiringObjs, engineWait, err := engineInputs(cmd.Context(), cfg.Spec.Engine)
+	if err != nil {
+		return err
+	}
 	applier, err := bootstrapApplier(cmd.Context(), cfg, newProvisioner, kubeconfigPath, contextName)
 	if err != nil {
 		return err
@@ -70,14 +77,33 @@ func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory) error {
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
-	// No reconciliation judgment is injected yet: the flux driver that
-	// supplies it lands with the M10-C3 wiring move, and until then the
-	// post-apply wait phases are skipped — the shipped M7/M9 behavior.
-	if err := applier.InstallEngine(ctx, cfg.Spec.Engine, substrateObjs, bootstrap.EngineWait{}); err != nil {
+	if err := applier.InstallEngine(ctx, substrateObjs, wiringObjs, engineWait); err != nil {
 		return err
 	}
 	renderBootstrapResult(cmd, cfg.Spec.Engine)
 	return nil
+}
+
+// engineInputs composes the engine driver's contribution to bootstrap: the
+// sync wiring to apply and the reconciliation inputs for the phased waits.
+// The flux driver is constructed directly — the only driver today; the
+// provider selection factory (and CUBE-ENG-001) arrives with the CLI wiring
+// task of this milestone.
+func engineInputs(ctx context.Context, engine *v1alpha1.EngineSpec) ([]*unstructured.Unstructured, bootstrap.EngineWait, error) {
+	drv := flux.New()
+	spec := v1alpha1.EngineSpec{}
+	if engine != nil {
+		spec = *engine
+	}
+	wiring, err := drv.SourceObjects(ctx, spec)
+	if err != nil {
+		return nil, bootstrap.EngineWait{}, err
+	}
+	engineObjs, err := drv.EngineObjects(ctx, spec)
+	if err != nil {
+		return nil, bootstrap.EngineWait{}, err
+	}
+	return wiring, bootstrap.EngineWait{Reconciled: drv.Reconciled, EngineObjects: engineObjs}, nil
 }
 
 // engineVersion returns the requested engine version, empty when the spec or

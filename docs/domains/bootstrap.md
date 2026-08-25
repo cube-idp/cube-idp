@@ -142,11 +142,11 @@ scope** — it belongs to the M10 engine seam.
 
 ## Source + sync CRs, and the install sequence
 
-When `spec.engine.source` is set, bootstrap generates a Flux source CR —
-`GitRepository` or `OCIRepository` (`source.toolkit.fluxcd.io/v1`, the
-latter with `provider: generic`) by `kind` — plus a `Kustomization`
-(`kustomize.toolkit.fluxcd.io/v1`) that applies `path` on `interval`, both
-named `flux-system` in the Flux namespace.
+When `spec.engine.source` is set, the engine driver — not bootstrap —
+emits the sync wiring (M10-C3: `flux.SourceObjects`, `GitRepository` or
+`OCIRepository` plus a `Kustomization`; the shapes live in
+`internal/engine/flux`), and the CLI edge injects it. Bootstrap applies
+whatever wiring it is handed and knows nothing about its shape.
 
 `Applier.InstallEngine` sequences the whole bootstrap in the one order that
 is correct and recoverable:
@@ -187,14 +187,14 @@ function-field structs. Argo CD, if it ever returns, arrives as an engine
 
 | Code | Meaning |
 |---|---|
-| `CUBE-BST-001` | embedded Flux manifests failed their sha256 provenance check (build/asset integrity) |
-| `CUBE-BST-002` | embedded Flux manifests failed to parse into objects |
+| `CUBE-BST-001` | SUPERSEDED by `CUBE-ENG-003` (M10-C2: provenance moved with the substrate asset; number never reused) |
+| `CUBE-BST-002` | SUPERSEDED by `CUBE-ENG-004` (M10-C2: payload parse moved with the substrate asset) |
 | `CUBE-BST-003` | no REST mapping for an object's kind (even after a discovery refresh) |
 | `CUBE-BST-004` | server-side apply of a bootstrap object failed (wrapped cause) |
 | `CUBE-BST-005` | bootstrap kind-set readiness wait timed out (names the pending objects) |
 | `CUBE-BST-006` | inventory encode failed before recording |
-| `CUBE-BST-007` | unsupported engine source kind (defensive; config validation is the primary gate) |
-| `CUBE-BST-008` | requested `spec.engine.version` differs from this binary's embedded Flux |
+| `CUBE-BST-007` | SUPERSEDED by `CUBE-ENG-006` (M10-C3: the wiring shapes and their source-kind check moved to the flux driver) |
+| `CUBE-BST-008` | SUPERSEDED by `CUBE-ENG-005` (M10-C2: the version pin moved to the substrate; asserted at the edge) |
 
 `spec.engine` *document* validation errors are config-domain
 `CUBE-CFG-*`/`field.ErrorList` at load time — codes are never re-tagged
