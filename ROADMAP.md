@@ -133,16 +133,37 @@ it in the PR that completes or reorders a milestone.
   content) — all of that is #142. Design gate: `docs/DECISIONS.md`
   2026-08-23; living contract: `docs/domains/pack.md`, "Helm packs".
 
-## Queue
+- **M10 — engine** (epic #152; design gate PR #161, 2026-08-24; PR stack
+  #169/#171/#172/#173/#175, 2026-08-25): the **two-tier model** became
+  real. **Tier 1** — the invariant Flux substrate — was re-homed from
+  `internal/bootstrap/assets/` to `internal/engine/substrate` as an
+  embedded **conforming pack** (`name: "flux"`, clean-SemVer
+  `version: "2.9.2"`, `type: raw`, `category: "engine"`; sha256 + `make
+  flux-manifests` discipline unchanged), with an edge-level dogfood test
+  asserting deep ordered equality of `pack.Render` vs the substrate's own
+  parse. **Tier 2** — the engine — got its Kind-B driver seam
+  `engine.Provider` (`SourceObjects`/`EngineObjects`/`Reconciled`/
+  `EngineNamespace`, all pure, plus a dormant `SpecValidator`
+  capability) with a hermetic conformance suite run against the real
+  driver; `internal/engine/flux` is the only — degenerate — driver (the
+  substrate doubles as the engine: sync wiring + freshness predicates,
+  empty bundle). `internal/bootstrap` narrowed to engine-agnostic
+  machinery: it applies injected substrate + wiring, executes
+  **three-phase readiness** (kind-set; reconciliation; declared engine
+  objects — transient discovery pending-not-terminal, new codes
+  `CUBE-BST-009`/`-010`), and records the inventory into the injected
+  substrate namespace. `CUBE-BST-001/002/007/008` superseded by
+  `CUBE-ENG-003/004/006/005` (tombstoned, never reused);
+  `spec.engine.provider` re-scoped to select tier 2 only (immutable per
+  cube, `flux` the only value); `spec.engine.version` accepts clean
+  SemVer, rejecting `v2.9.2` via `CUBE-ENG-005` at the bootstrap edge.
+  **No new runtime dependency.** The gateway milestone was inserted as
+  M11 at the gate (bus → M12, `up`/`down` → M13); Argo is recorded as a
+  legitimate future tier-2 driver behind its own design gate. Design
+  gate: `docs/DECISIONS.md` 2026-08-24; living contracts:
+  `docs/domains/engine.md` (new), `docs/domains/bootstrap.md`.
 
-- **M10 — engine**: the two-tier model (design gate 2026-08-24, PR #161):
-  the invariant Flux **substrate** (tier 1, re-expressed as a conforming
-  pack) and the tier-2 **engine driver seam** (`engine.Provider`;
-  user-selected via `spec.engine.provider`, immutable per cube; flux is
-  the only — degenerate — driver). Consumes the M8 pack contract
-  unchanged. The former Argo replace-vs-layer question is dissolved by
-  the model: the substrate is never replaceable (M9 pins it), and Argo is
-  a legitimate future tier-2 driver behind its own design gate.
+## Queue
 
 - **M11 — gateway** (inserted at the M10 design gate by operator
   decision, 2026-08-24, per the founding vision: "we use Flux to deliver
@@ -197,7 +218,7 @@ Deferred from M8 with issues of their own: the CLI edge resolving
 `docs/domains/ref.md` move), and the git/oci/s3 `ref` backends, which land
 with the milestones that need them.
 
-## Continuation after M10 (directional, not committed)
+## Continuation after M11 (directional, not committed)
 
 Re-sequenced by operator direction (2026-08-05, recorded in the M7 design
 gate; helm inserted ahead of the engine 2026-08-22, see the renumbering
@@ -206,13 +227,12 @@ questions: `docs/archived/plans/2026-08-01-roadmap-direction.md`. (The pack
 unit's pre-M8 shaping notes were absorbed into `docs/domains/pack.md` and
 `docs/DECISIONS.md`, and deleted with the M8 closeout.)
 
-M10 engine is the committed next milestone (Queue above). After it: M11
-gateway (trust fabric, inserted 2026-08-24) → M12 bus (OCI/git delivery;
-the real `pre` semantics and the air-gap answer are due by then) → M13
-thin `up`/`down` finisher (it consumes M8's `ResolvedGraph` as data and
-executes the order) → periphery in pull order (doctor, diff, trust,
-lock/vendor, spokes, …). #142 is queued but unsequenced: every milestone
-after M9 can proceed without it.
+M11 gateway is the committed next milestone (Queue above). After it: M12
+bus (OCI/git delivery; the real `pre` semantics and the air-gap answer
+are due by then) → M13 thin `up`/`down` finisher (it consumes M8's
+`ResolvedGraph` as data and executes the order) → periphery in pull
+order (doctor, diff, trust, lock/vendor, spokes, …). #142 is queued but
+unsequenced: every milestone after M9 can proceed without it.
 
 Rationale: M7 makes the product demo-able (up → gitops-managed cluster) and
 M8 gives the later milestones the content unit they deliver. M9 went ahead

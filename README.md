@@ -3,15 +3,18 @@
 `cube-idp` is a single Go binary for standing up an internal developer
 platform from one declarative config document.
 
-**Status: greenfield rebuild — config, cluster, kube, bootstrap, and pack
-domains.** The repository was reset to a greenfield baseline on 2026-07-27
-and grows in small milestones; today it holds the config domain
-(validate/show/scaffold), the cluster domain with a full kind lifecycle
-(`init`/`create`/`status`/`delete`), the kube domain (Kubernetes client
-access — powering `status`'s API-reachability line), `bootstrap`
-(installs Flux and hands over), and the pack domain (define, validate, and
-render packs — including helm packs, which delegate to a Flux
-`HelmRelease`). The previous implementation is preserved in git history on
+**Status: greenfield rebuild — config, cluster, kube, bootstrap, pack,
+and engine domains.** The repository was reset to a greenfield baseline
+on 2026-07-27 and grows in small milestones; today it holds the config
+domain (validate/show/scaffold), the cluster domain with a full kind
+lifecycle (`init`/`create`/`status`/`delete`), the kube domain
+(Kubernetes client access — powering `status`'s API-reachability line),
+`bootstrap` (engine-agnostic install machinery), the pack domain
+(define, validate, and render packs — including helm packs, which
+delegate to a Flux `HelmRelease`), and the engine domain (the invariant
+Flux substrate plus the tier-2 engine driver seam — the engine is chosen
+at day 0 via `spec.engine.provider` and is immutable per cube; Flux is
+the only engine today). The previous implementation is preserved in git history on
 `main`. Structure and rationale:
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 What's next: [ROADMAP.md](ROADMAP.md). Decision history:
@@ -66,10 +69,13 @@ the cube from the config document and never scaffold it. Each takes
 `--kubeconfig <path>` to target a standalone file instead of the default
 location, and `--kubeconfig-context-name` to override the context name.
 
-`cube-idp bootstrap` installs the gitops engine (Flux) declared in
-`spec.engine` into the cluster, waits for it to be ready, and applies the
-source and sync resources it should watch — after which the engine owns
-steady state.
+`cube-idp bootstrap` installs the Flux substrate into the cluster,
+applies the sync wiring declared in `spec.engine.source`, and waits not
+just for the controllers to be ready but for the sync to actually
+**reconcile** — after which the engine owns steady state. On success it
+prints the substrate version in clean SemVer: `flux 2.9.2 installed`.
+`spec.engine.version`, when set, must use the same clean spelling
+(`2.9.2`, not `v2.9.2`) and is checked before any cluster contact.
 
 ```
 $ cube-idp config validate -f examples/cube.yaml

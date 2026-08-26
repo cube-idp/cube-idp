@@ -13,9 +13,8 @@ import (
 // The bootstrap domain owns the CUBE-BST-* code range. Codes are declared
 // here and nowhere else; the cross-domain tag registry lives in
 // docs/ARCHITECTURE.md. Constructors stay unexported — no other package
-// raises BST errors. The catalog grows with the domain: later M7 tasks
-// (source/sync, inventory) add their codes beside the constructors that
-// raise them.
+// raises BST errors. Superseded numbers (001/002/007/008, moved to
+// CUBE-ENG-* at M10) stay declared as tombstones and are never reused.
 const (
 	// CodeAssetIntegrity is SUPERSEDED by CUBE-ENG-003 (M10): the embedded
 	// substrate asset and its sha256 provenance check moved to

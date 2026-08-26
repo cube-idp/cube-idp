@@ -3,9 +3,8 @@
 Living contract of the engine domain (`internal/engine`: the invariant
 **substrate**, the tier-2 **driver seam**, and the flux driver).
 Cross-cutting rules: `docs/ARCHITECTURE.md`. Originating design gate:
-`docs/DECISIONS.md` 2026-08-24 (M10, epic #152). **Gated ahead of code**:
-everything here describes the M10 target contract, approved before
-implementation, exactly as the M8 and M9 gates did for `pack`.
+`docs/DECISIONS.md` 2026-08-24 (M10, epic #152; shipped by the
+M10-C1..C5 stack — PRs #169/#171/#172/#173/#175).
 
 ## Purpose: the two-tier model
 
@@ -48,7 +47,7 @@ the engine is the bus milestone's contract (M12), not this domain's.
 The invariant tier, owned by a subpackage that is **not a driver**:
 
 - **The embedded substrate pack.** The vendored `flux install --export`
-  asset moves from `internal/bootstrap/assets/` here, re-homed as an
+  asset moved from `internal/bootstrap/assets/` here, re-homed as an
   embedded **pack directory** — `pack.cue` (`name: "flux"`, `version` =
   the pinned Flux version, `type: raw`, `category: "engine"`, no
   `#Values`, no `namespace`) with the manifests as its `manifests/`
@@ -96,9 +95,8 @@ is left open for the bus milestone and beyond.
 
 `spec.engine.provider` selects the driver, mirroring
 `spec.cluster.provider` → `cluster.Provisioner`. The seam covers **the
-engine only**; nothing about the substrate crosses it. Contract-level
-shape (exact signatures are fixed at implementation within this
-contract; every export carries a doc comment):
+engine only**; nothing about the substrate crosses it. The shipped
+seam (`internal/engine/engine.go`; every export carries a doc comment):
 
 ```go
 // Provider is the tier-2 gitops-engine driver seam. It covers the
@@ -149,6 +147,16 @@ type SpecValidator interface {
     ValidateSpec(spec v1alpha1.EngineSpec) error
 }
 ```
+
+**`SpecValidator` is currently implemented by no driver** — the flux
+driver deliberately declines it (`spec.engine` is fully validated in
+`api/` plus the edge's version assertion, so a driver check would
+duplicate), and the CLI edge wires nothing to it: `config validate`
+type-asserts only the cluster capability today. The capability is real
+contract surface with a conformance sub-test that runs iff implemented —
+but until a driver implements it, it is dormant by design, not by
+accident. Recorded here so nobody mistakes the seam text for a claim
+that engine specs get provider-side validation today.
 
 Why the seam is pure, stated once: the interface doctrine (§4) says
 "interfaces stay pure where possible (return objects; the caller
@@ -211,80 +219,39 @@ wiring and readiness only**:
   reject staleness in its own CRs' freshness vocabulary.**
 - **`EngineNamespace`** — the substrate namespace.
 
-## What M10 changes in bootstrap
+## What M10 changed in bootstrap (shipped)
 
-Recorded here because the tiers define the split; the bootstrap contract
-carries the mirror text (`docs/domains/bootstrap.md`, M10 section):
+The full narrowed contract lives in `docs/domains/bootstrap.md` (folded
+into its living body at the M10 closeout); the seam-side summary:
 
-- `internal/bootstrap` keeps the **engine-agnostic machinery**: SSA
-  apply, the by-kind bootstrap kind-set wait, the inventory, and the
-  install sequencing. What it applies day-0 is now **injected substrate
-  objects + injected driver sync wiring** — bootstrap no longer embeds
-  or knows Flux; the substrate home and the driver supply content, the
-  edge composes.
-- **Phased readiness.** Bootstrap executes waits in three declared
-  phases, all sharing the existing `--timeout` as **one total budget**:
-  1. the **kind-set wait** over what its SSA applied — unchanged
-     machinery (the substrate; the sync wiring is applied only *after*
-     this wait establishes the CRDs, per the install sequence);
-  2. the **reconciliation wait** over the driver's `SourceObjects`,
-     polling with injected driver predicates;
-  3. the **engine-readiness wait** over the driver's `EngineObjects` —
-     content bootstrap did **not** apply (it arrives through the tier-1
-     source), polled by declared identity with the same predicate
-     machinery. **For flux this phase is empty and skipped.** The phase
-     contract exists now so a second driver's gate fills it — the
-     declared-object list and predicates already flow through the seam;
-     no new method is needed. (How a bundle *reaches* the source at day
-     0 is that gate's question, together with the bus.)
-  **Transient discovery is pending, never terminal, in phases 2–3.**
-  Declared content may not exist yet by design — a tier-1-delivered
-  engine CRD may still be establishing when phase 3 first polls — so
-  within these phases, *no REST mapping yet* and *object not yet
-  created* (NotFound) are **pending states, retried until the shared
-  deadline**, while permanent errors — forbidden, malformed declared
-  identity, any non-transient retrieval failure — fail immediately as a
-  new machinery code, **`CUBE-BST-010`** (readiness polling failed on a
-  permanent error, wrapped cause), coded at the point of failure so it
-  is already-coded before the pass-through boundary and neither timeout
-  code ever retags it. This is a stated departure from the apply path's
-  one-shot mapper reset-and-retry, which serves applying and stays
-  one-shot there: the wait path re-consults discovery on each poll
-  instead of converting a mapping miss into a terminal `CUBE-BST-003`.
-  NotFound-as-pending matches today's wait behavior; no-mapping-as-
-  pending is the new polling semantic, stated here so "the same
-  machinery" is true when implementation starts.
-  Phases 2–3 time out as `CUBE-BST-009`, naming the pending objects
-  **with the driver's pending reasons**; `-005` keeps meaning exactly
-  "kind-set wait timed out". The wait-code pass-through rule (landed
-  with PR #159) applies to both: an already-coded **permanent** cause —
-  including an `ENG`-coded predicate error — keeps its code; transient
-  discovery conditions are pending states, not causes; the wait code
-  wraps only a deadline with objects still pending.
-- **Inventory: bootstrap records exactly what bootstrap applies** —
-  substrate + sync wiring — into the **substrate namespace**, injected
-  as a string from the substrate fact (the edge passes it; bootstrap
-  records where it is told). Content delivered through the tier-1
-  source — a future engine bundle, and every ordinary pack — is
-  **deliberately not** in bootstrap's inventory: it lives under the
-  `prune: true` sync the wiring established, so its teardown is
-  source-level. The `down` composition order — (a) source-level
-  teardown, (b) tier-1 teardown from the inventory, (c) cluster
-  teardown — is published as a **requirement on the up/down milestone
-  (M13)**, with its real semantics (reconcile-the-removal or a pinned
-  deletion policy; dependency-aware tier-1 teardown so finalizers run
-  while their controllers exist) owed at that gate, not promised here.
-- **Everything Flux-specific leaves bootstrap**: the embedded asset
-  (→ the substrate home), the sync-wiring shapes (→ the flux driver).
-  `CUBE-BST-001`, `-002`, `-007`, `-008` (asset provenance, asset
-  parse, unsupported source kind, version mismatch) are all raised by
-  content that moves — they follow it and are **superseded** by
-  `CUBE-ENG-*` codes at implementation (rows kept, numbers never
-  reused, the `APP`/`PKG-020` discipline). The machinery codes
-  (`CUBE-BST-003..006`, plus the new `-009` and `-010`) stay. The retained codes'
-  Flux-specific summaries/remediations go engine-neutral in the same
-  narrowing (naming the injected namespace and generic "engine
-  controllers").
+- Bootstrap keeps the engine-agnostic machinery and applies only
+  **injected** content: `Applier.InstallEngine(ctx, substrateObjs,
+  wiringObjs, engineWait)` applies the substrate, records the inventory,
+  waits the kind-set (phase 1), then — when wiring exists — re-records
+  the inventory **before** applying the wiring, applies it, and waits it
+  reconciled (phase 2), then waits the declared
+  `EngineWait.EngineObjects` reconciled (phase 3 — a no-op for flux,
+  which declares none). One `--timeout` bounds all phases.
+- The driver crosses the edge as neutral vocabulary: object slices plus
+  `EngineWait{Reconciled ReconciledFunc; EngineObjects
+  []*unstructured.Unstructured}` — function values, no engine type.
+- **Transient discovery is pending, never terminal, in phases 2–3**: a
+  not-yet-served kind or a NotFound is retried until the shared
+  deadline (the wait path re-consults discovery per poll — deliberately
+  unlike the apply path's one-shot reset-and-retry); permanent failures
+  are `CUBE-BST-010`, coded at the failure point; already-coded causes
+  (including `ENG`-coded predicate errors) pass through untouched.
+  Phase-2/3 timeouts are `CUBE-BST-009`, carrying the driver's pending
+  reasons; `CUBE-BST-005` stays kind-set-only.
+- **Inventory** records exactly what bootstrap applies — substrate +
+  wiring — into the substrate namespace, injected as a
+  `NewApplier(dyn, mapper, inventoryNamespace)` argument. Source-
+  delivered content is deliberately outside it; the (a) source-level /
+  (b) tier-1-inventory / (c) cluster `down` order is a published M13
+  requirement.
+- `CUBE-BST-001/002/007/008` are superseded by the `ENG` codes above
+  (tombstoned, never reused); the retained machinery codes' text is
+  engine-neutral.
 
 ## The Argo future: a legitimate tier-2 driver, at its own gate
 
@@ -325,6 +292,64 @@ existing ones.
 
 ## Config surface (`spec.engine`)
 
+Owned by this domain's contract since M10 (bootstrap no longer imports
+`api/config`; the edge reads the spec and injects derived content). An
+optional sub-struct on `ConfigSpec`, defaults and validation beside it
+in `api/config/v1alpha1` (the loading machinery never changes):
+
+```go
+// EngineSpec declares the gitops engine cube-idp bootstraps.
+type EngineSpec struct {
+    // Provider selects the tier-2 engine only — the invariant tier-1
+    // substrate is never selectable. Immutable per cube; "flux" is the
+    // default and the only admitted value today ("argo" is additive at
+    // its own design gate).
+    Provider EngineProvider `json:"provider,omitempty"`
+
+    // Version, when set, is asserted at the edge against the substrate's
+    // pinned version, in clean SemVer spelling ("2.9.2", never
+    // v-prefixed) — a mismatch is rejected (CUBE-ENG-005, superseding
+    // CUBE-BST-008) before any apply; empty selects the embedded
+    // version. It never selects or fetches a different Flux.
+    Version string `json:"version,omitempty"`
+
+    // Source points the engine's sync at a location; absent means the
+    // substrate is installed without a sync.
+    Source *EngineSource `json:"source,omitempty"`
+}
+
+// EngineSource is the finalized (M7) git|oci discriminated contract —
+// shared sync-wiring vocabulary every driver consumes.
+type EngineSource struct {
+    Kind     EngineSourceKind `json:"kind,omitempty"` // "git" (default) | "oci"
+    URL      string           `json:"url"`            // git URL, or oci:// ref for kind oci
+    Ref      string           `json:"ref,omitempty"`  // git branch / oci tag (default main / latest)
+    Path     string           `json:"path,omitempty"` // sync path (default "./")
+    Interval string           `json:"interval,omitempty"` // reconcile interval (default "10m")
+}
+```
+
+- **Typed on purpose; no opaque `forProvider`.** Weighed at the M10 gate
+  and not taken: `EngineSource` is shared sync-wiring vocabulary every
+  driver consumes, and no driver-specific knob exists yet — an empty
+  opaque payload is ceremony. A second driver's gate migrates the shape
+  if and as needed.
+- Absent `spec.engine` defaults to the flux engine (the engine is
+  mandatory).
+- **`EngineSource` is discriminated by an explicit `kind`** (git or oci),
+  not URL sniffing — mirroring `spec.cluster.provider`. `Default()` fills
+  `kind`→git, `ref`→main (git) / latest (oci), `path`→`./`, `interval`→10m.
+  `Validate()` rejects an unknown `kind` (`spec.engine.source.kind`), a
+  missing URL or a URL whose scheme contradicts the kind — `oci` requires
+  an `oci://` URL, `git` rejects one (`spec.engine.source.url`) — and an
+  unparseable `interval` (`spec.engine.source.interval`). All are
+  config-domain `CUBE-CFG-*` document errors (exit 2). **Public URLs
+  only**; the credential hook (`secretRef`) is reserved for #142.
+  `spec.engine.version` carries **no document-layer check** — the
+  spelling and match are asserted at the bootstrap edge (`CUBE-ENG-005`),
+  so `config validate` does not catch a `v`-prefixed version; recorded as
+  a known gap, not an accident.
+
 - **`provider` is re-scoped, not added**: the existing field now selects
   the **tier-2 engine only** — the substrate is never selectable.
   `"flux"` (the default) remains the only accepted value in M10; adding
@@ -350,14 +375,23 @@ existing ones.
 
 ## Error codes (`CUBE-ENG-*`, exit 1)
 
-The catalog is fixed at implementation, in the domain's own `errors.go`,
-per §5. Known from the gate: codes for the superseded
-`CUBE-BST-001/002/007/008` checks (substrate provenance, substrate
-parse, unsupported source kind, version mismatch), an
-unsupported-provider code (the `CUBE-CLU-002` analogue, raised when the
-edge finds no driver), and an unrecognized-object code for `Reconciled`.
-Document-layer `spec.engine` errors stay `CUBE-CFG-*` (exit 2); codes
-are never re-tagged across domains.
+Declared in the domain's `errors.go`; constructors exported because the
+substrate, the driver subpackages, and the CLI edge raise them:
+
+| Code | Meaning |
+|---|---|
+| `CUBE-ENG-001` | no driver for `spec.engine.provider` (raised at the composition edge; the `CUBE-CLU-002` analogue) |
+| `CUBE-ENG-002` | object handed to `Reconciled` outside the driver's declared coverage |
+| `CUBE-ENG-003` | embedded substrate payload fails its sha256 provenance (supersedes `CUBE-BST-001`) |
+| `CUBE-ENG-004` | embedded substrate payload fails to parse into objects (supersedes `CUBE-BST-002`) |
+| `CUBE-ENG-005` | requested `spec.engine.version` differs from the pinned substrate — asserted at the bootstrap edge, before any apply; the remediation names the clean-SemVer spelling (supersedes `CUBE-BST-008`) |
+| `CUBE-ENG-006` | engine source kind the driver cannot turn into sync wiring (defensive; config validation is the primary gate; supersedes `CUBE-BST-007`) |
+
+`CUBE-ENG-005` runs **only at the bootstrap edge**: `config validate`
+performs no version check, so a `v`-prefixed `spec.engine.version`
+passes document validation and is rejected at bootstrap time — a known,
+recorded gap, not an accident. Document-layer `spec.engine` errors stay
+`CUBE-CFG-*` (exit 2); codes are never re-tagged across domains.
 
 ## Testing
 

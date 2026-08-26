@@ -43,17 +43,17 @@ type EngineSpec struct {
 type EngineSourceKind string
 
 const (
-	// EngineSourceGit syncs from a Git repository (Flux GitRepository).
+	// EngineSourceGit syncs from a Git repository.
 	EngineSourceGit EngineSourceKind = "git"
-	// EngineSourceOCI syncs from an OCI artifact (Flux OCIRepository).
+	// EngineSourceOCI syncs from an OCI artifact.
 	EngineSourceOCI EngineSourceKind = "oci"
 )
 
 // EngineSource points the gitops engine's sync at a location — shared
 // sync-wiring vocabulary every driver consumes. Kind selects the source
 // kind — git or oci, an explicit discriminator rather than URL sniffing —
-// and each kind pairs its source CR with a Kustomization that applies
-// Path on Interval. Public URLs only today: the credential hook
+// and each kind pairs its source with the selected driver's sync
+// wiring, applying Path on Interval. Public URLs only today: the credential hook
 // (secretRef) is reserved for the trust design gate (#142).
 type EngineSource struct {
 	// Kind selects the source backend: "git" (default) or "oci".
@@ -67,10 +67,9 @@ type EngineSource struct {
 	// tag for kind oci (default "latest").
 	Ref string `json:"ref,omitempty"`
 
-	// Path is the directory the Kustomization applies (default "./").
+	// Path is the directory the sync applies (default "./").
 	Path string `json:"path,omitempty"`
 
-	// Interval is the reconcile interval for the source and Kustomization
-	// (default "10m").
+	// Interval is the reconcile interval for the sync (default "10m").
 	Interval string `json:"interval,omitempty"`
 }

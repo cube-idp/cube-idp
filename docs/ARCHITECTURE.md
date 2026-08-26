@@ -24,10 +24,10 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/c
                       │      │        │  └── cluster/kind (driver subpackage)
                       │      ├──▶ internal/kube  (M6 shared-infra leaf: injected
                       │      │        kubeconfig bytes + context name → clients)
-                      │      ├──▶ internal/bootstrap (M7: SSA/wait/inventory
-                      │      │        machinery via injected client-go ifaces →
-                      │      │        api/config; engine-agnostic from M10)
-                      │      ├──▶ internal/engine (M10, gated: invariant Flux
+                      │      ├──▶ internal/bootstrap (M7, narrowed M10: SSA/wait/
+                      │      │        inventory machinery via injected client-go
+                      │      │        ifaces + injected content; engine-agnostic)
+                      │      ├──▶ internal/engine (M10: invariant Flux
                       │      │        │  substrate + tier-2 driver seam → api/config)
                       │      │        ├── engine/substrate (embedded substrate pack)
                       │      │        └── engine/flux (driver: sync wiring, predicates)
@@ -43,7 +43,7 @@ Three package categories, and only these:
 1. **`api/` and `internal/cubeerr`** — pure leaves: they import nothing
    from `internal/` — ever.
 2. **Component domains** (`config`, `cluster`, `bootstrap`, `pack`,
-   `engine` — the last gated at the M10 design gate, 2026-08-24) — one
+   `engine` — the last landed by M10, gated 2026-08-24) — one
    domain = one package = one `docs/domains/` file. **Domains never import
    each other.**
 3. **Shared-infrastructure leaves** — a closed, listed set:
@@ -92,20 +92,22 @@ Three package categories, and only these:
   injected by the
   CLI/orchestrator edge; the domain never reads files and never derives
   the `cube-idp.dev/<name>` context name itself.
-- `internal/bootstrap` (M7) is the **micro-bootstrap applier**: it
-  SSA-applies the embedded, pinned Flux install manifests plus the
-  source/sync CRs derived from `spec.engine`, waits on the bootstrap
-  kind-set, records an inventory, then hands over permanently — steady-state
-  ownership of all packs/manifests is the engine's (no-engine operation is
-  not a supported mode). It imports `api/config` (the `spec.engine`
-  sub-struct) and `internal/cubeerr`, and embeds the Flux manifests as data.
-  Its SSA/readiness machinery runs against **injected client-go interface
-  types** (`dynamic.Interface`, `meta.RESTMapper`) supplied by the CLI edge —
-  it **does not import `internal/kube`** (domains never import each other;
-  `kube`'s construction output crosses the edge as interfaces, per that
-  domain's contract). SSA is hand-rolled on client-go; readiness predicates
-  read off `unstructured` status (no kstatus/`cli-utils`, no
-  controller-runtime).
+- `internal/bootstrap` (M7, narrowed M10) is the **engine-agnostic
+  micro-bootstrap machinery**: it SSA-applies **injected** substrate
+  objects and driver sync wiring, executes three-phase readiness
+  (kind-set; reconciliation with injected predicates; declared engine
+  objects — transient discovery pending, never terminal), records an
+  inventory into the injected substrate namespace, then hands over
+  permanently — steady-state ownership of all packs/manifests is the
+  engine's (no-engine operation is not a supported mode). It imports
+  only `internal/cubeerr`, apimachinery, and `client-go/dynamic`; it
+  embeds nothing and knows no engine. Its machinery runs against
+  **injected client-go interface types** (`dynamic.Interface`,
+  `meta.RESTMapper`) supplied by the CLI edge — it **does not import
+  `internal/kube` or `internal/engine`** (domains never import each
+  other; content and predicates cross the edge as neutral vocabulary).
+  SSA is hand-rolled on client-go; readiness predicates read off
+  `unstructured` status (no kstatus/`cli-utils`, no controller-runtime).
 - `internal/pack` (M8) **defines, loads, validates, and renders** packs —
   it never applies anything. Under delivery-through-engine, packs reach a
   cluster by being written into the source the sync wiring established (the M12 bus); rendering
@@ -113,7 +115,7 @@ Three package categories, and only these:
   e2e. It imports `api/config` (the `spec.packs` sub-struct),
   `internal/cubeerr`, apimachinery/yaml, `cuelang.org/go`, and the
   `internal/ref` leaf.
-- `internal/engine` (M10, gated) is the **two-tier** engine domain: the
+- `internal/engine` (M10) is the **two-tier** engine domain: the
   **invariant substrate** (`engine/substrate` — the embedded, pinned Flux
   install re-homed as a *pack*, plus the substrate-namespace fact; not
   driver-selected, present in every cube) and the **tier-2 driver seam**
@@ -219,8 +221,8 @@ Tag registry (a new component adds a row; nothing renumbers):
 | `CLI` | cli / output | `internal/cli` | active (no codes yet — the edge renders and composes; it has not yet originated one) |
 | `CLU` | cluster provider | `internal/cluster` | active (M3) |
 | `KUB` | kube client access | `internal/kube` | active (M6) |
-| `BST` | bootstrap (SSA/wait/inventory machinery) | `internal/bootstrap` | active (M7; M10 supersedes `001`/`002`/`007`/`008` — the asset-provenance, asset-parse, unsupported-source-kind and embedded-version checks follow the moving content into the engine domain (substrate + driver) as `ENG` codes; rows kept, numbers never reused) |
-| `ENG` | gitops engine (invariant substrate + tier-2 driver seam) | `internal/engine` | active (M10; seam + conformance first — the substrate home and flux driver land in the same milestone's stack) |
+| `BST` | bootstrap (SSA/wait/inventory machinery) | `internal/bootstrap` | active (M7, narrowed M10: codes `003..006` plus the phase-2/3 wait codes `009`/`010`; `001`/`002`/`007`/`008` superseded by `ENG-003/004/006/005` — tombstoned, never reused) |
+| `ENG` | gitops engine (invariant substrate + tier-2 driver seam) | `internal/engine` | active (M10: codes `001..006`; `003..006` supersede the moved `BST-001/002/008/007` checks) |
 | `PKG` | pack contract, values, render, identity + deps | `internal/pack` | active (M8; M9 helm packs reused it, adding no tag and no code — `020` retired) |
 | `REF` | reference resolution (grammar → tree/file) | `internal/ref` | active (M8) |
 | `REG` | registry / OCI **publish** side | `internal/registry` | reserved |
@@ -348,7 +350,7 @@ runtime. The bootstrap kind-set needs no change (it filters by kind).
 accident. The seam is client-go interface types, apimachinery
 `unstructured`, and function values; the substrate is embedded data plus
 the stdlib, and the flux driver supplies wiring shapes and predicates
-with the same vocabulary. The embedded Flux asset **moves** to
+with the same vocabulary. The embedded Flux asset **moved** to
 `internal/engine/substrate` — the invariant tier — re-homed as an
 embedded *pack*: an import path and layout change, not a module-graph
 change; the pin discipline (version constant, recorded sha256, `make`
