@@ -84,7 +84,7 @@ beyond the mint call. Concretely:
   bootstrap-owned object. In the ordered prerequisite list the Secrets
   form an **inert unit** (apply success is readiness — Secrets carry no
   status; the rule is defined in the bootstrap amendment) that
-  **explicitly depends on the `gateway-namespace` unit** preceding it:
+  **explicitly depends on the `gateway-platform` unit** preceding it:
   its Secrets land in `gateway-system`, which must already be `Active`
   (`docs/domains/gateway.md`, the prerequisite model).
 - The CA **certificate** (public) is the only exported artifact — it

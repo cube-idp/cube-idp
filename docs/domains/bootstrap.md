@@ -223,9 +223,11 @@ code implements it before the M11 breakdown is aligned.
 - **The install sequencing generalizes.** Between phase 1 (substrate
   kind-set ready) and the wiring steps, the applier executes an
   **ordered list of prerequisite units** — in M11, derived at the edge
-  from the gateway domain's namespace object and prerequisite packs
-  and the CA Secrets, in this order: the `gateway-namespace` Namespace
-  unit → the `gateway-api-crds` pack → the CA-material inert unit →
+  from the gateway domain's platform objects (Namespace + stable
+  `gateway` Service) and prerequisite packs
+  and the CA Secrets, in this order: the `gateway-platform` unit
+  (Namespace + the stable `gateway` Service) → the `gateway-api-crds`
+  pack → the CA-material inert unit →
   the `traefik-gateway` thin-helm pack (`docs/domains/gateway.md`,
   `docs/domains/ca.md`). Per unit, in list
   order: **re-record the inventory with the unit included, then apply,
@@ -238,9 +240,11 @@ code implements it before the M11 breakdown is aligned.
   applied so far, and the final wiring record includes every
   prerequisite unit — no unit ever drops from the deletion seed.
 - **Existing machinery, no new phase concept — three unit flavors.**
-  A **raw** unit (the `gateway-namespace` Namespace object, the
+  A **raw** unit (the `gateway-platform` objects, the
   Gateway API CRDs pack) is waited with the kind-set machinery
-  (Namespace `Active`, CRD `Established`); a **CR** unit (the
+  (Namespace `Active`, CRD `Established`; objects outside the
+  kind-set filter — the stable `gateway` Service — are ignored by
+  design); a **CR** unit (the
   thin-helm gateway pair) is waited with the reconciliation machinery
   under injected predicates; an **inert** unit (the CA Secrets —
   status-less objects) declares no post-apply judge: **apply success

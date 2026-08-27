@@ -53,16 +53,24 @@ by design and its members are separable by design:
 
 M11's list, in order:
 
-1. **`gateway-namespace`** — a single cube-authored `Namespace` object
-   (`gateway-system`), domain-emitted, kind-set-waited `Active`. It is
-   its **own leading unit**, deliberately: the vendored CRDs asset
+1. **`gateway-platform`** — the cube-owned platform vocabulary, two
+   cube-authored objects, domain-emitted: the `Namespace`
+   (`gateway-system`) and the **stable gateway Service** (`gateway`,
+   the indirection layer in front of whatever implementation serves —
+   operator direction, 2026-08-27; see "The stable gateway Service"
+   below). Kind-set-waited: the Namespace `Active`; the Service is
+   status-less and effectively inert within the raw unit (the
+   kind-set wait ignores it by design). It is
+   the **own leading unit**, deliberately: the vendored CRDs asset
    must stay byte-identical to upstream (injecting a cube object would
    pollute its recorded provenance), the thin-helm pack has no payload
-   to carry it, and the namespace must exist independently of the CA
+   to carry it, and the platform vocabulary must exist independently
+   of the CA
    provider choice (a future `cert-manager`/`kubernetes` provider may
    apply no Secrets unit at all, yet the gateway still needs its
    home). This mirrors the substrate's fact-ties-to-content
-   discipline: the exported namespace fact and this emitted object are
+   discipline: the exported namespace and service-name facts and these
+   emitted objects are
    tied by a green-gate test (Testing, below).
 2. **`gateway-api-crds`** — an embedded **raw** pack (substrate
    discipline: `pack.cue` with `type: raw`, `category: "gateway"`, no
@@ -97,16 +105,21 @@ M11's list, in order:
    chart is OCI-published — verified at the gate:
    `ghcr.io/traefik/helm/traefik`). Bootstrap SSA-applies the pair and
    runs the reconciliation wait with this domain's predicates.
-   Naming and namespaces, fixed here because the CoreDNS block depends
-   on them (D6):
+   Naming and namespaces, fixed here because the stable Service's
+   `spec.externalName` references the release identity (and for chart
+   tidiness — the CoreDNS block itself targets only the stable name,
+   D6):
    - **Release identity is the M9 mechanism, not a new knob**:
      `releaseName` is the effective instance id, which for this
      embedded singleton is the pack name, `traefik-gateway` (no
      `spec.packs` override path exists for prerequisite packs in
-     M11). The pack's baked values additionally pin
-     `fullnameOverride: traefik-gateway` — the same name through the
-     chart's own naming — so the Service name can never diverge from
-     the release identity via chart-helper derivation.
+     M11). The pack's baked values also pin
+     `fullnameOverride: traefik-gateway` — tidiness, keeping the
+     chart's resource names equal to the release identity. Since the
+     stable-Service indirection (above), **DNS correctness no longer
+     rides on either**: the effective id is an internal detail of the
+     indirection's backend reference (`spec.externalName`), and the
+     CoreDNS block targets only the stable name.
    - **`pack.cue` declares `namespace: gateway-system`**, which the M9
      mapping turns into `spec.targetNamespace` (+ its
      `createNamespace` coupling — a no-op by this point, since unit 1
@@ -133,6 +146,50 @@ objects the domain emits. `category: "gateway"` becomes the second
 same as `"engine"`. This M11 ordered list is **not**
 `RenderPlan.Prerequisites`: that field stays per-pack `lifecycle: pre`
 data, frozen to the M12 bus; the list feeds it as prior art only.
+
+## The stable gateway Service (operator-directed indirection, 2026-08-27)
+
+The cube owns a **dedicated, predictable Service** in front of the
+gateway implementation, so internal DNS and all future routing target
+one stable name and never care what implementation is behind it:
+
+- **Name: `gateway`** (canonical FQDN
+  `gateway.gateway-system.svc.cluster.local.`) — the coordinator's
+  naming ruling; the word *engine* stays reserved for the tier-2
+  gitops-engine vocabulary and never names gateway objects.
+- **Mechanism: `ExternalName`** — the Service carries
+  `spec.externalName: <effective-id>.<gateway-namespace>.svc.cluster.local`
+  (for M11: `traefik-gateway.gateway-system.svc.cluster.local`), i.e.
+  a DNS-layer alias to the implementation's Service. Chosen over a
+  selector-based Service because the indirection's whole job here is
+  DNS (the internal redirect and future route targets are *names*,
+  not endpoints), and the coupling surface is minimal: an
+  ExternalName references only the implementation **Service name** —
+  exactly the effective id this domain already derives — while a
+  selector-based Service would couple to the chart's **pod labels**
+  (which drift with implementation and chart versions) and duplicate
+  the implementation Service's own job. Recorded limitation, honest
+  and acceptable for v0: ExternalName is DNS-only — no ClusterIP, no
+  endpoints, no kube-proxy programming stand behind the stable name;
+  if something ever needs to *dial* the stable name by IP rather than
+  resolve it, that gate revisits the mechanism (the name contract
+  below survives either mechanism).
+- **Verified empirically at the gate** (2026-08-27, kind node
+  v1.35.0, CoreDNS v1.13.1): with the canonical marker block spliced
+  into a live kubeadm Corefile and the `gateway` ExternalName in
+  place, an in-cluster `dig app.<domain>` returns the CNAME to the
+  implementation Service **plus the resolved A record of its
+  ClusterIP in the same response** — modern CoreDNS's kubernetes
+  plugin chases in-cluster CNAME targets itself (the historical
+  CoreDNS/ExternalName in-cluster gap is closed), and the spliced
+  block parsed and reloaded cleanly.
+- **The stability contract, explicit:** the Service name is a
+  **platform fact**, exported like the namespace facts.
+  Implementation swaps, prerequisite-pack renames, and chart drift
+  **never change it** — they change only the ExternalName's backend
+  reference, inside this one cube-owned object. M12 route wiring and
+  every future routing override **MUST target the stable name**,
+  never an implementation Service.
 
 ## Which gateway, and which routing API (D2 — verified, not asserted)
 
@@ -231,35 +288,38 @@ means editing the kubeadm-owned `kube-system/coredns` ConfigMap —
 approved with this safety envelope, all five clauses binding:
 
 1. The domain renders a **marker-delimited rewrite block** as a pure
-   function of the domain and the gateway namespace; the edge performs
+   function of the domain and the platform facts (stable Service name
+   + namespace); the edge performs
    the read-modify-write. The canonical shape (binding as contract;
    exact escaping fixed at implementation):
 
    ```
    # cube-idp:begin <cube-name>
    rewrite stop {
-       name regex (.*)\.<regex-escaped domain>\.$ <effective-id>.<gateway-namespace>.svc.cluster.local.
+       name regex (.*)\.<regex-escaped domain>\.$ <gateway-service>.<gateway-namespace>.svc.cluster.local.
        answer auto
    }
    # cube-idp:end <cube-name>
    ```
 
-   For M11's list that resolves to
-   `traefik-gateway.gateway-system.svc.cluster.local.`. Three
-   properties are load-bearing: the target is **derived, never
-   hardcoded** — `<effective-id>.<gateway-namespace>.svc.cluster.local.`,
-   the same effective id that names the release, with
-   `fullnameOverride` pinned to it in the pack's baked values (the
-   prerequisite-model section) so the chart's Service name and this
-   block can never diverge — the dogfood equality enforces that the
-   domain emission and `pack.Render` agree on that id; **`answer
+   Both target components are **platform facts**, so the block is
+   effectively constant: `gateway.gateway-system.svc.cluster.local.`.
+   Three
+   properties are load-bearing: the target is the **stable gateway
+   Service** — never an implementation Service, never derived from a
+   release identity — so implementation swaps and pack renames never
+   touch a live Corefile (the effective id lives only inside the
+   indirection's `spec.externalName`, and the resolution chain
+   through it is verified — "The stable gateway Service", above);
+   **`answer
    auto` rewrites the response name back**, without which clients
    reject answers issued for the Service name; and the domain is
    regex-escaped, never interpolated raw. The block is spliced
    **inside the default server block** (`.:53 { … }`) directly after
    its opening line — CoreDNS plugin execution order is compiled in,
    so the textual position only needs to be deterministic, and this
-   one is.
+   one is (splice-position behavior confirmed in the same empirical
+   run).
 2. The splice is **idempotent and preserving**: replace the block
    between the cube's markers if present, insert it if absent, touch
    nothing unmarked — everything outside the markers is preserved
@@ -275,8 +335,9 @@ approved with this safety envelope, all five clauses binding:
    the object — published as a requirement on the M13 `down` gate.
 
 Sequencing and failure semantics, fixed here: the splice runs at the
-edge **after the `traefik-gateway` unit is reconciled** (the rewrite
-targets that unit's Service) and before bootstrap success is reported;
+edge **after the `traefik-gateway` unit is reconciled** (resolution
+through the stable Service lands on that unit's implementation
+Service) and before bootstrap success is reported;
 a failed splice **fails the bootstrap** with its coded error
 (`CUBE-GWY-004` from the pure function, or the wrapped conflict/write
 cause from the edge — exit 1), never a silent degrade — a cube whose
@@ -288,11 +349,11 @@ best-effort resolution probe, not a readiness gate.
 
 | `internal/gateway` (pure) | CLI/orchestrator edge (I/O) |
 |---|---|
-| embedded prerequisite packs (`gateway-api-crds`, `traefik-gateway`) + their provenance checks, and the `gateway-namespace` unit's Namespace object | SSA-applying every prerequisite via bootstrap machinery |
+| embedded prerequisite packs (`gateway-api-crds`, `traefik-gateway`) + their provenance checks, and the `gateway-platform` unit's Namespace + stable `gateway` Service objects | SSA-applying every prerequisite via bootstrap machinery |
 | the rendered `HelmRelease` + OCI source pair (chart values derived from `spec.gateway` and the injected leaf-Secret name) | reading the live Corefile, splicing, optimistic-concurrency write-back |
 | the CoreDNS marker block for a domain | assembling the ordered prerequisite list and injecting it into bootstrap |
 | readiness predicates for its declared CRs (`HelmRelease`/OCI source: `Ready` **and** `status.observedGeneration == metadata.generation` — the no-stale-success doctrine in this domain's vocabulary) | the CA-Secret read and the `ca` handoff (see `docs/domains/ca.md`) |
-| the gateway namespace fact (`gateway-system` — exported invariant; the mirroring of the substrate fact is of the construct — an exported fact injected as a string — and the name is deliberately implementation-neutral, unlike `flux-system`, so a gateway content swap never moves the namespace) | |
+| the two platform facts (namespace `gateway-system`, stable Service `gateway` — exported invariants; the mirroring of the substrate fact is of the construct — an exported fact injected as a string — and both names are deliberately implementation-neutral, unlike `flux-system`, so a gateway content swap never moves the namespace or the DNS anchor) | |
 
 The predicates deliberately mirror the flux driver's freshness rule
 without importing `internal/engine` — the doctrine ("no stale success
@@ -322,9 +383,12 @@ packs; the edge-level pack-contract dogfood test per embedded pack
 substrate's discipline; for the thin-helm pack this deliberately locks
 the domain's hand-built CR pair, including the effective-id-derived
 `releaseName`, to every M9 field-level rule — loud by design); the
-**fact-ties-to-content test**: the exported namespace fact equals the
-`metadata.name` of the Namespace object the `gateway-namespace` unit
-emits (the substrate's namespace-tie test, mirrored); table-driven
+**fact-ties-to-content test**: the exported namespace and
+service-name facts equal the `metadata.name` of the Namespace and
+Service objects the `gateway-platform` unit
+emits, and the Service's `spec.externalName` equals the effective
+id's FQDN (the substrate's namespace-tie test, mirrored and
+extended); table-driven
 splice tests over real
 kubeadm-shaped Corefile fixtures (absent block, present block,
 corrupted markers, unmarked content preserved byte-for-byte, the

@@ -138,7 +138,11 @@ Three package categories, and only these:
 - `internal/gateway` (M11, gated ahead of code 2026-08-27) is the
   **bootstrap-phase trust fabric**: it owns the **ordered list of
   prerequisite units** bootstrap installs **ahead of the engine** —
-  in M11 the `gateway-system` Namespace object, the embedded Gateway
+  in M11 the `gateway-platform` unit (the `gateway-system` Namespace
+  plus the **stable `gateway` Service** — the cube-owned indirection
+  in front of the implementation; internal DNS and future routing
+  target its name, never an implementation Service), the embedded
+  Gateway
   API CRDs pack
   (its own list member by design: a future engine may ship its own
   Gateway API CRDs, and the list may vary per setup), the CA-material

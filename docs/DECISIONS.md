@@ -820,12 +820,14 @@ breakdown is aligned. The decisions:
    sense of "through tier 1" is not meant), and the living contracts
    use the general term **prerequisite units** — the pack-shaped
    members are the prerequisite packs of this decision, and M11's
-   list carries two non-pack members: the leading `gateway-system`
-   **Namespace unit** (no declared pack could carry it — vendored
-   bytes on one side, no payload on the other — and it must outlive
-   the CA provider choice) and the **CA-material inert unit**. The
+   list carries two non-pack members: the leading **`gateway-platform`
+   unit** — the `gateway-system` Namespace plus the stable `gateway`
+   Service (no declared pack could carry them — vendored
+   bytes on one side, no payload on the other — and the platform
+   vocabulary must outlive
+   the CA provider choice) — and the **CA-material inert unit**. The
    resulting M11 order, identical in every contract:
-   `gateway-namespace` → `gateway-api-crds` → CA material →
+   `gateway-platform` → `gateway-api-crds` → CA material →
    `traefik-gateway`.
 2. **Traefik + Gateway API (standard channel) is the routing
    contract — footprint verified at the gate, not asserted**
@@ -946,7 +948,9 @@ breakdown is aligned. The decisions:
    from the rejected `kubectl kustomize` exec).
 10. **Inheritance, recorded now.** M12 inherits: the prerequisite
     list as `Prerequisites` prior art, the air-gap answer (embedded-
-    raw fallback), route-host discovery and host-resolution emission,
+    raw fallback), route-host discovery and host-resolution emission
+    (all route wiring targeting the stable `gateway` Service per the
+    addendum's stability contract),
     the steady-state ownership migration question (one answer
     with substrate self-management), and — until M13 settles
     inventory replacement — the constraint of preserving inventory
@@ -979,12 +983,11 @@ cluster — PR #180, 2026-08-27) before operator approval; the operator
 decisions above are untouched, their drafted mechanics corrected:* the
 `gateway-system` Namespace object became the list's leading unit (all
 three content-side leads found no member carried it); the CoreDNS
-target became **derived** —
-`<effective-id>.<gateway-namespace>.svc.cluster.local.`, for M11
-`traefik-gateway.gateway-system.svc.cluster.local.`, with
-`fullnameOverride`
-pinned to the effective id — because M9's `releaseName` mechanism
-yields the pack name, not the drafted `traefik` (pack lead); the
+target became derived from the release's effective id — because M9's
+`releaseName` mechanism
+yields the pack name, not the drafted `traefik` (pack lead) —
+*superseded the same day by the operator-directed indirection in the
+addendum below*; the
 thin-helm pair's two namespace decisions were stated (`pack.cue`
 `namespace: gateway-system`; edge stamps `metadata.namespace`
 post-render); the inert unit flavor, `spec.ca.provider` immutability,
@@ -992,3 +995,36 @@ and cumulative re-records were made explicit; splice
 sequencing/failure semantics fixed (after gateway reconciliation;
 failure fails bootstrap); and the inventory replacement + namespace
 deletion-ordering questions were published to M13.
+
+*Addendum (2026-08-27, operator-directed, pre-approval):* reviewing
+the derived-target fix, the operator directed a stronger design — a
+**dedicated, predictable, cube-owned Service as an indirection layer
+in front of the gateway implementation**, so internal DNS and all
+future routing target one stable name and never care what
+implementation is behind it. Coordinator naming ruling: the Service is
+**`gateway`** (canonical FQDN
+`gateway.gateway-system.svc.cluster.local.`), not `gateway-engine` —
+*engine* stays reserved for the tier-2 gitops-engine vocabulary. The
+gate as amended: the `gateway-platform` unit carries the Service
+beside the Namespace (kind-set-ignored, effectively inert); the
+mechanism is **`ExternalName`** to the implementation Service's FQDN
+(`traefik-gateway.gateway-system.svc.cluster.local` in M11) — chosen
+over a selector-based Service because the indirection's job is DNS and
+the coupling surface is one cube-owned reference to the
+implementation *Service name*, not the chart's pod labels; **verified
+empirically at the gate** (kind node v1.35.0, CoreDNS v1.13.1: the
+spliced canonical block plus the ExternalName resolved
+`app.<domain>` to the CNAME chain **and** the backend ClusterIP's A
+record in one response — modern CoreDNS chases in-cluster CNAME
+targets; the historical gap is closed). The CoreDNS block now targets
+the stable name — both components platform **facts**, making the
+block effectively constant; the effective-id derivation demotes to an
+internal detail of the ExternalName's backend reference, and
+`fullnameOverride` remains as tidiness only, no longer a
+DNS-correctness belt. **Stability contract:** the Service name is a
+platform fact like the namespace facts — implementation swaps, pack
+renames, and chart drift never change it, and M12 route wiring and
+every future routing override MUST target it. Recorded limitation:
+ExternalName is DNS-only (no ClusterIP/endpoints); a future need to
+dial the stable name by IP revisits the mechanism at that gate, the
+name contract surviving either mechanism.
