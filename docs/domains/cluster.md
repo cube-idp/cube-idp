@@ -158,8 +158,8 @@ no code implements it before the M11 breakdown is aligned.
 
 When the user supplies **no explicit `forProvider`**, the kind driver
 defaults the generated cluster config to kind's documented
-ingress-ready shape, on **high host ports** (unprivileged on every OS;
-URLs carry ports):
+ingress-ready shape, on **high host ports** (above the conventional
+privileged-port range; URLs carry ports):
 
 - `extraPortMappings`: host **8080 → containerPort 80** and host
   **8443 → containerPort 443** on the (single, default) node;
@@ -178,6 +178,19 @@ gateway-triggered); port mappings exist only at cluster **create**
 created without them needs a recreate); and a host-port collision — a
 second default cube — fails `create` loudly with the provider's coded
 error, explicit `forProvider` being the escape.
+
+Implementation-task notes, recorded for the M11 breakdown (domain-lead
+review, 2026-08-27): (a) pin the meaning of "no explicit
+`forProvider`" — the current decode treats nil-or-empty `Raw` as
+absent, which makes a present-but-empty `forProvider: {}` an explicit
+(default-suppressing) payload; state that as the documented opt-out
+rather than leaving it emergent from the decode branch; (b) pin the
+exact generated shape (one explicit control-plane node, both mappings
+TCP, label `ingress-ready: "true"`) and the three-branch driver
+contract tests (absent → defaults; `{}` → none; non-empty → unmerged);
+(c) note in the e2e guidance that `make test-e2e` now binds host
+8080/8443 and becomes environment-sensitive to occupied ports — an
+occupied-port failure is not a driver regression.
 
 ## Contracts for future domains
 

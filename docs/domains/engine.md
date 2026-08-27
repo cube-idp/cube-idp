@@ -438,16 +438,24 @@ asset move changes an import path, not the module graph.
 
 - **M11 (gateway + ca)** — gated 2026-08-27 (`docs/domains/gateway.md`,
   `docs/domains/ca.md`): the trust fabric arrives as an **ordered list
-  of prerequisite packs** bootstrap delivers through the tier-1
-  substrate **before the engine** — between the substrate's kind-set
-  readiness and this domain's sync wiring/bundle steps — because the
-  identity fabric is what the engine's own endpoints presume. Two
+  of prerequisite units, bootstrap-installed ahead of tier 2** —
+  between the substrate's kind-set readiness and this domain's sync
+  wiring/bundle steps, reconciled by tier-1 controllers where
+  applicable — because the
+  identity fabric is what the engine's own endpoints presume. This is
+  the substrate's sanctioned day-0 SSA path, **not** this contract's
+  "delivered through tier 1" (the `EngineObjects` source path);
+  nothing enters the watched source, and no source need be
+  configured. Two
   touchpoints on this contract: the substrate's helm-controller becomes
   day-0 load-bearing for prerequisites (the gateway pack is thin-helm,
   reconciled by tier 1 before any engine exists), and the Gateway API
-  CRDs are deliberately their **own** list member so a future driver's
-  `EngineObjects` bundle may ship its own Gateway API CRDs without
-  colliding with a prerequisite pack. The seam itself is untouched —
+  CRDs are deliberately their **own** list member so the CRD conflict
+  with a future driver's `EngineObjects` bundle is never locked
+  inside one pack and stays independently negotiable at that driver's
+  gate — the prerequisite's copy still exists when such a bundle
+  arrives, so co-ownership/version alignment is that gate's question.
+  The seam itself is untouched —
   prerequisites are not engine content and nothing about them crosses
   `engine.Provider`. Their delivery semantics feed the bus milestone's
   `Prerequisites` handling as prior art.

@@ -788,7 +788,7 @@ contracts: `docs/domains/engine.md` (new — both tiers),
 `docs/domains/pack.md` (M10 bullet).
 
 **2026-08-27 — M11 design gate: gateway + ca domains, the ordered
-prerequisite-pack list, the trust fabric.** Epic #177; scoping and the
+prerequisite-unit list, the trust fabric.** Epic #177; scoping and the
 operator decision round are #178 (its closing comment is the decision
 record this entry anchors to, held 2026-08-25/27 over `M11-SCOPING.md`
 and its codex rounds). Founding rationale (operator, 2026-08-24,
@@ -812,7 +812,21 @@ breakdown is aligned. The decisions:
    **embedded-raw** variant is the documented air-gap fallback,
    **deferred to the M12 bus gate** with the network-dependent-day-0
    consequence recorded as its input. Each list member is applied and
-   waited ready before the next applies.
+   waited ready before the next applies. Two precisions from the
+   domain-lead review round: "delivers through the tier-1 substrate"
+   is meant mechanically (day-0 bootstrap SSA ahead of tier 2, the
+   thin-helm member *reconciled* by the substrate's helm-controller;
+   nothing enters the watched source — the engine seam's source-path
+   sense of "through tier 1" is not meant), and the living contracts
+   use the general term **prerequisite units** — the pack-shaped
+   members are the prerequisite packs of this decision, and M11's
+   list carries two non-pack members: the leading `gateway-system`
+   **Namespace unit** (no declared pack could carry it — vendored
+   bytes on one side, no payload on the other — and it must outlive
+   the CA provider choice) and the **CA-material inert unit**. The
+   resulting M11 order, identical in every contract:
+   `gateway-namespace` → `gateway-api-crds` → CA material →
+   `traefik-gateway`.
 2. **Traefik + Gateway API (standard channel) is the routing
    contract — footprint verified at the gate, not asserted**
    (2026-08-27): Traefik chart 41.3.0 (Traefik v3.7.11, OCI at
@@ -845,7 +859,10 @@ breakdown is aligned. The decisions:
    KEP-4317 — verified GA in v1.37)** are named future backends whose
    seam **activates at a later gate** under the second-implementation
    doctrine — the config surface is designed now
-   (`spec.ca.provider`, `cube` default and only value), the Go
+   (`spec.ca.provider`, `cube` default and only value, **immutable per
+   cube** like the engine provider: a provider change on a live cube
+   implies trust rotation, which D10 freezes; mechanical enforcement
+   lands with the second provider's gate), the Go
    interface is not. The §5 `TLS` row is re-scoped to #142's
    credential bindings (certificates/CA move to `CA`).
 4. **CA key custody: the in-cluster Secret only** — never the repo,
@@ -912,7 +929,13 @@ breakdown is aligned. The decisions:
    extends (re-record inventory, apply, wait ready before the next
    member), with CRDs waited `Established` before dependents; raw
    units use the kind-set wait, CR units the reconciliation wait
-   under injected predicates; one `--timeout` budget total.
+   under injected predicates, and **inert units** (status-less
+   objects: the CA Secrets) declare no post-apply judge — apply
+   success is their readiness (the third flavor, named in domain-lead
+   review); **every re-record is cumulative through the final wiring
+   record**, so no unit ever drops from the deletion seed; one
+   `--timeout` budget total (the breakdown sanity-checks the 5m
+   default against the new in-cluster chart pull).
    **`CUBE-BST-005/009/010` keep numbers and mechanics; their
    contract text generalizes** from phase-/engine-flavored wording to
    any bootstrap-executed kind-set / reconciliation wait over
@@ -924,9 +947,17 @@ breakdown is aligned. The decisions:
 10. **Inheritance, recorded now.** M12 inherits: the prerequisite
     list as `Prerequisites` prior art, the air-gap answer (embedded-
     raw fallback), route-host discovery and host-resolution emission,
-    and the steady-state ownership migration question (one answer
-    with substrate self-management). M13 inherits: CoreDNS
-    restore-not-delete and the trust-artifact/teardown semantics.
+    the steady-state ownership migration question (one answer
+    with substrate self-management), and — until M13 settles
+    inventory replacement — the constraint of preserving inventory
+    continuity when prerequisite content varies. M13 inherits: CoreDNS
+    restore-not-delete, the trust-artifact/teardown semantics,
+    **inventory replacement semantics across re-bootstraps**
+    (union/prune/orphan — re-recording overwrites with a fresh list,
+    and a swapped gateway is exactly a renamed unit), and `down`'s
+    **namespace deletion ordering** (namespaced dependents before
+    their Namespace; the inventory sort is deterministic, not
+    dependency-aware).
     **Frozen — must not be designed in M11**: the bus write path and
     `RenderPlan.Prerequisites` semantics; certificate
     rotation/ACME; custody backends beyond the in-cluster Secret;
@@ -942,3 +973,22 @@ Living contracts: `docs/domains/gateway.md` + `docs/domains/ca.md`
 renders the implemented binary and is trued at the M11 closeout, the
 M10 precedent — gated-ahead-of-code domains are deliberately not drawn
 before their packages exist.
+
+*Amended in the four domain-lead reviews (bootstrap, engine, pack,
+cluster — PR #180, 2026-08-27) before operator approval; the operator
+decisions above are untouched, their drafted mechanics corrected:* the
+`gateway-system` Namespace object became the list's leading unit (all
+three content-side leads found no member carried it); the CoreDNS
+target became **derived** —
+`<effective-id>.<gateway-namespace>.svc.cluster.local.`, for M11
+`traefik-gateway.gateway-system.svc.cluster.local.`, with
+`fullnameOverride`
+pinned to the effective id — because M9's `releaseName` mechanism
+yields the pack name, not the drafted `traefik` (pack lead); the
+thin-helm pair's two namespace decisions were stated (`pack.cue`
+`namespace: gateway-system`; edge stamps `metadata.namespace`
+post-render); the inert unit flavor, `spec.ca.provider` immutability,
+and cumulative re-records were made explicit; splice
+sequencing/failure semantics fixed (after gateway reconciliation;
+failure fails bootstrap); and the inventory replacement + namespace
+deletion-ordering questions were published to M13.

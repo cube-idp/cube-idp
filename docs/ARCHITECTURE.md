@@ -36,7 +36,7 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/c
                       │      │        └──▶ internal/ref (M8 shared-infra leaf:
                       │      │               ref grammar → tree/file)
                       │      ├──▶ internal/gateway (M11, gated ahead of code:
-                      │      │        trust-fabric prerequisite packs + CoreDNS
+                      │      │        trust-fabric prerequisite units + CoreDNS
                       │      │        marker block + predicates → api/config)
                       │      ├──▶ internal/ca (M11, gated ahead of code: CA
                       │      │        mint/reuse, marker identity, trust
@@ -137,10 +137,12 @@ Three package categories, and only these:
   at the CLI/orchestrator edge. Living contract: `docs/domains/engine.md`.
 - `internal/gateway` (M11, gated ahead of code 2026-08-27) is the
   **bootstrap-phase trust fabric**: it owns the **ordered list of
-  prerequisite packs** bootstrap delivers through the tier-1 substrate
-  **before the engine** — in M11 the embedded Gateway API CRDs pack
+  prerequisite units** bootstrap installs **ahead of the engine** —
+  in M11 the `gateway-system` Namespace object, the embedded Gateway
+  API CRDs pack
   (its own list member by design: a future engine may ship its own
-  Gateway API CRDs, and the list may vary per setup) and the thin-helm
+  Gateway API CRDs, and the list may vary per setup), the CA-material
+  inert unit, and the thin-helm
   Traefik gateway pack reconciled by the substrate's helm-controller —
   plus the CoreDNS marker rewrite block and the readiness predicates
   for its declared CRs. Pure like the substrate: embedded content and
@@ -153,7 +155,8 @@ Three package categories, and only these:
   Secret; custody is in-cluster only), the marker CN/OU identity, and
   the operator trust surface (ledger + `trust` verbs). Its config
   surface is provider-seam-**ready** — `spec.ca.provider`, `cube` the
-  only v0 value — while the Go seam waits for a real second
+  only v0 value, immutable per cube (the engine precedent) — while the
+  Go seam waits for a real second
   implementation. Living contract: `docs/domains/ca.md`.
 - Domains never import each other. Values cross domains by injection at
   the CLI/orchestrator edge, where factories and composition live. The
@@ -251,7 +254,7 @@ Tag registry (a new component adds a row; nothing renumbers):
 | `KUB` | kube client access | `internal/kube` | active (M6) |
 | `BST` | bootstrap (SSA/wait/inventory machinery) | `internal/bootstrap` | active (M7, narrowed M10: codes `003..006` plus the reconciliation-wait codes `009`/`010` — contract text generalized at the M11 gate to any bootstrap-executed wait over declared objects, prerequisite or engine; `001`/`002`/`007`/`008` superseded by `ENG-003/004/006/005` — tombstoned, never reused) |
 | `ENG` | gitops engine (invariant substrate + tier-2 driver seam) | `internal/engine` | active (M10: codes `001..006`; `003..006` supersede the moved `BST-001/002/008/007` checks) |
-| `GWY` | gateway (trust-fabric prerequisite packs, CoreDNS block) | `internal/gateway` | gated (M11 design gate 2026-08-27, ahead of code; package lands with the M11 breakdown) |
+| `GWY` | gateway (trust-fabric prerequisite units, CoreDNS block) | `internal/gateway` | gated (M11 design gate 2026-08-27, ahead of code; package lands with the M11 breakdown) |
 | `CA` | certificate authority (mint/reuse, marker, trust ledger/verbs) | `internal/ca` | gated (M11 design gate 2026-08-27, ahead of code; package lands with the M11 breakdown) |
 | `PKG` | pack contract, values, render, identity + deps | `internal/pack` | active (M8; M9 helm packs reused it, adding no tag and no code — `020` retired) |
 | `REF` | reference resolution (grammar → tree/file) | `internal/ref` | active (M8) |
@@ -391,7 +394,7 @@ design gate (2026-08-27), the closed set closed by decision again. CA
 minting is stdlib `crypto/x509` + `crypto/ecdsa`; the gateway is
 content — an embedded Gateway API CRDs pack (substrate pin discipline:
 recorded provenance, `make` regeneration, never fetched at runtime; at
-~1.14 MB the largest embedded asset, verified at the gate) and a
+1,170,953 bytes the largest embedded asset, verified at the gate) and a
 thin-helm CR pair emitted as `unstructured` (the M9 delegation shape).
 One adjacent record: the `trust` verbs shell out to the **operating
 system's own trust tooling** (`security` on macOS, p11-kit `trust` on

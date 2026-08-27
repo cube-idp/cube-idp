@@ -27,29 +27,47 @@ bootstrap's machinery or the edge's own client.
 
 ## The prerequisite model (the ordered list)
 
-Prerequisites are an **ordered list of prerequisite packs** that
-bootstrap delivers through the tier-1 substrate **before the engine** —
-after the substrate's kind-set readiness, before the engine's sync
-wiring and bundle. The list is plural by design and its members are
-separable by design:
+Prerequisites are an **ordered list of prerequisite units** that
+bootstrap installs **ahead of the engine** — after the substrate's
+kind-set readiness, before the engine's sync wiring and bundle. The
+mechanics are day-0 bootstrap SSA, with the thin-helm member's
+*reconciliation* delegated to the substrate's helm-controller; nothing
+enters the watched source (that path — the seam's "delivered through
+tier 1" — is the M12 bus's). The **pack-shaped** members are the
+**prerequisite packs** of the operator record (D1); the list admits
+non-pack units where content cannot be pack-shaped. The list is plural
+by design and its members are separable by design:
 
 - **The Gateway API CRDs are their own prerequisite pack** — never
   folded into the gateway pack. Rationale (operator, D1): a future
-  engine may ship its own Gateway API CRDs; keeping the CRDs a separate
-  list member avoids a conflict inside one pack and lets the
-  prerequisite list vary per setup. There can be more than one
-  prerequisite pack, and later milestones may add members without
-  reshaping the machinery.
+  engine may ship its own Gateway API CRDs; keeping the CRDs a
+  separate list member keeps that conflict from ever being locked
+  inside one pack and lets the prerequisite list vary per setup.
+  There can be more than one prerequisite pack, and later milestones
+  may add members without reshaping the machinery.
 - Each list member is applied and **waited ready before the next member
   is applied** — CRDs are Established before anything that instantiates
-  them exists (the generalized bootstrap sequencing, D9;
+  them exists, and the namespace is Active before anything lands in it
+  (the generalized bootstrap sequencing, D9;
   `docs/domains/bootstrap.md`).
 
 M11's list, in order:
 
-1. **`gateway-api-crds`** — an embedded **raw** pack (substrate
-   discipline: `pack.cue` with `type: raw`, `category: "gateway"`,
-   pinned version, recorded sha256, `make` regeneration, never fetched
+1. **`gateway-namespace`** — a single cube-authored `Namespace` object
+   (`gateway-system`), domain-emitted, kind-set-waited `Active`. It is
+   its **own leading unit**, deliberately: the vendored CRDs asset
+   must stay byte-identical to upstream (injecting a cube object would
+   pollute its recorded provenance), the thin-helm pack has no payload
+   to carry it, and the namespace must exist independently of the CA
+   provider choice (a future `cert-manager`/`kubernetes` provider may
+   apply no Secrets unit at all, yet the gateway still needs its
+   home). This mirrors the substrate's fact-ties-to-content
+   discipline: the exported namespace fact and this emitted object are
+   tied by a green-gate test (Testing, below).
+2. **`gateway-api-crds`** — an embedded **raw** pack (substrate
+   discipline: `pack.cue` with `type: raw`, `category: "gateway"`, no
+   `#Values`, no `namespace` — the M10 substrate shape; pinned
+   version, recorded sha256, `make` regeneration, never fetched
    at runtime) vendoring the Gateway API **standard channel**
    `standard-install.yaml`. Verified at the gate (2026-08-27, the
    v1.6.1 release asset): 10 CRDs plus the upstream `safe-upgrades`
@@ -58,12 +76,19 @@ M11's list, in order:
    substrate asset is 232 KB); the scoping estimate of 100–300 KB is
    corrected on the record. Bootstrap SSA-applies it and waits the
    kind-set (CRD `Established`).
-2. **The CA material** — not a pack (packs never carry secrets): the
-   `ca` domain's minted-or-reused CA and wildcard leaf cross the edge
-   as Secret objects for the gateway namespace, SSA-applied and
-   inventory-recorded like any bootstrap-owned object. Ordered here
-   because the gateway release mounts the leaf.
-3. **`traefik-gateway`** — the gateway itself, a **thin-helm**
+3. **The CA material** — an **inert unit**, not a pack: the embedded
+   prerequisite packs carry no cluster-specific secret material, so
+   the `ca` domain's minted-or-reused CA and wildcard leaf cross the
+   edge as plain Secret objects for the gateway namespace, SSA-applied
+   and inventory-recorded like any bootstrap-owned object. This unit
+   **explicitly depends on unit 1** (its Secrets land in
+   `gateway-system`; SSA into a nonexistent namespace is NotFound),
+   which the list order guarantees. Its readiness rule is the inert
+   flavor defined in the bootstrap amendment: Secrets carry no status,
+   so **apply success is the unit's readiness** — a later reader must
+   not "fix" the absent wait. Ordered before the gateway release
+   because the release mounts the leaf.
+4. **`traefik-gateway`** — the gateway itself, a **thin-helm**
    prerequisite pack in the M9 delegation shape (this is deliberate
    M9 dogfooding): an embedded `type: helm` pack (`category:
    "gateway"`) whose rendered output is the `HelmRelease` + OCI source
@@ -72,6 +97,26 @@ M11's list, in order:
    chart is OCI-published — verified at the gate:
    `ghcr.io/traefik/helm/traefik`). Bootstrap SSA-applies the pair and
    runs the reconciliation wait with this domain's predicates.
+   Naming and namespaces, fixed here because the CoreDNS block depends
+   on them (D6):
+   - **Release identity is the M9 mechanism, not a new knob**:
+     `releaseName` is the effective instance id, which for this
+     embedded singleton is the pack name, `traefik-gateway` (no
+     `spec.packs` override path exists for prerequisite packs in
+     M11). The pack's baked values additionally pin
+     `fullnameOverride: traefik-gateway` — the same name through the
+     chart's own naming — so the Service name can never diverge from
+     the release identity via chart-helper derivation.
+   - **`pack.cue` declares `namespace: gateway-system`**, which the M9
+     mapping turns into `spec.targetNamespace` (+ its
+     `createNamespace` coupling — a no-op by this point, since unit 1
+     already created the namespace; harmless and unmodified).
+   - **The edge stamps `metadata.namespace: gateway-system`** on the
+     rendered, deliberately namespace-less `OCIRepository` +
+     `HelmRelease` pair **after** rendering, before handing it to
+     bootstrap — one decision for both CRs (the sourceRef
+     same-namespace rule), and stamping post-render keeps the dogfood
+     equality (Testing) against the contract's namespace-less output.
 
 Day-0 consequence, stated plainly: the thin-helm member makes bootstrap
 **network-dependent** (the chart is pulled in cluster). The
@@ -85,7 +130,9 @@ discipline: the domain parses/emits its own content without importing
 pack contract loads and renders each embedded pack to exactly the
 objects the domain emits. `category: "gateway"` becomes the second
 *used* well-known spelling — identification only, never a code path,
-same as `"engine"`.
+same as `"engine"`. This M11 ordered list is **not**
+`RenderPlan.Prerequisites`: that field stays per-pack `lifecycle: pre`
+data, frozen to the M12 bus; the list feeds it as prior art only.
 
 ## Which gateway, and which routing API (D2 — verified, not asserted)
 
@@ -147,8 +194,9 @@ type GatewaySpec struct {
 - **The kind driver defaults to high host ports** (operator override of
   the scoped recommendation): when the user supplies no explicit
   `forProvider`, the kind driver adds `extraPortMappings` **8080→80 and
-  8443→443** plus the `ingress-ready` node label — unprivileged on
-  every OS, so URLs carry ports (`https://app.<domain>:8443`).
+  8443→443** plus the `ingress-ready` node label — above the
+  conventional privileged-port range, so URLs carry ports
+  (`https://app.<domain>:8443`).
   **Explicit `forProvider` always wins** — the default never merges
   into user-supplied config. This is a *cluster-domain* default — its
   delimited gated amendment lives in `docs/domains/cluster.md`, its
@@ -159,7 +207,7 @@ type GatewaySpec struct {
     gateway-triggered, coherent with D8's default-on posture.
   - **Create-before-bootstrap coupling**: port mappings exist only at
     cluster *create*. A gateway wanted on a cluster created without
-    them needs a recreate (or a port-forward escape hatch); a host-port
+    them needs a recreate; a host-port
     collision (a second default cube) fails `create` loudly.
 - **Exposure inside the cluster is kind's ingress-ready pattern**
   (D5d): the mapped node carries the label, and the gateway Deployment
@@ -190,15 +238,21 @@ approved with this safety envelope, all five clauses binding:
    ```
    # cube-idp:begin <cube-name>
    rewrite stop {
-       name regex (.*)\.<regex-escaped domain>\.$ traefik.gateway-system.svc.cluster.local.
+       name regex (.*)\.<regex-escaped domain>\.$ <effective-id>.<gateway-namespace>.svc.cluster.local.
        answer auto
    }
    # cube-idp:end <cube-name>
    ```
 
-   Three properties are load-bearing: the target is the gateway
-   Service's **stable** cluster DNS name (the release name is pinned in
-   the thin-helm pack so the Service name never floats); **`answer
+   For M11's list that resolves to
+   `traefik-gateway.gateway-system.svc.cluster.local.`. Three
+   properties are load-bearing: the target is **derived, never
+   hardcoded** — `<effective-id>.<gateway-namespace>.svc.cluster.local.`,
+   the same effective id that names the release, with
+   `fullnameOverride` pinned to it in the pack's baked values (the
+   prerequisite-model section) so the chart's Service name and this
+   block can never diverge — the dogfood equality enforces that the
+   domain emission and `pack.Render` agree on that id; **`answer
    auto` rewrites the response name back**, without which clients
    reject answers issued for the Service name; and the domain is
    regex-escaped, never interpolated raw. The block is spliced
@@ -220,18 +274,25 @@ approved with this safety envelope, all five clauses binding:
 5. Teardown is **restore, not delete** — strip the marker block, leave
    the object — published as a requirement on the M13 `down` gate.
 
-CoreDNS reloads on config change; verification of the rewrite is a
+Sequencing and failure semantics, fixed here: the splice runs at the
+edge **after the `traefik-gateway` unit is reconciled** (the rewrite
+targets that unit's Service) and before bootstrap success is reported;
+a failed splice **fails the bootstrap** with its coded error
+(`CUBE-GWY-004` from the pure function, or the wrapped conflict/write
+cause from the edge — exit 1), never a silent degrade — a cube whose
+in-cluster names do not resolve is not a bootstrapped cube. CoreDNS
+reloads on config change; verification of the rewrite is a
 best-effort resolution probe, not a readiness gate.
 
 ## What the domain owns (pure) vs the edge (I/O)
 
 | `internal/gateway` (pure) | CLI/orchestrator edge (I/O) |
 |---|---|
-| embedded prerequisite packs (`gateway-api-crds`, `traefik-gateway`) + their provenance checks | SSA-applying every prerequisite via bootstrap machinery |
+| embedded prerequisite packs (`gateway-api-crds`, `traefik-gateway`) + their provenance checks, and the `gateway-namespace` unit's Namespace object | SSA-applying every prerequisite via bootstrap machinery |
 | the rendered `HelmRelease` + OCI source pair (chart values derived from `spec.gateway` and the injected leaf-Secret name) | reading the live Corefile, splicing, optimistic-concurrency write-back |
 | the CoreDNS marker block for a domain | assembling the ordered prerequisite list and injecting it into bootstrap |
 | readiness predicates for its declared CRs (`HelmRelease`/OCI source: `Ready` **and** `status.observedGeneration == metadata.generation` — the no-stale-success doctrine in this domain's vocabulary) | the CA-Secret read and the `ca` handoff (see `docs/domains/ca.md`) |
-| the gateway namespace fact (`gateway-system` — exported invariant, mirroring the substrate-namespace fact; engine-neutral by name so a gateway content swap never moves the namespace) | |
+| the gateway namespace fact (`gateway-system` — exported invariant; the mirroring of the substrate fact is of the construct — an exported fact injected as a string — and the name is deliberately implementation-neutral, unlike `flux-system`, so a gateway content swap never moves the namespace) | |
 
 The predicates deliberately mirror the flux driver's freshness rule
 without importing `internal/engine` — the doctrine ("no stale success
@@ -258,7 +319,13 @@ are never re-tagged across domains.
 Hermetic, no Docker: provenance and parse checks over the embedded
 packs; the edge-level pack-contract dogfood test per embedded pack
 (load+render ≡ domain emission, deep equality of ordered lists — the
-substrate's discipline); table-driven splice tests over real
+substrate's discipline; for the thin-helm pack this deliberately locks
+the domain's hand-built CR pair, including the effective-id-derived
+`releaseName`, to every M9 field-level rule — loud by design); the
+**fact-ties-to-content test**: the exported namespace fact equals the
+`metadata.name` of the Namespace object the `gateway-namespace` unit
+emits (the substrate's namespace-tie test, mirrored); table-driven
+splice tests over real
 kubeadm-shaped Corefile fixtures (absent block, present block,
 corrupted markers, unmarked content preserved byte-for-byte, the
 regex-escaping of exotic-but-valid domains); predicate tables over

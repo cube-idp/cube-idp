@@ -1202,7 +1202,10 @@ event.
   `category: "gateway"` becomes the **second** *used* well-known
   spelling — identification only, the discipline holds; no gateway
   code path keys on it. Its delivery semantics feed the bus
-  milestone's `Prerequisites` handling as prior art.
+  milestone's `Prerequisites` handling as prior art — but the M11
+  ordered prerequisite list is **not** `RenderPlan.Prerequisites`:
+  that field stays per-pack `lifecycle: pre` data, carried not
+  implemented, frozen to the M12 bus.
 - **M12 (bus)** owns **delivery**: writing rendered content into the
   source the sync wiring established, and the real `pre` semantics — a separate delivery unit for
   `RenderPlan.Prerequisites`, its `dependsOn` edge, its health gate, and

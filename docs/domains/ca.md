@@ -60,6 +60,12 @@ type CASpec struct {
 
 - Absent `spec.ca` defaults to the `cube` provider (fabric, like the
   engine and the gateway — not opt-in).
+- **The provider choice is immutable per cube** — the engine precedent
+  (`docs/domains/engine.md`, Config surface), and sharper here: a
+  provider change on a live cube implies trust rotation, which D10
+  freezes. Recorded as contract now; mechanical enforcement lands with
+  the second provider's gate, since today there is nothing to switch
+  to.
 - No opaque `forProvider` yet, for the engine domain's recorded
   reason: no provider-specific knob exists, and an empty opaque payload
   is ceremony; the gate that admits a second provider migrates the
@@ -75,7 +81,12 @@ beyond the mint call. Concretely:
 
 - CA and wildcard-leaf key pairs are stored as Secrets in the gateway
   namespace, SSA-applied by bootstrap and inventory-recorded like any
-  bootstrap-owned object.
+  bootstrap-owned object. In the ordered prerequisite list the Secrets
+  form an **inert unit** (apply success is readiness — Secrets carry no
+  status; the rule is defined in the bootstrap amendment) that
+  **explicitly depends on the `gateway-namespace` unit** preceding it:
+  its Secrets land in `gateway-system`, which must already be `Active`
+  (`docs/domains/gateway.md`, the prerequisite model).
 - The CA **certificate** (public) is the only exported artifact — it
   is what trust distribution handles.
 - `down` destroying the cluster destroys the CA — correct for a local
