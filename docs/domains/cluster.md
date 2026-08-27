@@ -149,12 +149,43 @@ is composed at the CLI edge via the kube domain, see
 absent cluster or unreachable API server is a finding, not a failure;
 coded errors keep their usual exit semantics.
 
+## M11 amendment (gated 2026-08-27, ahead of code): the kind driver's ingress-ready default
+
+Delimited amendment from the M11 design gate (`docs/DECISIONS.md`
+2026-08-27, decision 5c/5d — an operator override of the scoped
+recommendation); it folds into the living body at the M11 closeout, and
+no code implements it before the M11 breakdown is aligned.
+
+When the user supplies **no explicit `forProvider`**, the kind driver
+defaults the generated cluster config to kind's documented
+ingress-ready shape, on **high host ports** (unprivileged on every OS;
+URLs carry ports):
+
+- `extraPortMappings`: host **8080 → containerPort 80** and host
+  **8443 → containerPort 443** on the (single, default) node;
+- the `ingress-ready=true` node label on that node — the gateway's
+  Deployment pins to it (`nodeSelector` + hostPorts 80/443; the
+  in-cluster half is the gateway contract's, `docs/domains/gateway.md`).
+
+**Explicit `forProvider` always wins, wholesale** — the driver never
+merges the default into a user-supplied payload; supplying any
+`forProvider` config means owning ports and labels entirely. Recorded
+boundaries: the driver **cannot see `spec.gateway`** (it receives
+`{Name, ForProvider}` only, so the default is unconditional — coherent
+with the gateway's absent-means-installed posture, never
+gateway-triggered); port mappings exist only at cluster **create**
+(create-before-bootstrap coupling: a gateway wanted on a cluster
+created without them needs a recreate); and a host-port collision — a
+second default cube — fails `create` loudly with the provider's coded
+error, explicit `forProvider` being the escape.
+
 ## Contracts for future domains
 
 Consumers receive kubeconfig bytes by injection at the orchestrator/CLI
 edge (never by importing `internal/cluster`), or derive the merged context
 name from the API group constant (importing only leaf `api/`).
 
-The domain is lifecycle-complete as of M5 (epic #72) — nothing pending.
-Future cluster work (new providers, drift detection) starts as a new
-milestone against this contract.
+The domain is lifecycle-complete as of M5 (epic #72); the M11 amendment
+above is the one gated addition pending its breakdown. Future cluster
+work (new providers, drift detection) starts as a new milestone against
+this contract.

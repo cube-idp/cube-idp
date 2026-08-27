@@ -115,6 +115,10 @@ string is for).
 
 ## The install sequence
 
+*(This section describes the shipped M10 machinery; the M11 amendment
+below inserts the ordered prerequisite units between steps 3 and 4 and
+folds in at the M11 closeout.)*
+
 `Applier.InstallEngine(ctx, substrateObjs, wiringObjs, engineWait)`
 sequences the whole bootstrap in the one order that is correct and
 recoverable:
@@ -168,11 +172,11 @@ executes, it never selects.
 | `CUBE-BST-002` | SUPERSEDED by `CUBE-ENG-004` (M10: payload parse moved with the substrate) |
 | `CUBE-BST-003` | no REST mapping for an object's kind (apply path, even after a discovery refresh) |
 | `CUBE-BST-004` | server-side apply of a bootstrap object failed (wrapped cause) |
-| `CUBE-BST-005` | kind-set readiness wait timed out (phase 1 only; names the pending objects) |
+| `CUBE-BST-005` | kind-set readiness wait timed out (phase 1 only; names the pending objects) — *text generalizes to any kind-set wait under the M11 amendment below* |
 | `CUBE-BST-006` | inventory encode failed before recording |
 | `CUBE-BST-007` | SUPERSEDED by `CUBE-ENG-006` (M10: the wiring shapes and their source-kind check moved to the flux driver) |
 | `CUBE-BST-008` | SUPERSEDED by `CUBE-ENG-005` (M10: the version pin moved to the substrate; asserted at the edge) |
-| `CUBE-BST-009` | reconciliation/engine wait timed out (phases 2–3; names the pending objects with the driver's reasons) |
+| `CUBE-BST-009` | reconciliation/engine wait timed out (phases 2–3; names the pending objects with the driver's reasons) — *text generalizes to any declared-object reconciliation wait under the M11 amendment below* |
 | `CUBE-BST-010` | readiness polling failed on a permanent error (wrapped cause; coded at the failure point, never retagged as a timeout) |
 
 The retained codes' summaries/remediations are engine-neutral (they name
@@ -210,14 +214,61 @@ configured). Flags: `--kubeconfig`, `--kubeconfig-context-name`,
 `--timeout` (default 5m, the total readiness budget). The `apply` verb
 reserved on 2026-08-03 stays retired.
 
+## M11 amendment (gated 2026-08-27, ahead of code): the ordered prerequisite list
+
+Delimited amendment from the M11 design gate (`docs/DECISIONS.md`
+2026-08-27); it folds into the living body at the M11 closeout, and no
+code implements it before the M11 breakdown is aligned.
+
+- **The install sequencing generalizes.** Between phase 1 (substrate
+  kind-set ready) and the wiring steps, the applier executes an
+  **ordered list of prerequisite units** — in M11, derived at the edge
+  from the gateway domain's prerequisite packs and the CA Secrets
+  (`docs/domains/gateway.md`, `docs/domains/ca.md`). Per unit, in list
+  order: **re-record the inventory with the unit included, then apply,
+  then wait it ready before the next unit applies** — record-before-
+  apply extends to prerequisites exactly as it governs the wiring, and
+  the per-unit wait is what guarantees CRDs are `Established` before
+  any dependent list member instantiates them.
+- **Existing machinery, no new phase concept.** A raw unit (the
+  Gateway API CRDs pack) is waited with the kind-set machinery (CRD
+  `Established`, Namespace `Active`); a CR unit (the thin-helm
+  gateway pair) is waited with the reconciliation machinery under
+  injected predicates. Everything crosses the edge as the established
+  neutral vocabulary — object slices plus judge function values;
+  bootstrap still knows no packs, no gateway, no CA. All waits still
+  share the CLI's one `--timeout` as a total budget. The exact entry-
+  point signature fixes at implementation within this contract (the
+  M10 precedent).
+- **Wait-code contract text generalizes; numbers and mechanics do
+  not.** `CUBE-BST-005` reads as *any* kind-set readiness wait timing
+  out (no longer "phase 1 only"); `CUBE-BST-009`/`-010` read as **a
+  bootstrap-executed reconciliation wait over declared objects** —
+  engine or prerequisite alike — with diagnostics naming the object
+  set and the injected predicates' pending reasons. The engine-
+  flavored wording ("engine resources", "check the configured
+  source") is deliberately generalized at this gate; the pending-vs-
+  terminal classification and the pass-through rule are unchanged.
+- **Two new edge behaviors are named — neither is bootstrap
+  machinery.** (1) The **CA-reuse read**: the edge reads the existing
+  CA Secret with the dynamic client it already constructs and passes
+  key material to the `ca` domain's pure ensure function — the
+  exported machinery has no read operation and deliberately does not
+  grow one. (2) The **CoreDNS read-modify-write**: the edge splices
+  the gateway's marker block under optimistic concurrency; the
+  ConfigMap is **never inventory-recorded** (the inventory is a
+  deletion seed and must never name a system object), and its
+  restore-not-delete teardown is a published M13 requirement.
+
 ## Contracts for future domains
 
 - **Pack delivery (M8 renders, the bus delivers)**: the pack domain (M8,
   shipped) renders and never applies; packs reach a cluster by being
   written into the source the sync wiring established (the M12 bus) —
   *not* through a cube-idp applier.
-- **M11 (gateway)** is the trust-fabric prerequisite delivered through
-  the substrate ahead of ordinary packs; its own design gate defines it.
+- **M11 (gateway + ca)** is gated (2026-08-27): the ordered
+  prerequisite list above, the gateway's packs, and the CA material —
+  living contracts `docs/domains/gateway.md` and `docs/domains/ca.md`.
 - **M13 (`down`)** reads the bootstrap inventory to tear down what
   bootstrap installed, composed with the M5 cluster teardown and the
   source-level teardown phase recorded above.
