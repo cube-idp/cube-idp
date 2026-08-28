@@ -1091,13 +1091,16 @@ never-fetched-at-runtime discipline. The decisions:
    the existing catalogs: ref resolution `CUBE-REF-*`, an override
    pack's load/validate/render `CUBE-PKG-*`, and `CUBE-GWY-001/002`
    only the embedded assets' provenance and parse — the layering
-   `docs/domains/pack.md` already fixed for `packRef`. **One
-   pointer stays compiled**: the stable Service's ExternalName
+   `docs/domains/pack.md` already fixed for `packRef`. **Two
+   pointers stay compiled** (the second added by point 5's `Gateway`
+   object): the stable Service's ExternalName
    backend reference keeps the compiled default implementation's
-   effective id — swapping the gateway implementation via an override
-   list additionally needs that one-object re-pointing, which is
+   effective id, and the emitted `Gateway`'s `gatewayClassName` keeps
+   the chart-created class — swapping the gateway implementation via
+   an override
+   list additionally needs those two one-field re-pointings, which are
    deliberately not yet configurable (no v0 consumer; the config
-   analogue of the second-implementation doctrine) and activates at
+   analogue of the second-implementation doctrine) and activate at
    the gate that brings a real alternative implementation.
 4. **Binary size measured, raw embedding retained; gzip considered
    and rejected.** The Gateway API CRDs asset costs **+1.17 MB raw on
@@ -1108,7 +1111,67 @@ never-fetched-at-runtime discipline. The decisions:
    deep equality over parsed objects (the bytes must be inflated
    before either side can be compared) for no meaningful size win.
    Recorded so it is not re-litigated.
-5. **Implementation follows approval, not this entry.** The M11
+5. **The thin-helm pack is fully static; cube-derived wiring is a
+   domain-emitted `Gateway` object** (gate-conflict R1, found by the
+   gateway lead's onboarding review, resolved 2026-08-28). The merged
+   contract had the `traefik-gateway` pack's chart values "derived
+   from `spec.gateway` and the injected leaf-Secret name", which
+   `docs/domains/pack.md`'s instance boundary forbids (no secret
+   names, no per-cluster values in `pack.cue`) and which left the
+   dogfood deep equality with **no compliant implementation path**: a
+   prerequisite pack has no `spec.packs` instance, so `pack.Load` +
+   `Render` yields the `#Values` defaults and nothing more. The
+   resolution, four parts. (a) **No cube-derived chart value exists,
+   by contract** — every `#Values` default is compile-time static (the
+   Gateway API provider enable, the chart's own Gateway/listener
+   creation disabled, hostPorts 80/443, the `ingress-ready`
+   nodeSelector, `fullnameOverride`), putting the pack fully inside
+   the boundary sentence "a pack that cannot be handed to a different
+   operator, on a different cluster, unchanged, is carrying instance
+   state". (b) **Everything cube-derived crosses as a cube-authored
+   Gateway API `Gateway`** the domain emits — the wildcard listener
+   for `*.<domain>` and the TLS `certificateRefs` naming the leaf
+   Secret — applied within the `traefik-gateway` unit beside the CR
+   pair (the CRDs pack precedes it, so the kind is Established). It
+   expresses the cube's specifics in the **routing contract D2 chose**
+   rather than in one implementation's chart knobs, which is friendlier
+   to an implementation swap; its readiness is deliberately **not**
+   gated in M11 (a `Programmed`-condition predicate is a named
+   breakdown option, not gate surface), and its `gatewayClassName` is a
+   compiled pointer in the stable Service backend's posture,
+   re-pointed at the gate that brings a real second implementation.
+   (c) **The CA and leaf Secret names become exported gateway platform
+   facts**, like the namespace and service-name facts: the `ca` domain
+   never invents them, and the edge injects them into `ca`'s
+   mint/ensure and into nothing else (domains never import each
+   other). Of the two, only the leaf name has an emitted counterpart
+   to be tied to — the `Gateway`'s `certificateRefs`. (d) **The
+   dogfood deep equality stands unamended** and is now trivially
+   well-defined — `pack.Load`+`Render` at `#Values` defaults ≡ the
+   domain's hand-built CR pair — covering the pack-derived objects
+   only (the `Gateway`, like the platform Service, is cube-authored
+   beside the pack), and still locking the pair to every M9
+   field-level rule. Recorded honestly: the static values live twice
+   (CUE `#Values` defaults, Go literals) with that equality as the
+   single deliberate guard — loud by design, and §8's `cuelang.org/go`
+   confinement to `internal/pack` is why the domain cannot parse its
+   own `pack.cue`. **Rejected, one line each:** *edge-supplied
+   instance values with equality-under-the-same-values* — workable,
+   but keeps cube specifics in implementation chart knobs instead of
+   the D2 routing contract, complicates the dogfood into
+   equality-under-injected-values, and preserves a per-cube values
+   path #142 will want to constrain; *`valuesFrom`-style Secret
+   indirection* — poaches #142's explicitly frozen remit (constrained
+   instance-level `valuesFrom`), rejected on the freeze; *narrowing
+   the equality to a value-free skeleton* — weakens the only guard on
+   the CUE/Go duplication exactly where drift would bite. **Boundary
+   for C2, stated here** (review item R3): `Default()` in
+   `api/config/v1alpha1` **materializes** the compiled default entries
+   — they are data, and defaulting is where data lands;
+   `internal/gateway` owns the model's **meaning**. That is
+   documentation ownership, not code location; `api/` never imports
+   `internal/gateway`.
+6. **Implementation follows approval, not this entry.** The M11
    chunks C2 (gateway config surface + prerequisite assembly) and C4
    (the edge's resolution and injection) implement this after the
    operator approves this follow-up gate PR; no code lands first —
@@ -1116,8 +1179,12 @@ never-fetched-at-runtime discipline. The decisions:
 
 Living contracts: `docs/domains/gateway.md` (the prerequisite model
 re-anchored to spec data + the new `Config surface
-(spec.prerequisites)` section, the demotion, the size/gzip record, and
-the override-pack testing clause), `docs/domains/bootstrap.md` (the
+(spec.prerequisites)` section, the demotion, the size/gzip record, the
+override-pack testing clause, and the R1 resolution — the static pack,
+the emitted `Gateway`, the dogfood equality's exact scope),
+`docs/domains/ca.md` (the CA and leaf Secret **names** are the gateway
+domain's exported facts, injected at the edge, never invented in
+`ca`), `docs/domains/bootstrap.md` (the
 M11 amendment's list source — bootstrap itself gains no config
 surface and still sees only object slices plus judges),
 `docs/ARCHITECTURE.md` §2/§3.
