@@ -81,7 +81,12 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 	defer cancel()
 	// Phase 2 runs with the driver's real judgment: InstallEngine returns only
 	// once the wiring reconciles Ready and fresh against the live cluster.
-	if err := applier.InstallEngine(installCtx, substrateObjs, wiringObjs, bootstrap.EngineWait{Reconciled: drv.Reconciled}); err != nil {
+	install := bootstrap.EngineInstall{
+		Substrate: substrateObjs,
+		Wiring:    wiringObjs,
+		Wait:      bootstrap.EngineWait{Reconciled: drv.Reconciled},
+	}
+	if err := applier.InstallEngine(installCtx, install); err != nil {
 		t.Fatalf("InstallEngine: %v", err)
 	}
 

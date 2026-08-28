@@ -31,9 +31,11 @@ const (
 	// CodeApplyFailed reports a server-side apply that the API server
 	// rejected.
 	CodeApplyFailed cubeerr.Code = "CUBE-BST-004"
-	// CodeWaitTimeout reports bootstrap resources that did not reach the
-	// ready kind-set before the context was done. It covers the kind-set
-	// wait only; the reconciliation waits time out as CUBE-BST-009.
+	// CodeWaitTimeout reports objects that did not reach the ready kind-set
+	// before the context was done. It covers any kind-set readiness wait
+	// bootstrap executes — the substrate or a prerequisite unit — and names
+	// the pending objects; the reconciliation waits time out as
+	// CUBE-BST-009.
 	CodeWaitTimeout cubeerr.Code = "CUBE-BST-005"
 	// CodeInventory reports a failure to encode the bootstrap inventory (the
 	// seed of down) before recording it.
@@ -48,15 +50,17 @@ const (
 	// versions at the edge. The constant stays so the number is never
 	// reused.
 	CodeVersionMismatch cubeerr.Code = "CUBE-BST-008"
-	// CodeReconcileTimeout reports polled objects — applied sync wiring or
-	// declared engine content — that the injected judgment did not report
-	// reconciled before the context was done. It names the pending objects
-	// with the judgment's reasons.
+	// CodeReconcileTimeout reports polled objects that the injected judgment
+	// did not report reconciled before the context was done. It covers any
+	// reconciliation wait bootstrap executes over declared objects — the
+	// applied sync wiring, the declared engine content, or a prerequisite
+	// unit — and names the pending objects with the judgment's reasons.
 	CodeReconcileTimeout cubeerr.Code = "CUBE-BST-009"
 	// CodePollFailed reports a permanent failure while polling an object for
-	// reconciliation — a read the API server rejected for a reason waiting
-	// cannot fix, or a judgment failure carrying no code of its own. It is
-	// coded at the failure point and never retagged as a timeout.
+	// readiness on either wait path — a read the API server rejected for a
+	// reason waiting cannot fix, or a judgment failure carrying no code of
+	// its own. It is coded at the failure point and never retagged as a
+	// timeout.
 	CodePollFailed cubeerr.Code = "CUBE-BST-010"
 )
 
@@ -84,17 +88,18 @@ func newInventoryError(cause error) error {
 // newWaitError wraps a kind-set readiness-wait failure in CUBE-BST-005 —
 // unless the cause already carries a cubeerr code (e.g. a CUBE-BST-003
 // mapping miss surfacing mid-wait), which passes through unchanged: one
-// failure, one code, never retagged. namespace is the injected install
-// namespace, named so the remediation points somewhere real without this
-// domain knowing the engine.
-func newWaitError(namespace string, pending []*unstructured.Unstructured, cause error) error {
+// failure, one code, never retagged. subject names which wait timed out (the
+// substrate set or a prerequisite unit) so one code still reads unambiguously.
+// namespace is the injected install namespace, named so the remediation points
+// somewhere real without this domain knowing the engine.
+func newWaitError(subject, namespace string, pending []*unstructured.Unstructured, cause error) error {
 	var coded *cubeerr.Coded
 	if errors.As(cause, &coded) {
 		return cause
 	}
 	return cubeerr.Wrap(CodeWaitTimeout,
-		fmt.Sprintf("bootstrap resources did not become ready: %s", describeAll(pending)),
-		fmt.Sprintf("inspect the engine controllers (`kubectl -n %s get pods`) and their events", namespace),
+		fmt.Sprintf("%s did not become ready: %s", subject, describeAll(pending)),
+		fmt.Sprintf("inspect the controllers reconciling them (`kubectl -n %s get pods`) and the named objects' events", namespace),
 		cause)
 }
 
@@ -102,25 +107,50 @@ func newWaitError(namespace string, pending []*unstructured.Unstructured, cause 
 // naming the pending objects with the judgment's reasons — unless the cause
 // already carries a cubeerr code (a permanent CUBE-BST-010 poll failure or
 // the judgment's own coded error surfacing mid-wait), which passes through
-// unchanged: one failure, one code, never retagged.
-func newReconcileWaitError(pending []pendingObject, cause error) error {
+// unchanged: one failure, one code, never retagged. subject names which wait
+// timed out (the declared set or a prerequisite unit).
+func newReconcileWaitError(subject string, pending []pendingObject, cause error) error {
 	var coded *cubeerr.Coded
 	if errors.As(cause, &coded) {
 		return cause
 	}
 	return cubeerr.Wrap(CodeReconcileTimeout,
-		fmt.Sprintf("engine resources did not reconcile: %s", describePending(pending)),
-		"inspect the named objects and their controllers' logs; check that the configured source is reachable",
+		fmt.Sprintf("%s did not reconcile: %s", subject, describePending(pending)),
+		"inspect the named objects and their controllers' logs; check that the sources they pull from are reachable",
 		cause)
 }
 
-// newPollError wraps a permanent reconciliation-polling failure in
-// CUBE-BST-010 — coded at the failure point, never retagged as a timeout.
+// newPollError wraps a permanent readiness-polling failure in CUBE-BST-010 —
+// coded at the failure point, never retagged as a timeout.
 func newPollError(obj *unstructured.Unstructured, cause error) error {
 	return cubeerr.Wrap(CodePollFailed,
-		fmt.Sprintf("polling %s for reconciliation failed", describe(obj)),
+		fmt.Sprintf("polling %s for readiness failed", describe(obj)),
 		"check cluster connectivity and RBAC for reading the named object",
 		cause)
+}
+
+// newUnitJudgeError reports a prerequisite unit that declares a reconciliation
+// wait but was built without the judgment that wait needs — a composition
+// defect at the CLI edge, not a cluster condition. It is raised pre-flight, so
+// a run carrying one applies nothing at all. cubeerr has no cause-less
+// constructor, so the cause states the defect itself.
+func newUnitJudgeError(name string) error {
+	return cubeerr.Wrap(CodePollFailed,
+		fmt.Sprintf("prerequisite unit %s declares a reconciliation wait but carries no judgment", name),
+		"supply a ReconciledFunc when the edge builds this unit with NewCRUnit — a CR unit cannot be judged without one",
+		errors.New("nil ReconciledFunc"))
+}
+
+// terminalPollError codes a permanent polling failure once: a cause that
+// already carries a cubeerr code (the judgment's own, or a mapping miss) is
+// returned untouched, everything else becomes CUBE-BST-010. Both wait paths
+// route their permanent failures through it, so no failure is ever retagged.
+func terminalPollError(obj *unstructured.Unstructured, cause error) error {
+	var coded *cubeerr.Coded
+	if errors.As(cause, &coded) {
+		return cause
+	}
+	return newPollError(obj, cause)
 }
 
 // describe renders an object as "Kind namespace/name" (or "Kind name" for

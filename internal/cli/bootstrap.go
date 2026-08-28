@@ -96,7 +96,12 @@ func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory, newEngi
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
-	if err := applier.InstallEngine(ctx, substrateObjs, wiringObjs, engineWait); err != nil {
+	install := bootstrap.EngineInstall{
+		Substrate: substrateObjs,
+		Wiring:    wiringObjs,
+		Wait:      engineWait,
+	}
+	if err := applier.InstallEngine(ctx, install); err != nil {
 		return err
 	}
 	renderBootstrapResult(cmd, cfg.Spec.Engine)

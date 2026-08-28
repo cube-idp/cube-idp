@@ -74,7 +74,8 @@ func TestInstallStopsOnApplyFailure(t *testing.T) {
 func TestInstallEngineWithWiring(t *testing.T) {
 	f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
 	a := testApplier(f)
-	if err := a.InstallEngine(t.Context(), testSubstrateObjs(), testWiringObjs(), EngineWait{}); err != nil {
+	in := EngineInstall{Substrate: testSubstrateObjs(), Wiring: testWiringObjs()}
+	if err := a.InstallEngine(t.Context(), in); err != nil {
 		t.Fatalf("InstallEngine() error = %v", err)
 	}
 
@@ -112,7 +113,7 @@ func TestInstallEngineWithWiring(t *testing.T) {
 func TestInstallEngineNoWiring(t *testing.T) {
 	f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
 	a := testApplier(f)
-	if err := a.InstallEngine(t.Context(), testSubstrateObjs(), nil, EngineWait{}); err != nil {
+	if err := a.InstallEngine(t.Context(), EngineInstall{Substrate: testSubstrateObjs()}); err != nil {
 		t.Fatalf("InstallEngine() error = %v", err)
 	}
 	if _, ok := f.store["GitRepository/flux-system/flux-system"]; ok {
@@ -132,7 +133,8 @@ func TestInstallEnginePartialWiringApplyRecordsIntent(t *testing.T) {
 	}
 	a := testApplier(f)
 
-	if err := a.InstallEngine(t.Context(), testSubstrateObjs(), testWiringObjs(), EngineWait{}); err == nil {
+	in := EngineInstall{Substrate: testSubstrateObjs(), Wiring: testWiringObjs()}
+	if err := a.InstallEngine(t.Context(), in); err == nil {
 		t.Fatal("InstallEngine() = nil, want the wiring apply failure")
 	}
 

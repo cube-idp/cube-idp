@@ -176,8 +176,12 @@ func TestInstallEngineThreePhases(t *testing.T) {
 	engObj := newDeployment("argocd-server", "argocd", 1, 1, 1)
 	f := &fakeCluster{store: map[string]*unstructured.Unstructured{objKey(engObj): engObj}, readyApply: true}
 	a := testApplier(f)
-	w := EngineWait{Reconciled: alwaysReconciled, EngineObjects: []*unstructured.Unstructured{engObj}}
-	if err := a.InstallEngine(t.Context(), testSubstrateObjs(), testWiringObjs(), w); err != nil {
+	in := EngineInstall{
+		Substrate: testSubstrateObjs(),
+		Wiring:    testWiringObjs(),
+		Wait:      EngineWait{Reconciled: alwaysReconciled, EngineObjects: []*unstructured.Unstructured{engObj}},
+	}
+	if err := a.InstallEngine(t.Context(), in); err != nil {
 		t.Fatalf("InstallEngine() error = %v", err)
 	}
 
@@ -230,9 +234,13 @@ func TestInstallEngineSharedTimeoutBudget(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 40*time.Millisecond)
 	defer cancel()
 
-	err := a.InstallEngine(ctx, testSubstrateObjs(), testWiringObjs(), EngineWait{
-		Reconciled:    neverReconciled,
-		EngineObjects: []*unstructured.Unstructured{engObj},
+	err := a.InstallEngine(ctx, EngineInstall{
+		Substrate: testSubstrateObjs(),
+		Wiring:    testWiringObjs(),
+		Wait: EngineWait{
+			Reconciled:    neverReconciled,
+			EngineObjects: []*unstructured.Unstructured{engObj},
+		},
 	})
 	assertCode(t, err, CodeReconcileTimeout)
 	if callIndex(f.calls, "live:"+objKey(engObj)) != -1 {
@@ -245,7 +253,7 @@ func TestInstallEngineSharedTimeoutBudget(t *testing.T) {
 func TestInstallEngineSkipsEmptyPhases(t *testing.T) {
 	f := &fakeCluster{store: map[string]*unstructured.Unstructured{}, readyApply: true}
 	a := testApplier(f)
-	if err := a.InstallEngine(t.Context(), testSubstrateObjs(), nil, EngineWait{}); err != nil {
+	if err := a.InstallEngine(t.Context(), EngineInstall{Substrate: testSubstrateObjs()}); err != nil {
 		t.Fatalf("InstallEngine() error = %v", err)
 	}
 	if n := firstCallWithPrefix(f.calls, "live:"); n != -1 {

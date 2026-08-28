@@ -57,15 +57,25 @@ func TestWaitReadyPreservesCodedError(t *testing.T) {
 	}
 }
 
-// TestWaitReadyWrapsUncodedError pins the other branch: a readiness read that
-// fails with an ordinary (uncoded) error is still wrapped in CUBE-BST-005.
-func TestWaitReadyWrapsUncodedError(t *testing.T) {
+// TestWaitReadyCodesPermanentErrorAtFailurePoint pins the other branch: a
+// readiness read that fails with an ordinary (uncoded) error is CUBE-BST-010
+// at the failure point — not the CUBE-BST-005 timeout it used to be rewrapped
+// as. The generous deadline proves the code arrives from the failure, not from
+// a deadline: a timeout could not fire inside it.
+func TestWaitReadyCodesPermanentErrorAtFailurePoint(t *testing.T) {
 	obj := newDeployment("source-controller", "flux-system", 1, 0, 1)
 	f := newFakeCluster(obj)
 	f.getErr = errors.New("connection refused")
 	a := testApplier(f)
 
-	assertCode(t, a.WaitReady(t.Context(), []*unstructured.Unstructured{obj}), CodeWaitTimeout)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	start := time.Now()
+	err := a.WaitReady(ctx, []*unstructured.Unstructured{obj})
+	assertCode(t, err, CodePollFailed)
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("WaitReady() took %s — the error must surface at the failure point, not at the deadline", elapsed)
+	}
 }
 
 // TestWaitReadyMissingObjectTimesOut covers the not-yet-created path: an
