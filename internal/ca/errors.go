@@ -10,12 +10,11 @@ import (
 
 // The ca domain owns the CUBE-CA-* code range. Codes are declared here
 // and nowhere else; the cross-domain tag registry lives in
-// docs/ARCHITECTURE.md. Only the codes this package raises are declared:
-// CUBE-CA-004 (trust store) stays reserved by the contract and lands
-// beside the content that raises it. Constructors are unexported except
-// where the CLI edge raises the code itself — the provider switch
-// (NewUnsupportedProviderError) and the ledger read
-// (NewLedgerUnreadableError), since the domain never touches files.
+// docs/ARCHITECTURE.md. Constructors are unexported except where the CLI
+// edge raises the code itself — the provider switch
+// (NewUnsupportedProviderError), the ledger read
+// (NewLedgerUnreadableError), and the trust verbs' preconditions, since
+// the domain never touches files and never chooses the store.
 const (
 	// CodeMint reports a failure to mint the CA or its leaf (wrapped
 	// stdlib cause).
@@ -26,6 +25,11 @@ const (
 	// CodeLedger reports a trust ledger that cannot be read or does not
 	// parse.
 	CodeLedger cubeerr.Code = "CUBE-CA-003"
+	// CodeTrustStore reports a failed trust-store operation: an OS tool
+	// that is missing, unusable, or exited non-zero; a missing operator
+	// artifact; an OS with no driver; or a fingerprint/marker mismatch
+	// that refuses a removal.
+	CodeTrustStore cubeerr.Code = "CUBE-CA-004"
 	// CodeUnsupportedProvider reports a spec.ca.provider no
 	// implementation provides. It extends the gate's initial catalog
 	// under the normal per-domain rule (docs/domains/ca.md).
@@ -104,4 +108,75 @@ func NewUnsupportedProviderError(provider string) error {
 	return cubeerr.Wrap(CodeUnsupportedProvider,
 		fmt.Sprintf("no implementation for CA provider %q", provider),
 		fmt.Sprintf("use a supported spec.ca.provider (%s)", ProviderCube), nil)
+}
+
+// newTrustStoreError is the shared CUBE-CA-004 constructor. Every trust
+// failure carries a remediation the user can act on without cube-idp:
+// the OS trust stores are the one place the tool cannot retry on the
+// user's behalf, so "install it by hand, like this" is the answer.
+func newTrustStoreError(summary, remediation string, cause error) error {
+	return cubeerr.Wrap(CodeTrustStore, summary, remediation, cause)
+}
+
+// newRemovalRefusedError refuses a removal whose candidate certificate
+// failed either half of the identity check. Refusal is the whole point
+// of the check: cube-idp deletes nothing it has not identified as this
+// cube's own CA.
+func newRemovalRefusedError(cube string, cause error) error {
+	return newTrustStoreError(
+		fmt.Sprintf("refusing to remove a certificate that is not cube %q's CA", cube),
+		fmt.Sprintf("check the trust ledger (~/%s/%s); remove the certificate by hand if it is genuinely yours",
+			DirName, LedgerFileName), cause)
+}
+
+// NewMissingArtifactError reports a `trust install` for a cube whose CA
+// certificate has never been emitted. The verb consumes the artifact and
+// never mints one: a second source of truth for the CA is exactly what
+// the reuse contract exists to prevent.
+func NewMissingArtifactError(cube, path string, cause error) error {
+	return newTrustStoreError(
+		fmt.Sprintf("cannot install the CA for cube %q: no certificate at %s", cube, path),
+		`run "cube-idp bootstrap" to emit it`, cause)
+}
+
+// NewUnusableArtifactError reports an emitted CA certificate that does
+// not parse. Bootstrap rewrites a divergent artifact, so re-running it
+// is the remedy.
+func NewUnusableArtifactError(cube, path string, cause error) error {
+	return newTrustStoreError(
+		fmt.Sprintf("cannot install the CA for cube %q: the certificate at %s does not parse", cube, path),
+		`re-run "cube-idp bootstrap" to re-emit it`, cause)
+}
+
+// NewArtifactReadError reports a CA certificate artifact that could not
+// be read for a reason other than its absence — a permission error, for
+// instance. An absent artifact is a different, verb-specific condition
+// (NewMissingArtifactError or an absent-file pass-through); this code is
+// for the file being there but unreadable.
+func NewArtifactReadError(cube, path string, cause error) error {
+	return newTrustStoreError(
+		fmt.Sprintf("cannot read the CA certificate at %s for cube %q", path, cube),
+		`check the file's permissions, or run "cube-idp bootstrap" to re-emit it`, cause)
+}
+
+// NewUnsupportedStoreError reports an operating system with no
+// user-scope trust store driver. It is never a silent no-op: the
+// artifact exists either way, so the remediation hands over its path.
+func NewUnsupportedStoreError(goos, certPath string) error {
+	return newTrustStoreError(
+		fmt.Sprintf("no user-scope trust store driver for %s", goos),
+		fmt.Sprintf("cube-idp emitted the CA at %s — install it with your platform's certificate manager",
+			certPath), nil)
+}
+
+// NewStoreMismatchError refuses a removal the ledger records against a
+// different store than the running machine's. The ledger's store field
+// exists precisely to make that decidable, and acting anyway would mean
+// searching a store the certificate was never put into.
+func NewStoreMismatchError(cube, recorded, current string) error {
+	return newTrustStoreError(
+		fmt.Sprintf("cannot remove cube %q's CA: the ledger records it in the %s store, but this machine's is %s",
+			cube, recorded, current),
+		fmt.Sprintf("run `cube-idp trust remove %s` on the machine that installed it, or remove the "+
+			"certificate by hand and delete the entry from ~/%s/%s", cube, DirName, LedgerFileName), nil)
 }
