@@ -9,7 +9,11 @@
 package ca
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"slices"
 )
@@ -51,4 +55,26 @@ func HasMarker(cert *x509.Certificate, cubeName string) bool {
 		return false
 	}
 	return slices.Contains(cert.Subject.OrganizationalUnit, MarkerOrganizationalUnit)
+}
+
+// Fingerprint returns the SHA-256 of a certificate's DER bytes as
+// lowercase, colon-free hex — the ledger's identity for a cube's CA.
+// OS trust tooling reports the same digest in uppercase, so comparisons
+// against it are case-insensitive.
+//
+// The error is deliberately uncoded: "these bytes are not a
+// certificate" is not the ledger's CUBE-CA-003 and not the CA Secret's
+// CUBE-CA-002, and the calling verb is what knows which operation
+// failed.
+func Fingerprint(certPEM []byte) (string, error) {
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return "", errors.New("certificate PEM does not decode")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", fmt.Errorf("parse certificate: %w", err)
+	}
+	sum := sha256.Sum256(cert.Raw)
+	return hex.EncodeToString(sum[:]), nil
 }
