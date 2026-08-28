@@ -217,19 +217,26 @@ reserved on 2026-08-03 stays retired.
 ## M11 amendment (gated 2026-08-27, ahead of code): the ordered prerequisite list
 
 Delimited amendment from the M11 design gate (`docs/DECISIONS.md`
-2026-08-27); it folds into the living body at the M11 closeout, and no
-code implements it before the M11 breakdown is aligned.
+2026-08-27, as amended 2026-08-28 by M11-A0 — the list's source
+becomes spec-level data); it folds into the living body at the M11
+closeout, and no code implements it before the M11 breakdown is
+aligned.
 
 - **The install sequencing generalizes.** Between phase 1 (substrate
   kind-set ready) and the wiring steps, the applier executes an
   **ordered list of prerequisite units** — in M11, derived at the edge
-  from the gateway domain's platform objects (Namespace + stable
+  from **`spec.prerequisites`** (spec-level data owned by the gateway
+  contract, its compiled defaults used when the field is absent or
+  empty — M11-A0, `docs/DECISIONS.md` 2026-08-28), resolving each
+  entry to the gateway domain's platform objects (Namespace + stable
   `gateway` Service) and prerequisite packs
-  and the CA Secrets, in this order: the `gateway-platform` unit
-  (Namespace + the stable `gateway` Service) → the `gateway-api-crds`
-  pack → the CA-material inert unit →
+  and the CA Secrets, in the default order: the `gateway-platform`
+  unit (Namespace + the stable `gateway` Service) → the
+  `gateway-api-crds` pack → the CA-material inert unit →
   the `traefik-gateway` thin-helm pack (`docs/domains/gateway.md`,
-  `docs/domains/ca.md`). Per unit, in list
+  `docs/domains/ca.md`). **Bootstrap gains no config surface from
+  this** — it still sees only object slices plus judges, and never
+  reads a `Config`. Per unit, in list
   order: **re-record the inventory with the unit included, then apply,
   then wait it ready before the next unit applies** — record-before-
   apply extends to prerequisites exactly as it governs the wiring, and

@@ -2,7 +2,10 @@
 
 Living contract of the gateway domain (`internal/gateway`).
 Cross-cutting rules: `docs/ARCHITECTURE.md`. Originating design gate:
-`docs/DECISIONS.md` 2026-08-27 (M11, epic #177) — **gated ahead of
+`docs/DECISIONS.md` 2026-08-27 (M11, epic #177), amended 2026-08-28
+(M11-A0: the prerequisite list becomes spec data; the thin-helm pack
+is fully static and cube-derived wiring is a domain-emitted `Gateway`
+object) — **gated ahead of
 code**: this contract is the operator-approved design; the package
 lands via the M11 implementation breakdown, and no code exists before
 that breakdown is aligned.
@@ -16,12 +19,17 @@ fabric everything in steady state, including the engine's own endpoints,
 presumes (founding rationale, operator 2026-08-24: "certs / hostnames /
 trust / internal dns redirect and name resolutions"). Certificate
 authority custody and minting are **not** this domain's — they belong to
-the `ca` domain (`docs/domains/ca.md`), gated in the same M11 decision;
-the gateway consumes the leaf certificate as an injected fact.
+the `ca` domain (`docs/domains/ca.md`), gated in the same M11 decision.
+Three flows stay distinct: this domain **exports the CA and leaf
+Secret names** (platform facts the edge injects into `ca`), `ca` mints
+the material into those Secrets, and the gateway implementation reads
+the leaf at serving time through the emitted `Gateway`'s
+`certificateRefs`.
 
 The domain is **pure** in the substrate's mold: it owns embedded
-prerequisite content and emits objects, blocks, and predicates derived
-from `spec.gateway`. All I/O — applying anything, reading or writing the
+prerequisite content and the prerequisite-list surface
+(`spec.prerequisites`), and emits objects, blocks, and predicates
+derived from `spec.gateway`. All I/O — applying anything, reading or writing the
 live CoreDNS ConfigMap — stays at the CLI/orchestrator edge, on
 bootstrap's machinery or the edge's own client.
 
@@ -30,7 +38,14 @@ bootstrap's machinery or the edge's own client.
 Prerequisites are an **ordered list of prerequisite units** that
 bootstrap installs **ahead of the engine** — after the substrate's
 kind-set readiness, before the engine's sync wiring and bundle. The
-mechanics are day-0 bootstrap SSA, with the thin-helm member's
+list is **spec-level data**: `spec.prerequisites`, this domain's
+second config surface (below), **defaulted to exactly the four units
+described here, in this order** (operator decision, 2026-08-28 —
+`docs/DECISIONS.md` M11-A0). Nothing about what the list is *for*
+changes with that; what changes is that the four are the **compiled
+default list** — a starting point a user may replace — and no longer
+the only list that can run.
+The mechanics are day-0 bootstrap SSA, with the thin-helm member's
 *reconciliation* delegated to the substrate's helm-controller; nothing
 enters the watched source (that path — the seam's "delivered through
 tier 1" — is the M12 bus's). The **pack-shaped** members are the
@@ -51,7 +66,21 @@ by design and its members are separable by design:
   (the generalized bootstrap sequencing, D9;
   `docs/domains/bootstrap.md`).
 
-M11's list, in order:
+**The embedded copies are default resolution, not the model.** Making
+the list config demotes the cube-shipped content, in two shapes. The
+two cube-shipped **packs** — the CRDs pack bytes, the traefik pack —
+demote to *the default resolution of a well-known pack name*: what a
+compiled default entry resolves to when the user writes nothing, and
+an override entry needs no cube-shipped pack at all — it names a unit
+and points a ref at content this repo has never seen. The **built-in
+units'** content — the platform objects, the CA handoff — is
+name-selected domain behavior, never resolvable content; its demotion
+is from *always-present* to *present-when-listed* (the compiled
+defaults list both). The embedded assets stay exactly as
+specified below — pinned, sha256-checked, never fetched at runtime —
+they simply stop being the only reachable content.
+
+The compiled default list, in order:
 
 1. **`gateway-platform`** — the cube-owned platform vocabulary, two
    cube-authored objects, domain-emitted: the `Namespace`
@@ -82,9 +111,16 @@ M11's list, in order:
    admission policy, 1,170,953 bytes — the largest embedded asset in
    the binary (the Flux
    substrate asset is 232 KB); the scoping estimate of 100–300 KB is
-   corrected on the record. Bootstrap SSA-applies it and waits the
+   corrected on the record. **The binary-size impact was measured and
+   is trivial** (2026-08-28): +1.17 MB raw on a 65.2 MB binary, under
+   2% — **raw embedding is retained**. Gzip-compressing the asset was
+   **considered and rejected**: it would complicate the pack-contract
+   dogfood test's deep equality over parsed objects (the bytes would
+   have to be inflated before either side could be compared) for no
+   meaningful size win. Bootstrap SSA-applies it and waits the
    kind-set (CRD `Established`).
-3. **The CA material** — an **inert unit**, not a pack: the embedded
+3. **The CA material** (`ca-secrets`) — an **inert unit**, not a
+   pack: the embedded
    prerequisite packs carry no cluster-specific secret material, so
    the `ca` domain's minted-or-reused CA and wildcard leaf cross the
    edge as plain Secret objects for the gateway namespace, SSA-applied
@@ -94,8 +130,9 @@ M11's list, in order:
    which the list order guarantees. Its readiness rule is the inert
    flavor defined in the bootstrap amendment: Secrets carry no status,
    so **apply success is the unit's readiness** — a later reader must
-   not "fix" the absent wait. Ordered before the gateway release
-   because the release mounts the leaf.
+   not "fix" the absent wait. Ordered before the
+   `traefik-gateway` unit because the `Gateway` object applied there
+   references the leaf Secret by name.
 4. **`traefik-gateway`** — the gateway itself, a **thin-helm**
    prerequisite pack in the M9 delegation shape (this is deliberate
    M9 dogfooding): an embedded `type: helm` pack (`category:
@@ -105,15 +142,94 @@ M11's list, in order:
    chart is OCI-published — verified at the gate:
    `ghcr.io/traefik/helm/traefik`). Bootstrap SSA-applies the pair and
    runs the reconciliation wait with this domain's predicates.
+
+   **The pack's values are entirely static, by contract** (the R1
+   resolution, 2026-08-28): every `#Values` default is compile-time
+   constant — the Gateway API provider enable, the chart's own
+   Gateway/listener creation **disabled**, hostPorts 80/443, the
+   `ingress-ready` nodeSelector, `fullnameOverride`. **No cube-derived
+   chart value exists to bake**, so the pack sits fully inside the pack
+   contract's instance boundary — "a pack that cannot be handed to a
+   different operator, on a different cluster, unchanged, is carrying
+   instance state" (`docs/domains/pack.md`) — and nothing about *where*
+   it installs is in the artifact. (Disabling the chart's own Gateway
+   only shrinks the render measured under D2 below, which enabled it;
+   the footprint comparison holds a fortiori.)
+
+   **Everything cube-derived crosses as a cube-authored Gateway API
+   `Gateway` object**, domain-emitted — pure emission, this domain's
+   native job, the same class as the platform Service and the CoreDNS
+   block. It carries the wildcard listener for `*.<domain>` and the TLS
+   `certificateRefs` entry naming the leaf Secret, and the edge applies
+   it **within this unit, beside the CR pair** (unit 2 precedes, so the
+   `Gateway` kind is Established). Being **domain-authored**, it
+   carries its own `metadata.namespace`, exactly as the platform
+   Namespace and Service do; only *pack-rendered* output is
+   deliberately namespace-less and stamped at the edge (below). The
+   canonical shape, binding as contract:
+
+   ```yaml
+   apiVersion: gateway.networking.k8s.io/v1
+   kind: Gateway
+   metadata:
+     name: gateway
+     namespace: gateway-system
+   spec:
+     gatewayClassName: traefik
+     listeners:
+       - name: websecure
+         protocol: HTTPS
+         port: 443
+         hostname: "*.<spec.gateway.domain>"
+         tls:
+           mode: Terminate
+           certificateRefs:
+             - kind: Secret
+               name: <the exported leaf-Secret fact>
+   ```
+
+   Six properties are load-bearing:
+   - **One HTTPS listener in M11**, not a 443/80 pair. No cube-owned
+     application endpoints exist yet (D5b), so a plaintext listener
+     would serve nothing; adding one is a content change inside this
+     object when M12 route wiring needs it. That wiring's route
+     `parentRefs` attach to this object **by name**, which is why the
+     name (`gateway`) is a fixed platform fact rather than derived —
+     the one platform identity, shared with the stable Service
+     (different kinds, no collision): DNS resolves the Service,
+     routes attach to the `Gateway`, both under the same name.
+   - **The Secret and the `Gateway` share `gateway-system`**, so the
+     `certificateRefs` entry is same-namespace and **no
+     `ReferenceGrant` is required** — a cross-namespace certificate
+     reference would need one, and the unit order already puts the
+     Secrets there (unit 3).
+   - **Route attachment (`allowedRoutes`) is deliberately unstated**,
+     and absent from the shape above rather than frozen to a value: no
+     routes exist until M12, which owns route wiring (D10) and is the
+     gate that should choose the policy.
+   - **Readiness is deliberately not gated in M11**: the unit's
+     reconciliation wait covers the `HelmRelease` + source pair. A
+     `Programmed`-condition predicate for the `Gateway` is a **named
+     breakdown option**, not gate surface.
+   - **`gatewayClassName` references the chart-created class** — a
+     compiled default in the stable Service backend pointer's posture
+     ("Two pointers stay compiled", below); like the chart digest it
+     is gate-time evidence, re-pinned at the breakdown.
+   - **The cube's specifics are expressed in the routing contract D2
+     chose** (Gateway API), not in one implementation's chart knobs —
+     which is precisely the shape an implementation swap wants.
+
    Naming and namespaces, fixed here because the stable Service's
    `spec.externalName` references the release identity (and for chart
    tidiness — the CoreDNS block itself targets only the stable name,
    D6):
    - **Release identity is the M9 mechanism, not a new knob**:
      `releaseName` is the effective instance id, which for this
-     embedded singleton is the pack name, `traefik-gateway` (no
-     `spec.packs` override path exists for prerequisite packs in
-     M11). The pack's baked values also pin
+     embedded singleton is the pack name, `traefik-gateway`
+     (`spec.packs` is uninvolved and stays so — the override path for
+     a prerequisite pack is a `spec.prerequisites` entry, and an
+     override pack's own name is then its effective id). The pack's
+     baked values also pin
      `fullnameOverride: traefik-gateway` — tidiness, keeping the
      chart's resource names equal to the release identity. Since the
      stable-Service indirection (above), **DNS correctness no longer
@@ -143,9 +259,12 @@ discipline: the domain parses/emits its own content without importing
 pack contract loads and renders each embedded pack to exactly the
 objects the domain emits. `category: "gateway"` becomes the second
 *used* well-known spelling — identification only, never a code path,
-same as `"engine"`. This M11 ordered list is **not**
-`RenderPlan.Prerequisites`: that field stays per-pack `lifecycle: pre`
-data, frozen to the M12 bus; the list feeds it as prior art only.
+same as `"engine"`. This ordered list is **not**
+`RenderPlan.Prerequisites`, and being spec data does not make it so:
+`spec.prerequisites` is bootstrap-phase configuration — which units
+install ahead of the engine — while `RenderPlan.Prerequisites` stays
+per-pack `lifecycle: pre` data, frozen to the M12 bus; the list feeds
+it as prior art only. The two share a word, never a mechanism.
 
 ## The stable gateway Service (operator-directed indirection, 2026-08-27)
 
@@ -246,6 +365,128 @@ type GatewaySpec struct {
   labels); errors are config-domain `CUBE-CFG-*` document errors
   (exit 2).
 
+## Config surface (`spec.prerequisites`)
+
+The second surface this domain owns: an optional **top-level** typed
+sub-struct on `ConfigSpec` — a list — with its defaults and validation
+beside it in `api/config/v1alpha1`, like every other component surface
+(M11-A0, 2026-08-28).
+
+**Why top-level, owned here** (author's call at the follow-up gate):
+the list spans gateway packs **and** CA material, and it runs before
+the engine — so neither neighbouring home works. Under `spec.engine`
+it would re-couple prerequisites to the tier-2 engine vocabulary the
+M11 reviews explicitly fenced off ("prerequisites are not engine
+content"); under `spec.gateway` it would misplace the CA unit and
+every future non-gateway member. The gateway domain owns the
+prerequisite *model*, so its contract carries the surface — the same
+**owner-is-not-executor** split already shipped for `spec.engine`
+(the engine domain owns that surface; bootstrap executes it).
+
+```go
+// PrerequisiteSpec is one ordered entry of the bootstrap prerequisite list.
+type PrerequisiteSpec struct {
+    // Name identifies the unit. The compiled defaults' names are
+    // well-known: "gateway-platform", "gateway-api-crds", "ca-secrets",
+    // "traefik-gateway".
+    Name string `json:"name"`
+    // Ref locates a pack for a pack-shaped unit, in the internal/ref
+    // grammar (local tree/file and https today; oci/git at M12).
+    // Empty on a well-known cube-shipped pack name selects the
+    // embedded copy; forbidden on built-in units; required otherwise.
+    Ref string `json:"ref,omitempty"`
+}
+```
+
+**Two entry classes**, distinguished by name, not by a discriminator
+field:
+
+- **Built-in units** — `gateway-platform` and `ca-secrets`: cube-owned
+  content and behavior (domain-emitted objects, the CA handoff). There
+  is nothing to point a ref at, so `ref` is **forbidden**.
+- **Pack units** — `gateway-api-crds` and `traefik-gateway` with an
+  empty `ref` resolve to the **embedded cube-shipped copy**; **any
+  other name requires a `ref`**, resolved through `internal/ref` at the
+  edge. Default-to-embedded resolution happens **by name at the edge,
+  before `internal/ref` is consulted** — no new ref scheme and no
+  grammar extension; no `embedded://`-style scheme is introduced.
+
+**Merge semantics: replace-whole-list.** Absent or empty
+`spec.prerequisites` means the compiled defaults (the four, in order).
+A present, non-empty list **replaces them entirely** — what is written
+is exactly what runs, in list order. Rationale (author's call):
+per-entry override would need merge keys, positional insertion rules,
+and delete markers — three new concepts with no v0 consumer. One rule
+beats three, and the compiled defaults are documented above, so
+copy-and-edit is trivial. The consequence is stated plainly and is
+not a gap: **order and inter-unit dependency are the list author's**
+— the defaults' one hard dependency (`ca-secrets` needs
+`gateway-platform` before it, and both CRD consumers need their CRDs)
+is satisfied by the default order, and a list that reorders or drops
+a unit owns what follows. No dependency graph is introduced here;
+that is the same merge machinery rejected above. The consequence
+extends to the built-ins: a custom list that omits `gateway-platform`
+or `ca-secrets` genuinely omits them — a cube without the gateway
+fabric is **constructible by explicit choice**, and that is intended
+configurability, not a hole (absent `spec.prerequisites` still means
+the full defaults; D8's absent-means-installed posture is about
+absence, not about an explicit list). The emitted `Gateway` object
+follows the same rule, because it is **name-selected domain behavior**
+like the built-in units' content: a `traefik-gateway` entry pointing at
+someone else's pack still gets the object, and a list that renames the
+unit gets no listener — which the list author owns, exactly as with a
+dropped built-in.
+
+**Two pointers stay compiled: the stable Service's backend and the
+emitted `Gateway`'s class.** Two
+different acts share the word "swap", and only the first is
+configurable today: swapping list **content** (which units install,
+from where) is what `spec.prerequisites` exists for; swapping the
+**implementation the stable Service fronts** is not a list edit. The
+`gateway-platform` built-in emits the ExternalName with its backend
+reference at the **compiled default implementation's** effective id
+(`traefik-gateway.gateway-system.svc.cluster.local`). The list
+becoming config does not make that pointer config: an override list
+can replace or extend prerequisite *content*, but **swapping the
+gateway implementation** additionally requires re-pointing the stable
+Service's backend **and** the emitted `Gateway`'s
+`gatewayClassName` — two one-field changes in two cube-owned objects,
+deliberately not yet configurable: no v0 consumer exists, the config
+analogue of the second-implementation doctrine. Both activate at the
+gate that brings a real alternative implementation. The stability
+contract is
+unaffected either way: consumers target the stable name, which is
+exactly what makes the backend re-pointing a one-object change when
+that gate comes.
+
+**Validation** — document-layer, `CUBE-CFG-*` document errors (exit 2),
+no I/O ever:
+
+- `name` is required and **unique across the list**;
+- `ref` is **forbidden** on a built-in name;
+- `ref` is **required** on a name that is not well-known;
+- `ref`, when present, must be a **well-formed reference token**
+  (non-empty, no whitespace or control characters) — the same bound
+  `spec.packs.packRef` already lives under.
+
+The well-known names are string constants in `api/config/v1alpha1`
+(the `spec.engine.provider: flux` precedent) — `api/` states the
+vocabulary, never imports `internal/gateway`. **The boundary that
+split implies, stated for C2:** `Default()` in `api/config/v1alpha1`
+**materializes** the compiled default entries — they are data, and
+defaulting is where data lands; `internal/gateway` owns the model's
+**meaning** — which names are built-in, what each unit installs, what
+the list is for. That is documentation ownership, not code location,
+and the import direction is unaffected: `api/` never imports
+`internal/gateway`. And the document layer
+stops at *presence and shape*; past it, error ownership follows the
+existing catalogs: ref **resolution** failures are `internal/ref`'s
+(`CUBE-REF-*`); an override pack's **load/validate/render** failures
+are the pack contract's (`CUBE-PKG-*`); `CUBE-GWY-001/002` cover only
+the **embedded** cube-shipped assets' provenance and parse — the
+layering `docs/domains/pack.md` fixed for `packRef`, applied
+unchanged, and codes are never re-tagged across domains.
+
 ## Host reachability (D5c/D5d — cross-domain facts, recorded here)
 
 - **The kind driver defaults to high host ports** (operator override of
@@ -345,15 +586,24 @@ in-cluster names do not resolve is not a bootstrapped cube. CoreDNS
 reloads on config change; verification of the rewrite is a
 best-effort resolution probe, not a readiness gate.
 
+**Recorded as a breakdown item, deliberately not gate surface:** the
+splice's **failure taxonomy** — the marker-corruption cases, a foreign
+cube's block preserved byte-for-byte, multiple `.:53` server blocks,
+regex and Caddyfile escaping — is enumerated and reviewed **with its
+kubeadm-shaped fixtures in the C4 PR**, where a fixture makes each case
+concrete. This gate fixes the safety envelope; the case list is an
+implementation-review item under it.
+
 ## What the domain owns (pure) vs the edge (I/O)
 
 | `internal/gateway` (pure) | CLI/orchestrator edge (I/O) |
 |---|---|
+| the **`spec.prerequisites` surface** — entry shape, the compiled default list, the well-known-name vocabulary, the replace-whole-list rule: the *model*, never its assembly | |
 | embedded prerequisite packs (`gateway-api-crds`, `traefik-gateway`) + their provenance checks, and the `gateway-platform` unit's Namespace + stable `gateway` Service objects | SSA-applying every prerequisite via bootstrap machinery |
-| the rendered `HelmRelease` + OCI source pair (chart values derived from `spec.gateway` and the injected leaf-Secret name) | reading the live Corefile, splicing, optimistic-concurrency write-back |
-| the CoreDNS marker block for a domain | assembling the ordered prerequisite list and injecting it into bootstrap |
+| the rendered `HelmRelease` + OCI source pair (chart values **fully static** — nothing cube-derived) and, beside it, the cube-authored Gateway API `Gateway` carrying the wildcard listener and the leaf-Secret `certificateRefs` | reading the live Corefile, splicing, optimistic-concurrency write-back |
+| the CoreDNS marker block for a domain | assembling the ordered prerequisite list **from `spec.prerequisites`** (the compiled defaults when absent or empty) — resolving well-known names to the embedded copies by name, every other entry's pack through `internal/ref` — and injecting it into bootstrap |
 | readiness predicates for its declared CRs (`HelmRelease`/OCI source: `Ready` **and** `status.observedGeneration == metadata.generation` — the no-stale-success doctrine in this domain's vocabulary) | the CA-Secret read and the `ca` handoff (see `docs/domains/ca.md`) |
-| the two platform facts (namespace `gateway-system`, stable Service `gateway` — exported invariants; the mirroring of the substrate fact is of the construct — an exported fact injected as a string — and both names are deliberately implementation-neutral, unlike `flux-system`, so a gateway content swap never moves the namespace or the DNS anchor) | |
+| the platform facts — namespace `gateway-system`, stable Service `gateway`, the `Gateway` object `gateway` (one platform identity, two kinds), and the **CA and leaf Secret names** the edge injects into the `ca` domain (exported invariants; of the Secret names only the leaf has an emitted counterpart to tie it to — the `Gateway`'s `certificateRefs`, checked by the fact-ties test; the mirroring of the substrate fact is of the construct — an exported fact injected as a string — and the names are deliberately implementation-neutral, unlike `flux-system`, so a gateway content swap never moves the namespace or the DNS anchor) | |
 
 The predicates deliberately mirror the flux driver's freshness rule
 without importing `internal/engine` — the doctrine ("no stale success
@@ -372,8 +622,12 @@ final, meanings binding; extensions follow the normal per-domain rule):
 | `CUBE-GWY-003` | object handed to the readiness predicate outside the domain's declared coverage (the `CUBE-ENG-002` analogue) |
 | `CUBE-GWY-004` | live Corefile does not contain the structure the splice requires (unparseable / markers corrupted) — raised by the pure splice function, surfaced by the edge |
 
-Document-layer `spec.gateway` errors are `CUBE-CFG-*` (exit 2); codes
-are never re-tagged across domains.
+Document-layer `spec.gateway` and `spec.prerequisites` errors are
+`CUBE-CFG-*` (exit 2); an override ref that fails to resolve surfaces
+`internal/ref`'s own `CUBE-REF-*`, and an override pack that fails to
+load, validate, or render surfaces the pack contract's `CUBE-PKG-*` —
+`CUBE-GWY-001/002` cover only the embedded assets; codes are never
+re-tagged across domains.
 
 ## Testing
 
@@ -382,13 +636,38 @@ packs; the edge-level pack-contract dogfood test per embedded pack
 (load+render ≡ domain emission, deep equality of ordered lists — the
 substrate's discipline; for the thin-helm pack this deliberately locks
 the domain's hand-built CR pair, including the effective-id-derived
-`releaseName`, to every M9 field-level rule — loud by design); the
+`releaseName`, to every M9 field-level rule — loud by design).
+
+**The equality's scope is exact.** It covers the **pack-derived**
+objects — the CR pair — at `#Values` defaults, which is the pack's
+whole content now that no value is cube-derived; the `Gateway` object,
+like the platform Service, is cube-authored **beside** the pack and is
+never part of a pack render. Being fully static is what makes the
+equality trivially well-defined: a prerequisite pack has no
+`spec.packs` instance, so `pack.Load`+`Render` yields the `#Values`
+defaults and nothing else, leaving nothing for the hand-built pair to
+disagree about. **The cost, recorded honestly:** those static values
+live twice — CUE `#Values` defaults in `pack.cue`, Go literals in the
+hand-built pair — and this dogfood equality is the single deliberate
+guard on the duplication. It is loud by design, and §8's cuelang
+confinement (`cuelang.org/go` is `internal/pack`'s alone) is why the
+domain cannot simply parse its own `pack.cue` instead.
+
+Also hermetic, the
 **fact-ties-to-content test**: the exported namespace and
 service-name facts equal the `metadata.name` of the Namespace and
 Service objects the `gateway-platform` unit
-emits, and the Service's `spec.externalName` equals the effective
-id's FQDN (the substrate's namespace-tie test, mirrored and
-extended); table-driven
+emits, the Service's `spec.externalName` equals the effective
+id's FQDN, and the exported **leaf-Secret-name** fact equals the
+`certificateRefs` entry on the emitted `Gateway` (the substrate's
+namespace-tie test, mirrored and
+extended). A **`spec.prerequisites`-overridden pack takes the same
+conformance path** — loaded and rendered through the pack contract
+exactly as an embedded one, and it must satisfy the same pack rules to
+install at all; what it cannot have is the deep-equality half, which
+compares against *domain emission* and so is inherently about the
+embedded packs (an override has no domain-emitted counterpart to equal).
+Also table-driven
 splice tests over real
 kubeadm-shaped Corefile fixtures (absent block, present block,
 corrupted markers, unmarked content preserved byte-for-byte, the

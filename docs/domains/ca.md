@@ -87,6 +87,12 @@ beyond the mint call. Concretely:
   **explicitly depends on the `gateway-platform` unit** preceding it:
   its Secrets land in `gateway-system`, which must already be `Active`
   (`docs/domains/gateway.md`, the prerequisite model).
+- **The Secret names are the gateway domain's exported platform
+  facts**, injected at the edge into this domain's mint/ensure — never
+  invented here, since domains never import each other
+  (`docs/domains/gateway.md`, the platform facts). The gateway's
+  emitted `Gateway` object references the leaf Secret under that same
+  name, which is what ties the two halves together.
 - The CA **certificate** (public) is the only exported artifact — it
   is what trust distribution handles.
 - `down` destroying the cluster destroys the CA — correct for a local
