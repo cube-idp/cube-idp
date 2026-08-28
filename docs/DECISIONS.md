@@ -1028,3 +1028,96 @@ every future routing override MUST target it. Recorded limitation:
 ExternalName is DNS-only (no ClusterIP/endpoints); a future need to
 dial the stable name by IP revisits the mechanism at that gate, the
 name contract surviving either mechanism.
+
+**2026-08-28 — M11-A0: the prerequisite list becomes spec-level data
+with compiled defaults.** Follow-up gate on the merged M11 design
+(#180); epic https://github.com/cube-idp/cube-idp/issues/177, task
+https://github.com/cube-idp/cube-idp/issues/181. Post-merge operator
+decision (option A): the ordered prerequisite-unit list stops being a
+compiled-in list and becomes **configuration**, defaulted to exactly
+the merged gate's four units in their gated order
+(`gateway-platform` → `gateway-api-crds` → CA material →
+`traefik-gateway`). Each **pack** entry is a pack **ref** resolvable
+through `internal/ref` (local and https backends today; oci/git at
+M12). The cube-shipped content demotes in two shapes: the two
+embedded **packs** — the CRDs pack bytes, the traefik pack — demote
+to **"default resolution for cube-shipped packs"** (what a well-known
+pack name resolves to when the user writes nothing), and the
+**built-in units'** content — the platform objects, the CA handoff —
+demotes from *always-present* to *present-when-listed* name-selected
+domain behavior, never resolvable content. An override entry needs
+**no cube-shipped pack at all**. Nothing about the units themselves is reopened; the
+embedded assets keep their pins, sha256 provenance, and
+never-fetched-at-runtime discipline. The decisions:
+
+1. **Placement (author's call): a new top-level optional typed
+   sub-struct `spec.prerequisites` on `ConfigSpec`, its contract
+   owned by the gateway domain** (`docs/domains/gateway.md`), with
+   types, defaults, and validation in `api/config/v1alpha1` as usual.
+   Rationale: the list spans gateway packs **and** CA material and it
+   precedes the engine, so neither neighbour works — under
+   `spec.engine` it would re-couple prerequisites to the tier-2
+   engine vocabulary the M11 domain-lead reviews explicitly fenced
+   off ("prerequisites are not engine content"); under `spec.gateway`
+   it would misplace the CA unit and every future non-gateway member.
+   The gateway domain owns the prerequisite model, so its contract
+   carries the surface — the same **owner-is-not-executor** split
+   already shipped for `spec.engine` (the engine domain owns that
+   surface, bootstrap executes it). `api/` states the well-known unit
+   names as string constants (the `spec.engine.provider: flux`
+   precedent) and never imports `internal/gateway`.
+2. **Merge semantics (author's call): replace-whole-list.** Absent or
+   empty `spec.prerequisites` means the compiled defaults; a present,
+   non-empty list **replaces them entirely** — what is written is
+   exactly what runs, in list order. Rationale: per-entry override
+   would require merge keys, positional insertion rules, and delete
+   markers — three new concepts with no v0 consumer. One rule beats
+   three, and the compiled defaults are documented in the contract,
+   so copy-and-edit is trivial.
+3. **Entry shape and classes.** `PrerequisiteSpec{ Name, Ref }` (the
+   Go shape is fixed in `docs/domains/gateway.md`). Two classes,
+   distinguished by name rather than a discriminator field:
+   **built-in units** (`gateway-platform`, `ca-secrets` — cube-owned
+   content and behavior; `ref` **forbidden**) and **pack units**
+   (`gateway-api-crds`, `traefik-gateway` with an empty `ref` → the
+   embedded cube-shipped copy; any other name → `ref` **required**,
+   resolved through `internal/ref` at the edge). **No new ref scheme
+   or grammar is introduced**: default resolution to an embedded copy
+   happens **by name at the edge, before `internal/ref` is
+   consulted**. Validation is document-layer `CUBE-CFG-*` (exit 2) —
+   `name` required and unique across the list, `ref` forbidden on
+   built-ins, `ref` required on non-well-known names, and `ref` a
+   well-formed reference token — past which error ownership follows
+   the existing catalogs: ref resolution `CUBE-REF-*`, an override
+   pack's load/validate/render `CUBE-PKG-*`, and `CUBE-GWY-001/002`
+   only the embedded assets' provenance and parse — the layering
+   `docs/domains/pack.md` already fixed for `packRef`. **One
+   pointer stays compiled**: the stable Service's ExternalName
+   backend reference keeps the compiled default implementation's
+   effective id — swapping the gateway implementation via an override
+   list additionally needs that one-object re-pointing, which is
+   deliberately not yet configurable (no v0 consumer; the config
+   analogue of the second-implementation doctrine) and activates at
+   the gate that brings a real alternative implementation.
+4. **Binary size measured, raw embedding retained; gzip considered
+   and rejected.** The Gateway API CRDs asset costs **+1.17 MB raw on
+   a 65.2 MB binary — under 2%**, measured 2026-08-28, so the M11
+   gate's largest-embedded-asset note carries no size problem.
+   Gzip-compressing the embedded asset was **considered and
+   rejected**: it would complicate the pack-contract dogfood test's
+   deep equality over parsed objects (the bytes must be inflated
+   before either side can be compared) for no meaningful size win.
+   Recorded so it is not re-litigated.
+5. **Implementation follows approval, not this entry.** The M11
+   chunks C2 (gateway config surface + prerequisite assembly) and C4
+   (the edge's resolution and injection) implement this after the
+   operator approves this follow-up gate PR; no code lands first —
+   the M11 gated-ahead-of-code discipline is unchanged.
+
+Living contracts: `docs/domains/gateway.md` (the prerequisite model
+re-anchored to spec data + the new `Config surface
+(spec.prerequisites)` section, the demotion, the size/gzip record, and
+the override-pack testing clause), `docs/domains/bootstrap.md` (the
+M11 amendment's list source — bootstrap itself gains no config
+surface and still sees only object slices plus judges),
+`docs/ARCHITECTURE.md` §2/§3.
