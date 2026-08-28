@@ -49,16 +49,55 @@ func New() (*Provider, error) {
 	})}, nil
 }
 
+// hasForProvider reports whether the spec carries an explicit
+// spec.cluster.forProvider payload. Absent — nil, or non-nil with
+// zero-length Raw — is the only shape that takes the driver's
+// ingress-ready default; a present-but-empty `forProvider: {}` is an
+// explicit payload and is the documented minimal opt-out.
+func hasForProvider(s cluster.Spec) bool {
+	return s.ForProvider != nil && len(s.ForProvider.Raw) > 0
+}
+
 // decodeForProvider strictly decodes spec.cluster.forProvider as a
-// kind.x-k8s.io/v1alpha4 Cluster; absent or empty means the default.
+// kind.x-k8s.io/v1alpha4 Cluster. An absent payload decodes to the zero
+// Cluster, which is what makes ValidateSpec pure: nothing to decode
+// still passes.
 func decodeForProvider(s cluster.Spec) (*v1alpha4.Cluster, error) {
 	cfg := &v1alpha4.Cluster{}
-	if s.ForProvider != nil && len(s.ForProvider.Raw) > 0 {
+	if hasForProvider(s) {
 		if err := yaml.UnmarshalStrict(s.ForProvider.Raw, cfg); err != nil {
 			return nil, cluster.NewInvalidForProviderError(fmt.Errorf("decode forProvider as kind.x-k8s.io/v1alpha4 Cluster: %w", err))
 		}
 	}
 	return cfg, nil
+}
+
+// defaultClusterConfig is kind's documented ingress-ready shape: one
+// control-plane node labeled ingress-ready=true, publishing host
+// 8080/8443 to the node's 80/443 so an in-cluster gateway pinned to that
+// label is reachable from the host. Host ports sit above the privileged
+// range, so URLs carry the port.
+func defaultClusterConfig() *v1alpha4.Cluster {
+	return &v1alpha4.Cluster{
+		Nodes: []v1alpha4.Node{{
+			Role:   v1alpha4.ControlPlaneRole,
+			Labels: map[string]string{"ingress-ready": "true"},
+			ExtraPortMappings: []v1alpha4.PortMapping{
+				{ContainerPort: 80, HostPort: 8080, Protocol: v1alpha4.PortMappingProtocolTCP},
+				{ContainerPort: 443, HostPort: 8443, Protocol: v1alpha4.PortMappingProtocolTCP},
+			},
+		}},
+	}
+}
+
+// clusterConfig picks the create-time kind config for a spec: an
+// explicit forProvider payload wins wholesale — never merged with the
+// default — and no explicit payload takes the ingress-ready default.
+func clusterConfig(s cluster.Spec) (*v1alpha4.Cluster, error) {
+	if !hasForProvider(s) {
+		return defaultClusterConfig(), nil
+	}
+	return decodeForProvider(s)
 }
 
 // ValidateSpec implements the optional cluster.SpecValidator capability:
@@ -70,9 +109,10 @@ func (p *Provider) ValidateSpec(s cluster.Spec) error {
 
 // Ensure creates the cluster if absent. Idempotency is by name only —
 // an existing cluster is never diffed against the spec, so config
-// changes require delete + re-init.
+// changes require delete + re-init. The ingress-ready default therefore
+// shapes create only; it never touches the exists-then-no-op path.
 func (p *Provider) Ensure(ctx context.Context, s cluster.Spec) error {
-	cfg, err := decodeForProvider(s)
+	cfg, err := clusterConfig(s)
 	if err != nil {
 		return err
 	}
