@@ -92,7 +92,20 @@ beyond the mint call. Concretely:
   invented here, since domains never import each other
   (`docs/domains/gateway.md`, the platform facts). The gateway's
   emitted `Gateway` object references the leaf Secret under that same
-  name, which is what ties the two halves together.
+  name, which is what ties the two halves together. The expected
+  values are **`cube-idp-ca`** (the CA certificate and private key)
+  and **`gateway-tls`** (the wildcard serving certificate) —
+  deliberately implementation-neutral, per the gateway contract. Both
+  Secrets carry type `kubernetes.io/tls` with `tls.crt`/`tls.key`,
+  one shape and one decoder.
+- **The leaf is minted on every bootstrap; only the CA is reused.**
+  `spec.gateway.domain` is user-editable between bootstraps, so a reused
+  leaf could silently carry SANs that no longer cover the current
+  domain — minting every time is correct by construction. Trust is
+  unaffected (clients trust the CA), the gateway reloads, and the edge's
+  read stays what both contracts describe: the existing **CA** Secret,
+  singular. A later reader must not "fix" this into leaf reuse without
+  adding domain-match, expiry, and chain checks.
 - The CA **certificate** (public) is the only exported artifact — it
   is what trust distribution handles.
 - `down` destroying the cluster destroys the CA — correct for a local
@@ -185,6 +198,7 @@ final, meanings binding; extensions follow the normal per-domain rule):
 | `CUBE-CA-002` | existing CA Secret is unusable (unparseable or incomplete key material — remediation names deleting the Secret to re-mint) |
 | `CUBE-CA-003` | ledger file unreadable or malformed |
 | `CUBE-CA-004` | trust-store operation failed (missing/unusable OS tool, tool exit failure, or fingerprint/marker mismatch on `remove`) |
+| `CUBE-CA-005` | no implementation for the requested `spec.ca.provider` — the CLI edge's provider switch raises it (extension, M11) |
 
 Document-layer `spec.ca` errors are `CUBE-CFG-*` (exit 2); codes are
 never re-tagged across domains.
