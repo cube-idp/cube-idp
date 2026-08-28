@@ -265,7 +265,7 @@ Tag registry (a new component adds a row; nothing renumbers):
 | `BST` | bootstrap (SSA/wait/inventory machinery) | `internal/bootstrap` | active (M7, narrowed M10: codes `003..006` plus the reconciliation-wait codes `009`/`010` — contract text generalized at the M11 gate to any bootstrap-executed wait over declared objects, prerequisite or engine; `001`/`002`/`007`/`008` superseded by `ENG-003/004/006/005` — tombstoned, never reused) |
 | `ENG` | gitops engine (invariant substrate + tier-2 driver seam) | `internal/engine` | active (M10: codes `001..006`; `003..006` supersede the moved `BST-001/002/008/007` checks) |
 | `GWY` | gateway (trust-fabric prerequisite units, CoreDNS block) | `internal/gateway` | gated (M11 design gate 2026-08-27, ahead of code; package lands with the M11 breakdown) |
-| `CA` | certificate authority (mint/reuse, marker, trust ledger/verbs) | `internal/ca` | gated (M11 design gate 2026-08-27, ahead of code; package lands with the M11 breakdown) |
+| `CA` | certificate authority (mint/reuse, marker, trust ledger/verbs) | `internal/ca` | active (M11: codes `001`/`002`/`005`; `003`/`004` land with the ledger and the trust verbs) |
 | `PKG` | pack contract, values, render, identity + deps | `internal/pack` | active (M8; M9 helm packs reused it, adding no tag and no code — `020` retired) |
 | `REF` | reference resolution (grammar → tree/file) | `internal/ref` | active (M8) |
 | `REG` | registry / OCI **publish** side | `internal/registry` | reserved |
