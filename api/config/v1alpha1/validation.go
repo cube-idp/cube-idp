@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
@@ -34,16 +35,49 @@ func (c *Config) Validate() field.ErrorList {
 			string(c.Spec.Cluster.Provider), []string{string(ClusterProviderKind)}))
 	}
 	if c.Spec.Engine != nil {
-		if c.Spec.Engine.Provider != EngineProviderFlux {
-			errs = append(errs, field.NotSupported(
-				field.NewPath("spec", "engine", "provider"),
-				string(c.Spec.Engine.Provider), []string{string(EngineProviderFlux)}))
-		}
-		if c.Spec.Engine.Source != nil {
-			errs = append(errs, validateEngineSource(c.Spec.Engine.Source)...)
-		}
+		errs = append(errs, validateEngine(c.Spec.Engine)...)
+	}
+	if c.Spec.Gateway != nil {
+		errs = append(errs, validateGateway(c.Spec.Gateway)...)
+	}
+	if c.Spec.CA != nil && c.Spec.CA.Provider != CAProviderCube {
+		errs = append(errs, field.NotSupported(
+			field.NewPath("spec", "ca", "provider"),
+			string(c.Spec.CA.Provider), []string{string(CAProviderCube)}))
 	}
 	errs = append(errs, validatePacks(c.Spec.Packs)...)
+	errs = append(errs, validatePrerequisites(c.Spec.Prerequisites)...)
+	return errs
+}
+
+// validateGateway checks the gateway surface. An empty domain is not an
+// error: Default derives it from a usable cube identity, and an unusable one
+// is already reported at metadata.name.
+func validateGateway(g *GatewaySpec) field.ErrorList {
+	if g.Domain == "" {
+		return nil
+	}
+	if msgs := validation.IsDNS1123Subdomain(g.Domain); len(msgs) > 0 {
+		return field.ErrorList{field.Invalid(
+			field.NewPath("spec", "gateway", "domain"), g.Domain,
+			strings.Join(msgs, "; "))}
+	}
+	return nil
+}
+
+// validateEngine checks the engine surface: an admitted provider and, when
+// present, its sync source.
+func validateEngine(e *EngineSpec) field.ErrorList {
+	var errs field.ErrorList
+
+	if e.Provider != EngineProviderFlux {
+		errs = append(errs, field.NotSupported(
+			field.NewPath("spec", "engine", "provider"),
+			string(e.Provider), []string{string(EngineProviderFlux)}))
+	}
+	if e.Source != nil {
+		errs = append(errs, validateEngineSource(e.Source)...)
+	}
 	return errs
 }
 

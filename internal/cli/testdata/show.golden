@@ -2,4 +2,9 @@ apiVersion: cube-idp.dev/v1alpha1
 kind: Config
 metadata:
   name: dev
-spec: {}
+spec:
+  prerequisites:
+  - name: gateway-platform
+  - name: gateway-api-crds
+  - name: ca-secrets
+  - name: traefik-gateway
