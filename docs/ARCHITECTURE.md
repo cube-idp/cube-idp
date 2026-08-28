@@ -35,6 +35,12 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/c
                       │      │        │  → api/config; renders, never applies)
                       │      │        └──▶ internal/ref (M8 shared-infra leaf:
                       │      │               ref grammar → tree/file)
+                      │      ├──▶ internal/gateway (M11, gated ahead of code:
+                      │      │        trust-fabric prerequisite units + CoreDNS
+                      │      │        marker block + predicates → api/config)
+                      │      ├──▶ internal/ca (M11, gated ahead of code: CA
+                      │      │        mint/reuse, marker identity, trust
+                      │      │        ledger/verbs → api/config)
                       └──────┴──▶ internal/cubeerr ◀── (every package above)
 ```
 
@@ -43,7 +49,9 @@ Three package categories, and only these:
 1. **`api/` and `internal/cubeerr`** — pure leaves: they import nothing
    from `internal/` — ever.
 2. **Component domains** (`config`, `cluster`, `bootstrap`, `pack`,
-   `engine` — the last landed by M10, gated 2026-08-24) — one
+   `engine` — landed by M10, gated 2026-08-24 — and `gateway` + `ca` —
+   gated **ahead of code** by the M11 design gate, 2026-08-27; their
+   packages land via the M11 implementation breakdown) — one
    domain = one package = one `docs/domains/` file. **Domains never import
    each other.**
 3. **Shared-infrastructure leaves** — a closed, listed set:
@@ -127,6 +135,33 @@ Three package categories, and only these:
   which M10 narrows to engine-agnostic. Composition — driver selection,
   handing substrate content, wiring, and predicates to bootstrap — lives
   at the CLI/orchestrator edge. Living contract: `docs/domains/engine.md`.
+- `internal/gateway` (M11, gated ahead of code 2026-08-27) is the
+  **bootstrap-phase trust fabric**: it owns the **ordered list of
+  prerequisite units** bootstrap installs **ahead of the engine** —
+  in M11 the `gateway-platform` unit (the `gateway-system` Namespace
+  plus the **stable `gateway` Service** — the cube-owned indirection
+  in front of the implementation; internal DNS and future routing
+  target its name, never an implementation Service), the embedded
+  Gateway
+  API CRDs pack
+  (its own list member by design: a future engine may ship its own
+  Gateway API CRDs, and the list may vary per setup), the CA-material
+  inert unit, and the thin-helm
+  Traefik gateway pack reconciled by the substrate's helm-controller —
+  plus the CoreDNS marker rewrite block and the readiness predicates
+  for its declared CRs. Pure like the substrate: embedded content and
+  emitted objects/blocks/predicates; the edge applies (via bootstrap)
+  and performs the Corefile read-modify-write. Living contract:
+  `docs/domains/gateway.md`.
+- `internal/ca` (M11, gated ahead of code 2026-08-27) owns the cube's
+  certificate authority: stdlib-minted per-cube CA + wildcard leaf,
+  the mint-if-absent reuse contract (the edge reads the existing
+  Secret; custody is in-cluster only), the marker CN/OU identity, and
+  the operator trust surface (ledger + `trust` verbs). Its config
+  surface is provider-seam-**ready** — `spec.ca.provider`, `cube` the
+  only v0 value, immutable per cube (the engine precedent) — while the
+  Go seam waits for a real second
+  implementation. Living contract: `docs/domains/ca.md`.
 - Domains never import each other. Values cross domains by injection at
   the CLI/orchestrator edge, where factories and composition live. The
   one sanctioned exception is a listed shared-infrastructure leaf, above.
@@ -221,13 +256,15 @@ Tag registry (a new component adds a row; nothing renumbers):
 | `CLI` | cli / output | `internal/cli` | active (no codes yet — the edge renders and composes; it has not yet originated one) |
 | `CLU` | cluster provider | `internal/cluster` | active (M3) |
 | `KUB` | kube client access | `internal/kube` | active (M6) |
-| `BST` | bootstrap (SSA/wait/inventory machinery) | `internal/bootstrap` | active (M7, narrowed M10: codes `003..006` plus the phase-2/3 wait codes `009`/`010`; `001`/`002`/`007`/`008` superseded by `ENG-003/004/006/005` — tombstoned, never reused) |
+| `BST` | bootstrap (SSA/wait/inventory machinery) | `internal/bootstrap` | active (M7, narrowed M10: codes `003..006` plus the reconciliation-wait codes `009`/`010` — contract text generalized at the M11 gate to any bootstrap-executed wait over declared objects, prerequisite or engine; `001`/`002`/`007`/`008` superseded by `ENG-003/004/006/005` — tombstoned, never reused) |
 | `ENG` | gitops engine (invariant substrate + tier-2 driver seam) | `internal/engine` | active (M10: codes `001..006`; `003..006` supersede the moved `BST-001/002/008/007` checks) |
+| `GWY` | gateway (trust-fabric prerequisite units, CoreDNS block) | `internal/gateway` | gated (M11 design gate 2026-08-27, ahead of code; package lands with the M11 breakdown) |
+| `CA` | certificate authority (mint/reuse, marker, trust ledger/verbs) | `internal/ca` | gated (M11 design gate 2026-08-27, ahead of code; package lands with the M11 breakdown) |
 | `PKG` | pack contract, values, render, identity + deps | `internal/pack` | active (M8; M9 helm packs reused it, adding no tag and no code — `020` retired) |
 | `REF` | reference resolution (grammar → tree/file) | `internal/ref` | active (M8) |
 | `REG` | registry / OCI **publish** side | `internal/registry` | reserved |
 | `APP` | apply / SSA / inventory | `internal/apply` | superseded (M7 — SSA absorbed privately by `internal/bootstrap`; no standalone apply domain, see 2026-08-06) |
-| `TLS` | trust / certificates / CA | `internal/trust` | reserved |
+| `TLS` | trust & credential bindings (#142: `secretRef`, source verification, `lock`/`mirror`) | `internal/trust` | reserved (re-scoped at the M11 gate, 2026-08-27: certificates/CA moved to `CA`) |
 | `SPK` | spokes | `internal/spoke` | reserved |
 | `ORC` | orchestrator (phases) | `internal/orchestrator` | reserved |
 
@@ -355,6 +392,20 @@ with the same vocabulary. The embedded Flux asset **moved** to
 embedded *pack*: an import path and layout change, not a module-graph
 change; the pin discipline (version constant, recorded sha256, `make`
 regeneration, nothing fetched at runtime) transfers with it unchanged.
+
+**M11 (gateway + ca) adds no runtime dependency** — stated at its
+design gate (2026-08-27), the closed set closed by decision again. CA
+minting is stdlib `crypto/x509` + `crypto/ecdsa`; the gateway is
+content — an embedded Gateway API CRDs pack (substrate pin discipline:
+recorded provenance, `make` regeneration, never fetched at runtime; at
+1,170,953 bytes the largest embedded asset, verified at the gate) and a
+thin-helm CR pair emitted as `unstructured` (the M9 delegation shape).
+One adjacent record: the `trust` verbs shell out to the **operating
+system's own trust tooling** (`security` on macOS, p11-kit `trust` on
+Linux) — a platform-tool dependency, not a module, and distinct from
+the rejected `kubectl kustomize` exec because no in-process
+alternative to the OS trust store exists; a missing tool fails coded,
+and nothing is bundled.
 
 **M7 (bootstrap) adds no runtime dependency** — a deliberate, load-bearing
 outcome of two M7 decisions (2026-08-06). The Flux install manifests are

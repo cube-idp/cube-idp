@@ -786,3 +786,245 @@ formatter (`new_chart.go`) the M9 `--from-chart` work added. Living
 contracts: `docs/domains/engine.md` (new — both tiers),
 `docs/domains/bootstrap.md` (delimited M10 section),
 `docs/domains/pack.md` (M10 bullet).
+
+**2026-08-27 — M11 design gate: gateway + ca domains, the ordered
+prerequisite-unit list, the trust fabric.** Epic #177; scoping and the
+operator decision round are #178 (its closing comment is the decision
+record this entry anchors to, held 2026-08-25/27 over `M11-SCOPING.md`
+and its codex rounds). Founding rationale (operator, 2026-08-24,
+verbatim anchors): the gateway belongs at bootstrap because of "certs /
+hostnames / trust / internal dns redirect and name resolutions" — the
+identity fabric steady state, including the engine's own endpoints,
+presumes. **Gated ahead of code**: this diff is the approved design; no
+M11 code before the operator approves it and the implementation
+breakdown is aligned. The decisions:
+
+1. **Prerequisites are an ordered list of prerequisite packs**
+   (operator-reshaped from the scoped single hybrid) **that bootstrap
+   delivers through the tier-1 substrate before the engine.** The
+   Gateway API CRDs are their **own** prerequisite pack, never folded
+   into the gateway pack — a future engine may ship its own Gateway
+   API CRDs, so separation avoids conflict inside one pack and lets
+   the prerequisite list vary per setup; the list may hold more than
+   one prerequisite pack. The Traefik gateway pack is **thin-helm**
+   via the substrate's helm-controller (deliberate M9 dogfooding;
+   chart digest-pinned — OCI publication verified). The
+   **embedded-raw** variant is the documented air-gap fallback,
+   **deferred to the M12 bus gate** with the network-dependent-day-0
+   consequence recorded as its input. Each list member is applied and
+   waited ready before the next applies. Two precisions from the
+   domain-lead review round: "delivers through the tier-1 substrate"
+   is meant mechanically (day-0 bootstrap SSA ahead of tier 2, the
+   thin-helm member *reconciled* by the substrate's helm-controller;
+   nothing enters the watched source — the engine seam's source-path
+   sense of "through tier 1" is not meant), and the living contracts
+   use the general term **prerequisite units** — the pack-shaped
+   members are the prerequisite packs of this decision, and M11's
+   list carries two non-pack members: the leading **`gateway-platform`
+   unit** — the `gateway-system` Namespace plus the stable `gateway`
+   Service (no declared pack could carry them — vendored
+   bytes on one side, no payload on the other — and the platform
+   vocabulary must outlive
+   the CA provider choice) — and the **CA-material inert unit**. The
+   resulting M11 order, identical in every contract:
+   `gateway-platform` → `gateway-api-crds` → CA material →
+   `traefik-gateway`.
+2. **Traefik + Gateway API (standard channel) is the routing
+   contract — footprint verified at the gate, not asserted**
+   (2026-08-27): Traefik chart 41.3.0 (Traefik v3.7.11, OCI at
+   `ghcr.io/traefik/helm/traefik`) renders **8 objects with exactly
+   one Deployment** (controller = data plane) under the Gateway API
+   provider; Envoy Gateway runs a controller **plus** a separately
+   provisioned per-Gateway Envoy Deployment and its own config CRDs;
+   ingress-nginx is disqualified (retirement announced, best-effort
+   maintenance ended March 2026). Gateway API v1.6.1 standard channel
+   measured: 10 CRDs, 1,170,953 bytes — the scoping's 100–300 KB
+   estimate is corrected on the record (the Flux asset is 232 KB; this
+   becomes the largest embedded asset). Reproducible evidence: chart
+   OCI digest at verification time
+   `sha256:dcae2d586d7fbda6a08150eaeeca4132e9dd042d8a4d16ada287e8c40f6ff17a`
+   (`ghcr.io/traefik/helm/traefik:41.3.0`), rendered via `helm
+   template t oci://ghcr.io/traefik/helm/traefik --version 41.3.0
+   --set providers.kubernetesGateway.enabled=true --set
+   gateway.enabled=true`; CRD bundle from the upstream v1.6.1
+   `standard-install.yaml` release asset. Gate-time evidence, not the
+   final pins — the implementation re-pins under the embedded-pack
+   sha256 discipline at the breakdown. Ingress stays tolerated for content that
+   needs it. The implementation is pack content, not a seam.
+3. **Two new component domains** (operator-expanded from the scoped
+   one): **`internal/gateway`** (`CUBE-GWY-*`,
+   `docs/domains/gateway.md`, `spec.gateway`) and **`internal/ca`**
+   (`CUBE-CA-*`, `docs/domains/ca.md`, `spec.ca`). The ca contract is
+   written **provider-seam-READY**: the cube-owned stdlib CA is v0's
+   only implementation; **user-provided CA, cert-manager, and the
+   native Kubernetes pod-certificate signer (`PodCertificateRequest`,
+   KEP-4317 — verified GA in v1.37)** are named future backends whose
+   seam **activates at a later gate** under the second-implementation
+   doctrine — the config surface is designed now
+   (`spec.ca.provider`, `cube` default and only value, **immutable per
+   cube** like the engine provider: a provider change on a live cube
+   implies trust rotation, which D10 freezes; mechanical enforcement
+   lands with the second provider's gate), the Go
+   interface is not. The §5 `TLS` row is re-scoped to #142's
+   credential bindings (certificates/CA move to `CA`).
+4. **CA key custody: the in-cluster Secret only** — never the repo,
+   never a vault (#142 adjacency recorded); `down` destroying the
+   cluster destroys the CA, correct for a local cube. **Mint-if-absent
+   requires the named new edge behavior of reading the existing
+   Secret** (the edge's first cluster read outside a domain
+   operation, with the dynamic client it already constructs — the
+   exported bootstrap machinery has no read operation and grows
+   none); without it every re-bootstrap would rotate the CA. Long
+   v0 validity (CA ~10y, leaf ~2y), no rotation machinery. Every
+   minted CA carries a marker CN/OU.
+5. **Hostnames, trust distribution, ports, exposure:**
+   - **(a)** `spec.gateway.domain` is the configuration point; the
+     fallback default is `<metadata.name>.` + the **single
+     compile-time const `cube.test`** — recompilable by design (an
+     operator building their own binary rebases every default at one
+     constant; that intent is part of the decision).
+   - **(b)** Trust: a CLI **`trust install|list|remove` verb group**
+     backed by a **minimal ledger** — one file
+     (`~/.cube-idp/trust.yaml`; cube name + fingerprint + store +
+     date) — plus the marker CN/OU on every minted CA. Operator
+     directive: do **not** over-complicate; no orphan-scan machinery.
+     The gate sizes the verbs at user-scope stores only (macOS login
+     keychain via the OS `security` tool, Linux p11-kit user anchors),
+     sudo never invoked; the per-cube CA certificate syncs
+     idempotently to `~/.cube-idp/<cube>/ca.crt` on every bootstrap.
+     **Sanctioned descope if the effort balloons: emit-only CA +
+     ledger now, verbs deferred to the #142 gate.** **No `/etc/hosts`
+     entries in M11** — no gateway-owned application endpoints exist
+     in v0; route-host emission is M12's.
+   - **(c, operator override of the scoped recommendation)** The kind
+     driver defaults to **high host ports: `extraPortMappings`
+     8080→80 and 8443→443** (unprivileged; URLs carry ports) plus the
+     ingress-ready node label, whenever the user supplies no explicit
+     `forProvider`; **explicit `forProvider` wins**, never merged.
+     Recorded boundaries: the **driver cannot see `spec.gateway`**
+     (it receives `{Name, ForProvider}` only — the default is
+     unconditional, coherent with D8), and the
+     **create-before-bootstrap coupling** (mappings exist only at
+     create; a collision fails `create` loudly; a gateway on a
+     cluster created without them needs a recreate).
+   - **(d)** Exposure inside the cluster is kind's documented
+     **ingress-ready pattern**: labeled node, hostPorts 80/443,
+     `nodeSelector` — no LoadBalancer, no NodePort translation.
+6. **The CoreDNS marker-block read-modify-write is approved** — the
+   first sanctioned mutation of an object cube-idp does not own, with
+   the safety envelope recorded as binding: marker-delimited block,
+   idempotent splice preserving all unmarked content, **optimistic
+   concurrency** (update with the read `resourceVersion`, retry on
+   conflict — never a read-derived blind SSA write), the ConfigMap
+   **never inventory-recorded** (the inventory is a deletion seed; a
+   system object must never be seeded for deletion), and
+   **restore-not-delete published as an M13 `down` requirement**.
+7. *(numbering kept aligned with the scoping document's D-numbers;
+   trust distribution was folded into 5b by the operator round.)*
+8. **Absent `spec.gateway` means installed with defaults** — the
+   gateway is fundamental fabric (the engine precedent: not opt-in);
+   `spec.ca` likewise defaults to the `cube` provider. The loudest
+   default consequence is version-(c)-softened: default cubes bind
+   high ports 8080/8443, not 80/443.
+9. **Machinery: bootstrap's install sequencing generalizes to the
+   ordered prerequisite list** — per unit, record-before-apply
+   extends (re-record inventory, apply, wait ready before the next
+   member), with CRDs waited `Established` before dependents; raw
+   units use the kind-set wait, CR units the reconciliation wait
+   under injected predicates, and **inert units** (status-less
+   objects: the CA Secrets) declare no post-apply judge — apply
+   success is their readiness (the third flavor, named in domain-lead
+   review); **every re-record is cumulative through the final wiring
+   record**, so no unit ever drops from the deletion seed; one
+   `--timeout` budget total (the breakdown sanity-checks the 5m
+   default against the new in-cluster chart pull).
+   **`CUBE-BST-005/009/010` keep numbers and mechanics; their
+   contract text generalizes** from phase-/engine-flavored wording to
+   any bootstrap-executed kind-set / reconciliation wait over
+   declared objects. **Zero new Go runtime dependencies** — CA
+   minting is stdlib crypto; the gateway is content (§8 records the
+   adjacent platform-tool note: the trust verbs shell out to the OS's
+   own trust tooling, which has no in-process alternative — distinct
+   from the rejected `kubectl kustomize` exec).
+10. **Inheritance, recorded now.** M12 inherits: the prerequisite
+    list as `Prerequisites` prior art, the air-gap answer (embedded-
+    raw fallback), route-host discovery and host-resolution emission
+    (all route wiring targeting the stable `gateway` Service per the
+    addendum's stability contract),
+    the steady-state ownership migration question (one answer
+    with substrate self-management), and — until M13 settles
+    inventory replacement — the constraint of preserving inventory
+    continuity when prerequisite content varies. M13 inherits: CoreDNS
+    restore-not-delete, the trust-artifact/teardown semantics,
+    **inventory replacement semantics across re-bootstraps**
+    (union/prune/orphan — re-recording overwrites with a fresh list,
+    and a swapped gateway is exactly a renamed unit), and `down`'s
+    **namespace deletion ordering** (namespaced dependents before
+    their Namespace; the inventory sort is deterministic, not
+    dependency-aware).
+    **Frozen — must not be designed in M11**: the bus write path and
+    `RenderPlan.Prerequisites` semantics; certificate
+    rotation/ACME; custody backends beyond the in-cluster Secret;
+    multi-gateway and non-kind port topologies; OS resolver/hosts
+    mutation; a gateway driver seam; the ca provider interface.
+
+Living contracts: `docs/domains/gateway.md` + `docs/domains/ca.md`
+(new, gated ahead of code), `docs/domains/bootstrap.md` +
+`docs/domains/cluster.md` (delimited M11 amendments),
+`docs/domains/engine.md` + `docs/domains/pack.md` (touchpoint bullets;
+`category: "gateway"` becomes the second used well-known spelling),
+`docs/ARCHITECTURE.md` §2/§5/§8. The C4 model (`docs/architecture/`)
+renders the implemented binary and is trued at the M11 closeout, the
+M10 precedent — gated-ahead-of-code domains are deliberately not drawn
+before their packages exist.
+
+*Amended in the four domain-lead reviews (bootstrap, engine, pack,
+cluster — PR #180, 2026-08-27) before operator approval; the operator
+decisions above are untouched, their drafted mechanics corrected:* the
+`gateway-system` Namespace object became the list's leading unit (all
+three content-side leads found no member carried it); the CoreDNS
+target became derived from the release's effective id — because M9's
+`releaseName` mechanism
+yields the pack name, not the drafted `traefik` (pack lead) —
+*superseded the same day by the operator-directed indirection in the
+addendum below*; the
+thin-helm pair's two namespace decisions were stated (`pack.cue`
+`namespace: gateway-system`; edge stamps `metadata.namespace`
+post-render); the inert unit flavor, `spec.ca.provider` immutability,
+and cumulative re-records were made explicit; splice
+sequencing/failure semantics fixed (after gateway reconciliation;
+failure fails bootstrap); and the inventory replacement + namespace
+deletion-ordering questions were published to M13.
+
+*Addendum (2026-08-27, operator-directed, pre-approval):* reviewing
+the derived-target fix, the operator directed a stronger design — a
+**dedicated, predictable, cube-owned Service as an indirection layer
+in front of the gateway implementation**, so internal DNS and all
+future routing target one stable name and never care what
+implementation is behind it. Coordinator naming ruling: the Service is
+**`gateway`** (canonical FQDN
+`gateway.gateway-system.svc.cluster.local.`), not `gateway-engine` —
+*engine* stays reserved for the tier-2 gitops-engine vocabulary. The
+gate as amended: the `gateway-platform` unit carries the Service
+beside the Namespace (kind-set-ignored, effectively inert); the
+mechanism is **`ExternalName`** to the implementation Service's FQDN
+(`traefik-gateway.gateway-system.svc.cluster.local` in M11) — chosen
+over a selector-based Service because the indirection's job is DNS and
+the coupling surface is one cube-owned reference to the
+implementation *Service name*, not the chart's pod labels; **verified
+empirically at the gate** (kind node v1.35.0, CoreDNS v1.13.1: the
+spliced canonical block plus the ExternalName resolved
+`app.<domain>` to the CNAME chain **and** the backend ClusterIP's A
+record in one response — modern CoreDNS chases in-cluster CNAME
+targets; the historical gap is closed). The CoreDNS block now targets
+the stable name — both components platform **facts**, making the
+block effectively constant; the effective-id derivation demotes to an
+internal detail of the ExternalName's backend reference, and
+`fullnameOverride` remains as tidiness only, no longer a
+DNS-correctness belt. **Stability contract:** the Service name is a
+platform fact like the namespace facts — implementation swaps, pack
+renames, and chart drift never change it, and M12 route wiring and
+every future routing override MUST target it. Recorded limitation:
+ExternalName is DNS-only (no ClusterIP/endpoints); a future need to
+dial the stable name by IP revisits the mechanism at that gate, the
+name contract surviving either mechanism.

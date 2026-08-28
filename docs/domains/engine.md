@@ -436,12 +436,29 @@ asset move changes an import path, not the module graph.
 
 ## Contracts for future domains
 
-- **M11 (gateway)** — the trust-fabric prerequisite (ingress gateway:
-  certificates, hostnames, trust, internal DNS), delivered through
-  tier 1 ahead of ordinary packs per the founding vision. Inserted into
-  the queue at this gate; its own epic and design gate define it — no
-  gateway design here. Its delivery semantics feed the bus milestone's
-  `Prerequisites` handling.
+- **M11 (gateway + ca)** — gated 2026-08-27 (`docs/domains/gateway.md`,
+  `docs/domains/ca.md`): the trust fabric arrives as an **ordered list
+  of prerequisite units, bootstrap-installed ahead of tier 2** —
+  between the substrate's kind-set readiness and this domain's sync
+  wiring/bundle steps, reconciled by tier-1 controllers where
+  applicable — because the
+  identity fabric is what the engine's own endpoints presume. This is
+  the substrate's sanctioned day-0 SSA path, **not** this contract's
+  "delivered through tier 1" (the `EngineObjects` source path);
+  nothing enters the watched source, and no source need be
+  configured. Two
+  touchpoints on this contract: the substrate's helm-controller becomes
+  day-0 load-bearing for prerequisites (the gateway pack is thin-helm,
+  reconciled by tier 1 before any engine exists), and the Gateway API
+  CRDs are deliberately their **own** list member so the CRD conflict
+  with a future driver's `EngineObjects` bundle is never locked
+  inside one pack and stays independently negotiable at that driver's
+  gate — the prerequisite's copy still exists when such a bundle
+  arrives, so co-ownership/version alignment is that gate's question.
+  The seam itself is untouched —
+  prerequisites are not engine content and nothing about them crosses
+  `engine.Provider`. Their delivery semantics feed the bus milestone's
+  `Prerequisites` handling as prior art.
 - **M12 (bus)** writes rendered packs into the source the sync wiring
   established. Its delivery-target facts come from `spec.engine.source`
   via `api/` (the reservation above); the real `pre` semantics and the

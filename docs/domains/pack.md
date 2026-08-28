@@ -1192,11 +1192,20 @@ event.
   the M12 bus PR; this domain will import it and produce its types), never a
   domain-to-domain import. Any pack-contract change from a consumer
   milestone remains a design-gate event, never a drive-by edit.
-- **M11 (gateway)** is the trust-fabric prerequisite (ingress gateway:
-  certs, hostnames, trust, internal DNS) inserted at the M10 gate per the
-  founding vision; its own design gate defines it, and its delivery
-  semantics feed the bus milestone's `Prerequisites` handling. Nothing in
-  this contract changes for it ahead of that gate.
+- **M11 (gateway + ca)** — gated 2026-08-27 (`docs/domains/gateway.md`,
+  `docs/domains/ca.md`) — consumes this contract unchanged, the
+  substrate's way: its two prerequisite packs (the raw Gateway API CRDs
+  pack and the thin-helm Traefik gateway pack — the M9 delegation shape
+  dogfooded against the substrate's own helm-controller) are embedded
+  **conforming packs** whose domain does not import this one, each
+  enforced by the same edge-level `Load`+`Render` dogfood test.
+  `category: "gateway"` becomes the **second** *used* well-known
+  spelling — identification only, the discipline holds; no gateway
+  code path keys on it. Its delivery semantics feed the bus
+  milestone's `Prerequisites` handling as prior art — but the M11
+  ordered prerequisite list is **not** `RenderPlan.Prerequisites`:
+  that field stays per-pack `lifecycle: pre` data, carried not
+  implemented, frozen to the M12 bus.
 - **M12 (bus)** owns **delivery**: writing rendered content into the
   source the sync wiring established, and the real `pre` semantics — a separate delivery unit for
   `RenderPlan.Prerequisites`, its `dependsOn` edge, its health gate, and
