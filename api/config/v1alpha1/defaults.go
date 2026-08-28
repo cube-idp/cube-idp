@@ -14,9 +14,29 @@ func (c *Config) Default() {
 			defaultEngineSource(c.Spec.Engine.Source)
 		}
 	}
+	if c.Spec.Gateway != nil {
+		defaultGateway(c.Spec.Gateway, c.Name)
+	}
+	if c.Spec.CA != nil && c.Spec.CA.Provider == "" {
+		c.Spec.CA.Provider = CAProviderCube
+	}
+	if len(c.Spec.Prerequisites) == 0 {
+		c.Spec.Prerequisites = defaultPrerequisites()
+	}
 	for i := range c.Spec.Packs {
 		defaultPack(&c.Spec.Packs[i])
 	}
+}
+
+// defaultGateway derives the cube's base domain from the cube identity, and
+// leaves it empty when that identity is not usable — metadata.name's own
+// validation error is then the single truthful report, rather than a second
+// error about a domain the user never wrote.
+func defaultGateway(g *GatewaySpec, cubeName string) {
+	if g.Domain != "" || !nameRE.MatchString(cubeName) {
+		return
+	}
+	g.Domain = cubeName + "." + DefaultBaseDomain
 }
 
 // defaultPack fills a pack entry's optional fields. The effective ID is NOT
