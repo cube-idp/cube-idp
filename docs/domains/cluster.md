@@ -153,10 +153,17 @@ coded errors keep their usual exit semantics.
 
 Delimited amendment from the M11 design gate (`docs/DECISIONS.md`
 2026-08-27, decision 5c/5d — an operator override of the scoped
-recommendation); it folds into the living body at the M11 closeout, and
-no code implements it before the M11 breakdown is aligned.
+recommendation); it folds into the living body at the M11 closeout. The
+M11 breakdown is aligned and the default is implemented by M11-C3
+(https://github.com/cube-idp/cube-idp/issues/184).
 
-When the user supplies **no explicit `forProvider`**, the kind driver
+**No explicit `forProvider`** means an absent payload: `forProvider`
+nil, or present with a zero-length body. That — and only that — takes
+the default. A present-but-empty `forProvider: {}` is an explicit
+payload and is therefore the documented minimal opt-out: no port
+mappings, no label, an empty generated config.
+
+When the user supplies no explicit `forProvider`, the kind driver
 defaults the generated cluster config to kind's documented
 ingress-ready shape, on **high host ports** (above the conventional
 privileged-port range; URLs carry ports):
@@ -179,18 +186,18 @@ created without them needs a recreate); and a host-port collision — a
 second default cube — fails `create` loudly with the provider's coded
 error, explicit `forProvider` being the escape.
 
-Implementation-task notes, recorded for the M11 breakdown (domain-lead
-review, 2026-08-27): (a) pin the meaning of "no explicit
-`forProvider`" — the current decode treats nil-or-empty `Raw` as
-absent, which makes a present-but-empty `forProvider: {}` an explicit
-(default-suppressing) payload; state that as the documented opt-out
-rather than leaving it emergent from the decode branch; (b) pin the
-exact generated shape (one explicit control-plane node, both mappings
-TCP, label `ingress-ready: "true"`) and the three-branch driver
-contract tests (absent → defaults; `{}` → none; non-empty → unmerged);
-(c) note in the e2e guidance that `make test-e2e` now binds host
-8080/8443 and becomes environment-sensitive to occupied ports — an
-occupied-port failure is not a driver regression.
+The generated shape is pinned: exactly **one explicit node** of role
+`control-plane`, carrying the label `ingress-ready: "true"` and both
+mappings with protocol **TCP**. Node image and every other field stay
+kind's own defaults. The driver contract is tested on three branches —
+absent → the default shape; `{}` → nothing defaulted; non-empty → the
+decoded payload, unmerged.
+
+`make test-e2e` (kind driver conformance against real Docker) now
+creates a default-shaped cluster and therefore **binds host ports 8080
+and 8443**. The suite is environment-sensitive: a `create` failure
+caused by an occupied host port is an environment condition, not a
+driver regression.
 
 ## Contracts for future domains
 
@@ -199,6 +206,6 @@ edge (never by importing `internal/cluster`), or derive the merged context
 name from the API group constant (importing only leaf `api/`).
 
 The domain is lifecycle-complete as of M5 (epic #72); the M11 amendment
-above is the one gated addition pending its breakdown. Future cluster
-work (new providers, drift detection) starts as a new milestone against
-this contract.
+above is implemented by M11-C3 and folds into the living body at the
+M11 closeout. Future cluster work (new providers, drift detection)
+starts as a new milestone against this contract.
