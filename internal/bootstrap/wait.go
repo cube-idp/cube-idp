@@ -12,11 +12,22 @@ import (
 // pollInterval is how often WaitReady re-checks the bootstrap kind-set.
 const pollInterval = 2 * time.Second
 
+// defaultReadySubject names the substrate kind-set in CUBE-BST-005 messages —
+// the subject of every WaitReady call. Prerequisite units name themselves.
+const defaultReadySubject = "bootstrap resources"
+
 // WaitReady blocks until every object in the bootstrap kind-set reports ready —
 // CRD Established, Deployment/StatefulSet available, Job complete, Namespace
 // Active — or ctx is done. Objects outside the kind-set are skipped: their
 // readiness (engine CRs) is the M10 seam's concern, not bootstrap's.
 func (a *Applier) WaitReady(ctx context.Context, objs []*unstructured.Unstructured) error {
+	return a.waitReady(ctx, objs, defaultReadySubject)
+}
+
+// waitReady is WaitReady with the timeout message's subject supplied by the
+// caller, so a prerequisite unit's timeout names the unit instead of the
+// substrate.
+func (a *Applier) waitReady(ctx context.Context, objs []*unstructured.Unstructured, subject string) error {
 	pending := filterKindSet(objs)
 	err := wait.PollUntilContextCancel(ctx, a.interval, true, func(ctx context.Context) (bool, error) {
 		remaining, err := a.checkReady(ctx, pending)
@@ -27,18 +38,21 @@ func (a *Applier) WaitReady(ctx context.Context, objs []*unstructured.Unstructur
 		return len(pending) == 0, nil
 	})
 	if err != nil {
-		return newWaitError(a.invNS, pending, err)
+		return newWaitError(subject, a.invNS, pending, err)
 	}
 	return nil
 }
 
 // checkReady runs one readiness pass and returns the objects not yet ready.
+// Errors it returns are terminal and already coded: a permanent read failure
+// is CUBE-BST-010 at the failure point, and a cause carrying its own code
+// (e.g. a CUBE-BST-003 mapping miss) keeps it.
 func (a *Applier) checkReady(ctx context.Context, objs []*unstructured.Unstructured) ([]*unstructured.Unstructured, error) {
 	var pending []*unstructured.Unstructured
 	for _, obj := range objs {
 		ready, err := a.ready(ctx, obj)
 		if err != nil {
-			return nil, err
+			return nil, terminalPollError(obj, err)
 		}
 		if !ready {
 			pending = append(pending, obj)

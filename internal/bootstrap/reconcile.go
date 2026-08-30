@@ -2,15 +2,17 @@ package bootstrap
 
 import (
 	"context"
-	"errors"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/wait"
-
-	"github.com/cube-idp/cube-idp/internal/cubeerr"
 )
+
+// defaultReconciledSubject names the declared object set in CUBE-BST-009
+// messages — the subject of every WaitReconciled call. Prerequisite units
+// name themselves.
+const defaultReconciledSubject = "declared resources"
 
 // ReconciledFunc judges one polled object's live state: reconciled, not yet
 // (with a human-readable reason that feeds the CUBE-BST-009 timeout
@@ -27,7 +29,8 @@ type ReconciledFunc func(obj *unstructured.Unstructured) (bool, string, error)
 // engine and no separate bundle exists).
 type EngineWait struct {
 	// Reconciled judges the polled objects — the applied sync wiring
-	// (phase 2) and the declared engine objects (phase 3).
+	// (phase 2) and the declared engine objects (phase 3). Prerequisite
+	// units carry their own judgment, injected per unit.
 	Reconciled ReconciledFunc
 	// EngineObjects is the engine's declared install bundle — content
 	// bootstrap did NOT apply (it arrives through the tier-1 source),
@@ -51,6 +54,13 @@ type pendingObject struct {
 // (CUBE-BST-010, or the judgment's own code) and are never retagged as a
 // timeout; only a deadline with objects still pending is CUBE-BST-009.
 func (a *Applier) WaitReconciled(ctx context.Context, objs []*unstructured.Unstructured, judge ReconciledFunc) error {
+	return a.waitReconciled(ctx, objs, judge, defaultReconciledSubject)
+}
+
+// waitReconciled is WaitReconciled with the timeout message's subject supplied
+// by the caller, so a prerequisite unit's timeout names the unit instead of the
+// declared set.
+func (a *Applier) waitReconciled(ctx context.Context, objs []*unstructured.Unstructured, judge ReconciledFunc, subject string) error {
 	if judge == nil || len(objs) == 0 {
 		return nil
 	}
@@ -67,7 +77,7 @@ func (a *Applier) WaitReconciled(ctx context.Context, objs []*unstructured.Unstr
 		return len(pending) == 0, nil
 	})
 	if err != nil {
-		return newReconcileWaitError(pending, err)
+		return newReconcileWaitError(subject, pending, err)
 	}
 	return nil
 }
@@ -83,18 +93,14 @@ func (a *Applier) checkReconciled(ctx context.Context, objs []pendingObject, jud
 		if err != nil {
 			reason, transient := transientPollReason(err)
 			if !transient {
-				return nil, newPollError(p.obj, err)
+				return nil, terminalPollError(p.obj, err)
 			}
 			pending = append(pending, pendingObject{obj: p.obj, reason: reason})
 			continue
 		}
 		ok, reason, err := judge(live)
 		if err != nil {
-			var coded *cubeerr.Coded
-			if errors.As(err, &coded) {
-				return nil, err
-			}
-			return nil, newPollError(p.obj, err)
+			return nil, terminalPollError(p.obj, err)
 		}
 		if !ok {
 			pending = append(pending, pendingObject{obj: p.obj, reason: reason})
