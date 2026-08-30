@@ -40,6 +40,7 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 		t.Skip("no container runtime reachable (docker/podman) — skipping e2e")
 	}
 	const name = "cube-bootstrap-e2e"
+	const domain = name + "." + v1alpha1.DefaultBaseDomain
 	ctx := t.Context()
 
 	p, err := kind.New()
@@ -77,14 +78,21 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SourceObjects: %v", err)
 	}
-	installCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+	// The gateway prerequisites make the run network-dependent inside the
+	// cluster — the helm-controller pulls the pinned chart — so the budget is
+	// above the CLI's own 10m default rather than the engine-only 6m.
+	installCtx, cancel := context.WithTimeout(ctx, 12*time.Minute)
 	defer cancel()
 	// Phase 2 runs with the driver's real judgment: InstallEngine returns only
-	// once the wiring reconciles Ready and fresh against the live cluster.
+	// once the wiring reconciles Ready and fresh against the live cluster. The
+	// prerequisite units install between the substrate and the wiring, each
+	// waiting the way it declares.
+	units := gatewayPrerequisites(t, name, domain)
 	install := bootstrap.EngineInstall{
-		Substrate: substrateObjs,
-		Wiring:    wiringObjs,
-		Wait:      bootstrap.EngineWait{Reconciled: drv.Reconciled},
+		Substrate:     substrateObjs,
+		Prerequisites: units,
+		Wiring:        wiringObjs,
+		Wait:          bootstrap.EngineWait{Reconciled: drv.Reconciled},
 	}
 	if err := applier.InstallEngine(installCtx, install); err != nil {
 		t.Fatalf("InstallEngine: %v", err)
@@ -103,6 +111,12 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 			t.Errorf("%s not applied: %v", cr.what, err)
 		}
 	}
+
+	assertGatewayFabric(ctx, t, dyn, domain)
+	assertInventoryCovers(ctx, t, dyn)
+	// The splice runs where the edge runs it: after InstallEngine returned,
+	// which is after the gateway unit reconciled.
+	spliceCoreDNSHere(ctx, t, dyn, name, domain)
 
 	// Round-trip: source-controller fetches the public repo → GitRepository Ready.
 	readyCtx, rcancel := context.WithTimeout(ctx, 3*time.Minute)

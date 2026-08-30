@@ -19,7 +19,7 @@ import (
 // same-namespace certificateRefs entry needs no ReferenceGrant.
 func GatewayObject(domain string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "gateway.networking.k8s.io/v1",
+		"apiVersion": GatewayAPIVersion,
 		"kind":       "Gateway",
 		"metadata":   map[string]any{"name": Name, "namespace": Namespace},
 		"spec": map[string]any{

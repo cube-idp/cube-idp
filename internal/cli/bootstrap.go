@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 
 	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
 	"github.com/cube-idp/cube-idp/internal/bootstrap"
+	"github.com/cube-idp/cube-idp/internal/ca"
 	"github.com/cube-idp/cube-idp/internal/cluster"
 	"github.com/cube-idp/cube-idp/internal/config"
 	"github.com/cube-idp/cube-idp/internal/engine"
@@ -38,16 +41,45 @@ func defaultEngine(p v1alpha1.EngineProvider) (engine.Provider, error) {
 	}
 }
 
-// defaultBootstrapTimeout bounds how long bootstrap waits for the kind-set to
-// become ready (images pull, controllers start) before giving up.
-const defaultBootstrapTimeout = 5 * time.Minute
+// bootstrapDeps are the bootstrap verb's injected seams: the clock and the
+// entropy the CA mint is a function of, and the home lookup the operator
+// artifact path resolves from. Injected for trustDeps' reason — a test passes
+// a value instead of mutating package state, and nothing in a test reaches
+// the real clock or the real $HOME.
+type bootstrapDeps struct {
+	now     func() time.Time
+	rand    io.Reader
+	homeDir func() (string, error)
+}
 
-func newBootstrapCmd(newProvisioner provisionerFactory, newEngine engineFactory) *cobra.Command {
+// defaultBootstrapDeps is the production composition of the bootstrap verb.
+func defaultBootstrapDeps() bootstrapDeps {
+	return bootstrapDeps{now: time.Now, rand: rand.Reader, homeDir: os.UserHomeDir}
+}
+
+// defaultBootstrapTimeout bounds the whole install as one budget: the
+// substrate's kind-set wait, every prerequisite unit's wait, the sync wiring
+// and the engine reconciliation.
+//
+// It is 10 minutes rather than the 5 an engine-only bootstrap needed because
+// M11 makes the run network-dependent inside the cluster: the helm-controller
+// pulls the pinned gateway chart from its OCI registry during the gateway
+// unit's wait, on a cluster still warming its images.
+const defaultBootstrapTimeout = 10 * time.Minute
+
+// edgeIOTimeout bounds each of the edge's own two cluster round-trips — the
+// CA Secret read and the CoreDNS read-modify-write. They are not bootstrap
+// phases, so they are deliberately not taken from --timeout, which is the
+// readiness budget: a round-trip inheriting a nearly-spent budget would turn
+// a successful bootstrap into a failed one at its last step.
+const edgeIOTimeout = 30 * time.Second
+
+func newBootstrapCmd(newProvisioner provisionerFactory, newEngine engineFactory, deps bootstrapDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "Install the gitops engine (Flux) into the cluster and wait for it to be ready",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runBootstrap(cmd, newProvisioner, newEngine)
+			return runBootstrap(cmd, newProvisioner, newEngine, deps)
 		},
 	}
 	cmd.Flags().String("kubeconfig", "",
@@ -59,13 +91,24 @@ func newBootstrapCmd(newProvisioner provisionerFactory, newEngine engineFactory)
 	return cmd
 }
 
+// bootstrapOutcome is what one run composed and established, carried from
+// composition through the edge's post-install steps into the success report.
+type bootstrapOutcome struct {
+	cfg     *v1alpha1.Config
+	domain  string
+	ensured ca.EnsureResult
+}
+
 // runBootstrap composes the bootstrap at the CLI edge: it asserts the
 // requested engine version against the substrate pin, builds the kube clients
 // (construction confined to internal/kube) and injects them into a bootstrap
-// Applier, then hands it the substrate's install objects, the engine driver's
-// sync wiring, and the driver's reconciliation judgment. bootstrap stays
-// kube-free and engine-free — the edge injects content and judgment alike.
-func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory, newEngine engineFactory) error {
+// Applier, ensures the cube's CA material, resolves spec.prerequisites into
+// the ordered units, and hands bootstrap the substrate's install objects, the
+// units, the engine driver's sync wiring and its reconciliation judgment.
+// bootstrap stays kube-free and engine-free — the edge injects content and
+// judgment alike, and performs the two cluster round-trips that are nobody's
+// domain operation.
+func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory, newEngine engineFactory, deps bootstrapDeps) error {
 	path, _ := cmd.Flags().GetString("config")
 	kubeconfigPath, _ := cmd.Flags().GetString("kubeconfig")
 	contextName, _ := cmd.Flags().GetString("kubeconfig-context-name")
@@ -81,31 +124,61 @@ func runBootstrap(cmd *cobra.Command, newProvisioner provisionerFactory, newEngi
 	if err := substrate.CheckVersion(engineVersion(cfg.Spec.Engine)); err != nil {
 		return err
 	}
-	substrateObjs, err := substrate.Objects()
-	if err != nil {
-		return err
-	}
+	// The engine's content is composed before the cluster is reached: a
+	// driver failure is cheap and stays ahead of the first I/O.
 	wiringObjs, engineWait, err := engineInputs(cmd.Context(), newEngine, cfg.Spec.Engine)
 	if err != nil {
 		return err
 	}
-	applier, err := bootstrapApplier(cmd.Context(), cfg, newProvisioner, kubeconfigPath, contextName)
+	applier, client, err := bootstrapApplier(cmd.Context(), cfg, newProvisioner, kubeconfigPath, contextName)
 	if err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
-	defer cancel()
-	install := bootstrap.EngineInstall{
-		Substrate: substrateObjs,
-		Wiring:    wiringObjs,
-		Wait:      engineWait,
-	}
-	if err := applier.InstallEngine(ctx, install); err != nil {
+	out := bootstrapOutcome{cfg: cfg, domain: gatewayDomain(cfg)}
+	out.ensured, err = ensureCAMaterial(cmd.Context(), client.Dynamic(), cfg, out.domain, deps)
+	if err != nil {
 		return err
 	}
-	renderBootstrapResult(cmd, cfg.Spec.Engine)
-	return nil
+	install, err := engineInstall(cmd.Context(), out, wiringObjs, engineWait)
+	if err != nil {
+		return err
+	}
+	if err := runInstall(cmd.Context(), applier, install, timeout); err != nil {
+		return err
+	}
+	return finishBootstrap(cmd, spliceCubeDomain(client.Dynamic()), out, deps)
+}
+
+// engineInstall composes everything one install applies: the engine
+// substrate, the ordered prerequisite units the list resolved to, and the
+// driver's sync wiring with its reconciliation inputs.
+func engineInstall(ctx context.Context, out bootstrapOutcome, wiring []*unstructured.Unstructured, wait bootstrap.EngineWait) (bootstrap.EngineInstall, error) {
+	substrateObjs, err := substrate.Objects()
+	if err != nil {
+		return bootstrap.EngineInstall{}, err
+	}
+	units, err := prerequisiteUnits(ctx, prereqInputs{
+		units:   out.cfg.Spec.Prerequisites,
+		domain:  out.domain,
+		ensured: out.ensured,
+	})
+	if err != nil {
+		return bootstrap.EngineInstall{}, err
+	}
+	return bootstrap.EngineInstall{
+		Substrate:     substrateObjs,
+		Prerequisites: units,
+		Wiring:        wiring,
+		Wait:          wait,
+	}, nil
+}
+
+// runInstall runs the install under the CLI's --timeout as one total
+// readiness budget, which is the contract bootstrap declares for its phases.
+func runInstall(ctx context.Context, applier *bootstrap.Applier, install bootstrap.EngineInstall, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return applier.InstallEngine(ctx, install)
 }
 
 // engineInputs composes the engine driver's contribution to bootstrap: the
@@ -141,25 +214,27 @@ func engineVersion(engine *v1alpha1.EngineSpec) string {
 	return engine.Version
 }
 
-// renderBootstrapResult reports what bootstrap installed: Flux, and the sync
-// source when one is configured.
-func renderBootstrapResult(cmd *cobra.Command, engine *v1alpha1.EngineSpec) {
-	out := cmd.OutOrStdout()
-	if engine != nil && engine.Source != nil && engine.Source.URL != "" {
-		_, _ = fmt.Fprintf(out, "flux %s installed — syncing from %s (%s)\n",
-			substrate.Version, engine.Source.URL, engine.Source.Kind)
-		return
+// gatewayDomain resolves the cube's base domain. An absent spec.gateway means
+// the fabric installed with defaults, and api's Default() fills only a
+// sub-struct the user actually wrote — the engineInputs precedent, applied to
+// the same absence. The base domain is api's constant, never respelled here.
+func gatewayDomain(cfg *v1alpha1.Config) string {
+	if cfg.Spec.Gateway != nil && cfg.Spec.Gateway.Domain != "" {
+		return cfg.Spec.Gateway.Domain
 	}
-	_, _ = fmt.Fprintf(out, "flux %s installed\n", substrate.Version)
+	return cfg.Name + "." + v1alpha1.DefaultBaseDomain
 }
 
 // bootstrapApplier resolves the cube's kubeconfig target and context via the
 // cluster report, reads the bytes at the edge, and injects the constructed
-// client-go interfaces (dynamic client + REST mapper) into a bootstrap Applier.
-func bootstrapApplier(ctx context.Context, cfg *v1alpha1.Config, newProvisioner provisionerFactory, kubeconfigPath, contextName string) (*bootstrap.Applier, error) {
+// client-go interfaces (dynamic client + REST mapper) into a bootstrap
+// Applier. The client is returned beside it: the edge's own two cluster
+// round-trips — the CA Secret read and the CoreDNS rewrite — are not
+// bootstrap operations and go through the same client.
+func bootstrapApplier(ctx context.Context, cfg *v1alpha1.Config, newProvisioner provisionerFactory, kubeconfigPath, contextName string) (*bootstrap.Applier, *kube.Client, error) {
 	p, err := newProvisioner(cfg.Spec.Cluster.Provider)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	rep, err := cluster.Status(ctx, p, cluster.StatusOptions{
 		Name:           cfg.Name,
@@ -167,17 +242,17 @@ func bootstrapApplier(ctx context.Context, cfg *v1alpha1.Config, newProvisioner 
 		KubeconfigPath: kubeconfigPath,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	raw, err := os.ReadFile(rep.KubeconfigPath)
 	if err != nil {
-		return nil, cluster.NewKubeconfigFailedError(fmt.Errorf("read kubeconfig %s: %w", rep.KubeconfigPath, err))
+		return nil, nil, cluster.NewKubeconfigFailedError(fmt.Errorf("read kubeconfig %s: %w", rep.KubeconfigPath, err))
 	}
 	client, err := kube.New(raw, rep.ContextName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Inventory placement is injected at the edge: the invariant substrate
 	// namespace fact, owned by the substrate home.
-	return bootstrap.NewApplier(client.Dynamic(), client.RESTMapper(), substrate.Namespace), nil
+	return bootstrap.NewApplier(client.Dynamic(), client.RESTMapper(), substrate.Namespace), client, nil
 }
