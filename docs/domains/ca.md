@@ -177,6 +177,30 @@ is explicitly conditional on p11-kit's user anchor store being
 present — where it is not, the emit-only artifacts plus printed
 instructions *are* the v0 behavior. Nothing is ever bundled.
 
+**Linux, precisely.** Mainstream distributions configure no
+user-writable p11-kit anchor store, so a non-root `trust anchor`
+ordinarily fails outright — and the anchors `curl`, OpenSSL and Go
+binaries actually read (`/etc/ssl/certs`, `/etc/pki`) are regenerated
+by root-only tools a user-scope p11-kit token would not feed anyway.
+Emit-only artifacts plus printed per-distro instructions are therefore
+the **ordinary** Linux experience, not the exception, and `CUBE-CA-004`
+carries those instructions as its remediation. This narrows which
+branch of the design above is common; it does not change the design.
+
+**Marker verification is asymmetric between the stores, deliberately.**
+macOS verifies the certificate it pulls *out of the keychain*, so the
+check proves the store holds this cube's CA. p11-kit's removal takes a
+**file** and offers no way to read an anchor back, so Linux verifies
+the local `~/.cube-idp/<cube-name>/ca.crt` instead: that proves the
+artifact is this cube's CA, not that the store held that exact
+certificate. A removal with no local artifact to verify against is
+refused (`CUBE-CA-004`) rather than run unverified, and `remove`
+likewise refuses when the ledger records a store other than the running
+machine's — the `store` field exists to make that decidable. Stale-entry
+detection is store-dependent for the same reason: the keychain search
+makes it possible on macOS, but p11-kit offers no read-back, so on Linux
+a removal of an already-absent anchor reports as an ordinary removal.
+
 **Sanctioned descope** (operator, pre-approved): if the verbs balloon
 during implementation, M11 ships **emit-only CA + ledger** (the
 `ca.crt` sync, the ledger file, per-OS trust instructions printed on

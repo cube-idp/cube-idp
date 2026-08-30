@@ -23,23 +23,24 @@ type trustDeps struct {
 	homeDir func() (string, error)
 	now     func() time.Time
 	goos    string
+	run     ca.Runner
 }
 
 // defaultTrustDeps is the production composition of the trust group.
 func defaultTrustDeps() trustDeps {
-	return trustDeps{homeDir: os.UserHomeDir, now: time.Now, goos: runtime.GOOS}
+	return trustDeps{homeDir: os.UserHomeDir, now: time.Now, goos: runtime.GOOS, run: defaultRunner}
 }
 
 func newTrustCmd(deps trustDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trust",
-		Short: "Inspect the CA certificates cube-idp recorded in OS trust stores",
+		Short: "Manage the CA certificates cube-idp installs into OS trust stores",
 		// The group repeats the root's rendering contract so a test that
 		// runs the subtree standalone renders exactly as production does.
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	cmd.AddCommand(newTrustListCmd(deps))
+	cmd.AddCommand(newTrustListCmd(deps), newTrustInstallCmd(deps), newTrustRemoveCmd(deps))
 	return cmd
 }
 
