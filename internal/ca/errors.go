@@ -11,10 +11,11 @@ import (
 // The ca domain owns the CUBE-CA-* code range. Codes are declared here
 // and nowhere else; the cross-domain tag registry lives in
 // docs/ARCHITECTURE.md. Only the codes this package raises are declared:
-// CUBE-CA-003 (ledger) and CUBE-CA-004 (trust store) stay reserved by the
-// contract and land beside the content that raises them. Constructors
-// are unexported except NewUnsupportedProviderError, which the CLI edge's
-// provider switch raises.
+// CUBE-CA-004 (trust store) stays reserved by the contract and lands
+// beside the content that raises it. Constructors are unexported except
+// where the CLI edge raises the code itself — the provider switch
+// (NewUnsupportedProviderError) and the ledger read
+// (NewLedgerUnreadableError), since the domain never touches files.
 const (
 	// CodeMint reports a failure to mint the CA or its leaf (wrapped
 	// stdlib cause).
@@ -22,6 +23,9 @@ const (
 	// CodeUnusableMaterial reports existing CA Secret material that is
 	// unparseable or incomplete.
 	CodeUnusableMaterial cubeerr.Code = "CUBE-CA-002"
+	// CodeLedger reports a trust ledger that cannot be read or does not
+	// parse.
+	CodeLedger cubeerr.Code = "CUBE-CA-003"
 	// CodeUnsupportedProvider reports a spec.ca.provider no
 	// implementation provides. It extends the gate's initial catalog
 	// under the normal per-domain rule (docs/domains/ca.md).
@@ -68,6 +72,30 @@ func newUnusableSecretError(obj *unstructured.Unstructured, detail string, cause
 		fmt.Sprintf("existing CA secret %s/%s is unusable: %s", namespace, name, detail),
 		fmt.Sprintf("delete secret %s in namespace %s %s", name, namespace, remediateDelete),
 		cause)
+}
+
+// remediateLedger is the shared CUBE-CA-003 remediation. Deleting the
+// ledger is safe in the only sense that matters: it is a record of
+// installations, so losing it changes nothing in any trust store.
+const remediateLedger = "fix or delete the trust ledger (~/.cube-idp/trust.yaml); " +
+	"deleting it loses the record of installed CAs but removes nothing from your trust store"
+
+// newLedgerError reports a trust ledger the domain cannot decode. The
+// detail completes "the trust ledger <detail>".
+func newLedgerError(detail string, cause error) error {
+	return cubeerr.Wrap(CodeLedger,
+		fmt.Sprintf("the trust ledger %s", detail),
+		remediateLedger, cause)
+}
+
+// NewLedgerUnreadableError reports a trust ledger the CLI edge could not
+// read. The domain never touches the filesystem, so the "unreadable"
+// half of CUBE-CA-003 is raised at the edge; an absent file is not one
+// of these — it is simply an empty ledger.
+func NewLedgerUnreadableError(path string, cause error) error {
+	return cubeerr.Wrap(CodeLedger,
+		fmt.Sprintf("cannot read the trust ledger %s", path),
+		remediateLedger, cause)
 }
 
 // NewUnsupportedProviderError reports a spec.ca.provider no

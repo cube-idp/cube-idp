@@ -16,6 +16,7 @@ func newRootCmd(factory provisionerFactory, engines engineFactory) *cobra.Comman
 	}
 	root.PersistentFlags().StringP("config", "f", "cube.yaml", "path to the Config document")
 	root.AddCommand(newConfigCmd(factory), newInitCmd(), newCreateCmd(factory), newDeleteCmd(factory),
-		newStatusCmd(factory), newBootstrapCmd(factory, engines), newPackCmd())
+		newStatusCmd(factory), newBootstrapCmd(factory, engines), newPackCmd(),
+		newTrustCmd(defaultTrustDeps()))
 	return root
 }
