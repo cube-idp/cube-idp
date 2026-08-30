@@ -1,7 +1,9 @@
 GO ?= go
 FLUX_VERSION ?= v2.9.2
+# Upstream's v-prefixed spelling of gateway.CRDsVersion.
+GATEWAY_API_VERSION ?= v1.6.1
 
-.PHONY: build test test-e2e generate lint filelen flux-manifests
+.PHONY: build test test-e2e generate lint filelen flux-manifests gateway-api-manifests
 
 build:
 	CGO_ENABLED=0 $(GO) build -o cube-idp ./cmd/cube-idp
@@ -35,6 +37,20 @@ flux-manifests:
 		> internal/engine/substrate/manifests/flux.yaml
 	@echo "regenerated internal/engine/substrate/manifests/flux.yaml — update manifestsSHA256 to:"
 	@shasum -a 256 internal/engine/substrate/manifests/flux.yaml | awk '{print "  "$$1}'
+
+# Regenerate the vendored Gateway API standard-channel CRDs embedded by the
+# gateway domain's CRDs pack (internal/gateway/packs/gateway-api-crds). The
+# asset is the upstream release artifact, vendored byte-identical — a
+# different version yields different bytes and fails the provenance test.
+# After running, paste the printed sha256 into crdsSHA256
+# (internal/gateway/packs.go); CRDsVersion and the pack.cue version must
+# equal $(GATEWAY_API_VERSION) without the v prefix. Kept out of `generate`
+# (reaches the network).
+gateway-api-manifests:
+	curl -fsSL -o internal/gateway/packs/gateway-api-crds/manifests/standard-install.yaml \
+		https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
+	@echo "regenerated internal/gateway/packs/gateway-api-crds/manifests/standard-install.yaml — update crdsSHA256 to:"
+	@shasum -a 256 internal/gateway/packs/gateway-api-crds/manifests/standard-install.yaml | awk '{print "  "$$1}'
 
 lint: filelen
 	golangci-lint run ./...
