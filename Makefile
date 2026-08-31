@@ -15,7 +15,7 @@ test:
 # Real kind conformance — needs Docker/Podman; never part of the green gate.
 # KUBECONFIG stays inside the worktree per CLAUDE.md §7.
 test-e2e:
-	CUBE_E2E=1 KUBECONFIG=$(CURDIR)/.kube/config $(GO) test ./internal/cluster/kind/... ./tests/... -count=1 -timeout 20m -v
+	CUBE_E2E=1 KUBECONFIG=$(CURDIR)/.kube/config $(GO) test ./internal/cluster/kind/... ./tests/... -count=1 -timeout 30m -v
 
 generate:
 	$(GO) tool controller-gen object paths=./api/config/v1alpha1

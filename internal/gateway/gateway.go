@@ -42,6 +42,13 @@ const Name = "gateway"
 // through the stable Service's spec.externalName.
 const ImplementationID = v1alpha1.PrerequisiteTraefikGateway
 
+// GatewayAPIVersion is the apiVersion the emitted Gateway carries. It is
+// exported for one reason: the composition edge's prerequisite-unit judge
+// recognizes the emitted Gateway among the objects it is handed by
+// apiVersion, kind, name and namespace, and the spelling this domain emits
+// must never fork from the spelling that recognizes it.
+const GatewayAPIVersion = "gateway.networking.k8s.io/v1"
+
 // GatewayClassName is the GatewayClass the emitted Gateway attaches to:
 // the class the compiled default implementation's chart creates. It is a
 // compiled default, not config — swapping the implementation re-points it

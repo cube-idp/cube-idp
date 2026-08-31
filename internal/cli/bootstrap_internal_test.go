@@ -112,3 +112,49 @@ func TestDefaultEngine(t *testing.T) {
 		t.Fatalf("code = %s, want %s", coded.Code, engine.CodeUnsupportedProvider)
 	}
 }
+
+// TestGatewayDomain pins the edge's domain derivation: an explicit
+// spec.gateway.domain wins, and its absence — the common config, since
+// Default() fills only a sub-struct the user wrote — derives the same name
+// api would have derived.
+func TestGatewayDomain(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		spec *v1alpha1.GatewaySpec
+		want string
+	}{
+		{name: "absent spec.gateway derives from the cube name", want: "dev.cube.test"},
+		{name: "a present but empty spec.gateway derives too",
+			spec: &v1alpha1.GatewaySpec{}, want: "dev.cube.test"},
+		{name: "an explicit domain wins",
+			spec: &v1alpha1.GatewaySpec{Domain: "apps.example.test"}, want: "apps.example.test"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := &v1alpha1.Config{Spec: v1alpha1.ConfigSpec{Gateway: tc.spec}}
+			cfg.Name = "dev"
+			if got := gatewayDomain(cfg); got != tc.want {
+				t.Errorf("gatewayDomain = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestGatewayDomainMatchesAPIDefault is the guard against a forked spelling:
+// what the edge derives for an absent spec.gateway must be exactly what api's
+// Default() derives for a written one. Two derivations, one answer.
+func TestGatewayDomainMatchesAPIDefault(t *testing.T) {
+	t.Parallel()
+	defaulted := &v1alpha1.Config{Spec: v1alpha1.ConfigSpec{Gateway: &v1alpha1.GatewaySpec{}}}
+	defaulted.Name = "dev"
+	defaulted.Default()
+	absent := &v1alpha1.Config{}
+	absent.Name = "dev"
+
+	if got := gatewayDomain(absent); got != defaulted.Spec.Gateway.Domain {
+		t.Errorf("edge derived %q, api's Default() derived %q — the spellings have forked",
+			got, defaulted.Spec.Gateway.Domain)
+	}
+}
