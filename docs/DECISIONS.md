@@ -1188,3 +1188,15 @@ domain's exported facts, injected at the edge, never invented in
 M11 amendment's list source — bootstrap itself gains no config
 surface and still sees only object slices plus judges),
 `docs/ARCHITECTURE.md` §2/§3.
+
+**2026-08-31 — M11 closeout: the delimited amendments folded; the
+gated-ahead-of-code framing is historical.** The M8/M9 closeout
+treatment, applied again: the delimited M11 amendment sections in
+`docs/domains/bootstrap.md` and `docs/domains/cluster.md` folded into
+their living bodies and were deleted; `docs/domains/gateway.md` and
+`docs/domains/ca.md` were trued to the shipped packages (the M11 stack,
+PRs #190/#192–#198). Every "gated ahead of code" / "no code exists
+before" phrase in the entries above records what was true when written
+— this append-only log is not rewritten (the 2026-08-23 renumbering
+convention); the living state is in `docs/ARCHITECTURE.md` and
+`docs/domains/`. No `docs/work/` items existed this milestone.

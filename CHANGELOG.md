@@ -2,6 +2,98 @@
 
 ## Unreleased
 
+M11 gateway (epic #177; design gate: `docs/DECISIONS.md` 2026-08-27):
+
+- **A bootstrapped cube now has a trust fabric.** `cube-idp bootstrap`
+  installs an ingress gateway, a per-cube certificate authority, and
+  in-cluster wildcard DNS *before* it hands over to the engine, so
+  `https://anything.<cube>.cube.test` resolves and serves inside the
+  cluster with a certificate the cube itself issued. Two new domains
+  back it: `internal/gateway` (`CUBE-GWY-001`–`004`) and `internal/ca`
+  (`CUBE-CA-001`–`005`).
+- **The CA is minted once and reused.** A per-cube CA (ECDSA P-256, 10
+  years) signs a `*.<domain>` wildcard leaf (2 years) into the cluster.
+  On every later bootstrap the existing CA Secret is read and only the
+  leaf is re-signed — the private key never leaves the cluster, and
+  nothing else is a second source of truth for it. Certificates carry a
+  marker identity — common name `cube-idp <cube> CA`, organizational
+  unit `cube-idp.dev` — and **both** halves must match before `trust
+  remove` will delete anything from an OS store.
+- **New verbs: `cube-idp trust list|install|remove`.** `install` adds a
+  cube's CA to **this user's** trust store — the macOS login keychain or
+  p11-kit on Linux — and never invokes sudo or writes a system-wide
+  store; an unsupported OS is a clear error naming the certificate path
+  to install by hand, never a silent no-op. `list` prints the ledger
+  (`~/.cube-idp/trust.yaml`: cube, SHA-256 fingerprint, store, install
+  date) and exits 0 even when it is empty. `remove` is idempotent: an
+  unknown cube or an already-absent certificate prints a message and
+  exits 0; only a *present but wrong* certificate is a hard failure.
+  Note one asymmetry: p11-kit cannot report that an anchor was absent,
+  so the "dropping the stale ledger entry" path is effectively macOS-only.
+  Bootstrap writes each cube's public certificate to
+  `~/.cube-idp/<cube>/ca.crt` on every run that installs CA material —
+  including runs that reused an existing CA, so a deleted file comes back.
+- **New config surfaces.** `spec.gateway.domain` defaults to
+  `<cube>.cube.test` (an RFC 2606-reserved base domain). `spec.ca.provider`
+  admits `cube` only — provider-seam-ready, and immutable per cube, the
+  same posture as `spec.engine.provider`. `spec.prerequisites` is the
+  **ordered list of units installed ahead of the engine**, defaulted to
+  `gateway-platform`, `gateway-api-crds`, `ca-secrets`, `traefik-gateway`;
+  writing it **replaces the whole list**, it is never merged into the
+  default, and a built-in unit may not carry a `ref` because its content
+  is cube-owned. `gateway-api-crds` and `traefik-gateway` accept a `ref`
+  to override the embedded copy with your own pack. No new
+  `CUBE-CFG-*` codes — all of it validates through the document layer.
+- **Prerequisites install ahead of the engine, in order.** Each unit is
+  applied and waited on its own terms — manifests wait the bootstrap
+  kind-set, custom resources wait until they actually reconcile, and the
+  CA Secrets unit has no wait at all because a Secret carries no status.
+  The inventory ConfigMap is re-written with everything owned so far
+  **before** each unit applies, so a run that fails midway still leaves a
+  complete record of what to clean up.
+- **In-cluster wildcard resolution.** Bootstrap splices a rewrite rule
+  into the cluster's CoreDNS `Corefile`, delimited by
+  `# cube-idp:begin <cube>` / `# cube-idp:end <cube>` markers, pointing
+  `*.<domain>` at the cube's stable `gateway` Service. The block is keyed
+  on the exact cube name, so a second cube's block is preserved
+  byte-for-byte; the ConfigMap is kubeadm's and is spliced, never owned.
+  The splice runs after the gateway reconciles and before success is
+  reported, and a corrupted or duplicated marker block is `CUBE-GWY-004`
+  rather than a silent overwrite.
+- **`cube-idp create` now maps host ports by default.** With no explicit
+  `spec.cluster.forProvider`, the kind driver adds the `ingress-ready`
+  node label and maps container 80→host **8080** and 443→host **8443** —
+  above the privileged range, so URLs carry the port
+  (`https://app.<domain>:8443`). Writing any `forProvider` — an empty
+  `{}` included — still wins **wholesale** and is never merged with this
+  default, so it means owning ports and labels entirely. Port mappings
+  exist only at cluster *create*: a gateway wanted on a cluster created
+  without them needs a recreate. M11 emits nothing host-resolution-related
+  — no `/etc/hosts` entries — so pointing host names at the gateway is
+  still yours to arrange.
+- **`cube-idp bootstrap --timeout` now defaults to 10m** (was 5m). The
+  run became network-dependent inside the cluster: helm-controller pulls
+  the pinned gateway chart from its OCI registry while the gateway unit
+  is waited, on a cluster still warming its images.
+- **Bootstrap says more on success**, adding — after the engine line —
+  `gateway installed — *.<domain> routed to <service fqdn>` when the
+  gateway fabric was spliced, and `cube CA written to <path>` when the
+  certificate was synced.
+- Pinned content: Gateway API CRDs **1.6.1** (embedded, sha256-verified)
+  and the Traefik chart **41.3.0**, pinned by tag *and* OCI digest, both
+  in clean SemVer. The `Gateway` object itself is emitted by the domain
+  as fully-static YAML rather than produced by the chart, and the
+  `gateway-system/gateway` Service is a stable `ExternalName` indirection
+  in front of the implementation — so the name DNS and future routes
+  target survives an implementation swap.
+- Internals: `internal/bootstrap` gained the three prerequisite unit
+  flavors (declared per unit, never inferred from the objects) and
+  cumulative inventory recording, with no new `CUBE-BST-*` codes —
+  `-005`/`-009` widened to name the failing unit and `-010` is coded at
+  the failure point, including a pre-flight raise for a custom-resource
+  unit built with no readiness predicate, which leaves the cluster
+  untouched. **No new runtime dependency.**
+
 M10 engine (epic #152; design gate: `docs/DECISIONS.md` 2026-08-24):
 
 - **The two-tier model.** Tier 1 is the invariant Flux **substrate** —

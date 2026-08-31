@@ -5,10 +5,9 @@ Cross-cutting rules: `docs/ARCHITECTURE.md`. Originating design gate:
 `docs/DECISIONS.md` 2026-08-27 (M11, epic #177), amended 2026-08-28
 (M11-A0: the prerequisite list becomes spec data; the thin-helm pack
 is fully static and cube-derived wiring is a domain-emitted `Gateway`
-object) — **gated ahead of
-code**: this contract is the operator-approved design; the package
-lands via the M11 implementation breakdown, and no code exists before
-that breakdown is aligned.
+object); shipped by the M11 stack — the config surface in M11-C2
+(PR #193), the domain itself in M11-C4 (PR #194), and its edge
+composition in M11-C6 (PR #198).
 
 ## Purpose
 
@@ -106,7 +105,13 @@ The compiled default list, in order:
    `#Values`, no `namespace` — the M10 substrate shape; pinned
    version, recorded sha256, `make` regeneration, never fetched
    at runtime) vendoring the Gateway API **standard channel**
-   `standard-install.yaml`. Verified at the gate (2026-08-27, the
+   `standard-install.yaml`. As shipped, the pin is the `CRDsVersion`
+   constant (`"1.6.1"`, clean SemVer — the repo's spelling; the
+   `make gateway-api-manifests` target carries upstream's `v`-prefixed
+   `GATEWAY_API_VERSION` and prints the sha256 to paste into
+   `crdsSHA256`) over the payload at
+   `packs/gateway-api-crds/manifests/standard-install.yaml`.
+   Verified at the gate (2026-08-27, the
    v1.6.1 release asset): 10 CRDs plus the upstream `safe-upgrades`
    admission policy, 1,170,953 bytes — the largest embedded asset in
    the binary (the Flux
@@ -128,7 +133,7 @@ The compiled default list, in order:
    **explicitly depends on unit 1** (its Secrets land in
    `gateway-system`; SSA into a nonexistent namespace is NotFound),
    which the list order guarantees. Its readiness rule is the inert
-   flavor defined in the bootstrap amendment: Secrets carry no status,
+   flavor defined in `docs/domains/bootstrap.md`: Secrets carry no status,
    so **apply success is the unit's readiness** — a later reader must
    not "fix" the absent wait. Ordered before the
    `traefik-gateway` unit because the `Gateway` object applied there
@@ -138,9 +143,14 @@ The compiled default list, in order:
    M9 dogfooding): an embedded `type: helm` pack (`category:
    "gateway"`) whose rendered output is the `HelmRelease` + OCI source
    CR pair, reconciled in-cluster by the **substrate's own
-   helm-controller**. The chart reference is **digest-pinned** (the
-   chart is OCI-published — verified at the gate:
-   `ghcr.io/traefik/helm/traefik`). Bootstrap SSA-applies the pair and
+   helm-controller**. The chart reference is **digest-pinned**: as
+   shipped, an `OCIRepository` (`source.toolkit.fluxcd.io/v1`) pulling
+   `oci://ghcr.io/traefik/helm/traefik` at `ref.tag: ChartVersion`
+   (`"41.3.0"`) **and** `ref.digest: ChartDigest`
+   (`sha256:dcae2d58…f6ff17a`), with the Helm content
+   `layerSelector.mediaType` set and a 10m interval, beside a
+   `HelmRelease` (`helm.toolkit.fluxcd.io/v2`) that `chartRef`s it.
+   Bootstrap SSA-applies the pair and
    runs the reconciliation wait with this domain's predicates.
 
    **The pack's values are entirely static, by contract** (the R1
@@ -166,7 +176,8 @@ The compiled default list, in order:
    carries its own `metadata.namespace`, exactly as the platform
    Namespace and Service do; only *pack-rendered* output is
    deliberately namespace-less and stamped at the edge (below). The
-   canonical shape, binding as contract:
+   canonical shape, binding as contract and shipped verbatim by
+   `GatewayObject(domain)`:
 
    ```yaml
    apiVersion: gateway.networking.k8s.io/v1
@@ -185,8 +196,15 @@ The compiled default list, in order:
            mode: Terminate
            certificateRefs:
              - kind: Secret
-               name: <the exported leaf-Secret fact>
+               name: gateway-tls
    ```
+
+   Every literal above is a domain constant rather than a spelling:
+   `GatewayAPIVersion`, `Name`, `Namespace`, `GatewayClassName`, and
+   `LeafSecretName`; `domain` is the only input. One implementation
+   note that is contract rather than detail: the port is built as an
+   `int64`, because an `unstructured` object may hold only JSON-native
+   types and apimachinery's deep copy panics on a plain `int`.
 
    Six properties are load-bearing:
    - **One HTTPS listener in M11**, not a 443/80 pair. No cube-owned
@@ -207,14 +225,18 @@ The compiled default list, in order:
      and absent from the shape above rather than frozen to a value: no
      routes exist until M12, which owns route wiring (D10) and is the
      gate that should choose the policy.
-   - **Readiness is deliberately not gated in M11**: the unit's
-     reconciliation wait covers the `HelmRelease` + source pair. A
-     `Programmed`-condition predicate for the `Gateway` is a **named
-     breakdown option**, not gate surface.
+   - **Readiness is deliberately not gated in M11**, and the shipped
+     edge says so explicitly: the unit's judge (`gatewayUnitJudge`)
+     matches this object by identity — apiVersion, kind, name and
+     namespace — and reports it ready unconditionally, routing every
+     other object in the unit to `Reconciled`. So the wait that
+     actually gates the unit is the one over the `HelmRelease` +
+     source pair. A `Programmed`-condition predicate is what M12 adds
+     in the identity branch's place, not new seam surface.
    - **`gatewayClassName` references the chart-created class** — a
      compiled default in the stable Service backend pointer's posture
-     ("Two pointers stay compiled", below); like the chart digest it
-     is gate-time evidence, re-pinned at the breakdown.
+     ("Two pointers stay compiled", below); the gate's evidence was
+     re-pinned at implementation as the `GatewayClassName` constant.
    - **The cube's specifics are expressed in the routing contract D2
      chose** (Gateway API), not in one implementation's chart knobs —
      which is precisely the shape an implementation swap wants.
@@ -273,9 +295,15 @@ gateway implementation, so internal DNS and all future routing target
 one stable name and never care what implementation is behind it:
 
 - **Name: `gateway`** (canonical FQDN
-  `gateway.gateway-system.svc.cluster.local.`) — the coordinator's
+  `gateway.gateway-system.svc.cluster.local.`, the exported
+  `ServiceFQDN`) — the coordinator's
   naming ruling; the word *engine* stays reserved for the tier-2
-  gitops-engine vocabulary and never names gateway objects.
+  gitops-engine vocabulary and never names gateway objects. The two
+  FQDN spellings shipped as distinct constants on purpose:
+  `ServiceFQDN` carries the **trailing dot** because it is the CoreDNS
+  rewrite target and must be DNS-absolute, while the unexported
+  `implementationFQDN` omits it because that is what Kubernetes
+  expects in `spec.externalName`.
 - **Mechanism: `ExternalName`** — the Service carries
   `spec.externalName: <effective-id>.<gateway-namespace>.svc.cluster.local`
   (for M11: `traefik-gateway.gateway-system.svc.cluster.local`), i.e.
@@ -327,8 +355,9 @@ serves both concurrently). The footprint claim was verified at the gate
   alternative) runs a controller Deployment **plus** a separately
   provisioned per-Gateway Envoy Deployment and its own config CRDs —
   structurally more moving parts on a laptop cube. These are
-  gate-time evidence; the implementation re-pins (chart digest, asset
-  sha256) under the embedded-pack discipline at the breakdown.
+  gate-time evidence; the implementation re-pinned both (the chart
+  digest as `ChartDigest`, the asset sha256 as `crdsSHA256`) under the
+  embedded-pack discipline.
 - ingress-nginx is disqualified for new adoption: retirement announced,
   best-effort maintenance ended March 2026.
 
@@ -360,10 +389,23 @@ type GatewaySpec struct {
   RFC 2606-reserved (no OS/mDNS collision, the `.local` pitfall), and
   deliberately recompilable — an operator building their own binary may
   rebase every cube's default domain at the one constant; recording
-  that intent is part of the decision.
-- Validation: `domain` must be a valid DNS name (lowercase RFC 1123
-  labels); errors are config-domain `CUBE-CFG-*` document errors
-  (exit 2).
+  that intent is part of the decision. It shipped as
+  `v1alpha1.DefaultBaseDomain`, and the derived default is
+  `<metadata.name>.<DefaultBaseDomain>`.
+- **The derivation happens twice, deliberately.** `Default()` fills
+  `domain` only when the user wrote `spec.gateway:` at all — an
+  omitted sub-struct stays nil, which is api-wide behavior, not a
+  gateway quirk (`docs/ARCHITECTURE.md` §3). So the CLI edge derives
+  the same value independently for the nil case rather than reading a
+  field defaulting never filled. One further nuance is a truthfulness
+  rule, not an optimization: when `metadata.name` is itself invalid,
+  defaulting **declines to derive** a domain from it, so the run
+  reports the name's own validation error rather than a second,
+  derived complaint about a domain the user never wrote.
+- Validation: `domain` must be a valid DNS 1123 subdomain; an empty
+  `domain` is **not** an error, because defaulting or the edge derives
+  it. Errors are config-domain `CUBE-CFG-*` document errors
+  (exit 2) — M11 added no new code, see below.
 
 ## Config surface (`spec.prerequisites`)
 
@@ -462,16 +504,37 @@ that gate comes.
 **Validation** — document-layer, `CUBE-CFG-*` document errors (exit 2),
 no I/O ever:
 
-- `name` is required and **unique across the list**;
-- `ref` is **forbidden** on a built-in name;
-- `ref` is **required** on a name that is not well-known;
+- `name` is required (`field.Required`) and **unique across the list**
+  (`field.Duplicate`, naming the earlier index; matching is exact
+  string equality, and only entries that have a usable name at all
+  take part);
+- `ref` is **forbidden** on a built-in name (`field.Forbidden`) — its
+  content is cube-owned, so there is nothing to reference;
+- `ref` is **required** on a name that is not well-known
+  (`field.Required`) — it must reference a pack;
 - `ref`, when present, must be a **well-formed reference token**
-  (non-empty, no whitespace or control characters) — the same bound
-  `spec.packs.packRef` already lives under.
+  (non-empty, no whitespace or control characters) — literally the
+  same `validateRefToken` bound `spec.packs.packRef` already lives
+  under, reused rather than restated.
+
+As shipped, that validation carries **no new error code**: like
+`validateEngine` and `validatePacks` before it, it is expressed
+entirely as `field.ErrorList` entries, which the loader aggregates
+into the existing `CUBE-CFG-003`. The exit code and the operator's
+experience are what "`CUBE-CFG-*` document errors" has always meant;
+no `CUBE-CFG-008` exists. What the layer deliberately does **not**
+do is equally shipped contract: no I/O, no dependency graph, and no
+required-unit floor — an empty-but-present list is a valid document
+even though it installs nothing.
 
 The well-known names are string constants in `api/config/v1alpha1`
 (the `spec.engine.provider: flux` precedent) — `api/` states the
-vocabulary, never imports `internal/gateway`. **The boundary that
+vocabulary, never imports `internal/gateway`. The direction that
+leaves is worth naming, because the shipped code depends on it:
+`internal/gateway` **does** import `api/config/v1alpha1`, and derives
+its `ImplementationID` from `PrerequisiteTraefikGateway` rather than
+respelling the string, so the unit's name and the release identity
+can never drift apart. **The boundary that
 split implies, stated for C2:** `Default()` in `api/config/v1alpha1`
 **materializes** the compiled default entries — they are data, and
 defaulting is where data lands; `internal/gateway` owns the model's
@@ -496,9 +559,9 @@ unchanged, and codes are never re-tagged across domains.
   conventional privileged-port range, so URLs carry ports
   (`https://app.<domain>:8443`).
   **Explicit `forProvider` always wins** — the default never merges
-  into user-supplied config. This is a *cluster-domain* default — its
-  delimited gated amendment lives in `docs/domains/cluster.md`, its
-  lead reviews it; two boundaries are recorded here too because they
+  into user-supplied config. This is a *cluster-domain* default and
+  lives in `docs/domains/cluster.md` (the driver seam section), whose
+  lead owns it; two boundaries are recorded here too because they
   shape this domain:
   - **The driver cannot see `spec.gateway`** — it receives only
     `{Name, ForProvider}`; the default is therefore unconditional, not
@@ -531,8 +594,9 @@ approved with this safety envelope, all five clauses binding:
 1. The domain renders a **marker-delimited rewrite block** as a pure
    function of the domain and the platform facts (stable Service name
    + namespace); the edge performs
-   the read-modify-write. The canonical shape (binding as contract;
-   exact escaping fixed at implementation):
+   the read-modify-write. The canonical shape, binding as contract and
+   shipped with the escaping below (`regexp.QuoteMeta` over the
+   domain):
 
    ```
    # cube-idp:begin <cube-name>
@@ -542,6 +606,18 @@ approved with this safety envelope, all five clauses binding:
    }
    # cube-idp:end <cube-name>
    ```
+
+   As shipped, the markers are the `markerBeginPrefix`
+   (`"# cube-idp:begin "`) and `markerEndPrefix` (`"# cube-idp:end "`)
+   constants followed by the **exact cube name**, and the rendering
+   indentation is fixed rather than preserved: `blockIndent` (4 spaces)
+   on the block's outer lines, `ruleIndent` (8) on the rule body, which
+   matches surrounding kubeadm style. Caddyfile whitespace is
+   insignificant, so the choice is arbitrary but must be *a* choice for
+   idempotency; the consequence is that the replace path re-renders the
+   canonical block and therefore **normalizes** hand-edited
+   indentation inside the markers. Everything between this cube's
+   markers is this domain's.
 
    Both target components are **platform facts**, so the block is
    effectively constant: `gateway.gateway-system.svc.cluster.local.`.
@@ -565,34 +641,93 @@ approved with this safety envelope, all five clauses binding:
    between the cube's markers if present, insert it if absent, touch
    nothing unmarked — everything outside the markers is preserved
    byte-for-byte.
+
+   **The gate that decides present-vs-absent is both halves, exactly
+   once, in order.** As shipped, `markerRange` is the sole decider,
+   and it admits precisely one healthy arrangement: exactly one begin
+   marker and exactly one end marker for this cube, the begin above the
+   end. Everything else is either the clean-insert case or
+   `CUBE-GWY-004`, with no third outcome and no repair attempt:
+
+   | Arrangement | Outcome |
+   |---|---|
+   | 0 begins **and** 0 ends | not found — the insert path, no error |
+   | more than one begin **or** more than one end | `CUBE-GWY-004` — replacing one of several would leave a stale block live |
+   | begins present, 0 ends | `CUBE-GWY-004` — no matching end marker |
+   | ends present, 0 begins | `CUBE-GWY-004` — no matching begin marker |
+   | end appears above begin | `CUBE-GWY-004` — there is no region to replace |
+   | exactly one of each, in order | found — the replace path |
+
+   Two properties fall out of that shape and are contract, not
+   coincidence. **Matching is keyed on the exact cube name**, never on
+   the `# cube-idp:` prefix — which is what makes a *foreign* cube's
+   block invisible to every branch above, and therefore preserved
+   byte-for-byte automatically rather than as a special case. And a
+   half-corrupted block is never silently rewritten: the splice refuses
+   and says which half is missing, because guessing would either strand
+   a live block or delete text nobody authorized it to delete.
+
+   On the replace path only, one further check runs
+   (`requireServerBlockAbove`): some line opening the default server
+   block must appear **above** the found markers, or the arrangement is
+   corruption — replacing there would emit a rewrite rule at Corefile
+   top level, which CoreDNS rejects, and the operator would see a parse
+   failure instead of a coded diagnosis. That check is deliberately a
+   prefix scan and **never brace-depth containment**: Caddyfile plugin
+   arguments carry braces the splice has no grammar for (a regex
+   quantifier such as `{2}` is the obvious case), so brace counting
+   would be unsound and would raise `CUBE-GWY-004` on valid Corefiles —
+   and a false structural error fails every bootstrap. Catching gross
+   corruption cheaply beats catching every case unsoundly. The
+   complementary tolerance sits in the server-block match itself, which
+   ignores brace spacing (`.:53{` still matches), so a future kind or
+   kubeadm release restyling its Corefile must not fail every fresh
+   bootstrap.
 3. The write runs under **optimistic concurrency** — an update with
    the read `resourceVersion`, retried on conflict; never a
    read-derived blind SSA write (which could clobber a concurrent
-   Corefile change).
+   Corefile change). As shipped at the edge, the retry is **bounded at
+   five attempts**, each restarting from a fresh read; losing all five
+   surfaces the last conflict rather than degrading quietly. The target
+   is `kube-system/coredns`, key `Corefile` — kubeadm's object, not the
+   cube's: spliced, never owned, never inventory-recorded. The round
+   trip runs on the edge's own 30s I/O budget, never a slice of
+   `--timeout`, which is bootstrap's readiness budget.
 4. The ConfigMap is **never inventory-recorded** — the bootstrap
    inventory is a deletion seed, and a system object must never be
    seeded for deletion.
 5. Teardown is **restore, not delete** — strip the marker block, leave
    the object — published as a requirement on the M13 `down` gate.
 
-Sequencing and failure semantics, fixed here: the splice runs at the
+Sequencing and failure semantics, fixed here and shipped as fixed: the
+splice runs at the
 edge **after the `traefik-gateway` unit is reconciled** (resolution
 through the stable Service lands on that unit's implementation
-Service) and before bootstrap success is reported;
-a failed splice **fails the bootstrap** with its coded error
+Service) and before bootstrap success is reported — concretely, after
+`InstallEngine` returns and inside the same step that reports the
+result, which is how those two bounds are honored without threading a
+callback into `internal/bootstrap`. A failed splice **fails the
+bootstrap** with its coded error
 (`CUBE-GWY-004` from the pure function, or the wrapped conflict/write
 cause from the edge — exit 1), never a silent degrade — a cube whose
 in-cluster names do not resolve is not a bootstrapped cube. CoreDNS
 reloads on config change; verification of the rewrite is a
 best-effort resolution probe, not a readiness gate.
 
-**Recorded as a breakdown item, deliberately not gate surface:** the
-splice's **failure taxonomy** — the marker-corruption cases, a foreign
-cube's block preserved byte-for-byte, multiple `.:53` server blocks,
-regex and Caddyfile escaping — is enumerated and reviewed **with its
-kubeadm-shaped fixtures in the C4 PR**, where a fixture makes each case
-concrete. This gate fixes the safety envelope; the case list is an
-implementation-review item under it.
+**One gating consequence of the list being config, stated plainly:**
+the edge splices only when the resolved list carries **both halves of
+the gateway fabric** — `gateway-platform` *and* `traefik-gateway`. A
+list that drops either one gets no splice and no error, which is not
+the silent degrade the envelope above forbids: that clause is about
+never leaving a *built* fabric unresolvable, whereas here the operator
+explicitly declined to build one. The bootstrap success output says so
+by omission — the gateway line is simply absent.
+
+The splice's **failure taxonomy** — the marker-corruption cases, a
+foreign cube's block preserved byte-for-byte, multiple `.:53` server
+blocks, regex and Caddyfile escaping — was enumerated and reviewed
+with its kubeadm-shaped fixtures in M11-C4, under the safety envelope
+this gate fixed; the resulting rules are the table in clause 2 above.
 
 ## What the domain owns (pure) vs the edge (I/O)
 
@@ -602,13 +737,16 @@ implementation-review item under it.
 | embedded prerequisite packs (`gateway-api-crds`, `traefik-gateway`) + their provenance checks, and the `gateway-platform` unit's Namespace + stable `gateway` Service objects | SSA-applying every prerequisite via bootstrap machinery |
 | the rendered `HelmRelease` + OCI source pair (chart values **fully static** — nothing cube-derived) and, beside it, the cube-authored Gateway API `Gateway` carrying the wildcard listener and the leaf-Secret `certificateRefs` | reading the live Corefile, splicing, optimistic-concurrency write-back |
 | the CoreDNS marker block for a domain | assembling the ordered prerequisite list **from `spec.prerequisites`** (the compiled defaults when absent or empty) — resolving well-known names to the embedded copies by name, every other entry's pack through `internal/ref` — and injecting it into bootstrap |
-| readiness predicates for its declared CRs (`HelmRelease`/OCI source: `Ready` **and** `status.observedGeneration == metadata.generation` — the no-stale-success doctrine in this domain's vocabulary) | the CA-Secret read and the `ca` handoff (see `docs/domains/ca.md`) |
-| the platform facts — namespace `gateway-system`, stable Service `gateway`, the `Gateway` object `gateway` (one platform identity, two kinds), and the **CA and leaf Secret names** the edge injects into the `ca` domain (exported invariants; of the Secret names only the leaf has an emitted counterpart to tie it to — the `Gateway`'s `certificateRefs`, checked by the fact-ties test; the mirroring of the substrate fact is of the construct — an exported fact injected as a string — and the names are deliberately implementation-neutral, unlike `flux-system`, so a gateway content swap never moves the namespace or the DNS anchor) | |
+| the readiness predicate for its declared CRs — the exported `Reconciled`, covering `OCIRepository` (`source.toolkit.fluxcd.io/v1`) and `HelmRelease` (`helm.toolkit.fluxcd.io/v2`): `Ready` **and** `status.observedGeneration == metadata.generation`, the no-stale-success doctrine in this domain's vocabulary; anything outside that coverage is `CUBE-GWY-003` rather than a guess | the CA-Secret read and the `ca` handoff (see `docs/domains/ca.md`) |
+| the platform facts — `Namespace` (`gateway-system`), `Name` (`gateway`, carried by both the stable Service and the emitted `Gateway` — one platform identity, two kinds), `ServiceFQDN`, `ImplementationID`, and the **CA and leaf Secret names** `CASecretName`/`LeafSecretName` the edge injects into the `ca` domain (exported invariants; of the Secret names only the leaf has an emitted counterpart to tie it to — the `Gateway`'s `certificateRefs`, checked by the fact-ties test; the mirroring of the substrate fact is of the construct — an exported fact injected as a string — and the names are deliberately implementation-neutral, unlike `flux-system`, so a gateway content swap never moves the namespace or the DNS anchor) | |
 
-The predicates deliberately mirror the flux driver's freshness rule
+`Reconciled` deliberately mirrors the flux driver's freshness rule
 without importing `internal/engine` — the doctrine ("no stale success
 counts as reconciled") is cross-cutting; each domain states it over its
-own CRs, and function values cross the edge as neutral vocabulary.
+own CRs, and function values cross the edge as neutral vocabulary. It
+ships as a **package-level function, not a method**, precisely so it is
+structurally assignable to bootstrap's own `ReconciledFunc` with no
+adapter and no shared type.
 
 ## Error codes (`CUBE-GWY-*`, exit 1)
 

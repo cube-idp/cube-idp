@@ -74,8 +74,8 @@ func saveLedger(path string, ledger ca.Ledger) error {
 // is never conditioned on the CA having been minted — a reused CA must
 // still restore a file the user deleted (docs/domains/ca.md).
 //
-// This is the symbol the bootstrap edge calls once its CA wiring lands
-// (M11-C6, issue #187), with the path from ca.CertPath(root, cube).
+// This is the symbol the bootstrap edge calls (M11-C6) with the path
+// from ca.CertPath(root, cube).
 func syncCertFile(path string, certPEM []byte) (changed bool, err error) {
 	existing, err := os.ReadFile(path)
 	switch {

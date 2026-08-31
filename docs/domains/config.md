@@ -16,10 +16,23 @@ other domains never write config.
 - `Config{TypeMeta, ObjectMeta, Spec ConfigSpec}` — only `metadata.name`
   (the cube identity, DNS-label-like, max 31 chars) is honored from
   ObjectMeta; server-populated fields are accepted and ignored.
-- `ConfigSpec` holds one typed sub-struct per component (`Cluster`
-  today). Sub-structs bring their own `Default()` additions and
+- `ConfigSpec` holds one typed sub-struct per component — `Cluster`
+  (M3), `Engine` (M7, re-scoped M10), `Packs` (M8), and `Gateway` +
+  `CA` (M11) — plus `Prerequisites` (M11), a **cross-component list
+  surface** named for what it configures rather than for a component,
+  owned by the gateway contract (`docs/domains/gateway.md`).
+  Sub-structs bring their own `Default()` additions and
   `Validate()` rules; optional sub-structs are pointers ("unset vs zero
-  must differ").
+  must differ"), while a list surface is a plain slice, absent and
+  empty meaning the same thing.
+- **Defaulting fills a sub-struct the user wrote, never one they
+  omitted.** An omitted pointer sub-struct stays nil through the whole
+  pipeline, so a consumer that needs a value for the absent case
+  derives it at the CLI edge rather than reading a field defaulting
+  never filled (`spec.gateway.domain` and `spec.ca.provider` both do).
+  A list surface differs: an absent or empty `spec.prerequisites` **is**
+  materialized into its compiled defaults, because there is no
+  "unset vs zero" distinction to preserve.
 - deepcopy is generated (`make generate`) and committed.
 
 ## Loading pipeline (`internal/config`)
@@ -84,6 +97,17 @@ the file instead — flags never mutate an existing document. The
 constructor is exported (like cluster's) because the CLI edge raises it.
 
 `CFG` codes map to exit code 2.
+
+**The catalog has not grown since M4, and that is the point.** Every
+component surface added since — `spec.engine`, `spec.packs`,
+`spec.gateway`, `spec.ca`, `spec.prerequisites` — validates through
+`field.ErrorList` entries (`Required`, `Invalid`, `NotSupported`,
+`Forbidden`, `Duplicate`) that the loader aggregates into the existing
+`CUBE-CFG-003`. A new sub-struct therefore adds validation rules and
+field paths, never a code: the operator gets a precise field path and
+reason, and the code stays the one that means "this document is
+invalid". A future surface needing its own number would be a
+departure worth arguing for, not a routine addition.
 
 ## CLI surface
 

@@ -67,6 +67,54 @@ runtime detection moves from `New()` to first provisioning call
 it. The conformance suite gains an optional sub-test: if the provisioner
 implements `SpecValidator`, an invalid payload must yield a coded error.
 
+### The kind driver's ingress-ready default (M11)
+
+From the M11 design gate (`docs/DECISIONS.md`
+2026-08-27, decision 5c/5d — an operator override of the scoped
+recommendation), shipped in M11-C3 (PR #190, closing #184).
+
+**No explicit `forProvider`** means an absent payload: `forProvider`
+nil, or present with a zero-length body. That — and only that — takes
+the default. A present-but-empty `forProvider: {}` is an explicit
+payload and is therefore the documented minimal opt-out: no port
+mappings, no label, an empty generated config.
+
+When the user supplies no explicit `forProvider`, the kind driver
+defaults the generated cluster config to kind's documented
+ingress-ready shape, on **high host ports** (above the conventional
+privileged-port range; URLs carry ports):
+
+- `extraPortMappings`: host **8080 → containerPort 80** and host
+  **8443 → containerPort 443** on the (single, default) node;
+- the `ingress-ready=true` node label on that node — the gateway's
+  Deployment pins to it (`nodeSelector` + hostPorts 80/443; the
+  in-cluster half is the gateway contract's, `docs/domains/gateway.md`).
+
+**Explicit `forProvider` always wins, wholesale** — the driver never
+merges the default into a user-supplied payload; supplying any
+`forProvider` config means owning ports and labels entirely. Recorded
+boundaries: the driver **cannot see `spec.gateway`** (it receives
+`{Name, ForProvider}` only, so the default is unconditional — coherent
+with the gateway's absent-means-installed posture, never
+gateway-triggered); port mappings exist only at cluster **create**
+(create-before-bootstrap coupling: a gateway wanted on a cluster
+created without them needs a recreate); and a host-port collision — a
+second default cube — fails `create` loudly with the provider's coded
+error, explicit `forProvider` being the escape.
+
+The generated shape is pinned: exactly **one explicit node** of role
+`control-plane`, carrying the label `ingress-ready: "true"` and both
+mappings with protocol **TCP**. Node image and every other field stay
+kind's own defaults. The driver contract is tested on three branches —
+absent → the default shape; `{}` → nothing defaulted; non-empty → the
+decoded payload, unmerged.
+
+`make test-e2e` (kind driver conformance against real Docker) now
+creates a default-shaped cluster and therefore **binds host ports 8080
+and 8443**. The suite is environment-sensitive: a `create` failure
+caused by an occupied host port is an environment condition, not a
+driver regression.
+
 ## Kubeconfig machinery
 
 Own minimal typed model over `sigs.k8s.io/yaml` (no client-go):
@@ -149,63 +197,15 @@ is composed at the CLI edge via the kube domain, see
 absent cluster or unreachable API server is a finding, not a failure;
 coded errors keep their usual exit semantics.
 
-## M11 amendment (gated 2026-08-27, ahead of code): the kind driver's ingress-ready default
-
-Delimited amendment from the M11 design gate (`docs/DECISIONS.md`
-2026-08-27, decision 5c/5d — an operator override of the scoped
-recommendation); it folds into the living body at the M11 closeout. The
-M11 breakdown is aligned and the default is implemented by M11-C3
-(https://github.com/cube-idp/cube-idp/issues/184).
-
-**No explicit `forProvider`** means an absent payload: `forProvider`
-nil, or present with a zero-length body. That — and only that — takes
-the default. A present-but-empty `forProvider: {}` is an explicit
-payload and is therefore the documented minimal opt-out: no port
-mappings, no label, an empty generated config.
-
-When the user supplies no explicit `forProvider`, the kind driver
-defaults the generated cluster config to kind's documented
-ingress-ready shape, on **high host ports** (above the conventional
-privileged-port range; URLs carry ports):
-
-- `extraPortMappings`: host **8080 → containerPort 80** and host
-  **8443 → containerPort 443** on the (single, default) node;
-- the `ingress-ready=true` node label on that node — the gateway's
-  Deployment pins to it (`nodeSelector` + hostPorts 80/443; the
-  in-cluster half is the gateway contract's, `docs/domains/gateway.md`).
-
-**Explicit `forProvider` always wins, wholesale** — the driver never
-merges the default into a user-supplied payload; supplying any
-`forProvider` config means owning ports and labels entirely. Recorded
-boundaries: the driver **cannot see `spec.gateway`** (it receives
-`{Name, ForProvider}` only, so the default is unconditional — coherent
-with the gateway's absent-means-installed posture, never
-gateway-triggered); port mappings exist only at cluster **create**
-(create-before-bootstrap coupling: a gateway wanted on a cluster
-created without them needs a recreate); and a host-port collision — a
-second default cube — fails `create` loudly with the provider's coded
-error, explicit `forProvider` being the escape.
-
-The generated shape is pinned: exactly **one explicit node** of role
-`control-plane`, carrying the label `ingress-ready: "true"` and both
-mappings with protocol **TCP**. Node image and every other field stay
-kind's own defaults. The driver contract is tested on three branches —
-absent → the default shape; `{}` → nothing defaulted; non-empty → the
-decoded payload, unmerged.
-
-`make test-e2e` (kind driver conformance against real Docker) now
-creates a default-shaped cluster and therefore **binds host ports 8080
-and 8443**. The suite is environment-sensitive: a `create` failure
-caused by an occupied host port is an environment condition, not a
-driver regression.
-
 ## Contracts for future domains
 
 Consumers receive kubeconfig bytes by injection at the orchestrator/CLI
 edge (never by importing `internal/cluster`), or derive the merged context
 name from the API group constant (importing only leaf `api/`).
 
-The domain is lifecycle-complete as of M5 (epic #72); the M11 amendment
-above is implemented by M11-C3 and folds into the living body at the
-M11 closeout. Future cluster work (new providers, drift detection)
-starts as a new milestone against this contract.
+The domain is lifecycle-complete as of M5 (epic #72). M11 changed one
+driver default and nothing else here — no seam change, no new
+operation, no new code — which is the shape a milestone in a
+neighbouring domain should have on this one. Future cluster work (new
+providers, drift detection) starts as a new milestone against this
+contract.
