@@ -5,7 +5,6 @@ metadata:
 spec:
   cluster:
     provider: kind
-    forProvider:
-      # kind.x-k8s.io/v1alpha4 Cluster fields
-      nodes:
-        - role: control-plane
+    # Add forProvider (kind.x-k8s.io/v1alpha4 Cluster fields) to take
+    # over the generated config wholesale — including the ingress-ready
+    # label and 8080/8443 host-port mappings the default provides.

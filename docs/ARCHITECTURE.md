@@ -35,12 +35,12 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/c
                       │      │        │  → api/config; renders, never applies)
                       │      │        └──▶ internal/ref (M8 shared-infra leaf:
                       │      │               ref grammar → tree/file)
-                      │      ├──▶ internal/gateway (M11, gated ahead of code:
-                      │      │        trust-fabric prerequisite units + CoreDNS
-                      │      │        marker block + predicates → api/config)
-                      │      ├──▶ internal/ca (M11, gated ahead of code: CA
-                      │      │        mint/reuse, marker identity, trust
-                      │      │        ledger/verbs → api/config)
+                      │      ├──▶ internal/gateway (M11: trust-fabric
+                      │      │        prerequisite units + CoreDNS marker
+                      │      │        block + predicates → api/config)
+                      │      ├──▶ internal/ca (M11: CA mint/reuse, marker
+                      │      │        identity, trust ledger + OS trust-store
+                      │      │        drivers; imports no api/config)
                       └──────┴──▶ internal/cubeerr ◀── (every package above)
 ```
 
@@ -49,9 +49,9 @@ Three package categories, and only these:
 1. **`api/` and `internal/cubeerr`** — pure leaves: they import nothing
    from `internal/` — ever.
 2. **Component domains** (`config`, `cluster`, `bootstrap`, `pack`,
-   `engine` — landed by M10, gated 2026-08-24 — and `gateway` + `ca` —
-   gated **ahead of code** by the M11 design gate, 2026-08-27; their
-   packages land via the M11 implementation breakdown) — one
+   `engine` — landed by M10, gated 2026-08-24 — and `gateway` + `ca`,
+   gated by the M11 design gate 2026-08-27 and landed by the M11 stack,
+   PRs #192/#193/#194/#195/#196/#197/#198) — one
    domain = one package = one `docs/domains/` file. **Domains never import
    each other.**
 3. **Shared-infrastructure leaves** — a closed, listed set:
@@ -135,12 +135,13 @@ Three package categories, and only these:
   which M10 narrows to engine-agnostic. Composition — driver selection,
   handing substrate content, wiring, and predicates to bootstrap — lives
   at the CLI/orchestrator edge. Living contract: `docs/domains/engine.md`.
-- `internal/gateway` (M11, gated ahead of code 2026-08-27) is the
-  **bootstrap-phase trust fabric**: it owns the **ordered list of
-  prerequisite units** bootstrap installs **ahead of the engine** —
-  which is `spec.prerequisites` **data** with compiled defaults, the
-  surface owned by this domain's contract (M11-A0, 2026-08-28) —
-  by default the `gateway-platform` unit (the `gateway-system`
+- `internal/gateway` (M11) is the **bootstrap-phase trust fabric**: it
+  owns the **model** of the ordered prerequisite list bootstrap
+  installs **ahead of the engine** — the list itself being
+  `spec.prerequisites` **data**, a surface this domain's contract owns
+  (M11-A0, 2026-08-28) while `api/config/v1alpha1` states its
+  vocabulary and materializes its compiled defaults. The four default
+  units are the `gateway-platform` unit (the `gateway-system`
   Namespace plus the **stable `gateway` Service** — the cube-owned indirection
   in front of the implementation; internal DNS and future routing
   target its name, never an implementation Service), the embedded
@@ -152,18 +153,33 @@ Three package categories, and only these:
   Traefik gateway pack reconciled by the substrate's helm-controller —
   plus the CoreDNS marker rewrite block and the readiness predicates
   for its declared CRs. Pure like the substrate: embedded content and
-  emitted objects/blocks/predicates; the edge applies (via bootstrap)
-  and performs the Corefile read-modify-write. Living contract:
-  `docs/domains/gateway.md`.
-- `internal/ca` (M11, gated ahead of code 2026-08-27) owns the cube's
-  certificate authority: stdlib-minted per-cube CA + wildcard leaf,
-  the mint-if-absent reuse contract (the edge reads the existing
-  Secret; custody is in-cluster only), the marker CN/OU identity, and
-  the operator trust surface (ledger + `trust` verbs). Its config
-  surface is provider-seam-**ready** — `spec.ca.provider`, `cube` the
-  only v0 value, immutable per cube (the engine precedent) — while the
-  Go seam waits for a real second
-  implementation. Living contract: `docs/domains/ca.md`.
+  emitted objects/blocks/predicates, no I/O anywhere in the package;
+  the edge applies (via bootstrap) and performs the Corefile
+  read-modify-write. It imports `api/config/v1alpha1` (for the
+  well-known prerequisite names, which it single-sources rather than
+  respells), `internal/cubeerr`, and apimachinery — never
+  `internal/pack`, whose contract its embedded packs nonetheless
+  satisfy. Living contract: `docs/domains/gateway.md`.
+- `internal/ca` (M11) owns the cube's certificate authority:
+  stdlib-minted per-cube CA + wildcard leaf, the mint-if-absent reuse
+  contract (the edge reads the existing Secret; custody is in-cluster
+  only), the marker CN/OU identity, and the operator trust surface
+  (ledger, artifact paths, and the two OS trust-store drivers behind
+  the `trust` verbs — which drive the OS tools through an **injected
+  `Runner`**, so `os/exec` stays at the edge and the drivers are
+  gate-testable against a fake). It is the one component domain that
+  **imports no `api/config` at all**: it takes the provider as a plain
+  string and
+  the Secret names as injected strings (the gateway domain's exported
+  platform facts), so its imports are `internal/cubeerr`, stdlib
+  crypto, apimachinery `unstructured`, and `sigs.k8s.io/yaml`.
+  The `spec.ca.provider` surface therefore lives entirely in
+  `api/config/v1alpha1`, and the edge — not the domain — compares it
+  against the domain's own `ca.ProviderCube` constant before
+  dispatching. The surface is provider-seam-**ready** (`cube` the only
+  v0 value, immutable per cube — the engine precedent) while the Go
+  seam waits for a real second implementation. Living contract:
+  `docs/domains/ca.md`.
 - Domains never import each other. Values cross domains by injection at
   the CLI/orchestrator edge, where factories and composition live. The
   one sanctioned exception is a listed shared-infrastructure leaf, above.
@@ -206,7 +222,20 @@ being named for a component — `spec.prerequisites` is the gateway
 component's (M11-A0, 2026-08-28, `docs/domains/gateway.md`).
 Load pipeline order is fixed: strict
 decode → `Default()` → `Validate()`; a non-nil `*Config` is always complete
-and valid. Per-component API groups (`<component>.cube-idp.dev`) are
+and valid.
+
+One nuance of that guarantee is worth stating cross-cuttingly, because
+M11 made the edge depend on it: `Default()` fills a **sub-struct the
+user wrote**, never one they omitted. An absent `spec.gateway` or
+`spec.ca` stays nil through the pipeline — so the CLI edge re-derives
+those two defaults itself (`gatewayDomain`, `caProvider` in
+`internal/cli`) rather than reading a field defaulting never filled.
+List surfaces differ and are simpler: an absent or empty
+`spec.prerequisites` **is** materialized by `Default()` into the four
+compiled default entries, in order, because absent and empty mean the
+same thing for a slice.
+
+Per-component API groups (`<component>.cube-idp.dev`) are
 reserved for kinds a component actually owns, never applied preemptively.
 
 ## 4. Interface doctrine
@@ -258,14 +287,14 @@ Tag registry (a new component adds a row; nothing renumbers):
 
 | Tag | Component | Package | Status |
 |---|---|---|---|
-| `CFG` | config (api types + loader) | `internal/config` | active |
-| `CLI` | cli / output | `internal/cli` | active (no codes yet — the edge renders and composes; it has not yet originated one) |
+| `CFG` | config (api types + loader) | `internal/config` | active (`001..007`; M11 added `spec.gateway`/`spec.ca`/`spec.prerequisites` validation and **no new codes** — document-layer validation is `field.ErrorList` machinery, aggregated under the existing `CUBE-CFG-003`) |
+| `CLI` | cli / output | `internal/cli` | active (no codes yet — the edge renders and composes; it has not yet originated one. See the queued gate event below) |
 | `CLU` | cluster provider | `internal/cluster` | active (M3) |
 | `KUB` | kube client access | `internal/kube` | active (M6) |
-| `BST` | bootstrap (SSA/wait/inventory machinery) | `internal/bootstrap` | active (M7, narrowed M10: codes `003..006` plus the reconciliation-wait codes `009`/`010` — contract text generalized at the M11 gate to any bootstrap-executed wait over declared objects, prerequisite or engine; `001`/`002`/`007`/`008` superseded by `ENG-003/004/006/005` — tombstoned, never reused) |
+| `BST` | bootstrap (SSA/wait/inventory machinery) | `internal/bootstrap` | active (M7, narrowed M10: codes `003..006` plus the reconciliation-wait codes `009`/`010`. M11 **generalized the shipped wording, adding no number**: `005` now covers any kind-set wait bootstrap executes — the substrate or a prerequisite unit — and `009` any reconciliation wait over declared objects — the sync wiring, the declared engine content, or a prerequisite unit; `010` is raised at the failure point on both wait paths and never retagged as a timeout. `001`/`002`/`007`/`008` superseded by `ENG-003/004/006/005` — tombstoned, never reused) |
 | `ENG` | gitops engine (invariant substrate + tier-2 driver seam) | `internal/engine` | active (M10: codes `001..006`; `003..006` supersede the moved `BST-001/002/008/007` checks) |
-| `GWY` | gateway (trust-fabric prerequisite units, CoreDNS block) | `internal/gateway` | active (M11: codes `001..004`) |
-| `CA` | certificate authority (mint/reuse, marker, trust ledger/verbs) | `internal/ca` | active (M11: codes `001..005`) |
+| `GWY` | gateway (trust-fabric prerequisite units, CoreDNS block) | `internal/gateway` | active (M11: codes `001..004`; all constructors unexported — the domain has no subpackages) |
+| `CA` | certificate authority (mint/reuse, marker, trust ledger + store drivers) | `internal/ca` | active (M11: codes `001..005`; the ledger read, the provider switch, and the trust verbs' preconditions are raised through **exported** constructors, because the domain never touches files and never chooses the store) |
 | `PKG` | pack contract, values, render, identity + deps | `internal/pack` | active (M8; M9 helm packs reused it, adding no tag and no code — `020` retired) |
 | `REF` | reference resolution (grammar → tree/file) | `internal/ref` | active (M8) |
 | `REG` | registry / OCI **publish** side | `internal/registry` | reserved |
@@ -273,6 +302,23 @@ Tag registry (a new component adds a row; nothing renumbers):
 | `TLS` | trust & credential bindings (#142: `secretRef`, source verification, `lock`/`mirror`) | `internal/trust` | reserved (re-scoped at the M11 gate, 2026-08-27: certificates/CA moved to `CA`) |
 | `SPK` | spokes | `internal/spoke` | reserved |
 | `ORC` | orchestrator (phases) | `internal/orchestrator` | reserved |
+
+**Queued gate event — whether the CLI edge earns `CUBE-CLI-*`.** M11
+grew the edge's composition substantially: the `trust` verb group, the
+CA-reuse cluster read, the CoreDNS read-modify-write, and prerequisite
+resolution. Those paths fail today by wrapping **another domain's**
+code (`CUBE-CA-*` for a refused removal, `CUBE-GWY-004` for a corrupted
+Corefile, `CUBE-REF-*`/`CUBE-PKG-*` for an override entry) or by
+wrapping a stdlib/API-server cause uncoded (`readCAMaterial`'s
+non-NotFound failure, the splice's exhausted conflict retry). That is a
+deliberate reading of the rule that codes are never re-tagged across
+domains — the edge does not claim another domain's failure — but it
+leaves a class of genuinely edge-originated failures rendering without
+a code. Whether `internal/cli` should therefore open its own catalog is
+**recorded here as a future gate event, not a pending action**: it is a
+decision to be taken at a gate, so that if it happens it is a choice
+and if it does not it is also a choice, never drift. Nothing about it
+is owed by M11.
 
 `REF` and `REG` split OCI cleanly and must stay split: `ref` is the
 **read** side (resolve a reference to a tree or a file, for any backend);
@@ -399,18 +445,23 @@ embedded *pack*: an import path and layout change, not a module-graph
 change; the pin discipline (version constant, recorded sha256, `make`
 regeneration, nothing fetched at runtime) transfers with it unchanged.
 
-**M11 (gateway + ca) adds no runtime dependency** — stated at its
-design gate (2026-08-27), the closed set closed by decision again. CA
+**M11 (gateway + ca) added no runtime dependency** — stated at its
+design gate (2026-08-27) and **confirmed on merge**: `go.mod` is
+byte-identical across the whole milestone stack. CA
 minting is stdlib `crypto/x509` + `crypto/ecdsa`; the gateway is
 content — an embedded Gateway API CRDs pack (substrate pin discipline:
-recorded provenance, `make` regeneration, never fetched at runtime; at
-1,170,953 bytes the largest embedded asset, verified at the gate) and a
-thin-helm CR pair emitted as `unstructured` (the M9 delegation shape).
-One adjacent record: the `trust` verbs shell out to the **operating
-system's own trust tooling** (`security` on macOS, p11-kit `trust` on
-Linux) — a platform-tool dependency, not a module, and distinct from
+the `CRDsVersion` constant, the recorded `crdsSHA256`, regeneration by
+the `make gateway-api-manifests` target, never fetched at runtime; at
+1,170,953 bytes the largest embedded asset, as the gate measured) and a
+thin-helm CR pair emitted as `unstructured` (the M9 delegation shape),
+digest-pinned by `ChartVersion` + `ChartDigest`.
+One adjacent record: the shipped `trust` verbs execute the
+**operating system's own trust tooling** (`security`(1) on macOS,
+p11-kit's `trust`(1) on Linux) — a platform-tool
+dependency, not a module, and distinct from
 the rejected `kubectl kustomize` exec because no in-process
-alternative to the OS trust store exists; a missing tool fails coded,
+alternative to the OS trust store exists; a missing tool, an unusable
+one, and an OS with no driver at all each fail coded (`CUBE-CA-004`),
 and nothing is bundled.
 
 **M7 (bootstrap) adds no runtime dependency** — a deliberate, load-bearing

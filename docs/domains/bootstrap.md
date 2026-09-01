@@ -5,29 +5,40 @@ Cross-cutting rules:
 `docs/ARCHITECTURE.md`. Originating design gate: `docs/DECISIONS.md`
 2026-08-06 (M7, epic #92); narrowed to engine-agnostic machinery by the
 two-tier M10 gate, 2026-08-24 (epic #152; the two-tier model itself lives
-in `docs/domains/engine.md`).
+in `docs/domains/engine.md`); generalized to carry ordered prerequisite
+units by the M11 gate, 2026-08-27, shipped in M11-C5 (PR #195).
 
 ## Purpose
 
 `internal/bootstrap` is the **engine-agnostic micro-bootstrap
-machinery**: it SSA-applies the **injected** tier-1 substrate objects and
-the **injected** driver sync wiring, executes the **three-phase
-readiness** below, records a **bootstrap inventory** (the seed of a
-future `down`) into the **injected** substrate namespace, and stops.
-It embeds nothing and knows no engine — the substrate home
+machinery**: it SSA-applies the **injected** tier-1 substrate objects,
+then the **injected** ordered prerequisite units, then the **injected**
+driver sync wiring, executing the readiness wait each step declares,
+re-recording a **bootstrap inventory** (the seed of a
+future `down`) into the **injected** substrate namespace as the owned
+set grows, and stops.
+It embeds nothing and knows no engine — nor any pack, gateway, or CA.
+The substrate home
 (`internal/engine/substrate`) and the selected tier-2 driver supply
-content; the CLI/orchestrator edge composes. Steady-state ownership of
+engine content, the edge resolves prerequisite content from
+`spec.prerequisites`, and everything reaches this domain as object
+slices plus function values. Steady-state ownership of
 every pack and manifest is the engine's from handover on — **no-engine
 operation is not a supported mode**.
 
 ## Config surface
 
-Since M10 this domain has **no config surface of its own**: `spec.engine`
+Since M10 this domain has **no config surface of its own**, and M11 did
+not give it one: `spec.engine`
 belongs to the engine domain's contract (`docs/domains/engine.md`, which
-carries the `EngineSpec`/`EngineSource` shapes and their validation), and
+carries the `EngineSpec`/`EngineSource` shapes and their validation) and
+`spec.prerequisites` to the gateway's (`docs/domains/gateway.md`), while
 bootstrap does not import `api/config` at all — the edge reads the spec,
-selects the driver, and hands bootstrap only objects, predicates, and a
-namespace string.
+selects the driver, resolves the prerequisite list, and hands bootstrap
+only objects, predicates, and a namespace string. That the prerequisite
+list became configuration in M11 changed the **edge**, not this
+contract: bootstrap still never reads a `Config` and still cannot tell
+a defaulted list from a user-written one.
 
 ## The injection contract
 
@@ -38,12 +49,31 @@ namespace string.
 - the **inventory namespace** as a string (`NewApplier(dyn, mapper,
   inventoryNamespace)`), sourced from the substrate's invariant
   namespace fact — bootstrap records where it is told;
-- the **substrate objects** and the **driver sync wiring** as
-  `[]*unstructured.Unstructured` parameters to `InstallEngine`;
+- the whole content of one run as a single injected struct,
+  `EngineInstall{Substrate []*unstructured.Unstructured; Prerequisites
+  []Unit; Wiring []*unstructured.Unstructured; Wait EngineWait}` — the
+  entry-point shape the M11 gate left to implementation, resolved to
+  `InstallEngine(ctx, EngineInstall)`;
 - the driver's judgment and declared bundle as an
   `EngineWait{Reconciled ReconciledFunc; EngineObjects
   []*unstructured.Unstructured}` — function values and neutral
   vocabulary cross the edge; no engine type does.
+
+**A `Unit` is the prerequisite vocabulary, and it carries no exported
+fields** — it is built only through its three constructors, so its
+declared flavor can never be edited after the fact:
+
+- `NewRawUnit(name, objects)` — waited with the **kind-set** machinery;
+- `NewCRUnit(name, objects, reconciled)` — waited with the
+  **reconciliation** machinery under the injected predicate;
+- `NewInertUnit(name, objects)` — **no post-apply wait at all**.
+
+Which wait runs is dispatched on the flavor the constructor declared,
+**never inferred from the objects' actual kinds**. That is deliberate:
+inference would make a unit's readiness semantics a function of its
+content, so adding an object could silently change how the unit is
+judged. The same principle explains the flavors carrying names — a
+timeout names the unit that failed, not just the object set.
 
 It **never imports `internal/kube` or `internal/engine`** (domains never
 import each other; the kube contract sanctions consumers referencing
@@ -99,6 +129,20 @@ same machinery. **Empty and skipped for flux** (the degenerate driver);
 the phase exists so a second driver's gate fills it without new seam
 surface.
 
+**Prerequisite units reuse those two waits — there is no third.** A
+**raw** unit takes the phase-1 kind-set wait (so a Namespace must be
+`Active` and a CRD `Established`, while objects outside the kind-set —
+a Service, say — are ignored by design). A **CR** unit takes the
+phase-2 reconciliation wait under the predicate the edge injected. An
+**inert** unit declares no post-apply wait at all: **apply success is
+its readiness.** That last flavor names semantics rather than adding
+machinery — the kind-set wait already ignored objects outside its
+filter, so a status-less Secret was always done the moment its apply
+succeeded. Making it an explicit flavor is what stops a later reader
+from "fixing" the absent wait, which is exactly the kind of
+well-intentioned repair that would hang a bootstrap forever on an
+object that has no status to reach.
+
 **Transient discovery is pending, never terminal, in phases 2–3.**
 Declared content may not exist yet by design, so *no REST mapping yet*
 ("kind not served by the cluster yet") and *NotFound* ("object not
@@ -115,13 +159,20 @@ string is for).
 
 ## The install sequence
 
-*(This section describes the shipped M10 machinery; the M11 amendment
-below inserts the ordered prerequisite units between steps 3 and 4 and
-folds in at the M11 closeout.)*
+`Applier.InstallEngine(ctx, EngineInstall)` sequences the whole
+bootstrap in the one order that is correct and recoverable.
 
-`Applier.InstallEngine(ctx, substrateObjs, wiringObjs, engineWait)`
-sequences the whole bootstrap in the one order that is correct and
-recoverable:
+**Before any of it, the units are checked.** A composition defect —
+today, a CR unit built with a nil judge — is caught pre-flight and
+fails as `CUBE-BST-010`, ahead of even the substrate apply. That
+defect is dangerous precisely because it would otherwise **pass
+silently**: a nil predicate makes the reconciliation wait skip, so the
+unit would count as ready the moment its apply succeeded, and a cube
+would report success over content that never reconciled. Checking
+ahead of everything also means a defective run **installs nothing at
+all**. It is a defect at the CLI edge rather than a cluster condition,
+which is why it is coded where it is found and never surfaces later as
+a timeout. Then, in order:
 
 1. apply the injected substrate objects,
 2. record the inventory (an applied-but-not-yet-ready install is already
@@ -129,13 +180,27 @@ recoverable:
    step — resolving that gap is an up/down-milestone (M13) design
    question),
 3. wait the bootstrap kind-set (phase 1 — this establishes the CRDs the
-   wiring needs),
-4. when wiring exists: re-record the inventory with the wiring included —
-   **before** it is applied, so a half-applied sync is already visible
-   to `down`,
-5. apply the wiring, then wait it reconciled (phase 2),
-6. wait the declared engine objects reconciled (phase 3 — a no-op when
+   prerequisites and the wiring need),
+4. **install each prerequisite unit, in list order.** Per unit:
+   re-record the inventory with the unit's objects included, **then**
+   apply them, **then** run the wait that unit's flavor declares —
+   and only then move to the next unit. Record-before-apply extends to
+   prerequisites exactly as it governs the wiring, and the per-unit
+   wait is what guarantees CRDs are `Established`, and a target
+   namespace `Active`, before any later member needs them,
+5. when wiring exists: re-record the inventory with the wiring
+   included — **before** it is applied, so a half-applied sync is
+   already visible to `down`,
+6. apply the wiring, then wait it reconciled (phase 2),
+7. wait the declared engine objects reconciled (phase 3 — a no-op when
    the driver declares none, the flux case).
+
+The order is the edge's declaration, not a graph this domain solves:
+bootstrap installs the list it is handed, in the sequence it is handed,
+and has no notion of a dependency between units. Nothing about
+prerequisites is a new *phase*, which is why step 4 carries no phase
+number of its own: each unit borrows phase 1's or phase 2's wait
+according to its declared flavor, or waits not at all.
 
 What the wiring looks like — and whether any exists — is the driver's
 business, decided at the edge; the version assertion (`CUBE-ENG-005`)
@@ -143,16 +208,48 @@ also happened there, before any cluster contact.
 
 ## Inventory (seed of `down`)
 
-`bootstrap` records what **it** applied — substrate + sync wiring — as a
+`bootstrap` records what **it** applied — substrate, every prerequisite
+unit, and the sync wiring — as a
 ConfigMap in the injected namespace, so a future `down` can find and
 remove it. In-domain and self-contained — **not** a reusable applier
-seam. Content delivered through the tier-1 source (a future engine
+seam.
+
+**Every re-record is cumulative for the whole run.** Each record covers
+everything applied so far, so the final one includes every prerequisite
+unit and no unit ever drops out of the deletion seed. The record call
+itself is deliberately dumb — a plain SSA apply of a ConfigMap built
+from whatever slice it is handed, with overwrite semantics — and the
+cumulative property lives in the callers, which thread an ever-growing
+applied set through the sequence. Keeping accumulation in the sequencing
+rather than inside the recorder is what makes "record before the apply
+it covers" checkable by reading one function. Object references are
+sorted by namespace, kind, and name before encoding, so the recorded
+document is byte-deterministic across runs.
+
+Content delivered through the tier-1 source (a future engine
 bundle, every ordinary pack) is **deliberately not** in this inventory:
 it lives under the `prune: true` sync, so its teardown is source-level.
 The `down` composition order — (a) source-level teardown, (b) tier-1
 teardown from the inventory, (c) cluster teardown — is a published
 **requirement on the up/down milestone (M13)**, its real semantics owed
 at that gate.
+
+**Two further inventory questions are published to that same gate**,
+because M11 multiplied both the number of record events and the
+likelihood of the content changing between runs:
+
+1. **Replacement semantics across re-bootstraps.** Recording overwrites
+   with a fresh list, so a unit renamed or dropped between bootstraps —
+   and a gateway content swap is exactly that — vanishes from the
+   inventory while staying live in the cluster. Union, prune, and
+   orphan semantics are M13's to settle; until they are, M12 (which may
+   vary prerequisite content) must preserve inventory continuity.
+2. **Deletion ordering.** With `gateway-system` inventoried alongside
+   the Secrets and CRs inside it, `down` must delete namespaced
+   dependents before their Namespace. The inventory's sort is
+   deterministic but **not dependency-aware**, and deliberately so — it
+   exists to make the document reproducible, not to encode a teardown
+   order that only the deleting milestone can define.
 
 ## Interface doctrine applied
 
@@ -172,16 +269,28 @@ executes, it never selects.
 | `CUBE-BST-002` | SUPERSEDED by `CUBE-ENG-004` (M10: payload parse moved with the substrate) |
 | `CUBE-BST-003` | no REST mapping for an object's kind (apply path, even after a discovery refresh) |
 | `CUBE-BST-004` | server-side apply of a bootstrap object failed (wrapped cause) |
-| `CUBE-BST-005` | kind-set readiness wait timed out (phase 1 only; names the pending objects) — *text generalizes to any kind-set wait under the M11 amendment below* |
+| `CUBE-BST-005` | a kind-set readiness wait timed out — **any** kind-set wait bootstrap executes, the substrate's or a prerequisite unit's; names the pending objects |
 | `CUBE-BST-006` | inventory encode failed before recording |
 | `CUBE-BST-007` | SUPERSEDED by `CUBE-ENG-006` (M10: the wiring shapes and their source-kind check moved to the flux driver) |
 | `CUBE-BST-008` | SUPERSEDED by `CUBE-ENG-005` (M10: the version pin moved to the substrate; asserted at the edge) |
-| `CUBE-BST-009` | reconciliation/engine wait timed out (phases 2–3; names the pending objects with the driver's reasons) — *text generalizes to any declared-object reconciliation wait under the M11 amendment below* |
-| `CUBE-BST-010` | readiness polling failed on a permanent error (wrapped cause; coded at the failure point, never retagged as a timeout) |
+| `CUBE-BST-009` | a reconciliation wait timed out — **any** wait bootstrap executes over declared objects: the applied sync wiring, the declared engine content, or a prerequisite unit; names the pending objects with the judgment's reasons |
+| `CUBE-BST-010` | readiness polling failed on a permanent error, **or** a unit was composed with no judge (caught pre-flight); wrapped cause, coded at the failure point, never retagged as a timeout |
+
+**M11 generalized wording, not numbers.** The gate left one question
+open — whether a permanent poll failure during a kind-set wait should
+route to `-010` or be recorded as covered by `-005`, whose text says
+*timeout*. It shipped as the former: a single shared terminal-failure
+coder serves both wait paths, so a permanent failure is `-010` on
+either, and `-005`/`-009` mean what they say. The engine-flavored
+phrasing the M10 codes carried ("engine resources", "check the
+configured source") was generalized in the same change; the
+pending-versus-terminal classification and the pass-through rule for
+already-coded judgment errors are unchanged.
 
 The retained codes' summaries/remediations are engine-neutral (they name
 the injected namespace and generic "engine controllers"); superseded
-numbers stay declared as tombstones. `spec.engine` *document* validation
+numbers stay declared as tombstones. `spec.engine` and
+`spec.prerequisites` *document* validation
 errors are config-domain `CUBE-CFG-*`/`field.ErrorList` at load time —
 codes are never re-tagged across domains.
 
@@ -207,108 +316,46 @@ cluster contact) → read the substrate objects → select the tier-2 driver
 via the injected engine-driver factory (`CUBE-ENG-001` when none) and
 collect its wiring + `EngineWait` → resolve the cube's kubeconfig target
 + context via `cluster.Status` → build the kube client → construct the
-applier with the substrate namespace → `InstallEngine` under
-`--timeout`. Success output names tier 1: `flux 2.9.2 installed — syncing
+applier with the substrate namespace → **ensure the CA material** (the
+first cluster read) → **resolve the prerequisite list into units** →
+`InstallEngine` under
+`--timeout` → **finish**: splice CoreDNS, sync the `ca.crt` artifact,
+report.
+
+Success output names tier 1 and then one line per fabric the resolved
+list actually carried: `flux 2.9.2 installed — syncing
 from <url> (<kind>)` (or without the suffix when no source is
-configured). Flags: `--kubeconfig`, `--kubeconfig-context-name`,
-`--timeout` (default 5m, the total readiness budget). The `apply` verb
+configured); `gateway installed — *.<domain> routed to
+<stable Service FQDN>` when the gateway fabric was spliced — the line
+deliberately does **not** say "ready", and carries no URL, because a
+truthful one needs the host port and the edge cannot know it; and
+`cube CA written to <path>` when the CA artifact was synced.
+
+Flags: `--kubeconfig`, `--kubeconfig-context-name`,
+`--timeout` — **default 10m**, the total readiness budget. It was 5m
+through M10 and was raised in M11 for a stated reason rather than a
+comfort margin: the run is now network-dependent *inside* the cluster,
+because the helm-controller pulls the pinned gateway chart from its OCI
+registry during the gateway unit's wait, on a cluster still warming its
+images. The edge's own two round-trips — the CA read and the CoreDNS
+read-modify-write — are bounded separately at 30s each and are
+explicitly **not** drawn from `--timeout`: a readiness budget nearly
+spent by waiting should not cause an edge round-trip to fail for want
+of time rather than for a fault. The `apply` verb
 reserved on 2026-08-03 stays retired.
 
-## M11 amendment (gated 2026-08-27, ahead of code): the ordered prerequisite list
-
-Delimited amendment from the M11 design gate (`docs/DECISIONS.md`
-2026-08-27, as amended 2026-08-28 by M11-A0 — the list's source
-becomes spec-level data); it folds into the living body at the M11
-closeout, and no code implements it before the M11 breakdown is
-aligned.
-
-- **The install sequencing generalizes.** Between phase 1 (substrate
-  kind-set ready) and the wiring steps, the applier executes an
-  **ordered list of prerequisite units** — in M11, derived at the edge
-  from **`spec.prerequisites`** (spec-level data owned by the gateway
-  contract, its compiled defaults used when the field is absent or
-  empty — M11-A0, `docs/DECISIONS.md` 2026-08-28), resolving each
-  entry to the gateway domain's platform objects (Namespace + stable
-  `gateway` Service) and prerequisite packs
-  and the CA Secrets, in the default order: the `gateway-platform`
-  unit (Namespace + the stable `gateway` Service) → the
-  `gateway-api-crds` pack → the CA-material inert unit →
-  the `traefik-gateway` thin-helm pack (`docs/domains/gateway.md`,
-  `docs/domains/ca.md`). **Bootstrap gains no config surface from
-  this** — it still sees only object slices plus judges, and never
-  reads a `Config`. Per unit, in list
-  order: **re-record the inventory with the unit included, then apply,
-  then wait it ready before the next unit applies** — record-before-
-  apply extends to prerequisites exactly as it governs the wiring, and
-  the per-unit wait is what guarantees CRDs are `Established` — and
-  the target namespace `Active` — before
-  any dependent list member needs them. **Every re-record is
-  cumulative for the whole run**: each record covers everything
-  applied so far, and the final wiring record includes every
-  prerequisite unit — no unit ever drops from the deletion seed.
-- **Existing machinery, no new phase concept — three unit flavors.**
-  A **raw** unit (the `gateway-platform` objects, the
-  Gateway API CRDs pack) is waited with the kind-set machinery
-  (Namespace `Active`, CRD `Established`; objects outside the
-  kind-set filter — the stable `gateway` Service — are ignored by
-  design); a **CR** unit (the
-  thin-helm gateway pair) is waited with the reconciliation machinery
-  under injected predicates; an **inert** unit (the CA Secrets —
-  status-less objects) declares no post-apply judge: **apply success
-  is its readiness.** The inert flavor names semantics, not new
-  machinery — the kind-set wait already ignores objects outside its
-  filter, so an SSA'd Secret is done when the apply succeeds, and a
-  later reader must not "fix" the skip. Everything crosses the edge
-  as the established
-  neutral vocabulary — object slices plus judge function values;
-  bootstrap still knows no packs, no gateway, no CA. All waits still
-  share the CLI's one `--timeout` as a total budget (the breakdown
-  sanity-checks the 5m default against a cold cluster's in-cluster
-  OCI chart pull — the day-0 network dependence is new, D1). The
-  exact entry-
-  point signature fixes at implementation within this contract (the
-  M10 precedent).
-- **Wait-code contract text generalizes; numbers and mechanics do
-  not.** `CUBE-BST-005` reads as *any* kind-set readiness wait timing
-  out (no longer "phase 1 only"); `CUBE-BST-009`/`-010` read as **a
-  bootstrap-executed reconciliation wait over declared objects** —
-  engine or prerequisite alike — with diagnostics naming the object
-  set and the injected predicates' pending reasons. The engine-
-  flavored wording ("engine resources", "check the configured
-  source") is deliberately generalized at this gate; the pending-vs-
-  terminal classification and the pass-through rule are unchanged.
-  Two named breakdown items ride on this: (a) the generalized wording
-  also lives in compiled `errors.go` message/remediation strings — the
-  small string change is owned explicitly at the closeout fold-in,
-  not discovered; (b) the kind-set wait has no `CUBE-BST-010`
-  analogue today (an uncoded permanent poll failure during `WaitReady`
-  is wrapped as `BST-005`, whose text says timeout) — pre-existing
-  behavior, but generalizing raw waits to more units broadens the
-  exposure, so the breakdown either routes permanent kind-set poll
-  failures to the `-010` failed-at-point classification or records on
-  the contract that `-005` covers them.
-- **Two new edge behaviors are named — neither is bootstrap
-  machinery.** (1) The **CA-reuse read**: the edge reads the existing
-  CA Secret with the dynamic client it already constructs and passes
-  key material to the `ca` domain's pure ensure function — the
-  exported machinery has no read operation and deliberately does not
-  grow one. (2) The **CoreDNS read-modify-write**: the edge splices
-  the gateway's marker block under optimistic concurrency; the
-  ConfigMap is **never inventory-recorded** (the inventory is a
-  deletion seed and must never name a system object), and its
-  restore-not-delete teardown is a published M13 requirement.
-- **Two inventory questions are published to the M13 gate** (M11
-  multiplies both record events and content-swap likelihood):
-  (1) **replacement semantics across re-bootstraps** —
-  `RecordInventory` overwrites with a fresh list, so a unit renamed or
-  dropped between bootstraps (a gateway content swap is exactly that)
-  vanishes from the inventory while staying live; union/prune/orphan
-  semantics are M13's, and M12 (which may vary prerequisite content)
-  must preserve inventory continuity until they are settled;
-  (2) **deletion ordering** — with `gateway-system` inventoried
-  alongside its Secrets and CRs, `down` must delete namespaced
-  dependents before their Namespace; the inventory's sort is
-  deterministic, not dependency-aware.
+**Two edge behaviors are M11's, and neither is bootstrap machinery.**
+(1) The **CA-reuse read**: the edge reads the existing CA Secret with
+the dynamic client it already constructs and passes any key material to
+the `ca` domain's pure ensure function — the exported machinery here
+has no read operation and deliberately does not grow one
+(`docs/domains/ca.md`). (2) The **CoreDNS read-modify-write**: the edge
+splices the gateway's marker block under bounded optimistic
+concurrency, after `InstallEngine` returns and before success is
+reported. The ConfigMap is **never inventory-recorded** — the inventory
+is a deletion seed and must never name a system object — and its
+restore-not-delete teardown is a published M13 requirement
+(`docs/domains/gateway.md`).
 
 ## Contracts for future domains
 
@@ -316,9 +363,12 @@ aligned.
   shipped) renders and never applies; packs reach a cluster by being
   written into the source the sync wiring established (the M12 bus) —
   *not* through a cube-idp applier.
-- **M11 (gateway + ca)** is gated (2026-08-27): the ordered
-  prerequisite list above, the gateway's packs, and the CA material —
-  living contracts `docs/domains/gateway.md` and `docs/domains/ca.md`.
+- **M11 (gateway + ca)** shipped against this contract without adding
+  to it: the ordered prerequisite units above carry the gateway's
+  packs and the CA material, and the machinery gained unit flavors and
+  cumulative inventory but no config surface, no new code number, and
+  no knowledge of what a prerequisite contains — living contracts
+  `docs/domains/gateway.md` and `docs/domains/ca.md`.
 - **M13 (`down`)** reads the bootstrap inventory to tear down what
   bootstrap installed, composed with the M5 cluster teardown and the
   source-level teardown phase recorded above.

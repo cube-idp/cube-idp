@@ -20,11 +20,22 @@ inventory into the injected namespace, then hands over to the engine),
 **pack** (M8: the self-contained, versioned content unit —
 `pack.cue` with a closed `#Values`, `spec.packs` instances with a
 `dependsOn` graph,
-`pack render|validate|new`; it renders, never applies), and finally
-**engine** (M10: the two-tier model — the invariant Flux **substrate**
+`pack render|validate|new`; it renders, never applies), **engine**
+(M10: the two-tier model — the invariant Flux **substrate**
 embedded as a conforming pack in `internal/engine/substrate`, plus the
 tier-2 driver seam `engine.Provider` with the degenerate flux driver;
-the engine choice is the user's at day 0 and immutable per cube). M8
+the engine choice is the user's at day 0 and immutable per cube), and
+finally the M11 trust fabric — **gateway** (the ordered trust-fabric
+prerequisite units bootstrap installs ahead of the engine, as
+`spec.prerequisites` data with compiled defaults; embedded Gateway API
+CRDs + thin-helm Traefik packs, the platform facts including the stable
+`gateway` Service indirection, the domain-emitted `Gateway` object, the
+CoreDNS marker splice, and its own readiness predicates — pure: it
+emits, the edge applies) and **ca** (the per-cube CA + wildcard leaf,
+the mint-if-absent reuse contract with in-cluster-only custody, the
+marker CN/OU identity, and the operator trust surface — ledger +
+`trust list|install|remove`; `spec.ca.provider` is provider-seam-ready
+with `cube` the only value). M8
 also added the shared-infrastructure leaf **`internal/ref`** (one
 reference grammar → tree/file), documented inside its only consumer's
 contract (`docs/domains/pack.md`) rather than a file of its own — it
@@ -40,7 +51,7 @@ contracts: `docs/domains/<name>.md`.
 | `/ROADMAP.md` | milestone queue + done log | the PR that completes/reorders a milestone |
 | `/README.md` | user-facing intro | user-visible behavior changes |
 | `/CLAUDE.md` | agent rules + this map | rules or the doc system change |
-| `/CHANGELOG.md` | release notes | every milestone PR |
+| `/CHANGELOG.md` | release notes | the PR that closes a milestone |
 | `docs/ARCHITECTURE.md` | binding cross-cutting architecture (living) | architectural decisions, in the deciding PR |
 | `docs/architecture/` | C4 model: `workspace.dsl` + rendered SVGs | when the architecture changes, regenerated from the DSL |
 | `docs/domains/<name>.md` | one living contract per domain | the domain's milestones (file created when the domain lands) |
@@ -76,6 +87,12 @@ cmd/cube-idp ──▶ internal/cli ──▶ internal/config    ──▶ api/c
                       │      │        │  → api/config; renders, never applies)
                       │      │        └──▶ internal/ref (M8 shared-infra leaf:
                       │      │               ref grammar → tree/file)
+                      │      ├──▶ internal/gateway (M11: trust-fabric prereq
+                      │      │        units + CoreDNS marker block +
+                      │      │        predicates → api/config)
+                      │      ├──▶ internal/ca (M11: CA mint/reuse, marker
+                      │      │        identity, trust ledger/verbs; no api/config —
+                      │      │        provider + Secret names injected as strings)
                       └──────┴──▶ internal/cubeerr ◀── (every package above)
 ```
 

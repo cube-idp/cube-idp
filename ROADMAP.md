@@ -163,16 +163,80 @@ it in the PR that completes or reorders a milestone.
   gate: `docs/DECISIONS.md` 2026-08-24; living contracts:
   `docs/domains/engine.md` (new), `docs/domains/bootstrap.md`.
 
+- **M11 — gateway** (epic #177; design gate PRs #180/#191, 2026-08-28;
+  PR stack #190/#192/#193/#194/#195/#196/#197/#198,
+  2026-08-28–2026-08-31): the **trust fabric** became real, as two new
+  component domains delivered ahead of the engine. `internal/gateway`
+  (`CUBE-GWY-001`–`004`) owns the bootstrap-phase prerequisite content
+  and is pure like the substrate — it emits objects, a Corefile block,
+  and predicates; the edge applies them. It ships the `gateway-system`
+  Namespace plus the **stable `gateway` Service** (an `ExternalName`
+  indirection in front of the implementation, so internal DNS and future
+  routing target a cube-owned name that survives an implementation
+  swap), the embedded Gateway API CRDs pack (1.6.1, sha256-pinned), the
+  thin-helm Traefik pack (chart 41.3.0, pinned by tag **and** OCI
+  digest), and — as a **fully-static domain-emitted object** rather than
+  chart output — the `Gateway` itself: one HTTPS listener on 443 for
+  `*.<domain>`, terminating with the leaf Secret. `internal/ca`
+  (`CUBE-CA-001`–`005`) owns the cube's certificate authority: a
+  stdlib-minted per-cube CA (ECDSA P-256, 10y) and its `*.<domain>`
+  wildcard leaf (2y), the **mint-if-absent** reuse contract (the edge
+  reads the existing Secret and a reused CA signs a fresh leaf; the
+  private key never leaves the cluster), the marker CN/OU identity
+  (`cube-idp <cube> CA` + `cube-idp.dev`, **both** required before any
+  trust-store removal), and the operator trust surface — a
+  `~/.cube-idp/trust.yaml` ledger, a per-cube `~/.cube-idp/<cube>/ca.crt`
+  artifact, and `trust list|install|remove` over **user-scope stores
+  only** (macOS login keychain, p11-kit), never sudo. Three config
+  surfaces: `spec.gateway.domain` (derived `<cube>.cube.test`),
+  `spec.ca.provider` (`cube`, the only admitted value, provider-seam-ready
+  and immutable per cube — the engine precedent), and
+  `spec.prerequisites` — the **ordered unit list as spec-level data**
+  with a compiled default (`gateway-platform`, `gateway-api-crds`,
+  `ca-secrets`, `traefik-gateway`) that a user **replaces as a whole
+  list**, never merges (M11-A0). All three validate through the document
+  layer's `field.ErrorList`, so there are **no new `CUBE-CFG-*` codes**.
+  `internal/bootstrap` grew **ordered prerequisite units** between the
+  substrate and the engine, in three flavors declared per unit and never
+  inferred from the objects: **raw** waits the kind-set, **CR** waits
+  reconciliation under an injected predicate, **inert** has no post-apply
+  wait at all (a successful apply *is* readiness — what the CA Secrets
+  unit needs). The inventory is re-recorded with the **cumulative** owned
+  set *before* each unit applies, so a half-applied unit is still visible
+  to a future `down`. No new `CUBE-BST-*` codes: `-005`/`-009` widened to
+  name the failing unit, and `-010` is coded at the failure point,
+  including a pre-flight raise for a CR unit built with no predicate — a
+  composition defect that leaves the cluster completely untouched. At the
+  CLI edge: CA material is read before composition, the CoreDNS
+  `Corefile` is spliced inside a `# cube-idp:begin <cube>` marker pair
+  keyed on the exact cube name (kubeadm's ConfigMap — spliced, never
+  owned, never inventory-recorded; bounded optimistic-concurrency retry)
+  after the gateway unit reconciles and before success is reported, and
+  `ca.crt` is synced to disk on every run that installs CA material,
+  never conditioned on whether the CA was minted. The kind driver now
+  defaults to the `ingress-ready` node label plus `8080→80`/`8443→443`
+  port mappings when no `forProvider` is supplied — an explicit payload
+  still wins **wholesale**, never merged. `bootstrap --timeout` defaults
+  to **10m** (was 5m) because the run became network-dependent inside the
+  cluster: helm-controller pulls the pinned gateway chart during the
+  gateway unit's wait. **No new runtime dependency.** Design gate:
+  `docs/DECISIONS.md` 2026-08-27 (plus 2026-08-28, the prerequisite list
+  as spec-level data); living contracts: `docs/domains/gateway.md` (new),
+  `docs/domains/ca.md` (new), `docs/domains/bootstrap.md`,
+  `docs/domains/cluster.md`, plus the M11 touchpoints recorded in
+  `docs/domains/engine.md` and `docs/domains/pack.md` (the seam itself
+  untouched — prerequisites are not engine content).
+
 ## Queue
 
-- **M11 — gateway** (inserted at the M10 design gate by operator
-  decision, 2026-08-24, per the founding vision: "we use Flux to deliver
-  the prerequisites and the engine itself … from there the engine takes
-  over"): the trust-fabric prerequisite delivered through tier 1 ahead of
-  ordinary packs — ingress gateway, certificates, hostnames, trust,
-  internal DNS. Own epic and design gate when picked up; its delivery
-  semantics feed the bus milestone's `Prerequisites` handling. No design
-  here — only the queue position.
+- **M12 — bus** (renumbered from M11 at the M10 design gate, 2026-08-24;
+  see the table below): delivery — the rendered content published to the
+  source the sync wiring established, the real `pre` semantics behind
+  `externalManifests`, and the air-gap answer that is due by this gate.
+  It instantiates the listed shared-infrastructure leaf `internal/plan`
+  (the delivery vocabulary), and it consumes M11's ordered-prerequisite
+  semantics. Own epic and design gate when picked up. No design here —
+  only the queue position.
 
 - **#142 — trust & credential bindings** (opened from the independent
   review of the M9 design gate, 2026-08-23): private chart-source
@@ -218,7 +282,7 @@ Deferred from M8 with issues of their own: the CLI edge resolving
 `docs/domains/ref.md` move), and the git/oci/s3 `ref` backends, which land
 with the milestones that need them.
 
-## Continuation after M11 (directional, not committed)
+## Continuation after M12 (directional, not committed)
 
 Re-sequenced by operator direction (2026-08-05, recorded in the M7 design
 gate; helm inserted ahead of the engine 2026-08-22, see the renumbering
@@ -227,12 +291,12 @@ questions: `docs/archived/plans/2026-08-01-roadmap-direction.md`. (The pack
 unit's pre-M8 shaping notes were absorbed into `docs/domains/pack.md` and
 `docs/DECISIONS.md`, and deleted with the M8 closeout.)
 
-M11 gateway is the committed next milestone (Queue above). After it: M12
-bus (OCI/git delivery; the real `pre` semantics and the air-gap answer
-are due by then) → M13 thin `up`/`down` finisher (it consumes M8's
-`ResolvedGraph` as data and executes the order) → periphery in pull
-order (doctor, diff, trust, lock/vendor, spokes, …). #142 is queued but
-unsequenced: every milestone after M9 can proceed without it.
+M12 bus is the committed next milestone (Queue above): OCI/git delivery;
+the real `pre` semantics and the air-gap answer are due by then. After
+it: M13 thin `up`/`down` finisher (it consumes M8's `ResolvedGraph` as
+data and executes the order) → periphery in pull order (doctor, diff,
+lock/vendor, spokes, …). #142 is queued but unsequenced: every milestone
+after M9 can proceed without it.
 
 Rationale: M7 makes the product demo-able (up → gitops-managed cluster) and
 M8 gives the later milestones the content unit they deliver. M9 went ahead

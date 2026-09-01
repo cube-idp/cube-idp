@@ -14,14 +14,14 @@
 // Name the .puml files explicitly, as above: passing a glob instead
 // (`-tsvg "/data/*.puml"`) fails with "No file found" — the container
 // does not expand it. Add a line here when a view is added.
-workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M10)" {
+workspace "cube-idp" "Internal developer platform CLI — declarative cube provisioning (v0, post-M11)" {
 
     model {
         operator = person "Platform Operator" "Declares a cube in cube.yaml and drives it with the cube-idp CLI"
 
         cubeIdp = softwareSystem "cube-idp" "CLI that provisions and manages the cluster declared in a single Config document; the document is the sole source of truth" {
 
-            cli = container "cube-idp binary" "Single Go binary; cobra CLI with init, create, delete, status, bootstrap, pack render|validate|new (--from / --from-chart) and config validate|show commands" "Go 1.26" {
+            cli = container "cube-idp binary" "Single Go binary; cobra CLI with init, create, delete, status, bootstrap, trust list|install|remove, pack render|validate|new (--from / --from-chart) and config validate|show commands" "Go 1.26" {
                 mainPkg = component "Entrypoint" "Signal-aware context, delegates to the CLI and exits with the mapped code" "cmd/cube-idp"
                 cliPkg = component "CLI edge" "Cobra wiring only: flag mapping, edge composition (init: scaffold-if-absent → load → report; create/delete/status: load → domain operation with injected provisioner factory, SpecValidator type-assert), sole error renderer with exit codes 0/2/1" "internal/cli"
                 configDomain = component "Config domain" "Strict load pipeline (decode → Default → Validate), config scaffolding with O_EXCL clobber safety, docker-style name generator; owns CUBE-CFG-* codes" "internal/config"
@@ -29,16 +29,18 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
                 clusterDomain = component "Cluster domain" "Provisioner driver seam + optional SpecValidator capability, Init/Delete/Status operations, kubeconfig rebrand/lossless-merge/removal/atomic-write machinery; owns CUBE-CLU-* codes; exported conformance suite" "internal/cluster"
                 kindDriver = component "kind driver" "Sole importer of sigs.k8s.io/kind; implements Provisioner + SpecValidator; container-runtime detection deferred to first provisioning call" "internal/cluster/kind"
                 kubeDomain = component "Kube domain" "Shared leaf (M6): constructs REST config, discovery, RESTMapper and dynamic client from injected kubeconfig bytes + context name; Ping reachability check; sole constructor of clients (client-go construction confinement); owns CUBE-KUB-* codes" "internal/kube"
-                bootstrapDomain = component "Bootstrap domain" "Engine-agnostic micro-bootstrap machinery (M7, narrowed M10): SSA-applies injected substrate objects + injected driver sync wiring over injected client-go interfaces, executes three-phase readiness (kind-set; reconciliation over sync wiring; engine readiness over declared bundle — empty for flux) with transient discovery pending-not-terminal, records an inventory into the injected substrate namespace (seed of down); embeds nothing, knows no engine; owns the CUBE-BST-* machinery codes (003..006, 009, 010)" "internal/bootstrap"
+                bootstrapDomain = component "Bootstrap domain" "Engine-agnostic micro-bootstrap machinery (M7, narrowed M10, generalized M11): SSA-applies injected substrate objects, then ordered prerequisite units (raw / CR / inert flavors, dispatched on the declared flavor and never inferred), then injected driver sync wiring, over injected client-go interfaces; executes the readiness each step declares (kind-set; reconciliation; engine readiness over the declared bundle — empty for flux) with transient discovery pending-not-terminal, catches composition defects pre-flight so a defective run installs nothing, and re-records a cumulative inventory into the injected substrate namespace (seed of down); embeds nothing, knows no engine, pack, gateway or CA; owns the CUBE-BST-* machinery codes (003..006, 009, 010)" "internal/bootstrap"
                 engineDomain = component "Engine domain" "Two-tier engine domain (M10): the tier-2 driver seam engine.Provider (SourceObjects, EngineObjects, Reconciled, EngineNamespace — pure, apply-path-agnostic) with its hermetic conformance suite run against real drivers; owns CUBE-ENG-* codes" "internal/engine"
                 substratePkg = component "Engine substrate" "The invariant tier 1 (M10): embedded pinned Flux install re-homed as a conforming pack (clean-SemVer version, sha256 provenance, make regeneration), the substrate-namespace fact, and the superseded asset/version checks; never driver-selected" "internal/engine/substrate"
                 fluxDriver = component "flux driver" "The degenerate tier-2 driver (M10): the substrate doubles as the engine — emits the GitRepository|OCIRepository + Kustomization sync wiring from spec.engine.source, judges freshness (Ready AND observedGeneration current), returns an empty engine bundle" "internal/engine/flux"
+                gatewayDomain = component "Gateway domain" "The bootstrap-phase trust fabric (M11): owns the prerequisite model behind spec.prerequisites, the embedded gateway-api-crds raw pack and traefik-gateway thin-helm pack (sha256/digest pinned), the gateway-platform Namespace + stable ExternalName Service, the cube-authored Gateway API Gateway, the pure CoreDNS marker-block splice, and the OCIRepository/HelmRelease readiness predicate; emits objects and blocks, never performs I/O; owns CUBE-GWY-* codes" "internal/gateway"
+                caDomain = component "CA domain" "The cube's certificate authority (M11): stdlib-minted per-cube CA + wildcard leaf with the mint-if-absent reuse contract, marker CN/OU identity, fingerprints, the trust ledger and artifact paths, and two user-scope trust-store drivers (macOS keychain, p11-kit) driven through an injected Runner. Imports no api/config — provider and Secret names arrive as injected strings; owns CUBE-CA-* codes" "internal/ca"
                 packDomain = component "Pack domain" "Defines, loads, validates and renders packs (M8): pack.cue metadata with a closed #Values definition, raw, kustomize and helm rendering into a RenderPlan{Prerequisites, Objects} — a type: helm pack is thin and renders to a Flux HelmRelease + its HelmRepository/OCIRepository source CR rather than to expanded manifests, RFC 7386 values merge, namespace injection whose scope reads bundled CRDs, hermetic rejection of remote kustomize references, instance identity + dependsOn graph, and the pack new scaffold (including --from-chart, a local Chart.yaml/values.yaml metadata read). Renders, never applies; owns CUBE-PKG-* codes" "internal/pack"
                 refLeaf = component "Reference leaf" "Shared infrastructure (M8): one reference grammar resolved to a tree or a single file, explicit schemes only. Local paths and https today; git+https, oci and s3 are recognized and return their own not-implemented codes. Records a pin and enforces containment; owns CUBE-REF-* codes" "internal/ref"
                 cubeerrPkg = component "Error machinery" "Coded error shape (code, summary, remediation) and exit-code mapping only — no code catalog" "internal/cubeerr"
             }
 
-            configDoc = container "Config document" "The declared cube (metadata.name + spec.cluster); scaffolded by init when absent, only ever written by the config domain" "cube.yaml (YAML)" {
+            configDoc = container "Config document" "The declared cube — metadata.name plus one typed sub-struct per component (spec.cluster, spec.engine, spec.packs, spec.gateway, spec.ca) and the cross-component spec.prerequisites list; scaffolded by init when absent, only ever written by the config domain" "cube.yaml (YAML)" {
                 tags "File"
             }
 
@@ -47,6 +49,10 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
             }
 
             kubeconfigFile = container "Kubeconfig" "User's kubeconfig; cube-idp merges its cube-idp.dev/<name> context in losslessly and writes atomically" "~/.kube/config or --kubeconfig path" {
+                tags "File"
+            }
+
+            trustArtifacts = container "Trust artifacts" "Operator-side CA surface (M11): the per-cube ca.crt (0644, public half only — the private key never leaves the in-cluster Secret) and the cross-cube trust ledger recording cube, fingerprint, store and date. Synced on every bootstrap, read by the trust verbs" "~/.cube-idp/ (PEM + YAML)" {
                 tags "File"
             }
         }
@@ -71,8 +77,12 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
             tags "External"
         }
 
+        osTrustStore = softwareSystem "OS Trust Store" "The operating system's own user-scope trust store and its tooling — security(1) on macOS, p11-kit trust(1) on Linux. cube-idp never bundles a store and never invokes sudo; an OS with no driver fails coded" {
+            tags "External"
+        }
+
         # People / system relationships
-        operator -> cli "Runs init, create, delete, status, bootstrap, pack render|validate|new and config validate|show" "shell"
+        operator -> cli "Runs init, create, delete, status, bootstrap, trust list|install|remove, pack render|validate|new and config validate|show" "shell"
         operator -> packDir "Authors packs, or scaffolds them with pack new"
         operator -> kubectlTool "Operates the cluster with"
         kubectlTool -> kubeconfigFile "Reads contexts from"
@@ -87,8 +97,12 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         cli -> containerRuntime "Creates/inspects/deletes kind clusters through" "sigs.k8s.io/kind"
         cli -> kindCluster "Provisions (create) and tears down (delete) from spec.cluster, idempotent by name; exports the kubeconfig of" "sigs.k8s.io/kind"
         cli -> kindCluster "Probes API-server readiness of (status)" "k8s.io/client-go HTTPS"
-        cli -> kindCluster "Installs the substrate + sync wiring into and executes three-phase readiness on (bootstrap)" "k8s.io/client-go HTTPS"
-        kindCluster -> chartSource "Pulls and templates the chart named by a rendered HelmRelease (helm-controller) — the delegation a helm pack expresses, and the reason cube-idp never runs Helm" "HTTPS / OCI"
+        cli -> kindCluster "Installs the substrate, the ordered prerequisite units and the sync wiring into, and executes their readiness waits on (bootstrap)" "k8s.io/client-go HTTPS"
+        cli -> kindCluster "Reads the existing CA Secret before minting, and splices the cube's marker block into the kubeadm-owned CoreDNS Corefile under bounded optimistic concurrency (M11 edge round-trips, 30s each)" "k8s.io/client-go HTTPS"
+        cli -> trustArtifacts "Syncs ca.crt idempotently on every bootstrap, reads and upserts the ledger (trust list|install|remove)" "os file I/O"
+        cli -> osTrustStore "Installs and removes the cube CA as a user-scope anchor, verifying fingerprint and marker first (trust install|remove); never system scope, never sudo" "security(1) / p11-kit trust(1)"
+        operator -> trustArtifacts "Trusts the cube CA manually where no driver exists, using the emitted certificate"
+        kindCluster -> chartSource "Pulls and templates the chart named by a rendered HelmRelease (helm-controller) — the delegation a helm pack expresses, and the reason cube-idp never runs Helm; the gateway prerequisite makes this day-0 load-bearing" "HTTPS / OCI"
 
         # Component-level relationships (import direction, strictly left to right)
         mainPkg -> cliPkg "Calls Execute; exits with returned code"
@@ -97,7 +111,7 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         cliPkg -> clusterDomain "Composes Init (create), Delete, Status; type-asserts SpecValidator for config validate"
         cliPkg -> kindDriver "Constructs via injected provisioner factory (composition at the edge only)"
         cliPkg -> kubeDomain "Injects kubeconfig bytes + context name; composes Ping into the status reachability line (M6)"
-        cliPkg -> bootstrapDomain "Composes bootstrap (M7, recomposed M10): injects dynamic.Interface + meta.RESTMapper (built by kube), the substrate objects + namespace, and the selected driver's sync wiring + predicates; runs install + three-phase readiness + inventory"
+        cliPkg -> bootstrapDomain "Composes bootstrap (M7, recomposed M10 and M11): injects dynamic.Interface + meta.RESTMapper (built by kube), the substrate objects + namespace, the resolved prerequisite units, and the selected driver's sync wiring + predicates; runs install + readiness + cumulative inventory under --timeout"
         cliPkg -> engineDomain "Selects the tier-2 driver from spec.engine.provider via an injected engine-driver factory (composition at the edge only)"
         cliPkg -> substratePkg "Reads the embedded substrate pack's objects, version, and namespace fact at the composition edge"
         cliPkg -> fluxDriver "Constructs via the injected engine-driver factory"
@@ -109,13 +123,19 @@ workspace "cube-idp" "Internal developer platform CLI — declarative cube provi
         kubeDomain -> cubeerrPkg "Wraps CUBE-KUB-* errors with"
         kubeDomain -> kindCluster "Checks API reachability of, discovers resources on" "k8s.io/client-go HTTPS"
         bootstrapDomain -> cubeerrPkg "Wraps CUBE-BST-* errors with"
-        bootstrapDomain -> kindCluster "SSA-applies injected substrate + sync wiring to and executes three-phase readiness on (injected client-go interfaces; never imports internal/kube)" "k8s.io/client-go HTTPS"
+        bootstrapDomain -> kindCluster "SSA-applies injected substrate, prerequisite units and sync wiring to, and executes each step's declared readiness wait on (injected client-go interfaces; never imports internal/kube)" "k8s.io/client-go HTTPS"
         engineDomain -> apiPkg "Reads the spec.engine sub-struct (seam method inputs)"
         engineDomain -> cubeerrPkg "Wraps CUBE-ENG-* errors with"
         fluxDriver -> engineDomain "Implements Provider (compile-time asserted); runs the conformance suite"
         fluxDriver -> substratePkg "Returns the substrate namespace as EngineNamespace (degenerate driver)"
         fluxDriver -> apiPkg "Reads the spec.engine sub-struct in seam signatures"
         substratePkg -> engineDomain "Raises the domain's CUBE-ENG-003/004/005 constructors"
+        cliPkg -> gatewayDomain "Resolves spec.prerequisites into ordered bootstrap units (embedded packs by well-known name, overrides through ref), stamps the namespace onto the rendered helm pair, and calls the pure CoreDNS splice"
+        cliPkg -> caDomain "Composes the CA handoff: reads the existing Secret, calls Ensure (mint-if-absent), syncs ca.crt and the ledger, and selects the trust-store driver from GOOS"
+        gatewayDomain -> apiPkg "Single-sources the well-known prerequisite names, deriving ImplementationID rather than respelling it"
+        gatewayDomain -> cubeerrPkg "Wraps CUBE-GWY-* errors with"
+        caDomain -> cubeerrPkg "Wraps CUBE-CA-* errors with"
+        caDomain -> osTrustStore "Drives the OS trust tooling through the injected Runner (os/exec stays at the edge, so the drivers stay gate-testable)" "security(1) / p11-kit trust(1)"
         cliPkg -> packDomain "Composes pack render|validate|new: resolves the <ref> positional to a filesystem, loads the pack, and renders either the artifact or one spec.packs instance"
         packDomain -> apiPkg "Reads the spec.packs sub-struct (instances, values, externalManifests, dependsOn)"
         packDomain -> cubeerrPkg "Wraps CUBE-PKG-* errors with"
