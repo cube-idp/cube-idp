@@ -77,10 +77,29 @@ func runPackNew(cmd *cobra.Command, args []string) error {
 		// they discover from a failing HelmRelease.
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 			"replace the placeholder chart url in %s before installing this pack\n",
-			filepath.Join(args[0], "pack.cue"))
+			metadataDisplayPath(args[0]))
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "run \"cube-idp pack render %s\" to see what it produces\n", args[0])
 	return nil
+}
+
+// metadataDisplayPath names dir's pack.cue for display, keeping dir spelled the
+// way the user gave it apart from trailing separators, which it trims so there
+// is exactly one before the filename. filepath.Join Cleans its result, and
+// Clean strips a leading "./" — which had this line name a directory
+// differently from the two lines printed around it. It collapses more than
+// that (".." components, repeated separators); nothing here promises those are
+// preserved, only that "./podinfo" stays "./podinfo".
+//
+// Separator trimming goes through os.IsPathSeparator rather than a literal
+// cutset: on Unix a trailing backslash is part of the directory's name, not a
+// separator, and trimming it would print a path that does not exist. This
+// string is only ever printed; nothing opens a file by it.
+func metadataDisplayPath(dir string) string {
+	for len(dir) > 0 && os.IsPathSeparator(dir[len(dir)-1]) {
+		dir = dir[:len(dir)-1]
+	}
+	return dir + string(filepath.Separator) + pack.MetadataFile
 }
 
 // packNewOptions maps the flags, refusing the combinations that cannot mean
