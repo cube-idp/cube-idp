@@ -1,7 +1,13 @@
 name: ci
 on:
   push: {branches: [main]}
-  pull_request:
+  # e2e/sync-fixture holds the e2e sync fixture — three YAML files, no Go
+  # source — so these gates cannot judge a pull request based on it. Naming the
+  # branch exactly rather than globbing e2e/**: a glob would silently suppress
+  # CI on any future branch under that prefix. This filter does not prevent a
+  # pull request being opened; it only stops the gates running. Filters on
+  # pull_request match the BASE branch.
+  pull_request: {branches-ignore: [e2e/sync-fixture]}
 jobs:
   test:
     runs-on: ubuntu-latest

@@ -1,7 +1,20 @@
 // Package e2e composes domains against real infrastructure exactly like
 // the CLI edge does — cluster seam plus kube client, no domain importing
-// another. Opt-in via `make test-e2e` (CUBE_E2E=1, worktree-local
-// KUBECONFIG); never part of the green gate.
+// another. Every cluster-creating test here is opt-in via `make test-e2e`
+// (CUBE_E2E=1, worktree-local KUBECONFIG) and is never part of the green
+// gate; each carries its own skip. The sync fixture's contract checks are
+// hermetic — they read only testdata, create nothing, and therefore do run
+// in the gate.
+//
+// The invariant this package rests on: no two cluster lifetimes may overlap.
+// Every cluster the suite creates binds the same fixed host ports
+// (internal/cluster/kind/kind.go:80-90), so two live at once contend for them.
+// That holds at any nesting level — parallel subtests of a sequential parent
+// overlap each other just as surely as parallel top-level tests do. So: keep
+// top-level tests sequential, and use t.Parallel() only for hermetic work that
+// touches none of those shared resources. Serialising across packages is a
+// separate concern of the e2e target, which nothing inside a package can
+// enforce.
 package e2e
 
 import (

@@ -303,10 +303,61 @@ on unstructured objects); the real GVK→resource scope resolution and the
 mapper reset behavior are covered against the client-go dynamic fake;
 the pending-vs-terminal classification has first-class rows. No live
 cluster, no Docker. The real round-trip (substrate install → kind-set
-ready → wiring applied → `GitRepository` reconciled `Ready` against a
-kind cluster and a public git source, worktree-local KUBECONFIG per
-CLAUDE.md §7) runs only behind `make test-e2e` and is never part of the
-green gate.
+ready → wiring applied → the synced content actually delivered → the
+fetched source revision matching its pin, against a kind cluster and a
+public git source, worktree-local KUBECONFIG per CLAUDE.md §7) runs only
+behind `make test-e2e` and is never part of the green gate.
+
+### The sync fixture
+
+The public git source is **cube-controlled**, not third-party:
+
+| | |
+|---|---|
+| URL | `https://github.com/cube-idp/cube-idp.git` |
+| Ref | `e2e/sync-fixture` |
+| Path | `./` |
+| Pinned commit | `1f85328936ab1a602e636415130c0e20b20633c4` |
+
+`e2e/sync-fixture` is an **orphan branch of this repository** holding
+three files at its root — a `Namespace`, a `ConfigMap` that names it,
+and a `kustomization.yaml` listing exactly those two. Its own commit
+message states the rules; this is the pointer to them:
+
+- **Do not advance it, do not merge it, do not open pull requests
+  against it.** A fixture change publishes a new branch; it does not
+  advance this one. These are rules the remote does not enforce — see
+  the pin note below. `.github/workflows/ci.yaml` names this branch in
+  `pull_request: branches-ignore`, which does not prevent a pull request
+  being opened but stops the Go gates running on content they cannot
+  judge.
+- **Do not delete it.** Every released cube-idp that names this commit
+  needs it to remain fetchable.
+
+Two things about it are deliberate and easy to undo by accident.
+
+**Every namespaced object in the fixture carries its own
+`metadata.namespace`.** The Kustomization the driver emits sets no
+`targetNamespace` (`internal/engine/flux/flux.go:103-111`, matching what
+upstream `flux bootstrap` generates), so placement can only come from
+the source. The previous fixture — a third-party tutorial target that
+required `--target-namespace` — could therefore never reconcile. A
+mirror of the fixture lives at `tests/e2e/testdata/sync-fixture/` under
+a hermetic closed-schema test that runs in the green gate, so that
+property is checked without a cluster.
+
+**The pin is asserted, and that is what the guarantee rests on.**
+`EngineSource.Ref` is emitted as a git *branch*
+(`internal/engine/flux/flux.go:83`), so no tag or commit can be
+expressed through production config today, and the fixture has to live
+on a branch. The branch is protected against force-push and deletion,
+**but not against ordinary updates** — so a push could still move it.
+The e2e therefore compares the fetched
+`status.artifact.revision` against the pinned commit exactly. Drift is
+**detected, not prevented**: the suite goes red rather than quietly
+syncing different content. Making the fixture immutable by construction
+rather than by policy has **no issue filed yet**; until one exists, this
+paragraph is the only record of the gap.
 
 ## CLI surface
 

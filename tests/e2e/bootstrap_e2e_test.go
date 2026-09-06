@@ -2,14 +2,18 @@ package e2e
 
 import (
 	"context"
+	"maps"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
 
 	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
 	"github.com/cube-idp/cube-idp/internal/bootstrap"
@@ -20,10 +24,29 @@ import (
 	"github.com/cube-idp/cube-idp/internal/kube"
 )
 
+// The sync fixture the round-trip points Flux at: an orphan branch in this
+// repository, which by rule must never be moved. It lives on a branch because
+// EngineSource.Ref is emitted as a git branch
+// (internal/engine/flux/flux.go:83) and no tag or commit can be expressed
+// through production config today. The branch carries its own rules in its
+// commit message; docs/domains/bootstrap.md is the pointer.
+//
+// syncFixtureCommit is what makes the pin real. The branch is protected
+// against force-push and deletion but NOT against ordinary updates
+// (lock_branch is false), so nothing at the remote prevents it moving. Drift
+// is caught here, by asserting the fetched commit.
+const (
+	syncFixtureURL    = "https://github.com/cube-idp/cube-idp.git"
+	syncFixtureRef    = "e2e/sync-fixture"
+	syncFixturePath   = "./"
+	syncFixtureCommit = "1f85328936ab1a602e636415130c0e20b20633c4"
+)
+
 var (
 	gitRepoGVR = schema.GroupVersionResource{Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "gitrepositories"}
 	kustomGVR  = schema.GroupVersionResource{Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Resource: "kustomizations"}
 	configMap  = schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
+	namespaces = schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
 )
 
 // TestBootstrapFluxRoundTrip provisions a kind cluster, injects its clients
@@ -65,8 +88,8 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 		Provider: v1alpha1.EngineProviderFlux,
 		Source: &v1alpha1.EngineSource{
 			Kind: v1alpha1.EngineSourceGit,
-			URL:  "https://github.com/stefanprodan/podinfo",
-			Ref:  "master", Path: "./kustomize", Interval: "1m",
+			URL:  syncFixtureURL,
+			Ref:  syncFixtureRef, Path: syncFixturePath, Interval: "1m",
 		},
 	}
 	substrateObjs, err := substrate.Objects()
@@ -118,22 +141,103 @@ func TestBootstrapFluxRoundTrip(t *testing.T) {
 	// which is after the gateway unit reconciled.
 	spliceCoreDNSHere(ctx, t, dyn, name, domain)
 
-	// Round-trip: source-controller fetches the public repo → GitRepository Ready.
-	readyCtx, rcancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer rcancel()
-	err = wait.PollUntilContextCancel(readyCtx, 5*time.Second, true, func(ctx context.Context) (bool, error) {
+	// Round-trip. Neither assertion is fatal, so once both are reached a single
+	// run reports which half of "fetched the right bytes and applied them"
+	// broke. Reaching them is not guaranteed: an earlier t.Fatalf — InstallEngine
+	// above, most of all — still ends the run before either executes.
+	assertSyncDelivered(ctx, t, dyn)
+	assertFetchedRevision(ctx, t, dyn)
+
+	if err := p.Delete(ctx, name); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+}
+
+// assertSyncDelivered proves the sync path actually delivered content, which
+// no existing assertion did: the CR checks prove the wiring was applied, and
+// the closing GitRepository poll proves only the fetch. The apply was judged
+// only inside InstallEngine, so nothing after it distinguished "reconciled"
+// from "reconciled and delivered what we expected".
+//
+// It compares against the same constants the hermetic contract test locks the
+// mirror under testdata to, so mirror and delivered object are tied together.
+// Flux-injected metadata (kustomize.toolkit.fluxcd.io/name and /namespace) is
+// deliberately outside the compared set — the mirror's closed schema rejects
+// labels and annotations, so the applied object always carries metadata the
+// mirror does not and whole-object equality would be permanently red.
+func assertSyncDelivered(ctx context.Context, t *testing.T, dyn dynamic.Interface) {
+	t.Helper()
+	deliveredCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	var got *unstructured.Unstructured
+	err := wait.PollUntilContextCancel(deliveredCtx, 5*time.Second, true, func(ctx context.Context) (bool, error) {
+		o, err := dyn.Resource(configMap).Namespace(fixtureNamespaceName).
+			Get(ctx, fixtureConfigMapName, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		got = o
+		return true, nil
+	})
+	if err != nil {
+		t.Errorf("sync fixture ConfigMap %s/%s never appeared: %v",
+			fixtureNamespaceName, fixtureConfigMapName, err)
+		return
+	}
+	if ns := got.GetNamespace(); ns != fixtureNamespaceName {
+		t.Errorf("delivered ConfigMap namespace = %q, want %q", ns, fixtureNamespaceName)
+	}
+	// The Namespace object itself, not just the ConfigMap's placement field.
+	// That the fixture carries its own Namespace is the property this whole
+	// change turns on: the emitted Kustomization sets no targetNamespace, so
+	// nothing else would have created it.
+	if _, err := dyn.Resource(namespaces).Get(ctx, fixtureNamespaceName, metav1.GetOptions{}); err != nil {
+		t.Errorf("fixture Namespace %s was not delivered: %v", fixtureNamespaceName, err)
+	}
+	// The key set exactly, not just the one key's value: an extra key is
+	// content the source delivered that nothing reviewed.
+	data, _, err := unstructured.NestedStringMap(got.Object, "data")
+	if err != nil {
+		t.Errorf("delivered ConfigMap data is not a string map: %v", err)
+		return
+	}
+	if len(data) != 1 {
+		t.Errorf("delivered ConfigMap data has %d keys (%v), want exactly [%s]",
+			len(data), slices.Sorted(maps.Keys(data)), fixtureDataKey)
+	}
+	if got := data[fixtureDataKey]; got != fixtureDataValue {
+		t.Errorf("delivered ConfigMap data.%s = %q, want %q", fixtureDataKey, got, fixtureDataValue)
+	}
+}
+
+// assertFetchedRevision waits for the source to report an artifact and checks
+// it is exactly the pinned fixture commit. The branch is protected against
+// force-push and deletion but not against ordinary updates, so this is what
+// turns fixture drift into a failure instead of a silent content change
+// (https://github.com/cube-idp/cube-idp/issues/204).
+func assertFetchedRevision(ctx context.Context, t *testing.T, dyn dynamic.Interface) {
+	t.Helper()
+	readyCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	var got *unstructured.Unstructured
+	err := wait.PollUntilContextCancel(readyCtx, 5*time.Second, true, func(ctx context.Context) (bool, error) {
 		o, err := dyn.Resource(gitRepoGVR).Namespace("flux-system").Get(ctx, "flux-system", metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
+		got = o
 		return readyCondition(o), nil
 	})
 	if err != nil {
-		t.Fatalf("GitRepository did not reconcile Ready: %v", err)
+		t.Errorf("GitRepository did not reconcile Ready: %v", err)
+		return
 	}
-
-	if err := p.Delete(ctx, name); err != nil {
-		t.Fatalf("Delete: %v", err)
+	revision, _, _ := unstructured.NestedString(got.Object, "status", "artifact", "revision")
+	if err := checkFetchedRevision(revision, syncFixtureCommit); err != nil {
+		t.Errorf("sync source pin: %v", err)
 	}
 }
 
