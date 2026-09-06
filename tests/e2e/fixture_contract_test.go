@@ -16,10 +16,11 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// The sync fixture's identity. These names describe the mirror proposed under
-// testdata. Nothing consumes it yet — the engine still syncs the old
-// third-party source, and no publish/verify target exists. Both land with
-// https://github.com/cube-idp/cube-idp/issues/202.
+// The sync fixture's identity. These names describe the mirror under testdata,
+// which is published as the branch the round-trip syncs from
+// (bootstrap_e2e_test.go syncFixture* constants). The same constants are
+// asserted against the objects actually delivered into the cluster, so mirror
+// and delivered content are checked against one declaration.
 const (
 	fixtureDir           = "testdata/sync-fixture"
 	fixtureNamespaceName = "cube-sync-e2e"
@@ -32,18 +33,17 @@ const (
 // hermetic and runs in the green gate — deliberately without the CUBE_E2E
 // skip its cluster-creating neighbours carry.
 //
-// It is a forward-looking guard, NOT the reproduction of
-// https://github.com/cube-idp/cube-idp/issues/202. No hermetic reproduction of
-// that defect is proposed; it is reproduced by the real round-trip failing
-// against a namespace-less source. What this locks is the property whose
-// absence caused it — every namespaced object
-// carries placement the sync wiring does not supply, because
-// internal/engine/flux/flux.go:103-113 emits no targetNamespace.
+// It is a guard, NOT the reproduction of
+// https://github.com/cube-idp/cube-idp/issues/202, which was reproduced by the
+// real round-trip failing against a namespace-less source. What this locks is
+// the property whose absence caused it: every namespaced object carries the
+// placement the sync wiring does not supply, because
+// internal/engine/flux/flux.go:103-111 emits no targetNamespace.
 //
-// The schema is closed rather than permissive to bound what a future e2e
-// comparison against the published branch would have to cover: a field outside
-// this set is rejected here rather than left to that comparison. Neither the
-// branch nor the comparison exists yet.
+// The schema is closed rather than permissive to bound what the e2e's
+// delivered-content comparison has to cover — a field outside this set is
+// rejected here rather than left to that comparison. It does not tie the
+// mirror to the published branch: that tie is the asserted commit pin.
 func TestSyncFixtureContract(t *testing.T) {
 	assertFixtureFileSet(t)
 	assertFixtureNamespace(t, mustLoadFixtureDoc(t, "namespace.yaml"))
