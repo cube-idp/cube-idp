@@ -88,7 +88,7 @@ func apiServerState(ctx context.Context, rep cluster.StatusReport) (string, erro
 	}
 	raw, err := os.ReadFile(rep.KubeconfigPath)
 	if err != nil {
-		return "", cluster.NewKubeconfigFailedError(fmt.Errorf("read kubeconfig %s: %w", rep.KubeconfigPath, err))
+		return "", cluster.NewKubeconfigReadError(fmt.Errorf("read kubeconfig %s: %w", rep.KubeconfigPath, err))
 	}
 	client, err := kube.New(raw, rep.ContextName)
 	if err != nil {

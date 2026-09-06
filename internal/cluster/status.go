@@ -34,8 +34,11 @@ type StatusReport struct {
 // Status reports on the cluster and its kubeconfig context without
 // changing anything: seam Exists plus a parse of the target kubeconfig.
 // A missing kubeconfig file means not installed — only failures to
-// determine the answer (backend errors, unreadable or unparseable
-// kubeconfig) are errors.
+// determine the answer are errors. A backend failure is the driver's own
+// coded error and propagates unchanged; the kubeconfig-side ones
+// (unresolvable location, unreadable or unparseable file) carry the
+// read-side CUBE-CLU-006, since nothing was updated here and
+// CUBE-CLU-005 would misdescribe them.
 func Status(ctx context.Context, p Provisioner, opts StatusOptions) (StatusReport, error) {
 	exists, err := p.Exists(ctx, opts.Name)
 	if err != nil {
@@ -48,7 +51,7 @@ func Status(ctx context.Context, p Provisioner, opts StatusOptions) (StatusRepor
 	path := opts.KubeconfigPath
 	if path == "" {
 		if path, err = defaultKubeconfigPath(); err != nil {
-			return StatusReport{}, NewKubeconfigFailedError(err)
+			return StatusReport{}, newKubeconfigLocationError(err)
 		}
 	}
 	installed, err := contextInstalled(path, name)
@@ -71,11 +74,11 @@ func contextInstalled(path, name string) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, NewKubeconfigFailedError(fmt.Errorf("read kubeconfig %s: %w", path, err))
+		return false, NewKubeconfigReadError(fmt.Errorf("read kubeconfig %s: %w", path, err))
 	}
 	var kc kubeconfig
 	if err := yaml.Unmarshal(raw, &kc); err != nil {
-		return false, NewKubeconfigFailedError(fmt.Errorf("parse kubeconfig %s: %w", path, err))
+		return false, NewKubeconfigReadError(fmt.Errorf("parse kubeconfig %s: %w", path, err))
 	}
 	for _, c := range kc.Contexts {
 		if c.Name == name {

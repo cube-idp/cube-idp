@@ -148,7 +148,9 @@ prints.
   read-only — seam `Exists` plus a typed parse of the kubeconfig target,
   reporting `ClusterExists`/`ContextInstalled` with the resolved names.
   A missing kubeconfig file is "not installed"; only failures to
-  determine the answer are errors.
+  determine the answer are errors. The kubeconfig-side ones carry
+  `CUBE-CLU-006`, never the write-side `CUBE-CLU-005`; a seam `Exists`
+  failure is the driver's own coded error and still propagates unchanged.
 
 ## Error codes (`CUBE-CLU-*`, exit 1)
 
@@ -159,6 +161,40 @@ prints.
 | `CUBE-CLU-003` | invalid `forProvider` payload (from M4 also surfaced by `config validate`) |
 | `CUBE-CLU-004` | provisioning failed |
 | `CUBE-CLU-005` | kubeconfig update failed (generation, merge, write, or cleanup) |
+| `CUBE-CLU-006` | kubeconfig read failed (a read-only operation could not read, parse, or even locate the target) |
+
+`CUBE-CLU-005` and `CUBE-CLU-006` split by **what the operation was
+doing**, not by which call failed. `CUBE-CLU-005` is the write side and
+stays exactly as wide as its row: `Init` and `Delete`, including the reads
+they perform as steps *inside* a merge or a cleanup. `CUBE-CLU-006` is
+raised only where nothing is being changed — `Status`, and the CLI edge's
+own pre-apply and reachability reads — because "kubeconfig **update**
+failed", and a remediation offering to write elsewhere, describe neither
+what happened nor what the operator should do on a read-only verb.
+
+`CUBE-CLU-006`'s remediation is cause-specific, since the ways a read
+fails want opposite advice: an **absent** file is a missing prerequisite
+and points at `cube-idp create`; an unreadable or malformed one is a
+problem with the file that is already there — malformed covers a typed
+decode failure, so the guidance says "a valid kubeconfig" rather than
+"valid YAML"; and an **unresolvable
+location** — no `KUBECONFIG`, no home directory — names neither, because
+there is no file to inspect and `create` would fail the same way. A
+kubeconfig that is present but simply lacks the cube context is not a
+CLU error at all: the read succeeds. For `status` it is not an error at
+any code — the report just says "not installed". Where a client is
+actually being built from it (the bootstrap edge, and `status`'s own
+reachability probe), `internal/kube` reports the missing context as
+`CUBE-KUB-002` with its own `create` guidance.
+
+The three branches are not all reachable from every raiser, and that is
+deliberate rather than dead code. `Status` never sees the absent-file
+branch — `contextInstalled` answers `fs.ErrNotExist` with "not installed"
+before any error is built — so the prerequisite guidance exists for the
+CLI edge's reads, which is why its constructor is exported while the
+location one, raised at the single site that resolves the default path,
+is not. The domain owns the vocabulary; the edge reaches the branch the
+domain cannot.
 
 `CUBE-CLU-004`'s remediation varies by action: a **create** can fail
 because the container runtime is absent *or* because the host ports the

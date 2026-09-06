@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	v1alpha1 "github.com/cube-idp/cube-idp/api/config/v1alpha1"
 	"github.com/cube-idp/cube-idp/internal/cluster"
+	"github.com/cube-idp/cube-idp/internal/cubeerr"
 )
 
 // absentClusterProvisioner reports the cluster as not existing; the
@@ -193,5 +195,38 @@ metadata:
 	}
 	if !strings.Contains(stderr, "CUBE-CLU-001") {
 		t.Fatalf("stderr missing CUBE-CLU-001:\n%s", stderr)
+	}
+}
+
+// TestAPIServerStateKubeconfigUnreadable covers internal/cli/status.go's
+// own read — the fifth CUBE-CLU-005 read-site #203 concerns, added to the
+// issue's evidence by the operator. `status` is documented read-only, so a
+// failure here must not claim an update failed.
+//
+// apiServerState is exercised directly rather than through the status verb
+// because the site is only reachable in a window that cannot be driven
+// deterministically from outside: cluster.Status reads the kubeconfig to
+// decide ContextInstalled, and apiServerState reads it a second time. A
+// file unreadable for the whole run fails at the first read and never gets
+// here; only a file that becomes unreadable between the two does.
+func TestAPIServerStateKubeconfigUnreadable(t *testing.T) {
+	t.Parallel()
+	rep := cluster.StatusReport{
+		ContextInstalled: true,
+		ContextName:      "cube-idp.dev/dev",
+		KubeconfigPath:   filepath.Join(t.TempDir(), "vanished"),
+	}
+
+	_, err := apiServerState(t.Context(), rep)
+
+	var coded *cubeerr.Coded
+	if !errors.As(err, &coded) {
+		t.Fatalf("err = %v, want a *cubeerr.Coded", err)
+	}
+	if coded.Code != cluster.CodeKubeconfigReadFailed {
+		t.Fatalf("Code = %s, want %s", coded.Code, cluster.CodeKubeconfigReadFailed)
+	}
+	if strings.Contains(coded.Summary, "update failed") {
+		t.Errorf("status is read-only; Summary = %q", coded.Summary)
 	}
 }

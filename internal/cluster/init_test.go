@@ -46,7 +46,10 @@ func (m *mockProvisioner) Kubeconfig(ctx context.Context, name string) ([]byte, 
 
 // TestInitNoHomeFails: with neither KUBECONFIG nor a home directory the
 // default kubeconfig location is undeterminable — a coded error, never a
-// silent CWD-relative write.
+// silent CWD-relative write. Its mirror TestStatusNoHomeFails asserts
+// CUBE-CLU-006 on the same resolution failure: Init is a write operation,
+// so CUBE-CLU-005 ("kubeconfig update failed") is the truthful code here,
+// while Status changes nothing and must not claim an update failed.
 func TestInitNoHomeFails(t *testing.T) {
 	t.Setenv("KUBECONFIG", "")
 	t.Setenv("HOME", "")

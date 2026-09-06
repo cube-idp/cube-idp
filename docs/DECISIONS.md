@@ -1200,3 +1200,39 @@ before" phrase in the entries above records what was true when written
 — this append-only log is not rewritten (the 2026-08-23 renumbering
 convention); the living state is in `docs/ARCHITECTURE.md` and
 `docs/domains/`. No `docs/work/` items existed this milestone.
+
+**2026-09-06 — A kubeconfig read failure is its own code: `CUBE-CLU-006`
+(#203, epic #215).** `CUBE-CLU-005` is defined as the **write** side —
+"kubeconfig update failed (generation, merge, write, or cleanup)" in
+`docs/domains/cluster.md`'s error table and in its constructor's doc
+comment — yet it wrapped five **read**-only failures: `Status`'s default-path
+resolution, its unreadable and unparseable file cases, the bootstrap edge's
+pre-apply read, and `status`'s reachability read. On a verb `README.md`
+documents as read-only, the operator was told an update had failed and
+offered `--kubeconfig <path>` "to write elsewhere". **Decided (owner, option
+(e) of five):** one new cluster code, `CUBE-CLU-006`, whose *remediation* is
+cause-specific rather than a second and third code — an absent file gets
+prerequisite guidance naming `cube-idp create`, an unreadable or malformed
+one gets file guidance, and an unresolvable location (no `KUBECONFIG`, no
+home) gets neither, because there is no file to inspect and `create` would
+fail identically. The third shape is raised through a private constructor at
+the one site that knows it, never by matching the cause's text. **Explicitly
+preserved:** a kubeconfig that is *present* but lacks the cube context stays
+`CUBE-KUB-002` from `internal/kube` with its own `create` guidance — the
+path #203 cites as correct — so the edge gates on the read failing, never on
+`StatusReport.ContextInstalled`. **Rejected:** reusing `CUBE-KUB-002`
+(its constructors are unexported by contract, and codes are never re-tagged
+across domains); a second prerequisite code (the remediation split does the
+same work with one table row); widening `CUBE-CLU-005`'s definition to cover
+reads (makes the docs true while leaving "update failed" on a read-only
+verb, which is the operator-facing defect); and synthesising an empty
+kubeconfig at the edge to steer `kube.New` into the right error — that
+manufactures an input to choose an error code. `internal/cluster/init.go`
+and `delete.go`'s reads keep `CUBE-CLU-005`: they are steps inside a
+documented merge or cleanup. **`ARCHITECTURE.md` §5's queued
+`CUBE-CLI-*` gate event is untouched** — this decision is scoped to the
+cluster catalog and does not open the edge's own.
+
+Living contracts: `docs/domains/cluster.md` (the `CUBE-CLU-006` row, the
+write/read split, the cause-specific remediation, and `Status`'s error
+statement), `docs/ARCHITECTURE.md` §5 (the `CLU` row's code range).
