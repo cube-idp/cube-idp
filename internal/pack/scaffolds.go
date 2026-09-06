@@ -1,5 +1,7 @@
 package pack
 
+import "slices"
+
 // namePlaceholder is what the templates below carry where the pack's name
 // goes. A placeholder rather than a format verb keeps the templates readable
 // as the files they become.
@@ -86,4 +88,19 @@ data:
   greeting: ${greeting}
 `,
 	},
+}
+
+// scaffoldableTypes names the types pack new can scaffold, in sorted order.
+//
+// Derived from scaffolds rather than written out, so a type added above cannot
+// leave a message behind naming the old set. Sorted because Go randomizes map
+// iteration, and an error string that reorders itself between runs is a flaky
+// test waiting to happen.
+func scaffoldableTypes() []string {
+	types := make([]string, 0, len(scaffolds))
+	for packType := range scaffolds {
+		types = append(types, string(packType))
+	}
+	slices.Sort(types)
+	return types
 }

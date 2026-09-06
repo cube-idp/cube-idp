@@ -123,8 +123,9 @@ func TestNewValidatesBeforeWriting(t *testing.T) {
 }
 
 // Every type the schema admits is scaffoldable, so the unsupported-type
-// refusal is reachable only by asking for a type that is not one — which the
-// CLI cannot do, but the domain API can.
+// refusal is reachable only by asking for a type that is not one. --type takes
+// an unvalidated string, so the CLI reaches it too — TestPackNewUnknownTypeRemediation
+// covers that path; this one drives the domain API directly.
 func TestNewRefusesUnknownType(t *testing.T) {
 	err := pack.New(t.Context(), pack.NewOptions{Dir: newDir(t, "x"), Type: pack.Type("bogus")})
 	wantCode(t, err, pack.CodeScaffoldFailed)

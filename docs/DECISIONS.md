@@ -1200,3 +1200,31 @@ before" phrase in the entries above records what was true when written
 — this append-only log is not rewritten (the 2026-08-23 renumbering
 convention); the living state is in `docs/ARCHITECTURE.md` and
 `docs/domains/`. No `docs/work/` items existed this milestone.
+
+**2026-09-06 — both helm scaffold paths in `pack new` warn about the
+placeholder chart url they write.** `--from-chart` warned; `--type helm`
+wrote the identical placeholder
+(`https://charts.example.invalid/REPLACE-ME`) and said nothing, so an
+operator who never learned of it would carry it into a `HelmRelease` that
+cannot pull its chart. That consequence is the untouched placeholder's,
+not an incident observed here — what was reproduced is the silence.
+The behaviour moved, not the doc: the rationale the code already
+gives for the `--from-chart` warning — "the difference between a TODO
+someone reads and one they discover from a failing HelmRelease"
+(`internal/cli/pack.go`) — applies identically to the scratch scaffold,
+and `README.md` already treated the two paths as equivalent on this exact
+point ("Both leave the repository url for you to fill in"). The contract:
+one line, on **stdout**, after the `created pack …` confirmation and
+before the `run … render` hint, for `--from-chart` and `--type helm`
+only. `--type raw`, `--type kustomize` and `--from` forks stay quiet —
+the fork exclusion is a **choice** about what the command speaks for (it
+warns about a placeholder *it* wrote), not an inference from copy
+semantics. Rejected: recording in `README.md` that only `--from-chart`
+warns, which documents the asymmetry instead of removing it. Noted, not
+taken: moving the fact "helm scaffolds carry a placeholder url" out of
+the CLI and into `pack.New`'s result — more principled, but it changes a
+domain signature and every call site for a defect that is one condition
+wide. Authority: the operator delegated the behaviour-versus-documentation
+choice to the workstream lead, who selected warning on both scaffold
+paths. Living contract: `docs/domains/pack.md` (`pack new` is real).
+Issue: #210, epic #215.

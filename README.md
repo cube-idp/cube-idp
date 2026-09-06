@@ -219,7 +219,9 @@ kind: HelmRepository
 metadata read, nothing fetched — and derives a starting `#Values` you then
 narrow. `--type helm` scaffolds the same skeleton from scratch. Both leave
 the repository url for you to fill in, because a local directory does not
-say where a chart is published.
+say where a chart is published — and both say so on stdout, in the line
+shown above. Forking with `--from` does not: a copied pack's url is its
+source's.
 
 M9 supports **public chart sources and non-sensitive values only**:
 private-registry credentials and secret-backed values are not implemented

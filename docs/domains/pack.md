@@ -172,15 +172,27 @@ network or the filesystem beyond the document itself. `pack validate <ref>`
 runs the document + pack layers for **one** pack. Codes are never re-tagged
 across layers.
 
-**The setup layer is library-only in M8.** It needs every `packRef`
-resolved, and M8 exposes no command that resolves a whole setup — `pack
-install` is not in M8, and `plan`/`up --dry-run` are M12/M13. So
-`CUBE-PKG-015`…`019` are reachable through the domain API and its tests,
-not through the CLI, until the command that consumes `ResolvedGraph`
-lands. This is deliberate: the graph is built now because M12 and M13
-consume it, not because M8 has a verb for it. Adding a whole-setup form to
-`pack validate` is a CLI-surface decision for that milestone, not a
-drive-by.
+**The setup layer is only half reachable from the CLI.** Its two halves
+have different reach, and the split is the identity rules against the
+dependency rules.
+
+*Identity is reachable.* `pack render -f <config> --id <id>` resolves
+**every** `packRef` in the document, not only the requested one, precisely
+because an effective id is a property of the whole setup (see *Instance
+mode resolves real sources* below). So `CUBE-PKG-015` and `CUBE-PKG-016`
+do surface through the CLI. `016` surfaces there in one shape only — an
+**effective**-id collision, where a pack's defaulted id (its name) meets
+another entry's explicit `id`. Two entries carrying the *same explicit*
+`id` never reach this layer: the document layer rejects them first, as
+`CUBE-CFG-003` at exit 2.
+
+*Dependency resolution and ordering are not.* No command consumes
+`ResolvedGraph` — `pack install` is not in M8, and `plan`/`up --dry-run`
+are M12/M13 — so `CUBE-PKG-017`…`019` are reachable through the domain API
+and its tests only. This is deliberate: the graph is built now because M12
+and M13 consume it, not because M8 has a verb for it. Adding a whole-setup
+form to `pack validate` is a CLI-surface decision for that milestone, not
+a drive-by.
 
 ## Render: `RenderPlan`
 
@@ -1039,7 +1051,18 @@ cube-idp pack new      <dir> [--type raw|helm|kustomize] [--name <n>]
   a command that only returns not-implemented misleads users. **`type:
   helm` becomes scaffoldable in M9**, now that this build can render what
   it writes: the skeleton is a `pack.cue` with a filled-in `chart` block
-  and no payload directory at all. The target
+  and no payload directory at all. Neither helm scaffold path can know
+  where the chart is published, so both write the same placeholder
+  repository url — and **both say so**: `--from-chart` and `--type helm`
+  each print one line on **stdout**, after the `created pack …`
+  confirmation and before the `run … render` hint, naming the new pack's
+  `pack.cue` and telling the operator to replace the url before
+  installing. `--type raw` and `--type kustomize` write no placeholder and
+  print nothing extra. **`--from` does not warn either**, even when the
+  fork it copies still carries a placeholder: the url is its source's, and
+  this command speaks only for what it wrote. That exclusion is a choice
+  about what the command claims, not a consequence of copy semantics. The
+  target
   must not exist at all (`CUBE-PKG-022`); everything is assembled and
   validated in memory first, so a rejected name leaves no directory
   behind. `--name` defaults to the directory's base name.
