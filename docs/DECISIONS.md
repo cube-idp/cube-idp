@@ -1228,3 +1228,91 @@ wide. Authority: the operator delegated the behaviour-versus-documentation
 choice to the workstream lead, who selected warning on both scaffold
 paths. Living contract: `docs/domains/pack.md` (`pack new` is real).
 Issue: #210, epic #215.
+
+**2026-09-06 — `spec.engine.source` states its namespace semantics; the
+`targetNamespace` field defers to the M12 bus gate.** Raised by the
+pre-M12 CLI test campaign
+(https://github.com/cube-idp/cube-idp/issues/205, epic
+https://github.com/cube-idp/cube-idp/issues/215) as a capability gap,
+not a defect: the campaign exposed that the contract stated nothing
+about placement for source-delivered content, alongside an invalid e2e
+fixture (https://github.com/cube-idp/cube-idp/issues/202). **(1) The
+current behaviour is correct and is now stated.** Upstream `flux
+bootstrap`'s generator (`fluxcd/flux2 pkg/manifestgen/sync/sync.go`,
+verified at `main` and at the pinned `v2.9.2`) emits
+`interval`/`path`/`prune`/`sourceRef` and no `targetNamespace` — the
+same Kustomization spec field set `internal/engine/flux` emits. The
+**driver therefore supplies no namespace override and no fallback
+namespace**: synced resources are not defaulted into the substrate
+namespace. Verified in the pinned `fluxcd/pkg` kustomize generator
+(`kustomize/v1.35.3`, `kustomize_generator.go` — the source's own
+`kustomization.yaml` is loaded at `:202`, and `:219-225` **replaces**
+its namespace only when `spec.targetNamespace` is present, with no
+fallback to the CR's own namespace). Placement therefore comes entirely
+from the source — each object's `metadata.namespace` and any namespace
+transform the source's own Kustomize build declares, which stays
+active. Observed example: the `podinfo` fixture, which upstream's own
+guide pairs with `--target-namespace`, failed with `Service/podinfo
+namespace not specified`
+(https://github.com/cube-idp/cube-idp/issues/202) — one fixture's
+observed failure, not a rule about every namespace-less source. **(2)
+The field itself is deferred to M12, not refused.**
+`docs/domains/pack.md` already assigns the delivery unit's namespace
+placement to the bus gate ("Which namespace a delivery unit lands in is
+the delivery contract's decision (M12), not the renderer's"), and
+Flux's `targetNamespace` **replaces** placement — so a root-sync
+namespace on the source through which M12 writes rendered packs would
+rewrite the namespace `pack.namespace` gave to delivered namespaced
+`raw`/`kustomize` objects (a delivered `HelmRelease`/source pair
+relocates together and keeps its references, so that half is not
+affected). This gate cannot state the precedence rule resolving that
+without writing M12's contract for it, and a field shipped now could
+not later be re-scoped or removed additively. M12 is chosen over
+https://github.com/cube-idp/cube-idp/issues/142 because delivery
+composition is the immediate coupling, not because #142's remit (which
+names target-namespace *policy*) is proven irrelevant. M12 inherits the
+analysis with https://github.com/cube-idp/cube-idp/issues/205 open
+against it. **The recommendation reversed during this gate, and the
+reversal is part of the record.** The first draft recommended shipping
+the field here; review moved it to deferral on two grounds, each
+re-verified before it was accepted. First, a reservation the first
+draft had missed — `docs/domains/pack.md`'s assignment of delivery-unit
+namespace placement to M12, which a root-sync namespace transform sits
+directly on top of. Second, a claim of the draft's own that was wrong:
+it asserted that namespace-less objects fall back to the
+Kustomization's own namespace. They do not —
+`kustomize_generator.go:219-225` is `if ok { kus.Namespace = tg }` with
+no `else`. That inference, made instead of a citation, was what had
+made shipping the field look like the smaller change; correcting it
+removed the argument for shipping it now. **Recorded for the owning
+gate as candidate shape, not as decisions taken here:** the field would
+land as an additive `EngineSource.targetNamespace` — optional, never
+defaulted, absent omitting the key entirely so the upstream field set
+is preserved, validated as a DNS-1123 label at the document layer (no
+new error code), and **not** namespace-creating, since a Flux
+`Kustomization` has no `createNamespace` (unlike the `HelmRelease` of
+M9's helm case). **A behavioural divergence is recorded as evidence for
+that gate, and how to model it is left to it:** Argo's
+`ApplicationDestination.Namespace` (pinned at `v3.5.2`) is the same
+concept but the opposite rule — it sets a namespace only for resources
+that have **not** set one, while Flux overrides those that have.
+Whether that makes a future field shared driver vocabulary,
+driver-specific, or something else is the owning gate's call, and is
+not settled here. **Rejected, one line each:** *ship the field at this
+gate* — the mitigation available here ("mutually exclusive in
+practice", "M12 may supersede") is prose, not an enforceable precedence
+rule, and superseding a shipped user-facing field is not additive;
+*emit `targetNamespace` from the driver unconditionally to make the
+podinfo e2e fixture pass* — that would make cube-idp diverge from
+upstream `flux bootstrap` on a signal that says the **fixture** is
+wrong (https://github.com/cube-idp/cube-idp/issues/202); *say nothing
+and leave #205 open* — the documentation gap closes here regardless of
+who takes the field.
+
+Living contract: `docs/domains/engine.md` (the `spec.engine` config
+surface, plus the target-namespace divergence added to the
+second-driver input list). No `docs/ARCHITECTURE.md` change: no new
+error code (document-layer `spec.engine` errors stay `CUBE-CFG-*`), no
+new dependency, no seam change, and no new cross-domain rule — and
+`ARCHITECTURE.md` carries no statement about source-delivered placement
+to true.
