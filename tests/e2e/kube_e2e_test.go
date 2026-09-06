@@ -1,7 +1,10 @@
 // Package e2e composes domains against real infrastructure exactly like
 // the CLI edge does — cluster seam plus kube client, no domain importing
-// another. Opt-in via `make test-e2e` (CUBE_E2E=1, worktree-local
-// KUBECONFIG); never part of the green gate.
+// another. Every cluster-creating test here is opt-in via `make test-e2e`
+// (CUBE_E2E=1, worktree-local KUBECONFIG) and is never part of the green
+// gate; each carries its own skip. The sync fixture's contract checks are
+// hermetic — they read only testdata, create nothing, and therefore do run
+// in the gate.
 //
 // The invariant this package rests on: no two cluster lifetimes may overlap.
 // Every cluster the suite creates binds the same fixed host ports
