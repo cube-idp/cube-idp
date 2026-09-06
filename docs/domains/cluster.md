@@ -124,7 +124,36 @@ Own minimal typed model over `sigs.k8s.io/yaml` (no client-go):
 exact reverse of Merge-installing a Rebrand-ed config: entries dropped by
 name over the same map-based lossless model, `current-context` unset only
 when it pointed at the removed context, and a changed-flag so callers
-skip rewriting untouched files. The context `namespace` is a method-level
+skip rewriting untouched files.
+
+**`current-context` ownership.** The selector is the one global key in a
+kubeconfig, so taking it over retargets every `kubectl` the operator has
+open. `Merge` therefore adopts the incoming selector **only when the
+destination has none** — absent and present-but-empty both count as none,
+so a first cube on a fresh file is still selected, while a selection the
+operator made is never displaced. `Remove`'s unset is the exact
+counterpart, and is decided **by name, not by provenance** — nothing in a
+kubeconfig records who selected a context, so provenance is not available
+to decide on. `Remove` therefore clears `current-context` when it names
+the context being removed, **even if the operator selected it manually**,
+rather than leaving a dangling selector at a context that no longer
+exists — the behaviour kubectl has, and the one this domain chose not to
+imitate silently. A selector naming any other context is preserved, which
+is the guarantee `Merge`'s rule delivers. No previous value has to be
+restored, because **on the merge path** the existing selector is no
+longer overwritten. That qualification matters: named entries that
+collide are still upserted, and the standalone path still replaces the
+whole file. The `--kubeconfig` standalone
+path is specified separately and always selects the cube: that path
+replaces the file wholesale (no merge), so there is no surviving
+selection to protect, and preserving the replaced file's selector would
+leave it naming a context the new file does not contain.
+
+The unset was previously justified in-code as "matching kubectl's
+delete-context behavior". That is **false** — verified against `kubectl`
+v1.35.0, which leaves a dangling `current-context` and prints a warning
+instead. The justification is the symmetry with `Merge` above, and the
+claim has been removed. The context `namespace` is a method-level
 option (`InitOptions.Namespace`) with no config surface: kubectl treats it
 as the context default, and clientcmd exposes it programmatically —
 future domains re-apply the same pattern locally (namespace as an option

@@ -1279,3 +1279,69 @@ Option (a) would have put it on stdout; the owner chose (e) knowing this.
 Living contract: `docs/domains/cluster.md` (the Operations partial-state
 rule, `changed`'s meaning on a failed write, and the `delete` CLI-surface
 sentence).
+
+**2026-09-06 — `current-context` belongs to the operator; a cube claims it
+only when nothing else does (#200, epic #215).** `Rebrand` stamped the
+selector and `Merge` adopted any non-empty incoming value, so every
+`create` retargeted a live `kubectl` at the new cube; `Delete` then unset
+it and had no previous value to restore, because `Merge` had already
+overwritten it. `README.md`'s promise that "only cube-owned entries are
+touched" and `docs/domains/cluster.md`'s statement that the unset is
+intended were two shipped documents disagreeing, and the **create-side
+takeover was documented nowhere** — the half that actually retargets a
+running session. **Decided (owner, option (f) of six):** `create` selects
+the cube only when the kubeconfig has no selection; an existing selection
+is never displaced; `delete` then unsets only what it could have set.
+Absent and present-but-empty both count as no selection, so a first cube
+on a fresh file still just works with no extra step.
+
+Consequences worth recording. No persistence is needed anywhere: nothing
+is overwritten, so nothing must be stored to be restored — which retires
+the question of whether cube-idp writes state into the user's kubeconfig
+`extensions` or into a `~/.cube-idp` state directory. `Remove` needs **no
+code change**: deleting the selector only when it names the removed
+context is already the right rule. The whole fix is one condition in
+`Merge`.
+
+Precision on "unsets only what it set", because the shorthand is not
+literally true and the reviewer was right to press it: the unset matches
+on the **name**, not on provenance — nothing in a kubeconfig records who
+selected a context, so provenance is not available to decide on, and a
+provenance-based rule would need a concept the data model does not have.
+An operator who selects the cube themselves after `create` will therefore
+have that selection cleared by `delete`. That is a deliberate choice, not
+a residual defect: the alternative is a **dangling** selector naming a
+context that no longer exists — precisely what kubectl does, and what the
+withdrawn justification below records this domain as declining to imitate
+silently. The guarantee the decision actually delivers is the other half:
+a selector naming any other context is never touched. And "nothing was
+overwritten" is true of **the existing selector on the merge path** only
+— colliding named entries are still upserted, and the standalone path
+still replaces the whole file.
+
+**The `--kubeconfig` standalone path is specified separately and always
+selects the cube** (owner, same gate). That path replaces the file
+wholesale, so there is no surviving selection to protect; preserving the
+replaced file's selector would leave it naming a context the new file
+does not contain, and would carve an exception into the wholesale
+overwrite that #206 documents. **Rejected:** never selecting at all
+(a UX regression, and `Merge` would still adopt the provider's own
+`kind-<name>` selector unless the field were explicitly cleared);
+restoring the previous value on delete (needs a persistence home, and the
+restored context may no longer exist); a flag (new CLI surface for a rule
+that has a right answer); re-pointing the selector at a surviving context
+on delete (choosing on the operator's behalf is a second act of the same
+kind as the defect); and documenting the takeover as intended.
+
+**A false claim removed.** `internal/cluster/kubeconfig.go` justified the
+unset as "matching kubectl's delete-context behavior". Verified against
+`kubectl` v1.35.0 on a throwaway file: `kubectl config delete-context`
+leaves a **dangling** `current-context` and prints a warning; it neither
+unsets it nor removes the cluster/user entries. The real precedent, if
+any, is "warn, don't silently change". The justification is now the
+symmetry with `Merge`, which stands on its own.
+
+Living contracts: `docs/domains/cluster.md` (a `current-context`
+ownership paragraph in Kubeconfig machinery, including the standalone-path
+rule and the withdrawn kubectl claim) and `README.md` (the promise made
+true, with the create-side rule stated for the first time).

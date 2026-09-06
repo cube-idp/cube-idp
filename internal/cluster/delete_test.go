@@ -48,8 +48,11 @@ func TestDeleteReversesInit(t *testing.T) {
 			initOpts:   InitOptions{Spec: Spec{Name: "dev"}},
 			deleteOpts: DeleteOptions{Name: "dev"},
 			seedOther:  true,
-			wantGone:   []string{"cube-idp.dev/dev", "current-context"},
-			wantKept:   []string{"name: other", "token: abc"},
+			wantGone:   []string{"cube-idp.dev/dev"},
+			// Since #200 the seeded selection is the operator's, so
+			// create never took it and delete never clears it. This row
+			// listed "current-context" under wantGone before.
+			wantKept: []string{"name: other", "token: abc", "current-context: other"},
 		},
 		{
 			name:       "explicit path: emptied but never unlinked",

@@ -68,7 +68,17 @@ merges a cube-owned context (`cube-idp.dev/<name>`) into your kubeconfig;
 `delete` removes the cluster and cleans that context back out (only
 cube-owned entries are touched, and the file is never deleted); `status`
 is read-only and exits 0 whenever the report succeeds — an absent
-cluster or unreachable API server is a finding, not a failure. All three resolve
+cluster or unreachable API server is a finding, not a failure.
+
+**`current-context` is yours.** `create` selects the cube it just
+installed only when your kubeconfig has no selection at all, so a first
+cube on a fresh file just works while a cube never retargets a `kubectl`
+you already pointed somewhere. `delete` clears `current-context` when it names the
+context being removed — even if you selected it yourself — rather than
+leaving it dangling at a context that no longer exists. A selection
+naming any other context is preserved. With `--kubeconfig <path>` the
+cube is always selected: that path replaces the file wholesale rather
+than merging, so there is no other selection in it to preserve. All three resolve
 the cube from the config document and never scaffold it. Each takes
 `--kubeconfig <path>` to target a standalone file instead of the default
 location, and `--kubeconfig-context-name` to override the context name.
