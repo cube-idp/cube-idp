@@ -143,7 +143,9 @@ prints.
   the same kubeconfig target Init writes, atomically and only when
   something matched. A missing kubeconfig file is a clean no-op, and a
   file is **never unlinked** — an emptied kubeconfig stays on disk
-  (operator decision 2026-08-02).
+  (operator decision 2026-08-02). `changed` reports whether the file was
+  **modified**, so a failed write is `false`: the write is atomic, so it
+  leaves the target exactly as it was.
 - `Status(ctx, Provisioner, StatusOptions) (StatusReport, error)`:
   read-only — seam `Exists` plus a typed parse of the kubeconfig target,
   reporting `ClusterExists`/`ContextInstalled` with the resolved names.
@@ -151,6 +153,21 @@ prints.
   determine the answer are errors. The kubeconfig-side ones carry
   `CUBE-CLU-006`, never the write-side `CUBE-CLU-005`; a seam `Exists`
   failure is the driver's own coded error and still propagates unchanged.
+
+`Init`'s and `Delete`'s signatures are unchanged, and neither can express
+a partial success in its return value — so the **partial state is carried
+by the error's words**, built at the one seam that knows which stage
+completed. Once `Ensure` has returned **successfully**, the cluster
+exists; once the seam `Delete` has returned successfully, the cluster is
+gone (including the already-absent
+no-op, which is why the wording is "is gone", not "was deleted"). Every
+later failure therefore says so, keeping `CUBE-CLU-005` and the wrapped
+cause and naming the command to re-run — `Ensure` is idempotent by name,
+so a re-run of `create` cannot rebuild the cluster. A failure **before**
+the stage completes carries no such claim: the driver's own coded error
+surfaces untouched. The fact reaches the operator on stderr inside the
+coded error rather than as a stdout line, which is the accepted cost of
+leaving both signatures alone.
 
 ## Error codes (`CUBE-CLU-*`, exit 1)
 
@@ -233,7 +250,10 @@ source of truth.
 operation above): resolves the cube from the config document (no
 `--name`, never scaffolds), removes the cluster, and cleans the
 cube-owned context out of the same kubeconfig target `create` writes.
-One line of output states whether kubeconfig changes were needed.
+On success, one line of output states whether kubeconfig changes were
+needed. When the cluster went but the cleanup failed, that line is not
+reached — the coded error on stderr carries the fact instead, per the
+partial-state rule in Operations above.
 
 `status [-f cube.yaml] [--kubeconfig <path>]
 [--kubeconfig-context-name <n>]` — the Status operation rendered as three

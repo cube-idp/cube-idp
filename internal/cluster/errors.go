@@ -13,10 +13,14 @@ import (
 // docs/ARCHITECTURE.md. Constructors are exported when driver subpackages
 // or the CLI edge raise them, and stay unexported otherwise.
 const (
-	CodeNoClusterConfigured  cubeerr.Code = "CUBE-CLU-001"
-	CodeUnsupportedProvider  cubeerr.Code = "CUBE-CLU-002"
-	CodeInvalidForProvider   cubeerr.Code = "CUBE-CLU-003"
-	CodeProvisionFailed      cubeerr.Code = "CUBE-CLU-004"
+	CodeNoClusterConfigured cubeerr.Code = "CUBE-CLU-001"
+	CodeUnsupportedProvider cubeerr.Code = "CUBE-CLU-002"
+	CodeInvalidForProvider  cubeerr.Code = "CUBE-CLU-003"
+	CodeProvisionFailed     cubeerr.Code = "CUBE-CLU-004"
+	// CodeKubeconfigFailed is the write side: generation, merge, write and
+	// cleanup. It is raised only through the two phase-specific
+	// constructors below, because every path that reaches it runs after a
+	// lifecycle stage has already completed.
 	CodeKubeconfigFailed     cubeerr.Code = "CUBE-CLU-005"
 	CodeKubeconfigReadFailed cubeerr.Code = "CUBE-CLU-006"
 )
@@ -80,20 +84,10 @@ func provisionRemediation(action string) string {
 		"choose different ports. See cause above"
 }
 
-// NewKubeconfigFailedError reports a failure generating, merging, writing,
-// or cleaning up the cube-branded kubeconfig — exactly the write-side set
-// docs/domains/cluster.md's error table names, and nothing wider. A failure
-// on a read-only operation is CUBE-CLU-006, not this.
-func NewKubeconfigFailedError(cause error) error {
-	return cubeerr.Wrap(CodeKubeconfigFailed,
-		"kubeconfig update failed",
-		"see cause above; check permissions on the kubeconfig target, or pass --kubeconfig <path> to write elsewhere", cause)
-}
-
 // NewKubeconfigReadError reports a failure to read or parse a kubeconfig
 // during a read-only operation. It is the read-side counterpart to
-// NewKubeconfigFailedError: `status` and the bootstrap edge's pre-apply
-// read change nothing, so "update failed" and "write elsewhere" are the
+// CUBE-CLU-005: `status` and the CLI edge's pre-apply and reachability
+// reads change nothing, so "update failed" and "write elsewhere" are the
 // wrong words for them (docs/domains/cluster.md, README's read-only
 // statement for `status`). The remediation is cause-specific because the
 // two ways a read fails want opposite advice: an absent file is a missing
@@ -123,4 +117,35 @@ func newKubeconfigLocationError(cause error) error {
 	return cubeerr.Wrap(CodeKubeconfigReadFailed,
 		"cannot determine which kubeconfig to read",
 		"set KUBECONFIG, or pass --kubeconfig <path> to name the file to read", cause)
+}
+
+// newKubeconfigFailedAfterEnsureError reports a kubeconfig failure on a
+// create whose Ensure already succeeded. The code is deliberately
+// unchanged — this is still a kubeconfig update failure — but the summary
+// carries the completed stage, because that stage is the fact an operator
+// cannot recover any other way: without it, one message covers both
+// "nothing was provisioned" and "the cluster is up and only its context
+// is missing", and those want opposite next steps. Ensure is idempotent
+// by name (the Provisioner seam contract), so the recovery is to re-run
+// the same command. It does not claim no context exists anywhere: a
+// pre-existing one may have survived untouched.
+func newKubeconfigFailedAfterEnsureError(cause error) error {
+	return cubeerr.Wrap(CodeKubeconfigFailed,
+		"the cluster exists; kubeconfig context installation failed",
+		"this run did not install the cube-owned context: fix the cause above and re-run "+
+			"`cube-idp create` with the same flags — Ensure is idempotent by name, so it will "+
+			"not rebuild the cluster",
+		cause)
+}
+
+// newKubeconfigFailedAfterDeleteError is the delete-side counterpart: the
+// seam Delete has returned, so the cluster is gone — including the
+// documented already-absent no-op, which is why the wording is "is gone"
+// rather than "was deleted" — while its context may still be installed.
+func newKubeconfigFailedAfterDeleteError(cause error) error {
+	return cubeerr.Wrap(CodeKubeconfigFailed,
+		"the cluster is gone; kubeconfig cleanup failed",
+		"the cluster no longer exists, but its cube-owned context may still be in the kubeconfig: "+
+			"fix the cause above and re-run `cube-idp delete` with the same flags",
+		cause)
 }

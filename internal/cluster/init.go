@@ -25,13 +25,28 @@ type InitOptions struct {
 
 // Init ensures the cluster exists and installs its cube-branded
 // kubeconfig context: Ensure → Kubeconfig → Rebrand → merge-or-write.
+//
+// Everything after Ensure runs with the cluster already in place, so its
+// failures are partial: the coded error is built here, at the one seam
+// where the completed stage is unambiguous, rather than at each step
+// below (which cannot tell how much succeeded before it ran).
 func Init(ctx context.Context, p Provisioner, opts InitOptions) error {
 	if err := p.Ensure(ctx, opts.Spec); err != nil {
 		return err // drivers return coded errors already
 	}
+	if err := installContext(ctx, p, opts); err != nil {
+		return newKubeconfigFailedAfterEnsureError(err)
+	}
+	return nil
+}
+
+// installContext fetches, rebrands and installs the kubeconfig context.
+// It returns plain errors: only Init knows the cluster already exists, so
+// only Init may say so.
+func installContext(ctx context.Context, p Provisioner, opts InitOptions) error {
 	raw, err := p.Kubeconfig(ctx, opts.Spec.Name)
 	if err != nil {
-		return NewKubeconfigFailedError(fmt.Errorf("fetch kubeconfig for %s: %w", opts.Spec.Name, err))
+		return fmt.Errorf("fetch kubeconfig for %s: %w", opts.Spec.Name, err)
 	}
 	name := opts.ContextName
 	if name == "" {
@@ -39,7 +54,7 @@ func Init(ctx context.Context, p Provisioner, opts InitOptions) error {
 	}
 	branded, err := Rebrand(raw, name, opts.Namespace)
 	if err != nil {
-		return NewKubeconfigFailedError(fmt.Errorf("rebrand kubeconfig as %s: %w", name, err))
+		return fmt.Errorf("rebrand kubeconfig as %s: %w", name, err)
 	}
 	if opts.KubeconfigPath != "" {
 		return writeKubeconfig(opts.KubeconfigPath, branded)
@@ -50,40 +65,43 @@ func Init(ctx context.Context, p Provisioner, opts InitOptions) error {
 func mergeIntoDefault(branded []byte) error {
 	target, err := defaultKubeconfigPath()
 	if err != nil {
-		return NewKubeconfigFailedError(err)
+		return err
 	}
 	existing, err := os.ReadFile(target)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return NewKubeconfigFailedError(fmt.Errorf("read kubeconfig %s: %w", target, err))
+		return fmt.Errorf("read kubeconfig %s: %w", target, err)
 	}
 	merged, err := Merge(existing, branded)
 	if err != nil {
-		return NewKubeconfigFailedError(fmt.Errorf("merge into %s: %w", target, err))
+		return fmt.Errorf("merge into %s: %w", target, err)
 	}
 	return writeKubeconfig(target, merged)
 }
 
 // writeKubeconfig writes atomically: temp file in the target directory,
-// then rename — a crash mid-write can never truncate the user's file.
+// then rename — a crash mid-write can never truncate the user's file, and
+// a returned error therefore always means the target is unchanged. It
+// returns plain errors; the lifecycle operation that called it decides
+// which stage had already completed.
 func writeKubeconfig(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return NewKubeconfigFailedError(fmt.Errorf("create kubeconfig dir for %s: %w", path, err))
+		return fmt.Errorf("create kubeconfig dir for %s: %w", path, err)
 	}
 	tmp, err := os.CreateTemp(dir, ".kubeconfig-*") // 0600 by default
 	if err != nil {
-		return NewKubeconfigFailedError(fmt.Errorf("temp file for %s: %w", path, err))
+		return fmt.Errorf("temp file for %s: %w", path, err)
 	}
 	defer func() { _ = os.Remove(tmp.Name()) }() // no-op once renamed
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		return NewKubeconfigFailedError(fmt.Errorf("write kubeconfig %s: %w", path, err))
+		return fmt.Errorf("write kubeconfig %s: %w", path, err)
 	}
 	if err := tmp.Close(); err != nil {
-		return NewKubeconfigFailedError(fmt.Errorf("write kubeconfig %s: %w", path, err))
+		return fmt.Errorf("write kubeconfig %s: %w", path, err)
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
-		return NewKubeconfigFailedError(fmt.Errorf("write kubeconfig %s: %w", path, err))
+		return fmt.Errorf("write kubeconfig %s: %w", path, err)
 	}
 	return nil
 }

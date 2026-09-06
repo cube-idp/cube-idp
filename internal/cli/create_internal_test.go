@@ -124,3 +124,31 @@ metadata:
 		t.Fatalf("stderr missing CUBE-CLU-001:\n%s", stderr)
 	}
 }
+
+// TestCreatePartialFailureReachesTheOperator is #212's first half: when
+// Ensure succeeds and the context install fails, the operator must be told
+// the cluster is up. Before the fix the only output was a bare "kubeconfig
+// update failed", which reads as if nothing was provisioned.
+func TestCreatePartialFailureReachesTheOperator(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root writes into mode-0500 directories; the sealed case is unreachable")
+	}
+	dir := t.TempDir()
+	writeConfig(t, dir, clusterConfigYAML)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	code, _, stderr := execCreate(t, dir)
+
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1; stderr: %s", code, stderr)
+	}
+	for _, want := range []string{"CUBE-CLU-005", "cluster exists", "cube-idp create"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr missing %q:\n%s", want, stderr)
+		}
+	}
+}

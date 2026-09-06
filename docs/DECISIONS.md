@@ -1236,3 +1236,46 @@ cluster catalog and does not open the edge's own.
 Living contracts: `docs/domains/cluster.md` (the `CUBE-CLU-006` row, the
 write/read split, the cause-specific remediation, and `Status`'s error
 statement), `docs/ARCHITECTURE.md` §5 (the `CLU` row's code range).
+
+**2026-09-06 — Partial lifecycle state is carried by the error's words,
+not by a new return type (#212, epic #215).** `Init` returns a bare
+`error` and `Delete` a `(changed bool, error)`, so neither can say "the
+cluster is there / gone, and only the kubeconfig step failed". `create`
+could therefore leave a running cluster with no context while printing
+only "kubeconfig update failed", and `runDelete` returned above both of
+its success lines, discarding the fact that the cluster had been removed.
+**Decided (owner, option (e) of five):** stage-specific coded diagnostics,
+built where the stage is known. After a successful `Ensure`/seam `Delete`,
+the domain constructs the kubeconfig failure with a summary and
+remediation naming the completed phase, keeping `CUBE-CLU-005` and the
+wrapped cause and using `cubeerr.Coded`'s existing fields. No signature
+change, no new code, no new type, and no widening of `cubeerr` — which
+stays machinery only. **Rejected:** symmetric `InitResult`/`DeleteResult`
+structs (option (a), the plan's recommendation) — an exported seam
+signature is documented contract, and this is a bug-fix epic; a second
+bool on `Delete` alone (leaves `Init` unfixed and keeps the asymmetry that
+produced the bug); carrying the fact in the error *value* (error identity
+in this repo is the `Code`); and having the edge infer the stage from
+which code a driver happened to raise — the seam contract pins no code to
+`Delete`, so that is exactly the "inferred a contract instead of asking"
+failure this epic exists to close.
+
+Two consequences recorded because the ruling did not anticipate them.
+First, `Delete` now returns `changed == false` when the atomic rewrite
+fails: the write is temp-file-plus-rename, so a failed write leaves the
+target unchanged, and `true` reported a context removal that had not
+happened — a repair of the bool's own documented meaning, not a contract
+change. Second, once every write-side site is raised through a
+phase-specific constructor, the generic exported `NewKubeconfigFailedError`
+has no caller left anywhere and is **deleted**; `CUBE-CLU-005` is
+unchanged and is now raised only through the two phase constructors, since
+every path that reaches it runs after a lifecycle stage has completed.
+
+Accepted cost, stated plainly: the partial-state fact arrives on **stderr**
+inside the coded error rather than on stdout beside the other lifecycle
+facts, which differs from how `create`/`delete` report facts on success.
+Option (a) would have put it on stdout; the owner chose (e) knowing this.
+
+Living contract: `docs/domains/cluster.md` (the Operations partial-state
+rule, `changed`'s meaning on a failed write, and the `delete` CLI-surface
+sentence).
