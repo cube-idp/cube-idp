@@ -1345,3 +1345,46 @@ Living contracts: `docs/domains/cluster.md` (a `current-context`
 ownership paragraph in Kubeconfig machinery, including the standalone-path
 rule and the withdrawn kubectl claim) and `README.md` (the promise made
 true, with the create-side rule stated for the first time).
+
+**2026-09-06 — Two documentation gaps closed as contract clarifications
+(#206, #207, epic #215).** Neither changes behaviour; both state a rule
+the code has always had and the user-facing docs never wrote down.
+
+**`create --kubeconfig <path>` replaces the target file wholesale** — no
+merge (`docs/domains/cluster.md`'s Operations section already said so;
+`README.md` described the flag only as "a standalone file instead of the
+default location"). The qualification matters, since all three verbs
+take the flag: with it, `create` replaces the file wholesale; `delete`
+rewrites it to remove the matching entries and clears `current-context`
+if it names the removed context; `status` only reads it. An operator pointing
+`create --kubeconfig` at a kubeconfig holding other clusters loses them.
+README now says so in the flag's own paragraph.
+
+**cube-idp owns the exact context name it installs**, and ownership is
+decided by the name alone, because the model carries no provenance:
+`Merge` upserts and `Remove` drop on a name match. The `cube-idp.dev/`
+prefix is reserved, but reservation and operation scope are distinct: an
+entry under a name a cube installs is treated as cube-owned whoever wrote
+it, while a **merge-path** `create` and every `delete` act on that cube's
+exact name only and never sweep the prefix. Standalone `create` is the
+exception in the other direction — it replaces the whole file rather than
+acting by name at all. `--kubeconfig-context-name` supplies that exact
+name and may be inside or outside the prefix. Reserving a previously
+unreserved namespace is a claim about the operator's file, which is why
+this went to the owner as a clarification rather than being asserted in a
+doc edit. **Rejected:** warning about an entry "the operator did not
+install" — that needs provenance the data model does not carry, so it is
+not a small variant but a new concept, and would be a gate event of its
+own.
+
+Both ship with **no test**, per the owner's epic-wide ruling: a
+characterization test that is green from its first run proves nothing
+about the change and would dilute what RED evidence means elsewhere in
+this epic. The behaviour they describe is already covered by the existing
+suite — the wholesale replacement by
+`TestStandalonePathReplacesTheFileAndSelectsTheCube`, and name-based
+ownership by `Remove`'s own table.
+
+Living contracts: `README.md` (the `--kubeconfig` paragraph and the name
+reservation) and `docs/domains/cluster.md` (a Name ownership paragraph
+opening Kubeconfig machinery).

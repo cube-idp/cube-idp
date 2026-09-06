@@ -117,6 +117,22 @@ driver regression.
 
 ## Kubeconfig machinery
 
+**Name ownership.** cube-idp owns the exact context name it installs, and
+ownership is decided **by that name alone** — the model carries no
+provenance, so `Merge` upserts and `Remove` drop purely on a name match.
+The `cube-idp.dev/` prefix is **reserved** for cube-idp, but reservation
+of the prefix and the scope of an operation are different things: a
+merge-path `Init` and every `Delete` act on the entries matching *that
+cube's* exact context name — `ContextName(name)` by default, or the
+caller-supplied override, which may be inside or outside the prefix.
+Deleting one cube therefore never sweeps the prefix; it removes one name.
+Standalone `Init` (`InitOptions.KubeconfigPath`) is outside this rule
+entirely: it replaces the target file rather than matching names in it. What the reservation buys
+is that an entry sitting under a name a cube installs is treated as
+cube-owned whoever wrote it. Warning about an entry "the operator did not
+install" is not implementable here: it would need provenance the data
+model does not carry, and adding that is a gate event, not an inference.
+
 Own minimal typed model over `sigs.k8s.io/yaml` (no client-go):
 `ContextName(name)` = `<API group>/<name>` (single source of truth for the
 `cube-idp.dev/` prefix), `Rebrand(raw, contextName, namespace)`,
