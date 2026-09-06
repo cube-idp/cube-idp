@@ -78,10 +78,15 @@ installs the prerequisites listed in `spec.prerequisites` — the trust
 fabric, by default — applies the sync wiring declared in
 `spec.engine.source`, and waits not just for the controllers to be ready
 but for the sync to actually **reconcile** — after which the engine owns
-steady state. `spec.engine.version`, when set, must use clean SemVer
-(`2.9.2`, not `v2.9.2`) and is checked before any cluster contact.
-`--timeout` bounds the whole run and defaults to **10m**, because the
-gateway's chart is pulled from a registry inside the cluster.
+steady state. The sync sets **no target namespace** — the synced
+repository must supply any required namespace placement itself, through
+its manifests' own `metadata.namespace` or through its own Kustomize
+build configuration. A namespaced resource for which it supplies
+neither fails to reconcile. `spec.engine.version`, when set, must
+use clean SemVer (`2.9.2`, not `v2.9.2`) and is checked before any
+cluster contact. `--timeout` bounds the whole run and defaults to
+**10m**, because the gateway's chart is pulled from a registry inside
+the cluster.
 
 ```
 $ cube-idp bootstrap

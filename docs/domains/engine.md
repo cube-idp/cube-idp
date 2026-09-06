@@ -276,6 +276,11 @@ design inputs — from the two-tier analyses at this gate — are:
   Flux `Kustomization.dependsOn` today; an Argo driver maps the same
   neutral data to Applications/sync waves — the bus milestone's
   engine-facing half doubles.
+- **Target-namespace semantics**: Flux **overrides** an existing
+  resource namespace; Argo's `destination.namespace` fills a missing
+  one. The owning gate must decide how — or whether — to model these
+  semantics in a shared field; the Argo driver states and tests its own
+  rule either way.
 - Plus, from the machinery side: the two-bundle delivery/provenance
   story (who emits the tier-1 wiring that delivers the bundle), the
   day-0 bundle path (requires the bus), source topology beyond the one
@@ -349,6 +354,35 @@ type EngineSource struct {
   spelling and match are asserted at the bootstrap edge (`CUBE-ENG-005`),
   so `config validate` does not catch a `v`-prefixed version; recorded as
   a known gap, not an accident.
+
+- **Namespace semantics for source-delivered content, stated.** The emitted
+  sync `Kustomization` carries no `spec.targetNamespace`, matching upstream
+  `flux bootstrap`'s generator field set (`fluxcd/flux2
+  pkg/manifestgen/sync/sync.go` emits `interval`/`path`/`prune`/`sourceRef`
+  and nothing else). The **driver therefore supplies no namespace override
+  and no fallback namespace**: synced resources are not defaulted into the
+  substrate namespace. Placement comes entirely from the source: each
+  object's own `metadata.namespace`, plus any namespace transform the
+  source's own Kustomize build configuration declares (a `namespace:` in
+  its `kustomization.yaml`, an overlay, a patch). The source must supply
+  whatever placement its resources need for the apply to succeed. This is a
+  deliberate contract, not an omission: a bootstrap sync does not dictate
+  placement; **the synced repository declares its own**. Observed example:
+  the `podinfo` fixture (`stefanprodan/podinfo` at `./kustomize`), which
+  upstream's own guide pairs with `--target-namespace`, failed
+  reconciliation with `Service/podinfo namespace not specified`
+  (https://github.com/cube-idp/cube-idp/issues/202). That is one fixture's
+  observed failure, not a rule about every namespace-less source — a source
+  of only cluster-scoped resources needs no placement at all.
+  Giving `spec.engine.source` a `targetNamespace` of its own — the
+  `flux create kustomization --target-namespace` equivalent, for a source
+  the operator cannot modify — is a real capability gap, **deferred to the
+  M12 bus gate** (https://github.com/cube-idp/cube-idp/issues/205). Flux's
+  `targetNamespace` *replaces* placement rather than filling it, so on a
+  source through which the bus delivers rendered packs it would rewrite the
+  namespace `pack.namespace` gave to delivered namespaced `raw`/`kustomize`
+  objects. The precedence rule that resolves that belongs to the delivery
+  contract, which already owns where a delivery unit lands.
 
 - **`provider` is re-scoped, not added**: the existing field now selects
   the **tier-2 engine only** — the substrate is never selectable.
