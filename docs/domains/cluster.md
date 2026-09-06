@@ -160,6 +160,17 @@ prints.
 | `CUBE-CLU-004` | provisioning failed |
 | `CUBE-CLU-005` | kubeconfig update failed (generation, merge, write, or cleanup) |
 
+`CUBE-CLU-004`'s remediation varies by action: a **create** can fail
+because the container runtime is absent *or* because the host ports the
+cluster publishes are already bound — the second-default-cube collision
+described above — so its guidance names both causes and points at
+`spec.cluster.forProvider` as the escape. `list` and `delete` bind no
+ports and keep the runtime-only guidance. The port *numbers* stay in the
+driver contract (the ingress-ready default above) and are not duplicated
+in this generic guidance: the constructor receives an action, not resolved
+port mappings, and naming a default would misdirect anyone who supplied
+their own `forProvider`.
+
 ## CLI surface
 
 `init [-f cube.yaml] [--name <cube-name>]` — config-only since the M5
