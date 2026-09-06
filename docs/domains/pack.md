@@ -1039,7 +1039,18 @@ cube-idp pack new      <dir> [--type raw|helm|kustomize] [--name <n>]
   a command that only returns not-implemented misleads users. **`type:
   helm` becomes scaffoldable in M9**, now that this build can render what
   it writes: the skeleton is a `pack.cue` with a filled-in `chart` block
-  and no payload directory at all. The target
+  and no payload directory at all. Neither helm scaffold path can know
+  where the chart is published, so both write the same placeholder
+  repository url — and **both say so**: `--from-chart` and `--type helm`
+  each print one line on **stdout**, after the `created pack …`
+  confirmation and before the `run … render` hint, naming the new pack's
+  `pack.cue` and telling the operator to replace the url before
+  installing. `--type raw` and `--type kustomize` write no placeholder and
+  print nothing extra. **`--from` does not warn either**, even when the
+  fork it copies still carries a placeholder: the url is its source's, and
+  this command speaks only for what it wrote. That exclusion is a choice
+  about what the command claims, not a consequence of copy semantics. The
+  target
   must not exist at all (`CUBE-PKG-022`); everything is assembled and
   validated in memory first, so a rejected name leaves no directory
   behind. `--name` defaults to the directory's base name.

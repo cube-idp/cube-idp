@@ -70,11 +70,17 @@ func runPackNew(cmd *cobra.Command, args []string) error {
 	meta := p.Metadata()
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "created pack %s %s (%s) in %s\n",
 		meta.Name, meta.Version, meta.Type, args[0])
-	if opts.FromChart != "" {
-		// A local chart directory does not say where the chart is published,
-		// so the scaffold carries a placeholder URL. Saying so here as well as
-		// in the file is the difference between a TODO someone reads and one
-		// they discover from a failing HelmRelease.
+	if opts.FromChart != "" || opts.Type == pack.TypeHelm {
+		// Neither helm scaffold path can know where the chart is published — a
+		// local chart directory does not say, and a scratch scaffold has
+		// nothing to read at all — so both write the same placeholder URL.
+		// Saying so here as well as in the file is the difference between a
+		// TODO someone reads and one they discover from a failing HelmRelease.
+		//
+		// A fork is not included: the placeholder in a copied pack is its
+		// source's, and this command speaks only for what it wrote. Options
+		// carrying a Type and options carrying a FromChart are mutually
+		// exclusive (packNewOptions below), and a fork sets neither.
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 			"replace the placeholder chart url in %s before installing this pack\n",
 			metadataDisplayPath(args[0]))
