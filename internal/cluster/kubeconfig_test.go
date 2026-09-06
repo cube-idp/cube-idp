@@ -128,9 +128,14 @@ current-context: other
 			wantSubstr: []string{"cube-idp.dev/dev", "current-context: cube-idp.dev/dev"},
 		},
 		{
-			name:       "preserves other entries, upserts ours, takes current-context",
+			// Before #200 this row asserted "current-context:
+			// cube-idp.dev/dev" — the takeover was pinned as intended
+			// behaviour. The operator's selection now survives; the
+			// selector policy itself is covered in
+			// kubeconfig_selector_test.go.
+			name:       "preserves other entries, upserts ours, leaves the selection alone",
 			existing:   otherKubeconfig,
-			wantSubstr: []string{"name: other", "token: abc", "cube-idp.dev/dev", "current-context: cube-idp.dev/dev"},
+			wantSubstr: []string{"name: other", "token: abc", "cube-idp.dev/dev", "current-context: other"},
 		},
 	}
 	for _, tt := range tests {

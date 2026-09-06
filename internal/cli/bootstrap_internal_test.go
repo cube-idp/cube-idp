@@ -75,7 +75,10 @@ metadata:
 }
 
 // TestBootstrapKubeconfigMissing: a configured cluster whose kubeconfig target
-// cannot be read fails at the edge before any apply — CUBE-CLU-005, exit 1.
+// is absent fails at the edge before any apply — exit 1. Nothing is being
+// updated here, so since #203 the code is the read-side CUBE-CLU-006 (this
+// assertion read CUBE-CLU-005 before), and the absent file earns the
+// prerequisite remediation rather than advice about file permissions.
 func TestBootstrapKubeconfigMissing(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -89,8 +92,66 @@ func TestBootstrapKubeconfigMissing(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; stderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "CUBE-CLU-005") {
-		t.Fatalf("stderr missing CUBE-CLU-005:\n%s", stderr)
+	for _, want := range []string{"CUBE-CLU-006", "cube-idp create"} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr missing %q:\n%s", want, stderr)
+		}
+	}
+	if strings.Contains(stderr, "kubeconfig update failed") {
+		t.Fatalf("bootstrap read must not claim an update failed:\n%s", stderr)
+	}
+}
+
+// TestBootstrapContextAbsentKeepsKUB002 is the guard for #203's fix, and it
+// is GREEN from the first run by design: when the kubeconfig file IS
+// present and only the cube context is missing, the good path must survive
+// untouched — the edge read succeeds, kube.New raises CUBE-KUB-002, and the
+// operator is told to run `cube-idp create`. Issue #203 names that error as
+// the behaviour to preserve, so gating the edge on rep.ContextInstalled
+// (which would replace it with a cluster code) is what this test forbids.
+func TestBootstrapContextAbsentKeepsKUB002(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cube.yaml"), []byte(bootstrapConfigYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A valid kubeconfig carrying only a foreign context: readable, so the
+	// edge read succeeds, but without cube-idp.dev/dev.
+	foreign := `apiVersion: v1
+kind: Config
+clusters:
+  - name: other
+    cluster:
+      server: https://127.0.0.1:6443
+contexts:
+  - name: other
+    context:
+      cluster: other
+      user: other
+users:
+  - name: other
+    user:
+      token: fake
+current-context: other
+`
+	if err := os.WriteFile(filepath.Join(dir, "kubeconfig"), []byte(foreign), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, stderr := execBootstrap(t, dir, mockProvisioner{})
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1; stderr: %s", code, stderr)
+	}
+	// The code AND its guidance: #203 praises this error for telling the
+	// operator to run `create`, so losing the wording would defeat the
+	// guard as surely as losing the code.
+	for _, want := range []string{"CUBE-KUB-002", "cube-idp create"} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr missing %q:\n%s", want, stderr)
+		}
+	}
+	if strings.Contains(stderr, "CUBE-CLU-00") {
+		t.Fatalf("a present file with an absent context must stay a kube error:\n%s", stderr)
 	}
 }
 

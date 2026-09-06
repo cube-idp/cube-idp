@@ -120,3 +120,38 @@ metadata:
 		t.Fatalf("stderr missing CUBE-CLU-001:\n%s", stderr)
 	}
 }
+
+// TestDeletePartialFailureReachesTheOperator is #212's CLI half: the fact
+// that the cluster was deleted must reach the operator even though the
+// kubeconfig cleanup failed. Before the fix runDelete returned at
+// delete.go's error check, above both success lines, so stdout was silent
+// and stderr said only "kubeconfig update failed" — an operator could not
+// tell whether the cluster was still there.
+func TestDeletePartialFailureReachesTheOperator(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if os.Geteuid() == 0 {
+		t.Skip("root writes into mode-0500 directories; the sealed case is unreachable")
+	}
+	writeConfig(t, dir, clusterConfigYAML)
+	// create installs the context; then seal the directory so only the
+	// delete-side rewrite fails.
+	if code, _, stderr := execCreate(t, dir); code != 0 {
+		t.Fatalf("create exit = %d, stderr: %s", code, stderr)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	code, _, stderr := execDelete(t, dir)
+
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1; stderr: %s", code, stderr)
+	}
+	for _, want := range []string{"CUBE-CLU-005", "cluster is gone", "cube-idp delete"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr missing %q:\n%s", want, stderr)
+		}
+	}
+}

@@ -68,10 +68,44 @@ merges a cube-owned context (`cube-idp.dev/<name>`) into your kubeconfig;
 `delete` removes the cluster and cleans that context back out (only
 cube-owned entries are touched, and the file is never deleted); `status`
 is read-only and exits 0 whenever the report succeeds — an absent
-cluster or unreachable API server is a finding, not a failure. All three resolve
-the cube from the config document and never scaffold it. Each takes
-`--kubeconfig <path>` to target a standalone file instead of the default
-location, and `--kubeconfig-context-name` to override the context name.
+cluster or unreachable API server is a finding, not a failure. All three
+resolve the cube from the config document and never scaffold it. Each
+takes `--kubeconfig <path>` to target a standalone file instead of the
+default location, and `--kubeconfig-context-name` to override the context
+name.
+
+**`current-context` is yours.** `create` selects the cube it just
+installed only when your kubeconfig has no selection at all, so a first
+cube on a fresh file just works while a cube never retargets a `kubectl`
+you already pointed somewhere. `delete` clears `current-context` when it
+names the context being removed — even if you selected it yourself —
+rather than leaving it dangling at a context that no longer exists. A
+selection naming any other context is preserved. With `--kubeconfig
+<path>` the cube is always selected: that path replaces the file
+wholesale rather than merging, so there is no other selection in it to
+preserve.
+
+**`--kubeconfig <path>` is not a merge.** Without it, `create` merges into
+your existing kubeconfig: unrelated entries are preserved, entries whose
+names match the cube's are replaced, and `current-context` follows the
+rule above. With it, `create` **replaces that file wholesale**: any
+clusters, contexts, users or other keys already in it are gone, and what
+remains is the generated cube kubeconfig — its cluster, user and context
+entries. Point it at a file you are happy to have overwritten, not at a
+kubeconfig you keep other clusters in. `delete` and `status` take the
+same flag and only clean up or read the file it names.
+
+**cube-idp owns the exact context name it installs.** The `cube-idp.dev/`
+prefix is reserved for cube-idp. A merging `create` and every `delete`
+operate on the entries matching *that cube's* exact context name — by
+default `cube-idp.dev/<name>`, or whatever you pass to
+`--kubeconfig-context-name`, which may be inside or outside the prefix.
+Matching is by name alone, regardless of who created the entry, because
+nothing records that. So deleting one cube never sweeps the prefix — it
+removes only its own name — but an entry you park under a name a cube
+installs will be overwritten by its `create` and removed by its
+`delete`. `create --kubeconfig <path>` is the one exception: as above it
+replaces that file entirely, rather than acting on names at all.
 
 `cube-idp bootstrap` installs the Flux substrate into the cluster,
 installs the prerequisites listed in `spec.prerequisites` — the trust

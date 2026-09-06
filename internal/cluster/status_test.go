@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cube-idp/cube-idp/internal/cubeerr"
@@ -20,10 +21,14 @@ func TestStatus(t *testing.T) {
 		initOpts      InitOptions
 		opts          StatusOptions
 		mock          *mockProvisioner
-		explicit      bool         // route init and status through an explicit file
-		seedBadTarget bool         // write an unparseable kubeconfig at the target
-		wantCode      cubeerr.Code // "" = success
-		want          StatusReport // ContextName/KubeconfigPath checked when non-empty
+		explicit      bool // route init and status through an explicit file
+		seedBadTarget bool // write an unparseable kubeconfig at the target
+		// seedUnreadableFile writes a kubeconfig the process cannot open,
+		// so the read itself fails on a file that does exist.
+		seedUnreadableFile bool
+		wantCode           cubeerr.Code // "" = success
+		wantRemediation    string       // substring, checked when non-empty
+		want               StatusReport // ContextName/KubeconfigPath checked when non-empty
 	}{
 		{
 			name:    "cluster exists and context installed",
@@ -61,11 +66,30 @@ func TestStatus(t *testing.T) {
 			wantCode: CodeProvisionFailed,
 		},
 		{
-			name:          "unparseable kubeconfig wraps as CLU-005",
+			// Status is a read-only operation (docs/domains/cluster.md's
+			// Operations section), so an unparseable file is a read
+			// failure, not the "kubeconfig update failed" CUBE-CLU-005
+			// names. This row asserted CUBE-CLU-005 before #203.
+			name:          "unparseable kubeconfig wraps as CLU-006",
 			opts:          StatusOptions{Name: "dev"},
 			mock:          &mockProvisioner{},
 			seedBadTarget: true,
-			wantCode:      CodeKubeconfigFailed,
+			wantCode:      CodeKubeconfigReadFailed,
+			// A malformed file is not a missing prerequisite: the
+			// guidance must point at the file, not at `create`.
+			wantRemediation: "a valid kubeconfig",
+		},
+		{
+			// The only way contextInstalled reaches its read error at
+			// all: fs.ErrNotExist is already a clean "not installed".
+			name:               "unreadable kubeconfig wraps as CLU-006",
+			opts:               StatusOptions{Name: "dev"},
+			mock:               &mockProvisioner{},
+			seedUnreadableFile: true,
+			wantCode:           CodeKubeconfigReadFailed,
+			// Not the prerequisite branch: the file is there, so telling
+			// the operator to run `create` would be wrong guidance.
+			wantRemediation: "a valid kubeconfig",
 		},
 	}
 
@@ -85,6 +109,15 @@ func TestStatus(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if tt.seedUnreadableFile {
+				if os.Geteuid() == 0 {
+					t.Skip("root reads mode-0000 files; the unreadable case is unreachable")
+				}
+				if err := os.WriteFile(target, []byte("apiVersion: v1\n"), 0o000); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(target, 0o600) })
+			}
 			if tt.install {
 				if err := Init(t.Context(), tt.mock, tt.initOpts); err != nil {
 					t.Fatalf("Init: %v", err)
@@ -97,6 +130,9 @@ func TestStatus(t *testing.T) {
 				var coded *cubeerr.Coded
 				if !errors.As(err, &coded) || coded.Code != tt.wantCode {
 					t.Fatalf("err = %v, want code %s", err, tt.wantCode)
+				}
+				if tt.wantRemediation != "" && !strings.Contains(coded.Remediation, tt.wantRemediation) {
+					t.Errorf("remediation = %q, want it to name %q", coded.Remediation, tt.wantRemediation)
 				}
 				return
 			}
@@ -120,14 +156,22 @@ func TestStatus(t *testing.T) {
 }
 
 // TestStatusNoHomeFails mirrors TestInitNoHomeFails: an undeterminable
-// default kubeconfig location is a coded error, not a silent report.
+// default kubeconfig location is a coded error, not a silent report. The
+// pair deliberately differs on the code since #203 — Init is a write, so
+// it keeps CUBE-CLU-005; Status changes nothing, so an unsatisfiable read
+// is CUBE-CLU-006. The intent asserted here is unchanged; only the code
+// that expresses it moved.
 func TestStatusNoHomeFails(t *testing.T) {
 	t.Setenv("KUBECONFIG", "")
 	t.Setenv("HOME", "")
 
 	_, err := Status(t.Context(), &mockProvisioner{}, StatusOptions{Name: "dev"})
 	var coded *cubeerr.Coded
-	if !errors.As(err, &coded) || coded.Code != CodeKubeconfigFailed {
-		t.Fatalf("err = %v, want code %s", err, CodeKubeconfigFailed)
+	if !errors.As(err, &coded) || coded.Code != CodeKubeconfigReadFailed {
+		t.Fatalf("err = %v, want code %s", err, CodeKubeconfigReadFailed)
+	}
+	// Neither read remediation applies when there is no file to name.
+	if !strings.Contains(coded.Remediation, "KUBECONFIG") {
+		t.Errorf("remediation = %q, want it to name KUBECONFIG", coded.Remediation)
 	}
 }

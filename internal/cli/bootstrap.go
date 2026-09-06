@@ -244,9 +244,13 @@ func bootstrapApplier(ctx context.Context, cfg *v1alpha1.Config, newProvisioner 
 	if err != nil {
 		return nil, nil, err
 	}
+	// A read, not an update: CUBE-CLU-006, whose remediation tells an
+	// operator with no kubeconfig at all to run `create`. When the file is
+	// present and only the cube context is absent, this read succeeds and
+	// kube.New raises CUBE-KUB-002 — the good path, deliberately untouched.
 	raw, err := os.ReadFile(rep.KubeconfigPath)
 	if err != nil {
-		return nil, nil, cluster.NewKubeconfigFailedError(fmt.Errorf("read kubeconfig %s: %w", rep.KubeconfigPath, err))
+		return nil, nil, cluster.NewKubeconfigReadError(fmt.Errorf("read kubeconfig %s: %w", rep.KubeconfigPath, err))
 	}
 	client, err := kube.New(raw, rep.ContextName)
 	if err != nil {

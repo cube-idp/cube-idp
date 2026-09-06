@@ -76,8 +76,9 @@ func Rebrand(raw []byte, contextName, namespace string) ([]byte, error) {
 	return out, nil
 }
 
-// Merge upserts incoming's entries into existing by name and adopts
-// incoming's current-context. An empty existing yields incoming as-is.
+// Merge upserts incoming's entries into existing by name, and adopts
+// incoming's current-context ONLY when existing has no selection of its
+// own. An empty existing yields incoming as-is.
 // Only the keys cube-idp understands (clusters, contexts, users,
 // current-context, plus apiVersion/kind when absent) are touched; every
 // other top-level key in the user's file passes through untouched —
@@ -103,8 +104,15 @@ func Merge(existing, incoming []byte) ([]byte, error) {
 			dst[key] = merged
 		}
 	}
-	if cc, _ := src["current-context"].(string); cc != "" {
-		dst["current-context"] = cc
+	// The selector is adopted only when the destination has none. It is
+	// the one global key in a kubeconfig, so taking it over retargets
+	// every kubectl the operator has open — a cube must never do that to
+	// a selection they made. Absent and present-but-empty both count as
+	// "none", so the first cube on a fresh file is still selected.
+	if dstCC, _ := dst["current-context"].(string); dstCC == "" {
+		if cc, _ := src["current-context"].(string); cc != "" {
+			dst["current-context"] = cc
+		}
 	}
 	if v, _ := dst["apiVersion"].(string); v == "" {
 		dst["apiVersion"], dst["kind"] = src["apiVersion"], src["kind"]
@@ -120,11 +128,24 @@ func Merge(existing, incoming []byte) ([]byte, error) {
 // clusters/contexts/users lists, plus current-context when it pointed at
 // the removed context — the exact reverse of installing a Rebrand-ed
 // config with Merge. Same map-based model as Merge: every key cube-idp
-// does not understand passes through untouched. The previous
-// current-context is not restorable (Merge overwrote it), so it is
-// unset, matching kubectl's delete-context behavior. The bool reports
-// whether anything changed; when false the returned bytes are the input,
-// so callers can skip rewriting an untouched file.
+// does not understand passes through untouched.
+//
+// The unset is by NAME, not by provenance: nothing records who selected
+// a context, so this clears a selector naming the removed context even
+// when the operator set it themselves. The alternative is leaving it
+// dangling — which is what kubectl does, and what this domain chose not
+// to imitate silently. A selector naming any other context is preserved.
+// No previous value has to be restored, because on the merge path Merge
+// no longer overwrites the existing selector in the first place.
+//
+// (An earlier comment justified the unset as "matching kubectl's
+// delete-context behavior". That was verified false against kubectl
+// v1.35.0: `kubectl config delete-context` leaves a dangling
+// current-context and prints a warning. The justification is the symmetry
+// above, not a kubectl precedent.)
+//
+// The bool reports whether anything changed; when false the returned
+// bytes are the input, so callers can skip rewriting an untouched file.
 func Remove(existing []byte, contextName string) ([]byte, bool, error) {
 	if len(existing) == 0 {
 		return existing, false, nil
