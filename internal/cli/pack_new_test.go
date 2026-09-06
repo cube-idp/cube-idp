@@ -250,3 +250,25 @@ func TestPackNewFromChartConflicts(t *testing.T) {
 		})
 	}
 }
+
+// A type that is not scaffoldable is refused, and the refusal names the types
+// that are — all three of them. Every declarable type is scaffoldable
+// (docs/domains/pack.md:946), so a remediation that offers only two sends the
+// user to fork a pack they could have scaffolded outright.
+func TestPackNewUnknownTypeRemediation(t *testing.T) {
+	code, stdout, stderr := run(t, "pack", "new", targetDir(t, "x"), "--type", "bogus")
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (stderr: %s)", code, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("stdout = %q, want nothing when the type is refused", stdout)
+	}
+	if !strings.Contains(stderr, "CUBE-PKG-023") {
+		t.Errorf("stderr %q should carry CUBE-PKG-023", stderr)
+	}
+	for _, want := range []string{"raw", "helm", "kustomize"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr = %q, want the remediation to name %q", stderr, want)
+		}
+	}
+}

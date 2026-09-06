@@ -249,7 +249,8 @@ func newForkRenameError(from, name string) error {
 func newScaffoldTypeUnsupportedError(t Type) error {
 	return cubeerr.Wrap(CodeScaffoldFailed,
 		fmt.Sprintf("cannot scaffold a pack of type %q", t),
-		fmt.Sprintf("scaffold a %s or %s pack, or fork an existing one with --from", TypeRaw, TypeKustomize), nil)
+		fmt.Sprintf("--type must be one of %s — or fork an existing pack with --from",
+			strings.Join(scaffoldableTypes(), ", ")), nil)
 }
 
 func newInstanceIDRequiredError(name string, count int) error {
