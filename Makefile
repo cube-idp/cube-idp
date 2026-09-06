@@ -14,8 +14,20 @@ test:
 
 # Real kind conformance — needs Docker/Podman; never part of the green gate.
 # KUBECONFIG stays inside the worktree per CLAUDE.md §7.
+#
+# -p 1 is load-bearing, and belongs to THIS target only. Two package patterns
+# are passed to one `go test`, which otherwise builds and runs the packages
+# they select concurrently up to GOMAXPROCS; every default-shaped cluster
+# binds host 8080 and 8443 (internal/cluster/kind/kind.go:80-90), the
+# documented ingress-ready default this suite exists to exercise. Two live at
+# once therefore compete for the same bindings and `docker run` fails.
+#
+# -p 1 bounds PACKAGE parallelism only. The other half of the invariant lives
+# in the test code and nothing here can enforce it: no two cluster lifetimes
+# may overlap, so no cluster-creating test may call t.Parallel() at any nesting
+# level (tests/e2e/kube_e2e_test.go package doc).
 test-e2e:
-	CUBE_E2E=1 KUBECONFIG=$(CURDIR)/.kube/config $(GO) test ./internal/cluster/kind/... ./tests/... -count=1 -timeout 30m -v
+	CUBE_E2E=1 KUBECONFIG=$(CURDIR)/.kube/config $(GO) test -p 1 ./internal/cluster/kind/... ./tests/... -count=1 -timeout 30m -v
 
 generate:
 	$(GO) tool controller-gen object paths=./api/config/v1alpha1

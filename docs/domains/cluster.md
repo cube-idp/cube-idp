@@ -115,6 +115,23 @@ and 8443**. The suite is environment-sensitive: a `create` failure
 caused by an occupied host port is an environment condition, not a
 driver regression.
 
+Because those two ports are fixed, **the suite must never run two
+clusters at once**, and that has two halves:
+
+- The target passes `-p 1`, so the packages selected by the two patterns
+  it hands to one `go test` build and run serially instead of
+  concurrently up to `GOMAXPROCS`. This is scoped to `make test-e2e`;
+  the green gate's `make test` is unaffected and stays parallel.
+- `-p 1` bounds *package* parallelism only. Within a package nothing
+  enforces the rule, so no cluster-creating test may call `t.Parallel()`
+  at any nesting level — parallel subtests can overlap one another
+  exactly as parallel top-level tests would. The convention is recorded
+  in the `tests/e2e` package doc.
+
+Reassigning the ports is not the alternative: the 8080/8443 mapping is
+the documented ingress-ready default, and a suite that tested some other
+port would stop exercising the shipped path.
+
 ## Kubeconfig machinery
 
 Own minimal typed model over `sigs.k8s.io/yaml` (no client-go):

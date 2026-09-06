@@ -2,6 +2,16 @@
 // the CLI edge does — cluster seam plus kube client, no domain importing
 // another. Opt-in via `make test-e2e` (CUBE_E2E=1, worktree-local
 // KUBECONFIG); never part of the green gate.
+//
+// The invariant this package rests on: no two cluster lifetimes may overlap.
+// Every cluster the suite creates binds the same fixed host ports
+// (internal/cluster/kind/kind.go:80-90), so two live at once contend for them.
+// That holds at any nesting level — parallel subtests of a sequential parent
+// overlap each other just as surely as parallel top-level tests do. So: keep
+// top-level tests sequential, and use t.Parallel() only for hermetic work that
+// touches none of those shared resources. Serialising across packages is a
+// separate concern of the e2e target, which nothing inside a package can
+// enforce.
 package e2e
 
 import (
